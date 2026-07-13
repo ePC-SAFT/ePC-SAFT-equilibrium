@@ -1,0 +1,23 @@
+schema: epcsaft.curated-repository-bootstrap-receipt
+schema_version: 1
+date: 2026-07-13
+stage: 11
+repository_role: equilibrium
+local_path: /home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium
+intended_github_home: ePC-SAFT/ePC-SAFT-equilibrium
+github_home_state: intended_mapping_only
+distribution_name: epcsaft-equilibrium
+import_name: epcsaft_equilibrium
+program_amendment_commit: cad6eb9fc2d83c6f9167cb6ef45f5b9fe74da19b
+initial_branch: main
+initial_commit_policy: clean_history_single_bootstrap_commit
+depends_on:
+  - epcsaft
+forbidden_dependencies:
+  - epcsaft-regression
+  - Ceres
+production_owners_transferred: []
+scientific_capabilities_claimed: []
+remote_created: false
+push_performed: false
+source_of_truth: false
