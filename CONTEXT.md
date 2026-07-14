@@ -2,6 +2,10 @@
 
 This is a governance-only skeleton, not a usable package.
 
-The executable source remains `/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT` at program amendment `cad6eb9fc2d83c6f9167cb6ef45f5b9fe74da19b`.
+`governance_doctrine_revision: 1`
 
-`source_of_truth: false`
+Canonical local doctrine: `../ePC-SAFT-organization/GOVERNANCE.md`.
+
+The executable source remains `/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT` at `64fdf314`.
+
+`runtime_source_of_truth: false`
