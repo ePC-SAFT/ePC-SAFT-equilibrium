@@ -2,7 +2,7 @@
 
 Bootstrap state: governance-only skeleton.
 
-Before work, read doctrine revision 1 at
+Before work, read doctrine revision 2 at
 `../ePC-SAFT-organization/GOVERNANCE.md`. Its future published home is
 `https://github.com/ePC-SAFT/.github/blob/main/GOVERNANCE.md`. Local policy may
 narrow that doctrine but must not contradict it.
