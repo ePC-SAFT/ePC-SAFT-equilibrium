@@ -1,5 +1,7 @@
 # Equilibrium Repository Agent Contract
 
+Repository Profile: scientific-computing
+
 Bootstrap state: governance-only skeleton.
 
 Before work, read doctrine revision 2 at
