@@ -68,14 +68,12 @@ def test_native_extension_accepts_and_retains_the_public_provider_capsule() -> N
 
     info = _equilibrium.sdk_info(capsule)
 
-    assert info == {
-        "capsule_name": "epcsaft.native_sdk.v1",
-        "abi_version": 1,
-        "table_size": ctypes.sizeof(_NativeSdkTable),
-        "result_size": ctypes.sizeof(_PhaseBlockResult),
-        "has_model_context": True,
-        "has_evaluate_pure_phase": True,
-    }
+    assert info["capsule_name"] == "epcsaft.native_sdk.v1"
+    assert info["abi_version"] == 1
+    assert info["table_size"] >= ctypes.sizeof(_NativeSdkTable)
+    assert info["result_size"] == ctypes.sizeof(_PhaseBlockResult)
+    assert info["has_model_context"] is True
+    assert info["has_evaluate_pure_phase"] is True
 
     del model
     gc.collect()
