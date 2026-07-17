@@ -10,6 +10,7 @@
 #include <epcsaft/native_sdk_v1.h>
 
 #include "saturation.hpp"
+#include "two_phase_flash.hpp"
 
 namespace py = pybind11;
 
@@ -133,6 +134,35 @@ py::dict evaluate_nlp(
     return result;
 }
 
+py::dict evaluate_two_phase_flash_nlp(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    const std::array<double, 2>& overall_mole_fractions,
+    const std::array<double, 6>& variables,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_sdk(capsule),
+        expected_fingerprint
+    );
+    const epcsaft_equilibrium::FlashNlpEvaluation evaluation =
+        epcsaft_equilibrium::evaluate_two_phase_flash_nlp(
+            provider,
+            temperature_k,
+            pressure_pa,
+            overall_mole_fractions,
+            variables
+        );
+    py::dict result;
+    result["objective"] = evaluation.objective;
+    result["gradient"] = evaluation.gradient;
+    result["constraints"] = evaluation.constraints;
+    result["jacobian"] = evaluation.jacobian;
+    result["hessian_lower"] = evaluation.hessian_lower;
+    return result;
+}
+
 py::dict phase_to_dict(const epcsaft_equilibrium::PhaseEvaluation& phase) {
     py::dict result;
     result["amount_mol"] = phase.amount_mol;
@@ -237,6 +267,16 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("temperature_k"),
         py::arg("amount_mol"),
         py::arg("volume_m3"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "evaluate_two_phase_flash_nlp",
+        &evaluate_two_phase_flash_nlp,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("overall_mole_fractions"),
+        py::arg("variables"),
         py::arg("expected_fingerprint")
     );
     module.def(

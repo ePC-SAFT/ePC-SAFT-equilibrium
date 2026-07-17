@@ -22,6 +22,14 @@ def evaluate_nlp(
     variables: tuple[float, float, float],
     multipliers: tuple[float, float, float],
 ) -> dict[str, object]: ...
+def evaluate_two_phase_flash_nlp(
+    capsule: object,
+    temperature_k: float,
+    pressure_pa: float,
+    overall_mole_fractions: tuple[float, float],
+    variables: tuple[float, float, float, float, float, float],
+    expected_fingerprint: str,
+) -> dict[str, object]: ...
 def solve_saturation(
     capsule: object,
     temperature_k: float,

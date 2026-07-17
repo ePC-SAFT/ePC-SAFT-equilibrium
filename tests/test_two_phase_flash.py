@@ -64,6 +64,59 @@ def test_native_mixture_transport_uses_reviewed_sdk_tail() -> None:
         )
 
 
+def test_two_phase_flash_objective_exact_derivatives_and_linear_structure() -> None:
+    model = _binary_model()
+    capsule = epcsaft.native_sdk(model)
+    variables = (
+        0.5 * SOURCE_LIQUID_X_METHANE,
+        0.5 * (1.0 - SOURCE_LIQUID_X_METHANE),
+        math.log(0.5 / 18_000.0),
+        0.5 * SOURCE_VAPOR_Y_METHANE,
+        0.5 * (1.0 - SOURCE_VAPOR_Y_METHANE),
+        math.log(0.5 * 8.31446261815324 * SOURCE_TEMPERATURE_K / SOURCE_PRESSURE_PA),
+    )
+    direction = (0.03, -0.02, 0.04, -0.01, 0.02, -0.03)
+    step = 2.0e-5
+
+    def evaluate(scale: float) -> dict[str, object]:
+        point = tuple(
+            value + scale * delta for value, delta in zip(variables, direction, strict=True)
+        )
+        return _equilibrium.evaluate_two_phase_flash_nlp(
+            capsule,
+            SOURCE_TEMPERATURE_K,
+            SOURCE_PRESSURE_PA,
+            SOURCE_FEED,
+            point,
+            BINARY_FINGERPRINT,
+        )
+
+    lower = evaluate(-step)
+    center = evaluate(0.0)
+    upper = evaluate(step)
+    assert center["constraints"] == pytest.approx((0.0, 0.0), abs=1.0e-15)
+    assert center["jacobian"] == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0]
+    objective_difference = (upper["objective"] - lower["objective"]) / (2.0 * step)
+    assert objective_difference == pytest.approx(
+        sum(value * delta for value, delta in zip(center["gradient"], direction, strict=True)),
+        rel=2.0e-7,
+        abs=2.0e-8,
+    )
+
+    hessian_lower = center["hessian_lower"]
+    hessian = [[0.0] * 6 for _ in range(6)]
+    index = 0
+    for row in range(6):
+        for column in range(row + 1):
+            hessian[row][column] = hessian_lower[index]
+            hessian[column][row] = hessian_lower[index]
+            index += 1
+    for row in range(6):
+        gradient_difference = (upper["gradient"][row] - lower["gradient"][row]) / (2.0 * step)
+        hessian_direction = sum(hessian[row][column] * direction[column] for column in range(6))
+        assert gradient_difference == pytest.approx(hessian_direction, rel=2.0e-6, abs=2.0e-7)
+
+
 @pytest.mark.parametrize(
     ("temperature", "pressure", "feed", "error", "message"),
     (
