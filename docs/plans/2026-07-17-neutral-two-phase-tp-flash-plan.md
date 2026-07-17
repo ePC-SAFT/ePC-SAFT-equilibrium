@@ -1,5 +1,14 @@
 # Neutral Two-Phase TP Flash Implementation Plan
 
+Status: executed local candidate; validation NON_ADMISSION; closed to further
+implementation. Successor design:
+`../designs/2026-07-17-neutral-held-v1.md`.
+
+Do not reopen this plan or promote its public route. The successor may reuse
+the direct free-energy implementation as internal HELD Stage III and must
+remove the displaced `two_phase_flash` public surface in the same complete
+candidate.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add one local methane/ethane fixed-two-phase `T,P,z` calculation through direct total-free-energy minimization over an installed provider mixture Hessian.

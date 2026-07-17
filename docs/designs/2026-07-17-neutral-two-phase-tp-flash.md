@@ -4,6 +4,15 @@ Stage: local candidate approved; validation NON_ADMISSION; promotion blocked
 
 Authority effect: none
 
+Successor: `2026-07-17-neutral-held-v1.md`
+
+The candidate will not be promoted as a separate public route. Its useful
+direct total-free-energy formulation is implementation input to internal HELD
+Stage III. A complete HELD candidate must remove `two_phase_flash` and its
+displaced public result surface without a compatibility alias. Until that
+candidate exists and is accepted, this file remains the truthful record of the
+current local implementation and validation non-admission.
+
 ## Capability boundary
 
 The candidate adds one operation:

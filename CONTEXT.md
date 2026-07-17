@@ -46,3 +46,16 @@ admission. Authority effect remains none and promotion is blocked.
 `validation_admission: NON_ADMISSION`
 
 `local_candidate_promotion_status: blocked`
+
+The approved next design is `docs/designs/2026-07-17-neutral-held-v1.md`.
+It replaces a separately promoted fixed-two-phase route with one bounded
+Pereira HELD Stage-I/II/III controller and final `tp_flash` operation. The
+design uses this repository's existing native module, Ipopt installation,
+`ProviderContext`, and the installed provider Helmholtz value/gradient/Hessian
+callback. It adds no current capability or authority until implementation,
+independent review, installed-artifact validation, and a promotion receipt all
+complete.
+
+`next_approved_design: neutral-held-v1`
+
+`next_design_authority_effect: none`
