@@ -149,6 +149,69 @@ def test_native_two_phase_flash_source_anchor_solve_and_local_certificate() -> N
     assert abs(native["vapor"]["mole_fractions"][0] - SOURCE_VAPOR_Y_METHANE) <= 0.0114
 
 
+def test_public_two_phase_flash_returns_typed_source_anchor_result() -> None:
+    result = epcsaft_equilibrium.two_phase_flash(
+        _binary_model(),
+        SOURCE_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+        SOURCE_PRESSURE_PA * epcsaft.unit_registry.pascal,
+        SOURCE_FEED,
+    )
+
+    assert isinstance(result, epcsaft_equilibrium.TwoPhaseFlashResult)
+    assert result.overall_mole_fractions == pytest.approx(SOURCE_FEED)
+    assert result.liquid.mole_fractions[0] == pytest.approx(0.3025223259589743, rel=1.0e-8)
+    assert result.vapor.mole_fractions[0] == pytest.approx(0.6703563353120439, rel=1.0e-8)
+    assert result.liquid_phase_fraction + result.vapor_phase_fraction == pytest.approx(1.0)
+    assert result.diagnostics.material_balance_max_abs <= 1.0e-10
+    assert result.diagnostics.kkt_stationarity_max_abs <= 1.0e-8
+    assert result.diagnostics.globality_certificate is False
+
+
+def test_public_two_phase_flash_wraps_native_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        _equilibrium,
+        "_solve_two_phase_flash",
+        lambda *_args: {
+            "accepted": False,
+            "diagnostics": {
+                "solver_converged": False,
+                "solver_status": "synthetic_rejection",
+                "iterations": 0,
+                "attempts": 0,
+                "attempt_log": [],
+                "solver_lower_bounds": [0.0] * 6,
+                "solver_upper_bounds": [1.0] * 6,
+                "solver_constraint_violation": math.inf,
+                "numerical_converged": False,
+                "confirmation_solves": 0,
+                "confirmation_max_difference": math.inf,
+                "physical_accepted": False,
+                "material_balance_max_abs": math.inf,
+                "pressure_stationarity_max_relative": math.inf,
+                "chemical_potential_max_abs": math.inf,
+                "kkt_stationarity_max_abs": math.inf,
+                "phase_density_distance": 0.0,
+                "equality_multipliers": [0.0] * 2,
+                "lower_bound_multipliers": [0.0] * 6,
+                "upper_bound_multipliers": [0.0] * 6,
+                "exact_derivatives": True,
+                "globality_certificate": False,
+                "failure_reason": "synthetic rejection",
+            },
+        },
+    )
+    with pytest.raises(epcsaft_equilibrium.FlashError, match="synthetic rejection") as rejected:
+        epcsaft_equilibrium.two_phase_flash(
+            _binary_model(),
+            SOURCE_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            SOURCE_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            SOURCE_FEED,
+        )
+    assert rejected.value.diagnostics["solver_status"] == "synthetic_rejection"
+
+
 @pytest.mark.parametrize(
     ("temperature", "pressure", "feed", "error", "message"),
     (

@@ -30,7 +30,7 @@ class SolverAttemptDiagnostics:
     """One deterministic Ipopt search or confirmation attempt."""
 
     role: str
-    initial_guess: tuple[float, float, float]
+    initial_guess: tuple[float, ...]
     solver_converged: bool
     solver_status: str
     iterations: int
@@ -103,6 +103,9 @@ class FlashDiagnostics:
     chemical_potential_max_abs: float
     kkt_stationarity_max_abs: float
     phase_density_distance: float
+    equality_multipliers: tuple[float, float]
+    lower_bound_multipliers: tuple[float, ...]
+    upper_bound_multipliers: tuple[float, ...]
     exact_derivatives: bool
     globality_certificate: bool
     failure_reason: str
@@ -197,6 +200,13 @@ def _float_tuple(payload: object) -> tuple[float, ...]:
     return tuple(float(value) for value in values)
 
 
+def _vector(payload: object, size: int, name: str) -> tuple[float, ...]:
+    values = _float_tuple(payload)
+    if len(values) != size:
+        raise RuntimeError(f"native {name} has the wrong size")
+    return values
+
+
 def _attempt(payload: Mapping[str, object]) -> SolverAttemptDiagnostics:
     return SolverAttemptDiagnostics(
         role=str(payload["role"]),
@@ -238,13 +248,68 @@ def _diagnostics(payload: Mapping[str, object]) -> SaturationDiagnostics:
 
 
 def _phase(payload: Mapping[str, object]) -> PhaseState:
+    mole_fractions = _float_tuple(payload.get("mole_fractions", (1.0,)))
+    chemical_potential = _vector(
+        payload["chemical_potential_over_rt"],
+        len(mole_fractions),
+        "phase chemical-potential vector",
+    )
     return PhaseState(
         amount_mol=float(cast(float, payload["amount_mol"])),
-        mole_fractions=_float_tuple(payload.get("mole_fractions", (1.0,))),
+        mole_fractions=mole_fractions,
         volume_m3=float(cast(float, payload["volume_m3"])),
         molar_density_mol_m3=float(cast(float, payload["molar_density_mol_m3"])),
         pressure_pa=float(cast(float, payload["pressure_pa"])),
-        chemical_potential_over_rt=_float_tuple(payload["chemical_potential_over_rt"]),
+        chemical_potential_over_rt=chemical_potential,
+    )
+
+
+def _flash_attempt(payload: Mapping[str, object]) -> SolverAttemptDiagnostics:
+    return SolverAttemptDiagnostics(
+        role=str(payload["role"]),
+        initial_guess=_vector(payload["initial_guess"], 6, "flash attempt seed"),
+        solver_converged=bool(payload["solver_converged"]),
+        solver_status=str(payload["solver_status"]),
+        iterations=int(cast(int, payload["iterations"])),
+        constraint_violation=float(cast(float, payload["constraint_violation"])),
+        callback_error=str(payload["callback_error"]),
+    )
+
+
+def _flash_diagnostics(payload: Mapping[str, object]) -> FlashDiagnostics:
+    attempt_payloads = cast(list[Mapping[str, object]], payload["attempt_log"])
+    return FlashDiagnostics(
+        solver_converged=bool(payload["solver_converged"]),
+        solver_status=str(payload["solver_status"]),
+        iterations=int(cast(int, payload["iterations"])),
+        attempts=int(cast(int, payload["attempts"])),
+        attempt_log=tuple(_flash_attempt(item) for item in attempt_payloads),
+        solver_lower_bounds=_vector(payload["solver_lower_bounds"], 6, "flash lower bounds"),
+        solver_upper_bounds=_vector(payload["solver_upper_bounds"], 6, "flash upper bounds"),
+        solver_constraint_violation=float(cast(float, payload["solver_constraint_violation"])),
+        numerical_converged=bool(payload["numerical_converged"]),
+        confirmation_solves=int(cast(int, payload["confirmation_solves"])),
+        confirmation_max_difference=float(cast(float, payload["confirmation_max_difference"])),
+        physical_accepted=bool(payload["physical_accepted"]),
+        material_balance_max_abs=float(cast(float, payload["material_balance_max_abs"])),
+        pressure_stationarity_max_relative=float(
+            cast(float, payload["pressure_stationarity_max_relative"])
+        ),
+        chemical_potential_max_abs=float(cast(float, payload["chemical_potential_max_abs"])),
+        kkt_stationarity_max_abs=float(cast(float, payload["kkt_stationarity_max_abs"])),
+        phase_density_distance=float(cast(float, payload["phase_density_distance"])),
+        equality_multipliers=cast(
+            tuple[float, float], _vector(payload["equality_multipliers"], 2, "flash multipliers")
+        ),
+        lower_bound_multipliers=_vector(
+            payload["lower_bound_multipliers"], 6, "flash lower-bound multipliers"
+        ),
+        upper_bound_multipliers=_vector(
+            payload["upper_bound_multipliers"], 6, "flash upper-bound multipliers"
+        ),
+        exact_derivatives=bool(payload["exact_derivatives"]),
+        globality_certificate=bool(payload["globality_certificate"]),
+        failure_reason=str(payload["failure_reason"]),
     )
 
 
@@ -301,8 +366,65 @@ def two_phase_flash(
         raise ValueError("composition is outside the audited May 2015 source domain")
 
     capsule = epcsaft.native_sdk(model)
-    native = _equilibrium._solve_two_phase_flash(capsule, temperature_k, pressure_pa, feed)
-    return cast(TwoPhaseFlashResult, native)
+    try:
+        native = cast(
+            Mapping[str, object],
+            _equilibrium._solve_two_phase_flash(capsule, temperature_k, pressure_pa, feed),
+        )
+    except (RuntimeError, ValueError) as error:
+        failure = {
+            "solver_converged": False,
+            "solver_status": "native_exception",
+            "iterations": 0,
+            "attempts": 0,
+            "attempt_log": (),
+            "solver_lower_bounds": (),
+            "solver_upper_bounds": (),
+            "solver_constraint_violation": math.inf,
+            "numerical_converged": False,
+            "confirmation_solves": 0,
+            "confirmation_max_difference": math.inf,
+            "physical_accepted": False,
+            "material_balance_max_abs": math.inf,
+            "pressure_stationarity_max_relative": math.inf,
+            "chemical_potential_max_abs": math.inf,
+            "kkt_stationarity_max_abs": math.inf,
+            "phase_density_distance": 0.0,
+            "equality_multipliers": (),
+            "lower_bound_multipliers": (),
+            "upper_bound_multipliers": (),
+            "exact_derivatives": False,
+            "globality_certificate": False,
+            "failure_reason": str(error),
+        }
+        raise FlashError(str(error), failure) from error
+
+    try:
+        diagnostics_payload = cast(Mapping[str, object], native["diagnostics"])
+        diagnostics = _flash_diagnostics(diagnostics_payload)
+        if not bool(native["accepted"]):
+            reason = diagnostics.failure_reason or "local two-phase result was rejected"
+            raise FlashError(reason, diagnostics_payload)
+        overall = cast(
+            tuple[float, float],
+            _vector(native["overall_mole_fractions"], 2, "overall composition"),
+        )
+        return TwoPhaseFlashResult(
+            temperature_k=float(cast(float, native["temperature_k"])),
+            pressure_pa=float(cast(float, native["pressure_pa"])),
+            overall_mole_fractions=overall,
+            liquid=_phase(cast(Mapping[str, object], native["liquid"])),
+            vapor=_phase(cast(Mapping[str, object], native["vapor"])),
+            liquid_phase_fraction=float(cast(float, native["liquid_phase_fraction"])),
+            vapor_phase_fraction=float(cast(float, native["vapor_phase_fraction"])),
+            total_free_energy_over_rt=float(cast(float, native["total_free_energy_over_rt"])),
+            parameter_fingerprint=str(native["parameter_fingerprint"]),
+            diagnostics=diagnostics,
+        )
+    except FlashError:
+        raise
+    except (KeyError, TypeError, ValueError) as error:
+        raise RuntimeError("native flash payload does not match the typed contract") from error
 
 
 def saturation(model: epcsaft.EPCSAFT, temperature: Quantity[Any]) -> SaturationResult:
