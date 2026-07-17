@@ -9,7 +9,7 @@ pkg_check_modules(Ipopt REQUIRED IMPORTED_TARGET ipopt)
 execute_process(
   COMMAND
     "${Python_EXECUTABLE}" -c
-    "import importlib.metadata as m, json; d=m.distribution('epcsaft'); u=json.loads(d.read_text('direct_url.json') or '{}'); assert d.version == '0.1.0.dev0'; assert not u.get('dir_info', {}).get('editable', False); print(d.locate_file('epcsaft/include'))"
+    "import importlib.metadata as m, json, sys; d=m.distribution('epcsaft'); u=json.loads(d.read_text('direct_url.json') or '{}'); sys.exit('epcsaft version mismatch') if d.version != '0.1.0.dev0' else None; sys.exit('editable epcsaft provider is forbidden') if u.get('dir_info', {}).get('editable', False) else None; print(d.locate_file('epcsaft/include'))"
   RESULT_VARIABLE epcsaft_header_status
   OUTPUT_VARIABLE epcsaft_include_dir
   OUTPUT_STRIP_TRAILING_WHITESPACE

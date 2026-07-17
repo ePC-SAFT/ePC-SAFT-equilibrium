@@ -226,7 +226,7 @@ def saturation(model: epcsaft.EPCSAFT, temperature: Quantity[Any]) -> Saturation
             "pressure_relative_residual": math.inf,
             "chemical_potential_absolute_residual": math.inf,
             "phase_density_distance": 0.0,
-            "exact_derivatives": True,
+            "exact_derivatives": False,
             "globality_certificate": False,
             "failure_reason": str(error),
         }

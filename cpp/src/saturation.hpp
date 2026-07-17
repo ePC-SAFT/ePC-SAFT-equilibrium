@@ -12,6 +12,7 @@ struct PhaseEvaluation {
     double amount_mol = 0.0;
     double volume_m3 = 0.0;
     epcsaft_phase_block_result_v1 provider{};
+    std::string parameter_fingerprint;
 };
 
 class ProviderContext {

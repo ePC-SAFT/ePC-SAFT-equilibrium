@@ -12,6 +12,7 @@ ANCHORS = REPO_ROOT / "data" / "reference" / "pure_saturation_anchors.csv"
 LAB_RELATIVE_TOLERANCE = 5.0e-6
 NIST_PRESSURE_RELATIVE_TOLERANCE = 5.0e-3
 NIST_LIQUID_DENSITY_RELATIVE_TOLERANCE = 1.0e-2
+EXPECTED_COMPONENTS = ["ethane", "methane", "propane"]
 
 
 def relative_error(value: float, reference: float) -> float:
@@ -21,6 +22,8 @@ def relative_error(value: float, reference: float) -> float:
 def main() -> int:
     with ANCHORS.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
+    if sorted(row["component"] for row in rows) != EXPECTED_COMPONENTS:
+        raise RuntimeError("anchors must contain exactly methane, ethane, and propane once each")
 
     for row in rows:
         component = row["component"]

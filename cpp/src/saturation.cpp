@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -21,6 +23,7 @@ constexpr double kVaporDensityUpper = 5.0e3;
 constexpr double kLiquidDensityLower = 5.001e3;
 constexpr double kPressureLowerPa = 1.0e-12;
 constexpr double kPressureUpperPa = 1.0e8;
+constexpr double kSolverConstraintTolerance = 1.0e-10;
 constexpr double kConstraintTolerance = 1.0e-8;
 constexpr double kPhaseDistanceTolerance = 1.0e-3;
 
@@ -28,6 +31,21 @@ void require_finite(double value, const char* name) {
     if (!std::isfinite(value)) {
         throw std::invalid_argument(std::string(name) + " must be finite");
     }
+}
+
+std::string decode_provider_char_array(
+    const char* value,
+    std::size_t capacity,
+    const char* field_name
+) {
+    const void* terminator = std::memchr(value, '\0', capacity);
+    if (terminator == nullptr) {
+        throw std::invalid_argument(
+            std::string(field_name) + " is missing a NUL terminator"
+        );
+    }
+    const auto* end = static_cast<const char*>(terminator);
+    return std::string(value, static_cast<std::size_t>(end - value));
 }
 
 struct PhaseDerivatives {
@@ -459,6 +477,9 @@ bool physical_acceptance(
         && std::isfinite(result.phase_density_distance);
     const bool locally_stable = evaluation.jacobian[0] > 0.0 && evaluation.jacobian[4] > 0.0;
     return attempt.solver_converged
+        && std::isfinite(attempt.solver_constraint_violation)
+        && attempt.solver_constraint_violation <= kSolverConstraintTolerance
+        && attempt.callback_error.empty()
         && finite
         && evaluation.saturation_pressure_pa > 0.0
         && vapor_density > 0.0
@@ -493,23 +514,33 @@ PhaseEvaluation ProviderContext::evaluate(
         volume_m3,
         &phase
     );
+    if (phase.struct_size != sizeof(epcsaft_phase_block_result_v1)) {
+        throw std::invalid_argument("provider phase result struct size mismatch");
+    }
     if (status != phase.status) {
         throw std::runtime_error("provider phase evaluation returned inconsistent status values");
     }
     if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
+        const std::string error = decode_provider_char_array(
+            phase.error,
+            sizeof(phase.error),
+            "provider error"
+        );
         throw std::domain_error(
-            "provider phase evaluation failed: " + std::string(phase.error)
+            "provider phase evaluation failed: " + error
         );
     }
-    if (phase.struct_size != sizeof(epcsaft_phase_block_result_v1)) {
-        throw std::invalid_argument("provider phase result struct size mismatch");
-    }
-    if (std::string(phase.parameter_fingerprint) != fingerprint_) {
+    const std::string parameter_fingerprint = decode_provider_char_array(
+        phase.parameter_fingerprint,
+        sizeof(phase.parameter_fingerprint),
+        "provider parameter fingerprint"
+    );
+    if (parameter_fingerprint != fingerprint_) {
         throw std::invalid_argument(
             "provider phase result fingerprint does not match the requested model"
         );
     }
-    return {amount_mol, volume_m3, phase};
+    return {amount_mol, volume_m3, phase, std::move(parameter_fingerprint)};
 }
 
 const std::string& ProviderContext::fingerprint() const {

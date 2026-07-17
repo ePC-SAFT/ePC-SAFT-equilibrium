@@ -79,7 +79,7 @@ py::dict evaluate_phase(
     };
     result["pressure_pa"] = phase.pressure_pa;
     result["chemical_potential_over_rt"] = phase.chemical_potential_over_rt;
-    result["parameter_fingerprint"] = std::string(phase.parameter_fingerprint);
+    result["parameter_fingerprint"] = evaluation.parameter_fingerprint;
     return result;
 }
 

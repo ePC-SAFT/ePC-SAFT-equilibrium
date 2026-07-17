@@ -109,27 +109,44 @@ def test_native_extension_rejects_malformed_capsule_contracts_and_results() -> N
 
     def malformed_result(
         _context: int,
-        _temperature: float,
+        temperature: float,
         _amount: float,
         _volume: float,
         result: ctypes.POINTER(_PhaseBlockResult),
     ) -> int:
-        result.contents.status = 0
-        result.contents.struct_size = 0
-        result.contents.parameter_fingerprint = fingerprint.encode()
-        return 0
+        if temperature == 149.0:
+            result.contents.struct_size = 0
+            result.contents.status = 0
+            return 0
+        result.contents.struct_size = valid_result_size
+        if temperature == 150.0:
+            result.contents.status = 0
+            result.contents.parameter_fingerprint = b"x" * 72
+            return 0
+        result.contents.status = 3
+        result.contents.error = b"x" * 160
+        return 3
 
     evaluator = callback_type(malformed_result)
     _EVALUATORS.append(evaluator)
-    table = _NativeSdkTable(
-        1,
-        valid_size,
-        valid_result_size,
-        1,
-        ctypes.cast(evaluator, ctypes.c_void_p).value,
+    capsule = _capsule(
+        _NativeSdkTable(
+            1,
+            valid_size,
+            valid_result_size,
+            1,
+            ctypes.cast(evaluator, ctypes.c_void_p).value,
+        )
     )
+
     with pytest.raises(ValueError, match="result struct size"):
-        _equilibrium.evaluate_phase(_capsule(table), 150.0, 1.0, 1.0e-3, fingerprint)
+        _equilibrium.evaluate_phase(capsule, 149.0, 1.0, 1.0e-3, fingerprint)
+
+    with pytest.raises(ValueError, match=r"parameter fingerprint.*NUL"):
+        _equilibrium.evaluate_phase(capsule, 150.0, 1.0, 1.0e-3, fingerprint)
+
+    with pytest.raises(ValueError, match=r"provider error.*NUL"):
+        _equilibrium.evaluate_phase(capsule, 151.0, 1.0, 1.0e-3, fingerprint)
 
 
 @pytest.mark.parametrize("component", ("methane", "ethane", "propane"))
@@ -282,6 +299,7 @@ def test_public_saturation_wraps_native_failures_with_structured_diagnostics(
         )
     assert failed.value.diagnostics["solver_status"] == "native_exception"
     assert failed.value.diagnostics["physical_accepted"] is False
+    assert failed.value.diagnostics["exact_derivatives"] is False
 
 
 def test_public_ethane_saturation_separates_all_acceptance_layers(
@@ -308,6 +326,8 @@ def test_public_ethane_saturation_separates_all_acceptance_layers(
         abs=1.0e-8,
     )
     assert result.diagnostics.solver_converged is True
+    assert math.isfinite(result.diagnostics.solver_constraint_violation)
+    assert result.diagnostics.solver_constraint_violation <= 1.0e-10
     assert result.diagnostics.numerical_converged is True
     assert result.diagnostics.physical_accepted is True
     assert result.diagnostics.exact_derivatives is True
@@ -341,6 +361,11 @@ def test_public_ethane_saturation_separates_all_acceptance_layers(
 def test_public_saturation_matches_retained_lab_and_nist_anchors() -> None:
     with ANCHORS.open(encoding="utf-8", newline="") as stream:
         anchors = list(csv.DictReader(stream))
+    assert sorted(anchor["component"] for anchor in anchors) == [
+        "ethane",
+        "methane",
+        "propane",
+    ]
 
     for anchor in anchors:
         component = anchor["component"]
