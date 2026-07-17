@@ -1,0 +1,96 @@
+version: 1
+status: local-candidate-awaiting-promotion
+
+authority:
+  governance_doctrine_revision: 2
+  runtime_source_of_truth: false
+  transitional_runtime_owner: tannerpolley/ePC-SAFT-lab
+  promotion_status: pending-independent-acceptance
+
+candidate:
+  name: pure-component-saturation-v1
+  scope: >-
+    Local fixed-temperature pure-component vapor-liquid saturation boundary for
+    the provider-approved methane, ethane, and propane parameter fingerprints.
+  formulation: >-
+    Zero-objective Ipopt feasibility problem in log vapor density, log liquid
+    density, and log saturation pressure with pressure-ratio and
+    chemical-potential equality constraints.
+  local_certificate:
+    - accepted Ipopt termination and finite solver diagnostics
+    - perturbed-seed agreement
+    - pressure equality to the solved target
+    - chemical-potential equality
+    - positive distinct phase volumes and densities
+    - local mechanical stability and inactive bounds
+    - exact provider fingerprint and derivative evidence
+  globality_certificate: none
+
+provider_pin:
+  commit: 02a03a440cf53f3b1d4304556a19a54c79c70179
+  wheel_sha256: e83f4b108d2df73888f7768f99f1c54b01ad86541b55afc1e43bbef2e1fb8f93
+  test_receipt_sha256: 7c097c3ec8742d1714ea435973c605d5c18290e27729c1a12b3852926e61c399
+  capsule: epcsaft.native_sdk.v1
+  abi_version: 1
+  coordinate_order: [amount_mol, volume_m3]
+  derivative_order: 3
+
+admitted_inputs:
+  - component: methane
+    parameter_fingerprint: sha256:5f836aa84935df70be2e5cffae51b178a7b797c2cee036e9ff47d8097ca94bbf
+    temperature_domain_k: [97.0, 300.0]
+  - component: ethane
+    parameter_fingerprint: sha256:288fbcaa1304881c16f64c3a784eeed19b75c58cca4558f92a21268e5e91258a
+    temperature_domain_k: [90.0, 305.0]
+  - component: propane
+    parameter_fingerprint: sha256:9bfbc8d7789e51609945e61dbdf7a020decc8f9e31b408b0977724c7cb3e1551
+    temperature_domain_k: [85.0, 523.0]
+
+owners:
+  phase_function_and_nonlinear_tensors: installed epcsaft provider
+  phase_contexts_and_variables: cpp/src/saturation.cpp
+  local_saturation_formulation: cpp/src/saturation.cpp
+  ipopt_integration: cpp/src/saturation.cpp
+  input_validation_and_results: src/epcsaft_equilibrium/_api.py
+  scientific_anchors: data/reference/pure_saturation_anchors.csv
+
+public_surface:
+  distribution: epcsaft-equilibrium
+  package: epcsaft_equilibrium
+  exports:
+    - PhaseState
+    - SaturationDiagnostics
+    - SaturationError
+    - SaturationResult
+    - saturation
+  native_modules: [epcsaft_equilibrium._equilibrium]
+  native_targets: 1
+  runtime_dependencies: [epcsaft==0.1.0.dev0]
+  build_dependencies: [scikit-build-core, pybind11, CMake, pkg-config, Ipopt]
+
+evidence:
+  package_tests: tests/test_saturation.py
+  derivative_oracle: independent central directional differences in package tests
+  physical_oracle: data/reference/pure_saturation_anchors.csv
+  scientific_command: python scripts/validate_saturation.py
+  isolated_artifact_evidence: candidate promotion receipt
+
+excluded:
+  - mixture equilibrium and mixture native phase blocks
+  - association and implicit association derivatives
+  - electrolyte and reactive equilibrium
+  - density-root derivatives
+  - bubble-pressure and dew-pressure routes
+  - specified-pressure flash and total-free-energy phase discovery
+  - TPD and global stability
+  - critical completion and continuation
+  - regression and Ceres
+  - provider equations, private headers, and private Python modules
+  - alternate derivative backends and solver selectors
+  - release and workflow machinery
+
+ratchet:
+  baseline_status: deferred-until-accepted-first-slice
+  rule: >-
+    Establish the first architecture baseline only after an accepted promotion
+    receipt transfers this capability.
