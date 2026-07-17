@@ -22,7 +22,12 @@ if(NOT EXISTS "${epcsaft_include_dir}/epcsaft/native_sdk_v1.h")
   message(FATAL_ERROR "Installed epcsaft wheel does not contain native_sdk_v1.h")
 endif()
 
-pybind11_add_module(_equilibrium MODULE cpp/src/module.cpp cpp/src/saturation.cpp)
+pybind11_add_module(
+  _equilibrium MODULE
+  cpp/src/module.cpp
+  cpp/src/provider.cpp
+  cpp/src/saturation.cpp
+)
 target_compile_features(_equilibrium PRIVATE cxx_std_17)
 target_include_directories(_equilibrium PRIVATE "${epcsaft_include_dir}")
 target_link_libraries(_equilibrium PRIVATE PkgConfig::Ipopt)

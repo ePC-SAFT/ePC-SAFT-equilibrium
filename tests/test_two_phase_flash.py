@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import math
+
 import epcsaft
 import pytest
 
 import epcsaft_equilibrium
+from epcsaft_equilibrium import _equilibrium
 
 BINARY_FINGERPRINT = "sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286"
 SOURCE_TEMPERATURE_K = 243.58
@@ -23,6 +26,42 @@ def _binary_model() -> epcsaft.EPCSAFT:
     model = epcsaft.EPCSAFT(parameters)
     assert model.parameter_fingerprint == BINARY_FINGERPRINT
     return model
+
+
+def test_native_mixture_transport_uses_reviewed_sdk_tail() -> None:
+    model = _binary_model()
+    capsule = epcsaft.native_sdk(model)
+
+    info = _equilibrium.sdk_info(capsule)
+    assert info["component_count"] == 2
+    assert info["has_evaluate_mixture_phase"] is True
+    phase = _equilibrium.evaluate_mixture_phase(
+        capsule,
+        SOURCE_TEMPERATURE_K,
+        (0.4, 0.6),
+        1.25e-4,
+        BINARY_FINGERPRINT,
+    )
+
+    assert phase["parameter_fingerprint"] == BINARY_FINGERPRINT
+    assert len(phase["gradient"]) == 3
+    assert len(phase["hessian"]) == 9
+    assert all(math.isfinite(value) for value in phase["gradient"])
+    assert all(math.isfinite(value) for value in phase["hessian"])
+    assert math.isfinite(phase["helmholtz_over_rt_reference_amount"])
+    assert math.isfinite(phase["pressure_pa"])
+    with pytest.raises(ValueError, match="component count"):
+        _equilibrium.evaluate_mixture_phase(
+            capsule, SOURCE_TEMPERATURE_K, (1.0,), 1.25e-4, BINARY_FINGERPRINT
+        )
+    with pytest.raises(ValueError, match="provider mixture phase evaluation failed"):
+        _equilibrium.evaluate_mixture_phase(
+            capsule, SOURCE_TEMPERATURE_K, (0.0, 1.0), 1.25e-4, BINARY_FINGERPRINT
+        )
+    with pytest.raises(ValueError, match="fingerprint"):
+        _equilibrium.evaluate_mixture_phase(
+            capsule, SOURCE_TEMPERATURE_K, (0.4, 0.6), 1.25e-4, "sha256:wrong"
+        )
 
 
 @pytest.mark.parametrize(

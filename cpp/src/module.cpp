@@ -48,6 +48,29 @@ py::dict sdk_info(const py::capsule& capsule) {
     result["result_size"] = sdk.result_size;
     result["has_model_context"] = sdk.model_context != nullptr;
     result["has_evaluate_pure_phase"] = sdk.evaluate_pure_phase != nullptr;
+    result["component_count"] = sdk.component_count;
+    result["mixture_result_size"] = sdk.mixture_result_size;
+    result["has_evaluate_mixture_phase"] = sdk.evaluate_mixture_phase != nullptr;
+    return result;
+}
+
+py::dict evaluate_mixture_phase(
+    const py::capsule& capsule,
+    double temperature_k,
+    const std::vector<double>& amounts_mol,
+    double volume_m3,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_native_sdk_v1& sdk = checked_sdk(capsule);
+    const epcsaft_equilibrium::ProviderContext provider(sdk, expected_fingerprint);
+    const epcsaft_equilibrium::MixturePhaseEvaluation phase =
+        provider.evaluate_mixture(temperature_k, amounts_mol, volume_m3);
+    py::dict result;
+    result["helmholtz_over_rt_reference_amount"] = phase.value;
+    result["gradient"] = phase.gradient;
+    result["hessian"] = phase.hessian;
+    result["pressure_pa"] = phase.pressure_pa;
+    result["parameter_fingerprint"] = phase.parameter_fingerprint;
     return result;
 }
 
@@ -198,6 +221,15 @@ py::dict solve_saturation(
 PYBIND11_MODULE(_equilibrium, module) {
     module.doc() = "Native local equilibrium formulation over epcsaft.native_sdk.v1";
     module.def("sdk_info", &sdk_info, py::arg("capsule"));
+    module.def(
+        "evaluate_mixture_phase",
+        &evaluate_mixture_phase,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("amounts_mol"),
+        py::arg("volume_m3"),
+        py::arg("expected_fingerprint")
+    );
     module.def(
         "evaluate_phase",
         &evaluate_phase,

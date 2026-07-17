@@ -8,6 +8,13 @@ def evaluate_phase(
     volume_m3: float,
     expected_fingerprint: str,
 ) -> dict[str, object]: ...
+def evaluate_mixture_phase(
+    capsule: object,
+    temperature_k: float,
+    amounts_mol: tuple[float, float],
+    volume_m3: float,
+    expected_fingerprint: str,
+) -> dict[str, object]: ...
 def evaluate_nlp(
     capsule: object,
     temperature_k: float,
