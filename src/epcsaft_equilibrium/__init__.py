@@ -1,4 +1,4 @@
-"""Local pure-component equilibrium routes over the public ePC-SAFT provider."""
+"""Bounded local equilibrium routes over the public ePC-SAFT provider."""
 
 from ._api import (
     FlashDiagnostics,

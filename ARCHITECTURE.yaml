@@ -1,5 +1,5 @@
 version: 1
-status: accepted-pure-saturation-with-local-flash-candidate-work
+status: accepted-pure-saturation-with-local-flash-candidate
 
 authority:
   governance_doctrine_revision: 2
@@ -7,8 +7,9 @@ authority:
   production_owner: ePC-SAFT/ePC-SAFT-equilibrium
   effective_receipt: promotion-0018-equilibrium-pure-saturation-v1
   promotion_status: accepted
+  local_flash_authority_effect: none
 
-candidate:
+accepted_capability:
   name: pure-component-saturation-v1
   scope: >-
     Local fixed-temperature pure-component vapor-liquid saturation boundary for
@@ -18,11 +19,9 @@ candidate:
     density, and log saturation pressure with pressure-ratio and
     chemical-potential equality constraints.
   local_certificate:
-    - accepted Ipopt termination, empty callback error, and finite solver
-      constraint violation at or below 1.0e-10
+    - accepted Ipopt termination and finite solver constraint violation
     - perturbed-seed agreement
-    - pressure equality to the solved target
-    - chemical-potential equality
+    - pressure and chemical-potential equality
     - positive distinct phase volumes and densities
     - local mechanical stability and inactive bounds
     - exact provider fingerprint and derivative evidence
@@ -38,75 +37,137 @@ candidate:
     retained_lab_relative_difference_max: 5.0e-6
     nist_pressure_relative_error_max: 5.0e-3
     nist_liquid_density_relative_error_max: 1.0e-2
+  admitted_inputs:
+    - component: methane
+      parameter_fingerprint: sha256:5f836aa84935df70be2e5cffae51b178a7b797c2cee036e9ff47d8097ca94bbf
+      temperature_domain_k: [97.0, 300.0]
+    - component: ethane
+      parameter_fingerprint: sha256:288fbcaa1304881c16f64c3a784eeed19b75c58cca4558f92a21268e5e91258a
+      temperature_domain_k: [90.0, 305.0]
+    - component: propane
+      parameter_fingerprint: sha256:9bfbc8d7789e51609945e61dbdf7a020decc8f9e31b408b0977724c7cb3e1551
+      temperature_domain_k: [85.0, 523.0]
 
-provider_pin:
-  commit: 02a03a440cf53f3b1d4304556a19a54c79c70179
-  wheel_sha256: e83f4b108d2df73888f7768f99f1c54b01ad86541b55afc1e43bbef2e1fb8f93
-  test_receipt_sha256: 7c097c3ec8742d1714ea435973c605d5c18290e27729c1a12b3852926e61c399
+local_candidate:
+  name: neutral-two-phase-tp-flash-v1
+  promotion_status: not-promoted
+  scope: >-
+    One local neutral nonassociating methane/ethane fixed-two-phase TP
+    calculation inside the audited May et al. (2015), Table 5 rectangular
+    temperature, pressure, and methane-feed domain.
+  parameter_fingerprint: sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286
+  temperature_domain_k: [203.22, 243.61]
+  pressure_domain_pa: [2124000.0, 6885000.0]
+  methane_feed_domain: [0.4661, 0.66705]
+  formulation: >-
+    Exact direct minimization of the dimensionless two-phase Helmholtz-plus-PV
+    objective in component amounts and log phase volumes, subject to two
+    linear component balances.
+  coordinates: [n_L_CH4, n_L_C2H6, log_V_L, n_V_CH4, n_V_C2H6, log_V_V]
+  local_certificate:
+    - accepted Ipopt termination and material-balance closure
+    - one perturbed confirmation solve
+    - specified-pressure stationarity in both phases
+    - component chemical-potential equality
+    - independent KKT residual using retained equality and bound multipliers
+    - positive distinct phase densities and inactive bounds
+    - exact provider fingerprint and Hessian evidence
+  globality_certificate: none
+  tolerances:
+    solver_constraint_max: 1.0e-10
+    material_balance_max_abs: 1.0e-10
+    pressure_stationarity_max_relative: 1.0e-8
+    chemical_potential_max_abs: 1.0e-8
+    kkt_stationarity_max_abs: 1.0e-8
+    confirmation_max_difference: 1.0e-7
+    minimum_relative_phase_density_distance: 1.0e-3
+    inactive_bound_margin: 1.0e-7
+
+provider_pins:
+  accepted_pure_prefix:
+    commit: 02a03a440cf53f3b1d4304556a19a54c79c70179
+    wheel_sha256: e83f4b108d2df73888f7768f99f1c54b01ad86541b55afc1e43bbef2e1fb8f93
+    test_receipt_sha256: 7c097c3ec8742d1714ea435973c605d5c18290e27729c1a12b3852926e61c399
+  flash_mixture_tail:
+    candidate_records_commit: 25e597289b044ff3e5af70b3572279293555b9f9
+    code_commit: 0cd75b96f1dddba024c324df500493bd1564bf5c
+    wheel_sha256: 17c6735ee117469b13b76b6a669d0b4430071c8eaebdf1e405baefc9adcb838b
+    public_header_sha256: b1dc4a666799603ea87fe515ff08226455a11e52908b7109ebe1841369cb92df
+    test_receipt_sha256: 727ee0e5cd0ec9e490e0cfa810524db74672faf445002224717b58fc91bbdbbf
   capsule: epcsaft.native_sdk.v1
   abi_version: 1
-  coordinate_order: [amount_mol, volume_m3]
-  derivative_order: 3
+  coordinate_order: component_amounts_then_volume
+  flash_derivative_order: 2
 
-admitted_inputs:
-  - component: methane
-    parameter_fingerprint: sha256:5f836aa84935df70be2e5cffae51b178a7b797c2cee036e9ff47d8097ca94bbf
-    temperature_domain_k: [97.0, 300.0]
-  - component: ethane
-    parameter_fingerprint: sha256:288fbcaa1304881c16f64c3a784eeed19b75c58cca4558f92a21268e5e91258a
-    temperature_domain_k: [90.0, 305.0]
-  - component: propane
-    parameter_fingerprint: sha256:9bfbc8d7789e51609945e61dbdf7a020decc8f9e31b408b0977724c7cb3e1551
-    temperature_domain_k: [85.0, 523.0]
+validation_source_gate:
+  contract_commit: 73a37f5935e919a34d1e4fa3af285951d6fac8e7
+  csv_sha256: 5cd1e74925a3c6504f5106dcf911f2cae2d6e99a5133fccc20454d8991bdbc7f
+  metadata_sha256: d43433e93b354e01f96d330c760818a24b775026461ce795e45774cfb11ac94e
+  tolerance_sha256: ad744526678355be6ca47cf27ab9ff7ae66b7661c27e36ffe259c5b6295f1016
+  controlling_pdf_sha256: 53fd1bdd55dc6807ec76cf88626438d8dfceb3ec09149d4405ea36cfbe6b842a
+  locator: May et al. 2015, Table 5, page 3612 (PDF page 7)
+  comparison_contract: absolute composition error <= 3*uc with no model-accuracy floor
+  runtime_dependency: false
 
 owners:
   phase_function_and_nonlinear_tensors: installed epcsaft provider
-  phase_contexts_and_variables: cpp/src/saturation.cpp
-  local_saturation_formulation: cpp/src/saturation.cpp
-  ipopt_integration: cpp/src/saturation.cpp
-  input_validation_and_results: src/epcsaft_equilibrium/_api.py
-  scientific_anchors: data/reference/pure_saturation_anchors.csv
+  provider_capsule_context: cpp/src/provider.cpp
+  capsule_abi_validation: cpp/src/module.cpp checked_sdk()
+  pure_saturation_formulation_and_ipopt: cpp/src/saturation.cpp
+  flash_formulation_ipopt_and_local_acceptance: cpp/src/two_phase_flash.cpp
+  input_validation_and_typed_results: src/epcsaft_equilibrium/_api.py
+  pure_scientific_anchors: data/reference/pure_saturation_anchors.csv
+  flash_predictive_validation: ePC-SAFT-validation (not yet executed as an owned campaign)
 
 public_surface:
   distribution: epcsaft-equilibrium
   package: epcsaft_equilibrium
   exports:
+    - FlashDiagnostics
+    - FlashError
     - PhaseState
     - SaturationDiagnostics
     - SaturationError
     - SaturationResult
     - SolverAttemptDiagnostics
+    - TwoPhaseFlashResult
     - saturation
+    - two_phase_flash
   native_modules: [epcsaft_equilibrium._equilibrium]
   native_targets: 1
   runtime_dependencies: [epcsaft==0.1.0.dev0, Pint>=0.25]
   build_dependencies: [scikit-build-core, pybind11, CMake, pkg-config, Ipopt]
 
 evidence:
-  package_tests: tests/test_saturation.py
+  package_tests:
+    - tests/test_saturation.py
+    - tests/test_two_phase_flash.py
   derivative_oracle: independent central directional differences in package tests
-  physical_oracle: data/reference/pure_saturation_anchors.csv
-  physical_oracle_provenance: data/reference/README.md
-  scientific_command: python scripts/validate_saturation.py
-  isolated_artifact_evidence: receipts/promotion/promotion-0001-pure-saturation-v1-candidate.yaml
-  independent_review: reviews/2026-07-17-pure-saturation-v1.md
+  flash_source_anchor: may2015-ch4-c2h6-001
+  flash_source_anchor_status: package-local-pass
+  all_17_row_characterization: 16 local certificates; 12 rows within both frozen allowances
+  predictive_validation_status: pending-validation-owned-campaign
+  pure_scientific_command: python scripts/validate_saturation.py
+  pure_physical_oracle: data/reference/pure_saturation_anchors.csv
+  pure_isolated_artifact_evidence: receipts/promotion/promotion-0001-pure-saturation-v1-candidate.yaml
+  pure_independent_review: reviews/2026-07-17-pure-saturation-v1.md
 
 excluded:
-  - mixture equilibrium and mixture native phase blocks
-  - association and implicit association derivatives
-  - electrolyte and reactive equilibrium
-  - density-root derivatives
-  - bubble-pressure and dew-pressure routes
-  - specified-pressure flash and total-free-energy phase discovery
+  - phase discovery and variable phase count
   - TPD and global stability
+  - density closure and density-root derivatives
+  - third derivatives for the flash route
+  - association, electrolyte, ionic, and reactive equilibrium
+  - bubble-pressure and dew-pressure routes
   - critical completion and continuation
+  - generic route registries, solver selectors, and fallback solvers
   - regression and Ceres
-  - provider equations, private headers, and private Python modules
-  - alternate derivative backends and solver selectors
-  - release and workflow machinery
+  - provider equations, source builds, private headers, and private Python modules
+  - release, publication, promotion, and workflow machinery
 
 ratchet:
   baseline_status: accepted-pure-component-saturation-v1
   rule: >-
     Every increase beyond the accepted pure-saturation baseline requires a
-    named capability and retained evidence.
+    named capability and retained evidence; local candidate code creates no
+    authority without a promotion receipt.
