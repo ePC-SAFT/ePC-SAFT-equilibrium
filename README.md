@@ -60,5 +60,6 @@ python scripts/validate_saturation.py
 ```
 
 The design and equations are recorded in
-`docs/designs/2026-07-17-pure-saturation-slice.md`. This candidate has not
-received an accepted promotion receipt, so the lab retains runtime authority.
+`docs/designs/2026-07-17-pure-saturation-slice.md`. Independent review approved
+the candidate for manager review, but no promotion has been accepted, so the
+lab retains runtime authority.

@@ -1,0 +1,169 @@
+schema_version: 1
+receipt_id: promotion-0001-pure-saturation-v1-candidate
+kind: promotion_candidate
+status: ready_for_manager_review
+subject: First local pure methane, ethane, and propane saturation boundary candidate
+producer: codex-implementation-owner:/root
+reviewer: codex-independent-reviewer:/root/independent_review
+
+approval:
+  implementation_authorization:
+    state: approved
+    approver: tannerpolley
+    source_thread: 019f5dba-f699-79c2-94ca-93fdf49d9b4d
+    scope: the exact bounded slice recorded in this receipt
+  promotion_authority:
+    state: pending
+    approver: tannerpolley
+  authority_transferred: false
+
+environment:
+  os: Linux 6.17.0-40-generic x86_64
+  python: CPython 3.13.14
+  compiler: GNU C++ 13.3.0
+  cmake: 3.28.3
+  ipopt: 3.11.9
+  uv: 0.11.28
+  git: 2.43.0
+  isolation: exact local wheels and declared dependencies only; Python isolated mode; no sibling-source import
+
+source:
+  transitional_runtime_repository: tannerpolley/ePC-SAFT-lab
+  transitional_runtime_commit: 13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b
+  route_table_path: analyses/package_validation/equilibrium_single_component_vle/figures/hydrocarbon_saturation_pressure/results/hydrocarbon_saturation_pressure.csv
+  route_table_sha256: d8c6f764a8eafeba908c2056936953de0be8ed003079022488fe6e33f97f51dc
+  provenance: clean three-row distillation; no history, directory, or equation-kernel copy
+
+destination:
+  repository: ePC-SAFT/ePC-SAFT-equilibrium
+  implementation_commit: eff707fbf4fb011627e8089bc13aad99b9a21dce
+  implementation_tree: 14aae475d77e000563641cc1ed038ac2249e02cc
+  package: epcsaft_equilibrium
+  distribution: epcsaft-equilibrium
+  version: 0.1.0.dev0
+  native_targets: 1
+
+provider_pin:
+  repository: ePC-SAFT/ePC-SAFT
+  commit: 02a03a440cf53f3b1d4304556a19a54c79c70179
+  wheel_path: artifacts/provider-native-sdk-v1/02a03a4/epcsaft-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
+  wheel_sha256: e83f4b108d2df73888f7768f99f1c54b01ad86541b55afc1e43bbef2e1fb8f93
+  test_receipt_path: artifacts/provider-native-sdk-v1/02a03a4/provider-tests.xml
+  test_receipt_sha256: 7c097c3ec8742d1714ea435973c605d5c18290e27729c1a12b3852926e61c399
+  installed_public_header: epcsaft/include/epcsaft/native_sdk_v1.h
+  installed_public_header_sha256: ac5fb1d78d29ae8ee61153b1d27cbfaeb15ad196ba47b750bed28d5345177ec4
+  capsule: epcsaft.native_sdk.v1
+  abi_version: 1
+  coordinate_order: [amount_mol, volume_m3]
+  derivative_order: 3
+
+artifacts:
+  root: artifacts/equilibrium-pure-saturation-v1/eff707f
+  equilibrium_wheel:
+    file: epcsaft_equilibrium-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
+    sha256: f5105830a7cb30da1f17277285a530b7cb5ee5ca9173d4b9ea5d7d4bd1401e0b
+  installed_wheel_tests:
+    file: equilibrium-tests.xml
+    sha256: e0d27c4505e4f8c2650abd8350a7fb18ca1df470497f682ecf2a4c88efa8e4cc
+  scientific_validation:
+    file: scientific-validation.txt
+    sha256: e5419987c68bc91274d6e5a48b75e51abf880a06390f23cea1b5c9ec763b3c5d
+  binary_audit:
+    file: binary-audit.txt
+    sha256: f1ee92b1ec0323b7ddd88e0de3dd5b24b39bfdaab8659d74a201746da3ce0cac
+  extracted_extension_sha256: ca89139293608c0dd983ab31bcff3883a2b94a5f898b62f34adf609756ccea3a
+  architecture_manifest_sha256: 2142fcb2890bde8f8723800a9c83396296d4188f6ff5308737463c6ca44a8a2d
+  anchor_table_sha256: 9fd4b6384a6c751b93075eb7e6eb923ba9fb10af6b94abf463eb51ad93efd985
+  anchor_provenance_sha256: 14682e3f16f721b475db8edf66edf4bf9952e5e5d42fc75697c14c6b01b092b2
+  independent_review_sha256: 21c28a1d08e32e2c0278dcbd87886a3f087c593aff2809bf2b50b1f1a39ab7f7
+
+capability:
+  name: pure-component-saturation-v1
+  route: local fixed-temperature pure-component vapor-liquid saturation boundary
+  formulation: zero-objective Ipopt feasibility problem in log vapor density, log liquid density, and log saturation pressure
+  admitted_systems:
+    - component: methane
+      parameter_fingerprint: sha256:5f836aa84935df70be2e5cffae51b178a7b797c2cee036e9ff47d8097ca94bbf
+      source_temperature_domain_k: [97.0, 300.0]
+    - component: ethane
+      parameter_fingerprint: sha256:288fbcaa1304881c16f64c3a784eeed19b75c58cca4558f92a21268e5e91258a
+      source_temperature_domain_k: [90.0, 305.0]
+    - component: propane
+      parameter_fingerprint: sha256:9bfbc8d7789e51609945e61dbdf7a020decc8f9e31b408b0977724c7cb3e1551
+      source_temperature_domain_k: [85.0, 523.0]
+  provider_ownership: fixed-temperature Helmholtz function and exact value, gradient, Hessian, and third tensor in amount and volume
+  equilibrium_ownership: phase contexts, local saturation residuals, exact transformed derivatives, Ipopt integration, initialization, scaling, diagnostics, local physical checks, certification, and result types
+  phase_contexts: two phase blocks reference the same immutable provider model context
+  globality_certificate: none
+
+tolerances:
+  ipopt_tolerance: 1.0e-10
+  solver_constraint_tolerance: 1.0e-10
+  physical_pressure_relative_residual_max: 1.0e-8
+  physical_chemical_potential_absolute_residual_max: 1.0e-8
+  confirmation_relative_difference_max: 1.0e-7
+  minimum_relative_phase_density_distance: 1.0e-3
+  inactive_log_bound_margin: 1.0e-7
+  retained_lab_relative_difference_max: 5.0e-6
+  nist_pressure_relative_error_max: 5.0e-3
+  nist_liquid_density_relative_error_max: 1.0e-2
+
+verification:
+  source_checks:
+    ruff: passed
+    ruff_format: passed
+    mypy_strict: passed
+    pytest: 15 passed
+  isolated_build:
+    provider_hash_checked_before_build: true
+    build_environment: uv run --isolated --no-project with the exact provider wheel, scikit-build-core, and pybind11
+    provider_distribution_check: exact version and non-editable install required by CMake
+  isolated_install:
+    command: python -I -m pytest -q tests
+    result: 15 passed; 0 errors; 0 failures
+    import_check: provider and equilibrium package loaded from the isolated site-packages directory
+  derivative_evidence:
+    objective_and_gradient: exact zeros
+    residual_jacobian: independent central directional products passed
+    lagrangian_hessian: independent central directional products passed
+    coverage: representative and boundary-near states for methane, ethane, and propane
+  scientific_results:
+    methane_150_k:
+      pressure_pa: 1040600.78
+      vapor_density_mol_m3: 1010.93843
+      liquid_density_mol_m3: 22466.826
+      nist_pressure_relative_error: 0.0006149
+    ethane_240_k:
+      pressure_pa: 969152.481
+      vapor_density_mol_m3: 572.825832
+      liquid_density_mol_m3: 15616.7095
+      nist_pressure_relative_error: 0.002446
+    propane_300_k:
+      pressure_pa: 998660.896
+      vapor_density_mol_m3: 482.512127
+      liquid_density_mol_m3: 11100.2512
+      nist_pressure_relative_error: 0.000982
+  binary_negative_space:
+    wheel_contains_provider_source_or_objects: false
+    provider_or_eos_dynamic_symbols: none
+    direct_native_link: Ipopt only, plus platform runtimes
+    compiled_translation_units: [cpp/src/module.cpp, cpp/src/saturation.cpp]
+  independent_review:
+    record: reviews/2026-07-17-pure-saturation-v1.md
+    verdict: APPROVE_FOR_MANAGER_REVIEW
+
+excluded:
+  - phase discovery, TPD, and global stability
+  - critical completion and continuation
+  - mixture, association, electrolyte, and reactive equilibrium
+  - bubble-pressure and dew-pressure routes
+  - specified-pressure flash and total-free-energy discovery
+  - regression and Ceres
+  - provider equations, private headers, and private Python modules
+  - alternate derivative backends, backend selectors, and compatibility aliases
+  - release, workflow, and remote publication machinery
+
+authority_effect: >-
+  This candidate receipt does not promote authority. The lab remains the
+  transitional runtime owner until a manager accepts a separate exact
+  promotion subject. No globality or excluded capability is implied.

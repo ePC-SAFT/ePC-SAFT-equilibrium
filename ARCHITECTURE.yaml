@@ -1,11 +1,11 @@
 version: 1
-status: local-candidate-awaiting-promotion
+status: local-candidate-ready-for-manager-review
 
 authority:
   governance_doctrine_revision: 2
   runtime_source_of_truth: false
   transitional_runtime_owner: tannerpolley/ePC-SAFT-lab
-  promotion_status: pending-independent-acceptance
+  promotion_status: ready-for-manager-review
 
 candidate:
   name: pure-component-saturation-v1
@@ -86,7 +86,8 @@ evidence:
   physical_oracle: data/reference/pure_saturation_anchors.csv
   physical_oracle_provenance: data/reference/README.md
   scientific_command: python scripts/validate_saturation.py
-  isolated_artifact_evidence: candidate promotion receipt
+  isolated_artifact_evidence: receipts/promotion/promotion-0001-pure-saturation-v1-candidate.yaml
+  independent_review: reviews/2026-07-17-pure-saturation-v1.md
 
 excluded:
   - mixture equilibrium and mixture native phase blocks
