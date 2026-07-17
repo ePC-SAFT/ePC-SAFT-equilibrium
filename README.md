@@ -4,7 +4,7 @@
 `epcsaft` provider. The first local candidate solves a pure-component
 saturation boundary for the provider-approved methane, ethane, or propane
 model. It is non-authoritative until a manager accepts its pending promotion
-receipt.
+receipt, `promotion-0018-equilibrium-pure-saturation-v1`.
 
 ```python
 import epcsaft
@@ -61,5 +61,7 @@ python scripts/validate_saturation.py
 
 The design and equations are recorded in
 `docs/designs/2026-07-17-pure-saturation-slice.md`. Independent review approved
-the candidate for manager review, but no promotion has been accepted, so the
-lab retains runtime authority.
+the candidate for manager review. Migration receipt
+`promotion-0018-equilibrium-pure-saturation-v1` alone determines authority;
+until it is accepted, the lab retains runtime authority. One local boundary
+solve is not a phase-discovery or global-stability proof.

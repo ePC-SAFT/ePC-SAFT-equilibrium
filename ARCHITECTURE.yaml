@@ -1,11 +1,12 @@
 version: 1
-status: local-candidate-ready-for-manager-review
+status: local-candidate-pending-promotion-0018
 
 authority:
   governance_doctrine_revision: 2
   runtime_source_of_truth: false
   transitional_runtime_owner: tannerpolley/ePC-SAFT-lab
-  promotion_status: ready-for-manager-review
+  promotion_receipt: promotion-0018-equilibrium-pure-saturation-v1
+  promotion_status: authority-determined-by-receipt
 
 candidate:
   name: pure-component-saturation-v1
