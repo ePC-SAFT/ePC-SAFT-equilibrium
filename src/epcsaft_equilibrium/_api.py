@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, cast
@@ -15,13 +15,14 @@ from . import _equilibrium
 
 @dataclass(frozen=True)
 class PhaseState:
-    """One explicit one-mole phase state returned by the local boundary solve."""
+    """One explicit phase state returned by a bounded equilibrium route."""
 
     amount_mol: float
+    mole_fractions: tuple[float, ...]
     volume_m3: float
     molar_density_mol_m3: float
     pressure_pa: float
-    chemical_potential_over_rt: float
+    chemical_potential_over_rt: tuple[float, ...]
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,56 @@ class SaturationError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class FlashDiagnostics:
+    """Separate solver, numerical, and local-physical flash evidence."""
+
+    solver_converged: bool
+    solver_status: str
+    iterations: int
+    attempts: int
+    attempt_log: tuple[SolverAttemptDiagnostics, ...]
+    solver_lower_bounds: tuple[float, ...]
+    solver_upper_bounds: tuple[float, ...]
+    solver_constraint_violation: float
+    numerical_converged: bool
+    confirmation_solves: int
+    confirmation_max_difference: float
+    physical_accepted: bool
+    material_balance_max_abs: float
+    pressure_stationarity_max_relative: float
+    chemical_potential_max_abs: float
+    kkt_stationarity_max_abs: float
+    phase_density_distance: float
+    exact_derivatives: bool
+    globality_certificate: bool
+    failure_reason: str
+
+
+@dataclass(frozen=True)
+class TwoPhaseFlashResult:
+    """Certified local fixed-two-phase methane/ethane TP result."""
+
+    temperature_k: float
+    pressure_pa: float
+    overall_mole_fractions: tuple[float, float]
+    liquid: PhaseState
+    vapor: PhaseState
+    liquid_phase_fraction: float
+    vapor_phase_fraction: float
+    total_free_energy_over_rt: float
+    parameter_fingerprint: str
+    diagnostics: FlashDiagnostics
+
+
+class FlashError(RuntimeError):
+    """Raised when a local fixed-two-phase calculation is rejected."""
+
+    def __init__(self, message: str, diagnostics: Mapping[str, object]) -> None:
+        super().__init__(message)
+        self.diagnostics = MappingProxyType(dict(diagnostics))
+
+
+@dataclass(frozen=True)
 class _Scope:
     component: str
     temperature_min_k: float
@@ -112,6 +163,11 @@ _SCOPES = MappingProxyType(
     }
 )
 
+_FLASH_FINGERPRINT = "sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286"
+_FLASH_TEMPERATURE_DOMAIN_K = (203.22, 243.61)
+_FLASH_PRESSURE_DOMAIN_PA = (2_124_000.0, 6_885_000.0)
+_FLASH_METHANE_FEED_DOMAIN = (0.4661, 0.66705)
+
 
 def _temperature_in_kelvin(temperature: Quantity[Any]) -> float:
     if not isinstance(temperature, Quantity):
@@ -132,6 +188,13 @@ def _triple(payload: object) -> tuple[float, float, float]:
     if len(values) != 3:
         raise RuntimeError("native solver diagnostic triple has the wrong size")
     return (float(values[0]), float(values[1]), float(values[2]))
+
+
+def _float_tuple(payload: object) -> tuple[float, ...]:
+    if isinstance(payload, (int, float)):
+        return (float(payload),)
+    values = cast(list[float] | tuple[float, ...], payload)
+    return tuple(float(value) for value in values)
 
 
 def _attempt(payload: Mapping[str, object]) -> SolverAttemptDiagnostics:
@@ -177,11 +240,69 @@ def _diagnostics(payload: Mapping[str, object]) -> SaturationDiagnostics:
 def _phase(payload: Mapping[str, object]) -> PhaseState:
     return PhaseState(
         amount_mol=float(cast(float, payload["amount_mol"])),
+        mole_fractions=_float_tuple(payload.get("mole_fractions", (1.0,))),
         volume_m3=float(cast(float, payload["volume_m3"])),
         molar_density_mol_m3=float(cast(float, payload["molar_density_mol_m3"])),
         pressure_pa=float(cast(float, payload["pressure_pa"])),
-        chemical_potential_over_rt=float(cast(float, payload["chemical_potential_over_rt"])),
+        chemical_potential_over_rt=_float_tuple(payload["chemical_potential_over_rt"]),
     )
+
+
+def _flash_quantity(quantity: object, units: str, name: str) -> float:
+    if not isinstance(quantity, Quantity):
+        raise TypeError(f"two_phase_flash requires a Pint {name} quantity")
+    try:
+        value = float(quantity.to(units).magnitude)
+    except DimensionalityError as error:
+        raise ValueError(f"{name} units must be convertible to {units}") from error
+    except (TypeError, ValueError) as error:
+        raise TypeError(f"two_phase_flash requires one scalar Pint {name} quantity") from error
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError(f"{name} must be positive and finite")
+    return value
+
+
+def _flash_feed(overall_mole_fractions: Sequence[float]) -> tuple[float, float]:
+    if isinstance(overall_mole_fractions, (str, bytes)):
+        raise TypeError("overall mole fractions must be a numeric sequence")
+    try:
+        values = tuple(float(value) for value in overall_mole_fractions)
+    except (TypeError, ValueError) as error:
+        raise TypeError("overall mole fractions must be a numeric sequence") from error
+    if len(values) != 2:
+        raise ValueError("two_phase_flash requires exactly two components")
+    if not all(math.isfinite(value) and value > 0.0 for value in values):
+        raise ValueError("overall mole fractions must be positive and finite")
+    if not math.isclose(sum(values), 1.0, rel_tol=0.0, abs_tol=1.0e-12):
+        raise ValueError("overall mole fractions must sum to one within 1e-12")
+    return (values[0], values[1])
+
+
+def two_phase_flash(
+    model: epcsaft.EPCSAFT,
+    temperature: Quantity[Any],
+    pressure: Quantity[Any],
+    overall_mole_fractions: Sequence[float],
+) -> TwoPhaseFlashResult:
+    """Solve one local fixed-two-phase methane/ethane TP calculation."""
+
+    if not isinstance(model, epcsaft.EPCSAFT):
+        raise TypeError("two_phase_flash requires an epcsaft.EPCSAFT model")
+    temperature_k = _flash_quantity(temperature, "kelvin", "temperature")
+    pressure_pa = _flash_quantity(pressure, "pascal", "pressure")
+    feed = _flash_feed(overall_mole_fractions)
+    if model.parameter_fingerprint != _FLASH_FINGERPRINT:
+        raise ValueError("two_phase_flash requires the approved methane/ethane fingerprint")
+    if not _FLASH_TEMPERATURE_DOMAIN_K[0] <= temperature_k <= _FLASH_TEMPERATURE_DOMAIN_K[1]:
+        raise ValueError("temperature is outside the audited May 2015 source domain")
+    if not _FLASH_PRESSURE_DOMAIN_PA[0] <= pressure_pa <= _FLASH_PRESSURE_DOMAIN_PA[1]:
+        raise ValueError("pressure is outside the audited May 2015 source domain")
+    if not _FLASH_METHANE_FEED_DOMAIN[0] <= feed[0] <= _FLASH_METHANE_FEED_DOMAIN[1]:
+        raise ValueError("composition is outside the audited May 2015 source domain")
+
+    capsule = epcsaft.native_sdk(model)
+    native = _equilibrium._solve_two_phase_flash(capsule, temperature_k, pressure_pa, feed)
+    return cast(TwoPhaseFlashResult, native)
 
 
 def saturation(model: epcsaft.EPCSAFT, temperature: Quantity[Any]) -> SaturationResult:

@@ -1,23 +1,21 @@
 # Equilibrium Repository Context
 
-This repository contains a local candidate for the first pure-component
-saturation slice. It is buildable and testable against the pinned installed
-provider artifact. Migration receipt
-`promotion-0018-equilibrium-pure-saturation-v1` alone determines whether this
-candidate becomes authoritative; this documentation does not transfer it.
+This repository is the production owner of the accepted pure-component
+saturation slice recorded by migration receipt
+`promotion-0018-equilibrium-pure-saturation-v1`. The accepted scope is one
+local fixed-temperature methane, ethane, or propane saturation boundary over a
+compatible installed provider artifact.
 
 `governance_doctrine_revision: 2`
 
 Canonical local doctrine: `../ePC-SAFT-organization/GOVERNANCE.md`.
 
-The lab remains the transitional runtime authority until the user accepts the
-exact migration promotion subject. Independent review approved the
-implementation for manager review, and the repository candidate receipt
-records the exact source and destination evidence without transferring
-authority.
+The lab copy is non-authoritative provenance and research for this accepted
+slice. The receipt does not imply phase discovery, global stability, mixture
+equilibrium, release publication, or any capability outside its exact subject.
 
-`runtime_source_of_truth: false`
+`runtime_source_of_truth: true`
 
-`local_candidate: pure-component-saturation-v1`
+`accepted_capability: pure-component-saturation-v1`
 
-`promotion_status: pending-promotion-0018-acceptance`
+`promotion_status: accepted`

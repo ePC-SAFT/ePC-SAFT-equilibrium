@@ -1,10 +1,9 @@
 # ePC-SAFT Equilibrium
 
 `epcsaft-equilibrium` owns bounded equilibrium formulations over an installed
-`epcsaft` provider. The first local candidate solves a pure-component
+`epcsaft` provider. The accepted first capability solves a pure-component
 saturation boundary for the provider-approved methane, ethane, or propane
-model. It is non-authoritative until a manager accepts its pending promotion
-receipt, `promotion-0018-equilibrium-pure-saturation-v1`.
+model under promotion receipt `promotion-0018-equilibrium-pure-saturation-v1`.
 
 ```python
 import epcsaft
@@ -60,8 +59,7 @@ python scripts/validate_saturation.py
 ```
 
 The design and equations are recorded in
-`docs/designs/2026-07-17-pure-saturation-slice.md`. Independent review approved
-the candidate for manager review. Migration receipt
-`promotion-0018-equilibrium-pure-saturation-v1` alone determines authority;
-until it is accepted, the lab retains runtime authority. One local boundary
+`docs/designs/2026-07-17-pure-saturation-slice.md`. Migration receipt
+`promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
+production owner of that exact local boundary capability. One local boundary
 solve is not a phase-discovery or global-stability proof.

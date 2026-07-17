@@ -1,12 +1,12 @@
 version: 1
-status: local-candidate-pending-promotion-0018
+status: accepted-pure-saturation-with-local-flash-candidate-work
 
 authority:
   governance_doctrine_revision: 2
-  runtime_source_of_truth: false
-  transitional_runtime_owner: tannerpolley/ePC-SAFT-lab
-  promotion_receipt: promotion-0018-equilibrium-pure-saturation-v1
-  promotion_status: authority-determined-by-receipt
+  runtime_source_of_truth: true
+  production_owner: ePC-SAFT/ePC-SAFT-equilibrium
+  effective_receipt: promotion-0018-equilibrium-pure-saturation-v1
+  promotion_status: accepted
 
 candidate:
   name: pure-component-saturation-v1
@@ -106,7 +106,7 @@ excluded:
   - release and workflow machinery
 
 ratchet:
-  baseline_status: deferred-until-accepted-first-slice
+  baseline_status: accepted-pure-component-saturation-v1
   rule: >-
-    Establish the first architecture baseline only after an accepted promotion
-    receipt transfers this capability.
+    Every increase beyond the accepted pure-saturation baseline requires a
+    named capability and retained evidence.

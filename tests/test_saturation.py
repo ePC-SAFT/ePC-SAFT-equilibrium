@@ -37,6 +37,11 @@ class _NativeSdkTable(ctypes.Structure):
         ("result_size", ctypes.c_size_t),
         ("model_context", ctypes.c_void_p),
         ("evaluate_pure_phase", ctypes.c_void_p),
+        ("parameterized_result_size", ctypes.c_size_t),
+        ("evaluate_pure_phase_parameters", ctypes.c_void_p),
+        ("component_count", ctypes.c_size_t),
+        ("mixture_result_size", ctypes.c_size_t),
+        ("evaluate_mixture_phase", ctypes.c_void_p),
     )
 
 
@@ -323,6 +328,7 @@ def test_public_ethane_saturation_separates_all_acceptance_layers(
         result.liquid.chemical_potential_over_rt,
         abs=1.0e-8,
     )
+    assert len(result.vapor.chemical_potential_over_rt) == 1
     assert result.diagnostics.solver_converged is True
     assert math.isfinite(result.diagnostics.solver_constraint_violation)
     assert result.diagnostics.solver_constraint_violation <= 1.0e-10
