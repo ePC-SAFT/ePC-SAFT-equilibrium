@@ -365,8 +365,8 @@ def two_phase_flash(
     if not _FLASH_METHANE_FEED_DOMAIN[0] <= feed[0] <= _FLASH_METHANE_FEED_DOMAIN[1]:
         raise ValueError("composition is outside the audited May 2015 source domain")
 
-    capsule = epcsaft.native_sdk(model)
     try:
+        capsule = epcsaft.native_sdk(model)
         native = cast(
             Mapping[str, object],
             _equilibrium._solve_two_phase_flash(capsule, temperature_k, pressure_pa, feed),

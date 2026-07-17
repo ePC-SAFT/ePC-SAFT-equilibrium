@@ -91,12 +91,33 @@ def test_native_extension_rejects_malformed_capsule_contracts_and_results() -> N
     valid_size = ctypes.sizeof(_NativeSdkTable)
     valid_result_size = ctypes.sizeof(_PhaseBlockResult)
 
+    pure_prefix = _NativeSdkTable(
+        1,
+        _NativeSdkTable.component_count.offset,
+        valid_result_size,
+        1,
+        1,
+    )
+    pure_info = _equilibrium.sdk_info(_capsule(pure_prefix))
+    assert pure_info["has_evaluate_pure_phase"] is True
+    assert pure_info["has_evaluate_mixture_phase"] is False
+
     with pytest.raises(ValueError, match="expected capsule"):
         _equilibrium.sdk_info(_capsule(_NativeSdkTable(), "wrong.name"))
     with pytest.raises(ValueError, match="ABI version"):
         _equilibrium.sdk_info(_capsule(_NativeSdkTable(2, valid_size, valid_result_size, 1, 1)))
     with pytest.raises(ValueError, match="table is smaller"):
-        _equilibrium.sdk_info(_capsule(_NativeSdkTable(1, valid_size - 1, valid_result_size, 1, 1)))
+        _equilibrium.sdk_info(
+            _capsule(
+                _NativeSdkTable(
+                    1,
+                    _NativeSdkTable.component_count.offset - 1,
+                    valid_result_size,
+                    1,
+                    1,
+                )
+            )
+        )
     with pytest.raises(ValueError, match="result size"):
         _equilibrium.sdk_info(_capsule(_NativeSdkTable(1, valid_size, valid_result_size - 1, 1, 1)))
 

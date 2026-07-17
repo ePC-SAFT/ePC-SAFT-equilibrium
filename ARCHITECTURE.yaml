@@ -145,7 +145,7 @@ evidence:
   derivative_oracle: independent central directional differences in package tests
   flash_source_anchor: may2015-ch4-c2h6-001
   flash_source_anchor_status: package-local-pass
-  all_17_row_characterization: 16 local certificates; 12 rows within both frozen allowances
+  package_characterization_status: did-not-satisfy-proposed-full-row-predictive-gate
   predictive_validation_status: pending-validation-owned-campaign
   pure_scientific_command: python scripts/validate_saturation.py
   pure_physical_oracle: data/reference/pure_saturation_anchors.csv

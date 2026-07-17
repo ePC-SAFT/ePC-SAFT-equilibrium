@@ -132,19 +132,19 @@ KKT stationarity max abs = 7.993605777301127e-15
 confirmation max difference = 3.597815403046881e-15
 ```
 
-A package-side, non-authoritative characterization of all 17 frozen rows found
-16 locally certified states and 12 rows within both composition allowances.
-Rows 002, 009, 010, and 011 missed at least one allowance. Row 012 converged
-to indistinguishable phase densities and was correctly rejected as collapsed.
-These are model/data observations, not automatic solver defects, and they do
-not constitute the later validation-owned predictive campaign. No tolerance,
-source row, seed, or scope was changed in response.
+A package-side characterization did not satisfy the proposed full-row
+predictive gate. It is not retained here as validation-owned executable
+evidence and does not replace the pending installed-artifact campaign in the
+validation repository. The package keeps row 012 only as a compact native
+adversarial proof: Ipopt can converge while the density-distance diagnostic
+correctly rejects indistinguishable phases. No tolerance, source row, seed, or
+scope was changed in response.
 
 ## Artifact evidence
 
 The local candidate wheel
 `epcsaft_equilibrium-0.1.0.dev0-cp313-cp313-linux_x86_64.whl` has SHA-256
-`2259eacee30792b3b473b278923eeef8dbad057dcac330d6ec122f79bdc03c19`.
+`9f3adbc6f5539ae14cbff15b14a9eccf289ce238b316f78a81a25c1b91b3cc49`.
 Package tests cover provider transport, capsule lifetime, exact directional
 derivatives, input and rejection paths, retained multipliers, local
 certification, the source anchor, and the unchanged accepted pure route.

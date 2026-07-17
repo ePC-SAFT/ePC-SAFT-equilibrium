@@ -18,6 +18,7 @@ namespace {
 
 constexpr std::string_view kFlashFingerprint =
     "sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286";
+constexpr std::size_t kPureSdkTableSize = offsetof(epcsaft_native_sdk_v1, component_count);
 
 const epcsaft_native_sdk_v1& checked_sdk(const py::capsule& capsule) {
     const char* name = capsule.name();
@@ -31,7 +32,7 @@ const epcsaft_native_sdk_v1& checked_sdk(const py::capsule& capsule) {
     if (sdk->abi_version != EPCSAFT_NATIVE_SDK_V1_ABI_VERSION) {
         throw py::value_error("provider capsule ABI version mismatch");
     }
-    if (sdk->table_size < sizeof(epcsaft_native_sdk_v1)) {
+    if (sdk->table_size < kPureSdkTableSize) {
         throw py::value_error("provider capsule table is smaller than the v1 contract");
     }
     if (sdk->result_size != sizeof(epcsaft_phase_block_result_v1)) {
@@ -43,8 +44,28 @@ const epcsaft_native_sdk_v1& checked_sdk(const py::capsule& capsule) {
     return *sdk;
 }
 
+const epcsaft_native_sdk_v1& checked_mixture_sdk(const py::capsule& capsule) {
+    const epcsaft_native_sdk_v1& sdk = checked_sdk(capsule);
+    if (sdk.table_size < sizeof(epcsaft_native_sdk_v1)) {
+        throw py::value_error("provider capsule is missing the mixture SDK tail");
+    }
+    if (sdk.component_count != 2) {
+        throw py::value_error("provider capsule mixture component count must be two");
+    }
+    if (sdk.mixture_result_size != sizeof(epcsaft_mixture_phase_block_result_v1)) {
+        throw py::value_error(
+            "provider capsule mixture result size does not match the v1 contract"
+        );
+    }
+    if (sdk.evaluate_mixture_phase == nullptr) {
+        throw py::value_error("provider capsule is missing its mixture phase evaluator");
+    }
+    return sdk;
+}
+
 py::dict sdk_info(const py::capsule& capsule) {
     const epcsaft_native_sdk_v1& sdk = checked_sdk(capsule);
+    const bool has_mixture_tail = sdk.table_size >= sizeof(epcsaft_native_sdk_v1);
     py::dict result;
     result["capsule_name"] = EPCSAFT_NATIVE_SDK_V1_CAPSULE_NAME;
     result["abi_version"] = sdk.abi_version;
@@ -52,9 +73,10 @@ py::dict sdk_info(const py::capsule& capsule) {
     result["result_size"] = sdk.result_size;
     result["has_model_context"] = sdk.model_context != nullptr;
     result["has_evaluate_pure_phase"] = sdk.evaluate_pure_phase != nullptr;
-    result["component_count"] = sdk.component_count;
-    result["mixture_result_size"] = sdk.mixture_result_size;
-    result["has_evaluate_mixture_phase"] = sdk.evaluate_mixture_phase != nullptr;
+    result["component_count"] = has_mixture_tail ? sdk.component_count : 0;
+    result["mixture_result_size"] = has_mixture_tail ? sdk.mixture_result_size : 0;
+    result["has_evaluate_mixture_phase"] =
+        has_mixture_tail && sdk.evaluate_mixture_phase != nullptr;
     return result;
 }
 
@@ -65,7 +87,7 @@ py::dict evaluate_mixture_phase(
     double volume_m3,
     const std::string& expected_fingerprint
 ) {
-    const epcsaft_native_sdk_v1& sdk = checked_sdk(capsule);
+    const epcsaft_native_sdk_v1& sdk = checked_mixture_sdk(capsule);
     const epcsaft_equilibrium::ProviderContext provider(sdk, expected_fingerprint);
     const epcsaft_equilibrium::MixturePhaseEvaluation phase =
         provider.evaluate_mixture(temperature_k, amounts_mol, volume_m3);
@@ -146,7 +168,7 @@ py::dict evaluate_two_phase_flash_nlp(
     const std::string& expected_fingerprint
 ) {
     const epcsaft_equilibrium::ProviderContext provider(
-        checked_sdk(capsule),
+        checked_mixture_sdk(capsule),
         expected_fingerprint
     );
     const epcsaft_equilibrium::FlashNlpEvaluation evaluation =
@@ -237,7 +259,7 @@ py::dict solve_two_phase_flash(
     const std::array<double, 2>& overall_mole_fractions
 ) {
     const epcsaft_equilibrium::ProviderContext provider(
-        checked_sdk(capsule),
+        checked_mixture_sdk(capsule),
         std::string(kFlashFingerprint)
     );
     epcsaft_equilibrium::FlashSolveResult solve;

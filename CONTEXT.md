@@ -22,12 +22,12 @@ only solver, numerical-confirmation, and local-physical evidence. It has no
 promotion receipt and changes no runtime authority.
 
 The audited row `may2015-ch4-c2h6-001` is the package source anchor. A
-non-authoritative all-17-row characterization found 16 locally certified
-solutions and 12 rows within both frozen composition allowances. Rows 002,
-009, 010, and 011 missed at least one allowance; row 012 converged to a
-collapsed state and was correctly rejected. Those observations separate
-model/data agreement from solver correctness and are not a validation-owned
-predictive campaign. Independent validation and any promotion remain pending.
+package-side characterization did not satisfy the proposed full-row predictive
+gate. That characterization is not validation-owned executable evidence and
+does not replace the pending installed-artifact campaign in the validation
+repository. The package retains only compact source-backed anchors and local
+solver rejection evidence. Independent predictive validation and any
+promotion remain pending.
 
 `runtime_source_of_truth: true`
 
