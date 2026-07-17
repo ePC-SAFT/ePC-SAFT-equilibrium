@@ -117,6 +117,38 @@ def test_two_phase_flash_objective_exact_derivatives_and_linear_structure() -> N
         assert gradient_difference == pytest.approx(hessian_direction, rel=2.0e-6, abs=2.0e-7)
 
 
+def test_native_two_phase_flash_source_anchor_solve_and_local_certificate() -> None:
+    model = _binary_model()
+    native = _equilibrium._solve_two_phase_flash(
+        epcsaft.native_sdk(model),
+        SOURCE_TEMPERATURE_K,
+        SOURCE_PRESSURE_PA,
+        SOURCE_FEED,
+    )
+
+    assert native["accepted"] is True
+    assert native["parameter_fingerprint"] == BINARY_FINGERPRINT
+    diagnostics = native["diagnostics"]
+    assert diagnostics["solver_converged"] is True
+    assert diagnostics["solver_constraint_violation"] <= 1.0e-10
+    assert diagnostics["numerical_converged"] is True
+    assert diagnostics["confirmation_solves"] == 1
+    assert diagnostics["physical_accepted"] is True
+    assert diagnostics["material_balance_max_abs"] <= 1.0e-10
+    assert diagnostics["pressure_stationarity_max_relative"] <= 1.0e-8
+    assert diagnostics["chemical_potential_max_abs"] <= 1.0e-8
+    assert diagnostics["kkt_stationarity_max_abs"] <= 1.0e-8
+    assert diagnostics["phase_density_distance"] >= 1.0e-3
+    assert diagnostics["exact_derivatives"] is True
+    assert diagnostics["globality_certificate"] is False
+    assert len(diagnostics["equality_multipliers"]) == 2
+    assert len(diagnostics["lower_bound_multipliers"]) == 6
+    assert len(diagnostics["upper_bound_multipliers"]) == 6
+    assert native["liquid"]["molar_density_mol_m3"] > native["vapor"]["molar_density_mol_m3"]
+    assert abs(native["liquid"]["mole_fractions"][0] - SOURCE_LIQUID_X_METHANE) <= 0.0111
+    assert abs(native["vapor"]["mole_fractions"][0] - SOURCE_VAPOR_Y_METHANE) <= 0.0114
+
+
 @pytest.mark.parametrize(
     ("temperature", "pressure", "feed", "error", "message"),
     (
