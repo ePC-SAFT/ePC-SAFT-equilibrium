@@ -120,6 +120,24 @@ py::dict phase_to_dict(const epcsaft_equilibrium::PhaseEvaluation& phase) {
     return result;
 }
 
+py::list attempt_log_to_list(
+    const std::vector<epcsaft_equilibrium::SaturationSolveResult::AttemptRecord>& attempts
+) {
+    py::list result;
+    for (const auto& attempt : attempts) {
+        py::dict item;
+        item["role"] = attempt.role;
+        item["initial_guess"] = attempt.initial_guess;
+        item["solver_converged"] = attempt.solver_converged;
+        item["solver_status"] = attempt.solver_status;
+        item["iterations"] = attempt.iterations;
+        item["constraint_violation"] = attempt.constraint_violation;
+        item["callback_error"] = attempt.callback_error;
+        result.append(std::move(item));
+    }
+    return result;
+}
+
 py::dict solve_saturation(
     const py::capsule& capsule,
     double temperature_k,
@@ -145,6 +163,9 @@ py::dict solve_saturation(
     diagnostics["solver_status"] = solve.solver_status;
     diagnostics["iterations"] = solve.iterations;
     diagnostics["attempts"] = solve.attempts;
+    diagnostics["attempt_log"] = attempt_log_to_list(solve.attempt_log);
+    diagnostics["solver_lower_bounds"] = solve.solver_lower_bounds;
+    diagnostics["solver_upper_bounds"] = solve.solver_upper_bounds;
     diagnostics["solver_constraint_violation"] = solve.solver_constraint_violation;
     diagnostics["numerical_converged"] = solve.numerical_converged;
     diagnostics["confirmation_solves"] = solve.confirmation_solves;

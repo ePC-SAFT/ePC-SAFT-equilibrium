@@ -8,6 +8,7 @@ from typing import Any, cast
 
 import epcsaft
 from pint import Quantity
+from pint.errors import DimensionalityError
 
 from . import _equilibrium
 
@@ -24,6 +25,19 @@ class PhaseState:
 
 
 @dataclass(frozen=True)
+class SolverAttemptDiagnostics:
+    """One deterministic Ipopt search or confirmation attempt."""
+
+    role: str
+    initial_guess: tuple[float, float, float]
+    solver_converged: bool
+    solver_status: str
+    iterations: int
+    constraint_violation: float
+    callback_error: str
+
+
+@dataclass(frozen=True)
 class SaturationDiagnostics:
     """Separate numerical and physical evidence for one local boundary."""
 
@@ -31,6 +45,9 @@ class SaturationDiagnostics:
     solver_status: str
     iterations: int
     attempts: int
+    attempt_log: tuple[SolverAttemptDiagnostics, ...]
+    solver_lower_bounds: tuple[float, float, float]
+    solver_upper_bounds: tuple[float, float, float]
     solver_constraint_violation: float
     numerical_converged: bool
     confirmation_solves: int
@@ -101,6 +118,8 @@ def _temperature_in_kelvin(temperature: Quantity[Any]) -> float:
         raise TypeError("saturation requires a Pint temperature quantity")
     try:
         value = float(temperature.to("kelvin").magnitude)
+    except DimensionalityError as error:
+        raise ValueError("temperature units must be convertible to kelvin") from error
     except (TypeError, ValueError) as error:
         raise TypeError("saturation requires one scalar Pint temperature quantity") from error
     if not math.isfinite(value) or value <= 0.0:
@@ -108,12 +127,35 @@ def _temperature_in_kelvin(temperature: Quantity[Any]) -> float:
     return value
 
 
+def _triple(payload: object) -> tuple[float, float, float]:
+    values = cast(list[float] | tuple[float, ...], payload)
+    if len(values) != 3:
+        raise RuntimeError("native solver diagnostic triple has the wrong size")
+    return (float(values[0]), float(values[1]), float(values[2]))
+
+
+def _attempt(payload: Mapping[str, object]) -> SolverAttemptDiagnostics:
+    return SolverAttemptDiagnostics(
+        role=str(payload["role"]),
+        initial_guess=_triple(payload["initial_guess"]),
+        solver_converged=bool(payload["solver_converged"]),
+        solver_status=str(payload["solver_status"]),
+        iterations=int(cast(int, payload["iterations"])),
+        constraint_violation=float(cast(float, payload["constraint_violation"])),
+        callback_error=str(payload["callback_error"]),
+    )
+
+
 def _diagnostics(payload: Mapping[str, object]) -> SaturationDiagnostics:
+    attempt_payloads = cast(list[Mapping[str, object]], payload["attempt_log"])
     return SaturationDiagnostics(
         solver_converged=bool(payload["solver_converged"]),
         solver_status=str(payload["solver_status"]),
         iterations=int(cast(int, payload["iterations"])),
         attempts=int(cast(int, payload["attempts"])),
+        attempt_log=tuple(_attempt(item) for item in attempt_payloads),
+        solver_lower_bounds=_triple(payload["solver_lower_bounds"]),
+        solver_upper_bounds=_triple(payload["solver_upper_bounds"]),
         solver_constraint_violation=float(cast(float, payload["solver_constraint_violation"])),
         numerical_converged=bool(payload["numerical_converged"]),
         confirmation_solves=int(cast(int, payload["confirmation_solves"])),
@@ -157,15 +199,38 @@ def saturation(model: epcsaft.EPCSAFT, temperature: Quantity[Any]) -> Saturation
         )
 
     capsule = epcsaft.native_sdk(model)
-    native = cast(
-        Mapping[str, object],
-        _equilibrium.solve_saturation(
-            capsule,
-            temperature_k,
-            fingerprint,
-            scope.liquid_density_upper_mol_m3,
-        ),
-    )
+    try:
+        native = cast(
+            Mapping[str, object],
+            _equilibrium.solve_saturation(
+                capsule,
+                temperature_k,
+                fingerprint,
+                scope.liquid_density_upper_mol_m3,
+            ),
+        )
+    except (RuntimeError, ValueError) as error:
+        failure = {
+            "solver_converged": False,
+            "solver_status": "native_exception",
+            "iterations": 0,
+            "attempts": 0,
+            "attempt_log": (),
+            "solver_lower_bounds": (),
+            "solver_upper_bounds": (),
+            "solver_constraint_violation": math.inf,
+            "numerical_converged": False,
+            "confirmation_solves": 0,
+            "confirmation_max_relative_difference": math.inf,
+            "physical_accepted": False,
+            "pressure_relative_residual": math.inf,
+            "chemical_potential_absolute_residual": math.inf,
+            "phase_density_distance": 0.0,
+            "exact_derivatives": True,
+            "globality_certificate": False,
+            "failure_reason": str(error),
+        }
+        raise SaturationError(str(error), failure) from error
     diagnostics_payload = cast(Mapping[str, object], native["diagnostics"])
     diagnostics = _diagnostics(diagnostics_payload)
     if not bool(native["accepted"]):

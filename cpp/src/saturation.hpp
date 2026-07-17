@@ -2,6 +2,7 @@
 
 #include <array>
 #include <string>
+#include <vector>
 
 #include <epcsaft/native_sdk_v1.h>
 
@@ -58,6 +59,18 @@ struct SaturationSolveResult {
     int iterations = 0;
     int attempts = 0;
     int confirmation_solves = 0;
+    std::array<double, 3> solver_lower_bounds{};
+    std::array<double, 3> solver_upper_bounds{};
+    struct AttemptRecord {
+        std::string role;
+        std::array<double, 3> initial_guess{};
+        bool solver_converged = false;
+        std::string solver_status;
+        int iterations = 0;
+        double constraint_violation = 0.0;
+        std::string callback_error;
+    };
+    std::vector<AttemptRecord> attempt_log;
     double solver_constraint_violation = 0.0;
     double confirmation_max_relative_difference = 0.0;
     double pressure_relative_residual = 0.0;

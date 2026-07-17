@@ -78,12 +78,14 @@ finite-difference or alternate derivative mode.
 
 ## Initialization and numerical acceptance
 
-The route uses a fixed, component-independent grid of vapor and liquid density
-seeds. Each pressure seed starts from `R T rho_v`. It stops discovery after the
-first solver-converged, physically acceptable local boundary, then reruns two
-perturbed seeds around that boundary. Numerical convergence requires the
-confirmation solves to agree within the declared pressure and density
-tolerances.
+The route uses the fixed, component-independent vapor-density grid `1e-5`,
+`1e-3`, `0.1`, `10`, `100`, `1000`, and `3000 mol m^-3` and liquid-density
+grid `18000`, `12000`, and `24000 mol m^-3`. Each pressure seed is exactly
+`R T rho_v`; all admitted temperatures keep these seeds inside the declared
+pressure bounds. It stops discovery after the first solver-converged,
+physically acceptable local boundary, then reruns two perturbed seeds around
+that boundary. Numerical convergence requires the confirmation solves to agree
+within `1e-7` relative pressure and density difference.
 
 The result separates:
 
@@ -95,6 +97,8 @@ The result separates:
 
 The public operation raises `SaturationError` with structured diagnostics when
 any layer fails. It raises `ValueError` for malformed or out-of-domain inputs.
+Diagnostics retain the seed, bounds, status, iteration count, constraint
+violation, and callback error for every search and confirmation attempt.
 
 ## Alternatives considered
 

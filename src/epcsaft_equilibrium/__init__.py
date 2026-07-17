@@ -5,6 +5,7 @@ from ._api import (
     SaturationDiagnostics,
     SaturationError,
     SaturationResult,
+    SolverAttemptDiagnostics,
     saturation,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "SaturationDiagnostics",
     "SaturationError",
     "SaturationResult",
+    "SolverAttemptDiagnostics",
     "saturation",
 ]

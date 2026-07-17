@@ -12,7 +12,6 @@ import pytest
 import epcsaft_equilibrium
 from epcsaft_equilibrium import _equilibrium
 
-PROVIDER_WHEEL_SHA256 = "e83f4b108d2df73888f7768f99f1c54b01ad86541b55afc1e43bbef2e1fb8f93"
 ANCHORS = Path(__file__).parents[1] / "data" / "reference" / "pure_saturation_anchors.csv"
 
 
@@ -41,6 +40,21 @@ class _NativeSdkTable(ctypes.Structure):
     )
 
 
+_CAPSULE_NAME_BUFFERS: list[ctypes.Array[ctypes.c_char]] = []
+_EVALUATORS: list[object] = []
+_SDK_TABLES: list[_NativeSdkTable] = []
+
+
+def _capsule(table: _NativeSdkTable, name: str = "epcsaft.native_sdk.v1") -> object:
+    name_buffer = ctypes.create_string_buffer(name.encode())
+    _CAPSULE_NAME_BUFFERS.append(name_buffer)
+    _SDK_TABLES.append(table)
+    new_capsule = ctypes.pythonapi.PyCapsule_New
+    new_capsule.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p)
+    new_capsule.restype = ctypes.py_object
+    return new_capsule(ctypes.addressof(table), name_buffer, None)
+
+
 def _model(component: str = "methane") -> epcsaft.EPCSAFT:
     catalog = "gross-2001-propane" if component == "propane" else "gross-2001-methane-ethane"
     parameters = epcsaft.ParameterBundle.from_catalog(catalog, version=1).select((component,))
@@ -49,6 +63,7 @@ def _model(component: str = "methane") -> epcsaft.EPCSAFT:
 
 def test_native_extension_accepts_and_retains_the_public_provider_capsule() -> None:
     model = _model()
+    fingerprint = model.parameter_fingerprint
     capsule = epcsaft.native_sdk(model)
 
     info = _equilibrium.sdk_info(capsule)
@@ -65,6 +80,56 @@ def test_native_extension_accepts_and_retains_the_public_provider_capsule() -> N
     del model
     gc.collect()
     assert _equilibrium.sdk_info(capsule) == info
+    phase = _equilibrium.evaluate_phase(capsule, 150.0, 1.0, 1.0e-3, fingerprint)
+    assert phase["parameter_fingerprint"] == fingerprint
+
+
+def test_native_extension_rejects_malformed_capsule_contracts_and_results() -> None:
+    valid_size = ctypes.sizeof(_NativeSdkTable)
+    valid_result_size = ctypes.sizeof(_PhaseBlockResult)
+
+    with pytest.raises(ValueError, match="expected capsule"):
+        _equilibrium.sdk_info(_capsule(_NativeSdkTable(), "wrong.name"))
+    with pytest.raises(ValueError, match="ABI version"):
+        _equilibrium.sdk_info(_capsule(_NativeSdkTable(2, valid_size, valid_result_size, 1, 1)))
+    with pytest.raises(ValueError, match="table is smaller"):
+        _equilibrium.sdk_info(_capsule(_NativeSdkTable(1, valid_size - 1, valid_result_size, 1, 1)))
+    with pytest.raises(ValueError, match="result size"):
+        _equilibrium.sdk_info(_capsule(_NativeSdkTable(1, valid_size, valid_result_size - 1, 1, 1)))
+
+    fingerprint = _model().parameter_fingerprint
+    callback_type = ctypes.CFUNCTYPE(
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_double,
+        ctypes.c_double,
+        ctypes.c_double,
+        ctypes.POINTER(_PhaseBlockResult),
+    )
+
+    def malformed_result(
+        _context: int,
+        _temperature: float,
+        _amount: float,
+        _volume: float,
+        result: ctypes.POINTER(_PhaseBlockResult),
+    ) -> int:
+        result.contents.status = 0
+        result.contents.struct_size = 0
+        result.contents.parameter_fingerprint = fingerprint.encode()
+        return 0
+
+    evaluator = callback_type(malformed_result)
+    _EVALUATORS.append(evaluator)
+    table = _NativeSdkTable(
+        1,
+        valid_size,
+        valid_result_size,
+        1,
+        ctypes.cast(evaluator, ctypes.c_void_p).value,
+    )
+    with pytest.raises(ValueError, match="result struct size"):
+        _equilibrium.evaluate_phase(_capsule(table), 150.0, 1.0, 1.0e-3, fingerprint)
 
 
 @pytest.mark.parametrize("component", ("methane", "ethane", "propane"))
@@ -108,7 +173,9 @@ def test_native_extension_evaluates_only_the_expected_provider_fingerprint(compo
     ("component", "temperature_k", "variables"),
     (
         ("methane", 150.0, (math.log(1_000.0), math.log(22_000.0), math.log(1.0e6))),
+        ("methane", 150.0, (math.log(1.0e-3), math.log(25_000.0), math.log(1.0))),
         ("ethane", 233.15, (math.log(730.0), math.log(20_000.0), math.log(1.0e6))),
+        ("ethane", 233.15, (math.log(1.0e-5), math.log(28_000.0), math.log(1.0))),
         ("propane", 300.0, (math.log(500.0), math.log(14_000.0), math.log(1.0e6))),
         ("propane", 300.0, (math.log(1.0e-5), math.log(22_000.0), math.log(1.0))),
     ),
@@ -140,6 +207,8 @@ def test_saturation_nlp_exact_derivatives_match_independent_directional_differen
     center = evaluate(0.0)
     upper = evaluate(step)
     objective_gradient = center["objective_gradient"]
+    assert center["objective"] == 0.0
+    assert objective_gradient == [0.0, 0.0, 0.0]
     objective_difference = (upper["objective"] - lower["objective"]) / (2.0 * step)
     assert objective_difference == pytest.approx(
         sum(objective_gradient[index] * direction[index] for index in range(3)),
@@ -180,6 +249,8 @@ def test_public_saturation_rejects_noncanonical_or_out_of_scope_inputs() -> None
 
     with pytest.raises(TypeError, match="Pint temperature quantity"):
         epcsaft_equilibrium.saturation(methane, 150.0)
+    with pytest.raises(ValueError, match="convertible to kelvin"):
+        epcsaft_equilibrium.saturation(methane, 150.0 * epcsaft.unit_registry.second)
     with pytest.raises(ValueError, match="source domain"):
         epcsaft_equilibrium.saturation(methane, 96.0 * epcsaft.unit_registry.kelvin)
 
@@ -190,8 +261,27 @@ def test_public_saturation_rejects_noncanonical_or_out_of_scope_inputs() -> None
     with pytest.raises(ValueError, match="approved pure-component fingerprint"):
         epcsaft_equilibrium.saturation(binary, 150.0 * epcsaft.unit_registry.kelvin)
 
-    with pytest.raises(epcsaft_equilibrium.SaturationError):
+    with pytest.raises(epcsaft_equilibrium.SaturationError) as rejected:
         epcsaft_equilibrium.saturation(methane, 250.0 * epcsaft.unit_registry.kelvin)
+    assert rejected.value.diagnostics["solver_converged"] is False
+    assert rejected.value.diagnostics["globality_certificate"] is False
+    assert rejected.value.diagnostics["attempt_log"]
+
+
+def test_public_saturation_wraps_native_failures_with_structured_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_native(*_args: object) -> object:
+        raise RuntimeError("synthetic native failure")
+
+    monkeypatch.setattr(_equilibrium, "solve_saturation", fail_native)
+    with pytest.raises(epcsaft_equilibrium.SaturationError, match="synthetic") as failed:
+        epcsaft_equilibrium.saturation(
+            _model("methane"),
+            150.0 * epcsaft.unit_registry.kelvin,
+        )
+    assert failed.value.diagnostics["solver_status"] == "native_exception"
+    assert failed.value.diagnostics["physical_accepted"] is False
 
 
 def test_public_ethane_saturation_separates_all_acceptance_layers(
@@ -225,6 +315,24 @@ def test_public_ethane_saturation_separates_all_acceptance_layers(
     assert result.diagnostics.pressure_relative_residual <= 1.0e-8
     assert result.diagnostics.chemical_potential_absolute_residual <= 1.0e-8
     assert result.diagnostics.phase_density_distance > 1.0e-3
+    assert len(result.diagnostics.solver_lower_bounds) == 3
+    assert len(result.diagnostics.solver_upper_bounds) == 3
+    assert len(result.diagnostics.attempt_log) == result.diagnostics.attempts
+    assert {attempt.role for attempt in result.diagnostics.attempt_log} == {
+        "search",
+        "confirmation",
+    }
+    for attempt in result.diagnostics.attempt_log:
+        assert all(
+            lower < initial < upper
+            for lower, initial, upper in zip(
+                result.diagnostics.solver_lower_bounds,
+                attempt.initial_guess,
+                result.diagnostics.solver_upper_bounds,
+                strict=True,
+            )
+        )
+        assert attempt.callback_error == ""
     captured = capfd.readouterr()
     assert captured.out == ""
     assert captured.err == ""

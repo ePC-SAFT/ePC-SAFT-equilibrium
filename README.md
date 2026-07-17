@@ -3,7 +3,8 @@
 `epcsaft-equilibrium` owns bounded equilibrium formulations over an installed
 `epcsaft` provider. The first local candidate solves a pure-component
 saturation boundary for the provider-approved methane, ethane, or propane
-model.
+model. It is non-authoritative until a manager accepts its pending promotion
+receipt.
 
 ```python
 import epcsaft
@@ -40,10 +41,15 @@ does not link provider implementation symbols, compile provider sources, or
 import private provider modules.
 
 Source builds require Python 3.13, CMake, a C++17 compiler, pkg-config, Ipopt,
-and the provider wheel installed in the build environment:
+and the non-editable provider wheel installed in the build environment. The
+admission gate hashes the exact provider wheel before creating an isolated
+build environment; the replayable commands and both wheel hashes are recorded
+in the candidate receipt.
 
 ```text
-uv build --no-build-isolation --wheel
+uv run --isolated --no-project --python 3.13 \
+  --with "$PINNED_PROVIDER_WHEEL" --with scikit-build-core --with pybind11 \
+  -- uv build --no-build-isolation --wheel .
 ```
 
 Run the compact package proof and scientific anchors with:

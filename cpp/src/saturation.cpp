@@ -110,8 +110,25 @@ struct AttemptResult {
     std::string callback_error;
     int iterations = 0;
     double solver_constraint_violation = std::numeric_limits<double>::infinity();
+    std::array<double, 3> initial_guess{};
     std::array<double, 3> variables{};
 };
+
+std::array<double, 3> solver_lower_bounds() {
+    return {
+        std::log(kVaporDensityLower),
+        std::log(kLiquidDensityLower),
+        std::log(kPressureLowerPa),
+    };
+}
+
+std::array<double, 3> solver_upper_bounds(double liquid_density_upper_mol_m3) {
+    return {
+        std::log(kVaporDensityUpper),
+        std::log(liquid_density_upper_mol_m3),
+        std::log(kPressureUpperPa),
+    };
+}
 
 class SaturationTnlp final : public Ipopt::TNLP {
 public:
@@ -124,16 +141,8 @@ public:
         : provider_(provider),
           temperature_k_(temperature_k),
           initial_(initial),
-          lower_{
-              std::log(kVaporDensityLower),
-              std::log(kLiquidDensityLower),
-              std::log(kPressureLowerPa),
-          },
-          upper_{
-              std::log(kVaporDensityUpper),
-              std::log(liquid_density_upper_mol_m3),
-              std::log(kPressureUpperPa),
-          } {}
+          lower_(solver_lower_bounds()),
+          upper_(solver_upper_bounds(liquid_density_upper_mol_m3)) {}
 
     bool get_nlp_info(
         Ipopt::Index& n,
@@ -382,6 +391,7 @@ AttemptResult run_ipopt(
 
     const Ipopt::ApplicationReturnStatus initialize_status = application->Initialize();
     AttemptResult result;
+    result.initial_guess = initial;
     if (initialize_status != Ipopt::Solve_Succeeded) {
         result.solver_status = "initialization_" + ipopt_status_name(initialize_status);
         return result;
@@ -416,16 +426,8 @@ bool inside_bounds(
     double liquid_density_upper_mol_m3
 ) {
     constexpr double kMargin = 1.0e-7;
-    const std::array<double, 3> lower{
-        std::log(kVaporDensityLower),
-        std::log(kLiquidDensityLower),
-        std::log(kPressureLowerPa),
-    };
-    const std::array<double, 3> upper{
-        std::log(kVaporDensityUpper),
-        std::log(liquid_density_upper_mol_m3),
-        std::log(kPressureUpperPa),
-    };
+    const std::array<double, 3> lower = solver_lower_bounds();
+    const std::array<double, 3> upper = solver_upper_bounds(liquid_density_upper_mol_m3);
     for (std::size_t index = 0; index < variables.size(); ++index) {
         if (variables[index] <= lower[index] + kMargin
             || variables[index] >= upper[index] - kMargin) {
@@ -498,6 +500,9 @@ PhaseEvaluation ProviderContext::evaluate(
         throw std::domain_error(
             "provider phase evaluation failed: " + std::string(phase.error)
         );
+    }
+    if (phase.struct_size != sizeof(epcsaft_phase_block_result_v1)) {
+        throw std::invalid_argument("provider phase result struct size mismatch");
     }
     if (std::string(phase.parameter_fingerprint) != fingerprint_) {
         throw std::invalid_argument(
@@ -586,30 +591,54 @@ SaturationSolveResult solve_local_saturation(
     }
 
     const std::array<double, 7> vapor_seeds{1.0e-5, 1.0e-3, 0.1, 10.0, 100.0, 1000.0, 3000.0};
-    const std::array<double, 3> liquid_fractions{0.45, 0.70, 0.85};
+    const std::array<double, 3> liquid_seeds{18'000.0, 12'000.0, 24'000.0};
     SaturationSolveResult last_result;
     last_result.failure_reason = "no Ipopt seed produced a certified local boundary";
+    last_result.solver_lower_bounds = solver_lower_bounds();
+    last_result.solver_upper_bounds = solver_upper_bounds(liquid_density_upper_mol_m3);
 
     for (double vapor_density : vapor_seeds) {
-        for (double liquid_fraction : liquid_fractions) {
-            const double liquid_density = liquid_fraction * liquid_density_upper_mol_m3;
-            const double pressure_seed = std::clamp(
-                kGasConstantJPerMolK * temperature_k * vapor_density,
-                10.0 * kPressureLowerPa,
-                0.1 * kPressureUpperPa
-            );
+        for (double liquid_density : liquid_seeds) {
+            const double pressure_seed = kGasConstantJPerMolK * temperature_k * vapor_density;
             const std::array<double, 3> initial{
                 std::log(vapor_density),
                 std::log(liquid_density),
                 std::log(pressure_seed),
             };
-            AttemptResult attempt = run_ipopt(
-                provider,
-                temperature_k,
-                initial,
-                liquid_density_upper_mol_m3
-            );
+            AttemptResult attempt;
+            attempt.initial_guess = initial;
+            try {
+                const NlpEvaluation seed_evaluation = evaluate_saturation_nlp(
+                    provider,
+                    temperature_k,
+                    initial,
+                    {0.0, 0.0, 0.0}
+                );
+                if (seed_evaluation.jacobian[0] <= 0.0
+                    || seed_evaluation.jacobian[4] <= 0.0) {
+                    attempt.solver_status = "seed_rejected_local_instability";
+                } else {
+                    attempt = run_ipopt(
+                        provider,
+                        temperature_k,
+                        initial,
+                        liquid_density_upper_mol_m3
+                    );
+                }
+            } catch (const std::exception& error) {
+                attempt.solver_status = "seed_evaluation_failed";
+                attempt.callback_error = error.what();
+            }
             ++last_result.attempts;
+            last_result.attempt_log.push_back({
+                "search",
+                attempt.initial_guess,
+                attempt.solver_converged,
+                attempt.solver_status,
+                attempt.iterations,
+                attempt.solver_constraint_violation,
+                attempt.callback_error,
+            });
             last_result.solver_status = attempt.solver_status;
             last_result.solver_converged = attempt.solver_converged;
             last_result.iterations = attempt.iterations;
@@ -665,6 +694,15 @@ SaturationSolveResult solve_local_saturation(
                     liquid_density_upper_mol_m3
                 );
                 ++candidate_result.attempts;
+                candidate_result.attempt_log.push_back({
+                    "confirmation",
+                    confirmation.initial_guess,
+                    confirmation.solver_converged,
+                    confirmation.solver_status,
+                    confirmation.iterations,
+                    confirmation.solver_constraint_violation,
+                    confirmation.callback_error,
+                });
                 if (!confirmation.solver_converged) {
                     confirmations_agree = false;
                     break;

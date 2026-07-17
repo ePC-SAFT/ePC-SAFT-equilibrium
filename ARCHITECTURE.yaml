@@ -25,6 +25,17 @@ candidate:
     - local mechanical stability and inactive bounds
     - exact provider fingerprint and derivative evidence
   globality_certificate: none
+  tolerances:
+    ipopt_tolerance: 1.0e-10
+    solver_constraint_tolerance: 1.0e-10
+    physical_pressure_relative_residual_max: 1.0e-8
+    physical_chemical_potential_absolute_residual_max: 1.0e-8
+    confirmation_relative_difference_max: 1.0e-7
+    minimum_relative_phase_density_distance: 1.0e-3
+    inactive_log_bound_margin: 1.0e-7
+    retained_lab_relative_difference_max: 5.0e-6
+    nist_pressure_relative_error_max: 5.0e-3
+    nist_liquid_density_relative_error_max: 1.0e-2
 
 provider_pin:
   commit: 02a03a440cf53f3b1d4304556a19a54c79c70179
@@ -62,16 +73,18 @@ public_surface:
     - SaturationDiagnostics
     - SaturationError
     - SaturationResult
+    - SolverAttemptDiagnostics
     - saturation
   native_modules: [epcsaft_equilibrium._equilibrium]
   native_targets: 1
-  runtime_dependencies: [epcsaft==0.1.0.dev0]
+  runtime_dependencies: [epcsaft==0.1.0.dev0, Pint>=0.25]
   build_dependencies: [scikit-build-core, pybind11, CMake, pkg-config, Ipopt]
 
 evidence:
   package_tests: tests/test_saturation.py
   derivative_oracle: independent central directional differences in package tests
   physical_oracle: data/reference/pure_saturation_anchors.csv
+  physical_oracle_provenance: data/reference/README.md
   scientific_command: python scripts/validate_saturation.py
   isolated_artifact_evidence: candidate promotion receipt
 
