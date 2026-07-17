@@ -17,7 +17,8 @@ candidate:
     density, and log saturation pressure with pressure-ratio and
     chemical-potential equality constraints.
   local_certificate:
-    - accepted Ipopt termination and finite solver diagnostics
+    - accepted Ipopt termination, empty callback error, and finite solver
+      constraint violation at or below 1.0e-10
     - perturbed-seed agreement
     - pressure equality to the solved target
     - chemical-potential equality

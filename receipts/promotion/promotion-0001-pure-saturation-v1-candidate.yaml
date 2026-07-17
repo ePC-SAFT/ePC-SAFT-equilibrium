@@ -36,8 +36,8 @@ source:
 
 destination:
   repository: ePC-SAFT/ePC-SAFT-equilibrium
-  implementation_commit: eff707fbf4fb011627e8089bc13aad99b9a21dce
-  implementation_tree: 14aae475d77e000563641cc1ed038ac2249e02cc
+  implementation_commit: faba1f9ab9343db333e404dbd2bb1cb9345d798c
+  implementation_tree: 9810740850262a6ffb2524afb311a53a83cceb2f
   package: epcsaft_equilibrium
   distribution: epcsaft-equilibrium
   version: 0.1.0.dev0
@@ -58,24 +58,24 @@ provider_pin:
   derivative_order: 3
 
 artifacts:
-  root: artifacts/equilibrium-pure-saturation-v1/eff707f
+  root: artifacts/equilibrium-pure-saturation-v1/faba1f9
   equilibrium_wheel:
     file: epcsaft_equilibrium-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
-    sha256: f5105830a7cb30da1f17277285a530b7cb5ee5ca9173d4b9ea5d7d4bd1401e0b
+    sha256: a7f119253dd3fd41b609105916b8184cbe24b64e67e37873426d22e43501f490
   installed_wheel_tests:
     file: equilibrium-tests.xml
-    sha256: e0d27c4505e4f8c2650abd8350a7fb18ca1df470497f682ecf2a4c88efa8e4cc
+    sha256: d4d58183487a2d8e01ef48473ea41a0582271dfaac2ede73f88ead5493f55ba7
   scientific_validation:
     file: scientific-validation.txt
     sha256: e5419987c68bc91274d6e5a48b75e51abf880a06390f23cea1b5c9ec763b3c5d
   binary_audit:
     file: binary-audit.txt
-    sha256: f1ee92b1ec0323b7ddd88e0de3dd5b24b39bfdaab8659d74a201746da3ce0cac
-  extracted_extension_sha256: ca89139293608c0dd983ab31bcff3883a2b94a5f898b62f34adf609756ccea3a
-  architecture_manifest_sha256: 2142fcb2890bde8f8723800a9c83396296d4188f6ff5308737463c6ca44a8a2d
+    sha256: b498c273c6377f2ea933ec754a098af8e14216656a0b55fe82491374f6dc546a
+  extracted_extension_sha256: 673367e6bfc50f249e998ea8110148a461ad9594cde4c7e34e8126b35663f4f9
+  architecture_manifest_sha256: bf08db3cb42b2743cd4d75a3fe31cc483c3520be009eda617c39f7381236298a
   anchor_table_sha256: 9fd4b6384a6c751b93075eb7e6eb923ba9fb10af6b94abf463eb51ad93efd985
   anchor_provenance_sha256: 14682e3f16f721b475db8edf66edf4bf9952e5e5d42fc75697c14c6b01b092b2
-  independent_review_sha256: 21c28a1d08e32e2c0278dcbd87886a3f087c593aff2809bf2b50b1f1a39ab7f7
+  independent_review_sha256: 6de4919a73f9366e7e5361bc72f5c7c17e329ce0fdde3e992a106352af2200bb
 
 capability:
   name: pure-component-saturation-v1
@@ -118,6 +118,8 @@ verification:
     provider_hash_checked_before_build: true
     build_environment: uv run --isolated --no-project with the exact provider wheel, scikit-build-core, and pybind11
     provider_distribution_check: exact version and non-editable install required by CMake
+    python_optimization_level: 2
+    provider_discovery_checks: explicit failures independent of Python assert semantics
   isolated_install:
     command: python -I -m pytest -q tests
     result: 15 passed; 0 errors; 0 failures
@@ -150,7 +152,7 @@ verification:
     compiled_translation_units: [cpp/src/module.cpp, cpp/src/saturation.cpp]
   independent_review:
     record: reviews/2026-07-17-pure-saturation-v1.md
-    verdict: APPROVE_FOR_MANAGER_REVIEW
+    verdict: APPROVE_CORRECTIONS_FOR_MANAGER_REVIEW
 
 excluded:
   - phase discovery, TPD, and global stability

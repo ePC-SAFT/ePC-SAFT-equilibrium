@@ -4,9 +4,11 @@ Reviewer: `codex-independent-reviewer:/root/independent_review`
 
 Implementation owner: `codex:/root`
 
-Final implementation commit: `eff707fbf4fb011627e8089bc13aad99b9a21dce`
+Baseline implementation commit: `eff707fbf4fb011627e8089bc13aad99b9a21dce`
 
-Final verdict: `APPROVE_FOR_MANAGER_REVIEW`
+Correction implementation commit: `faba1f9ab9343db333e404dbd2bb1cb9345d798c`
+
+Final verdict: `APPROVE_CORRECTIONS_FOR_MANAGER_REVIEW`
 
 ## Scope
 
@@ -37,27 +39,50 @@ closed every Critical and Important item:
 - The architecture manifest records every numerical and scientific tolerance.
   The anchor record now includes source commits, source hashes, transformation,
   use basis, and tolerance rationale.
-- Native, bytecode, and IDE ignore patterns were restored.
+- Native and bytecode ignore patterns were restored. The user later directed
+  the owner to track the existing PyCharm and CLion `.idea/` metadata while
+  retaining ignores for generated builds, caches, binaries, and environments.
 
 The reviewer treated duplicate scope declarations and the single native source
 module as non-blocking for this first bounded baseline. Splitting or introducing
 a new registry layer now would enlarge the surface without improving the
 admitted capability.
 
+## Correction verification
+
+The focused correction review found that:
+
+- Solver acceptance requires a converged Ipopt status, a finite constraint
+  violation no greater than `1.0e-10`, and an empty callback error before the
+  physical gates run. The accepted-case test checks the finite top-level
+  violation and every recorded callback error.
+- The consumer decodes provider error and parameter-fingerprint arrays through
+  one length-bounded decoder. A synthetic malformed capsule test rejects a
+  missing NUL in both paths, including the module fingerprint seam.
+- Native-exception diagnostics report `exact_derivatives = false`. The anchor
+  test and scientific validator require exactly methane, ethane, and propane.
+- CMake provider discovery uses explicit failures instead of Python assertions.
+  The isolated wheel build passed with `PYTHONOPTIMIZE=2`.
+
+The existing accepted-case test proves distinct phases and inactive bounds.
+A direct bound-failure injection would require a new native or public test seam,
+so the owner retained the implementation rejection gate without expanding the
+runtime surface.
+
 ## Final evidence
 
 The reviewer independently recomputed the final hashes and confirmed:
 
-- equilibrium wheel: `f5105830a7cb30da1f17277285a530b7cb5ee5ca9173d4b9ea5d7d4bd1401e0b`
-- installed-wheel JUnit XML: `e0d27c4505e4f8c2650abd8350a7fb18ca1df470497f682ecf2a4c88efa8e4cc`
+- equilibrium wheel: `a7f119253dd3fd41b609105916b8184cbe24b64e67e37873426d22e43501f490`
+- installed-wheel JUnit XML: `d4d58183487a2d8e01ef48473ea41a0582271dfaac2ede73f88ead5493f55ba7`
 - scientific validation log: `e5419987c68bc91274d6e5a48b75e51abf880a06390f23cea1b5c9ec763b3c5d`
-- binary audit: `f1ee92b1ec0323b7ddd88e0de3dd5b24b39bfdaab8659d74a201746da3ce0cac`
-- extracted native extension: `ca89139293608c0dd983ab31bcff3883a2b94a5f898b62f34adf609756ccea3a`
+- binary audit: `b498c273c6377f2ea933ec754a098af8e14216656a0b55fe82491374f6dc546a`
+- extracted native extension: `673367e6bfc50f249e998ea8110148a461ad9594cde4c7e34e8126b35663f4f9`
 
 The XML contains 15 tests with zero failures or errors. The binary audit shows
 only the equilibrium package in the wheel, one native target built from the two
 equilibrium translation units, a direct Ipopt link, no provider implementation
-material, and no provider/EOS symbols. `git diff --check 27c89bd..eff707f` is
+material, and no provider/EOS symbols. `git diff --check 5f2b85f..faba1f9` is
 clean.
 
 ## Authority boundary
