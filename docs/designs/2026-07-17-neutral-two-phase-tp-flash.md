@@ -1,6 +1,6 @@
 # Neutral Two-Phase TP Flash Local Candidate
 
-Stage: locally implemented candidate; independent validation and promotion pending
+Stage: local candidate approved; validation NON_ADMISSION; promotion blocked
 
 Authority effect: none
 
@@ -132,13 +132,16 @@ KKT stationarity max abs = 7.993605777301127e-15
 confirmation max difference = 3.597815403046881e-15
 ```
 
-A package-side characterization did not satisfy the proposed full-row
-predictive gate. It is not retained here as validation-owned executable
-evidence and does not replace the pending installed-artifact campaign in the
-validation repository. The package keeps row 012 only as a compact native
-adversarial proof: Ipopt can converge while the density-distance diagnostic
-correctly rejects indistinguishable phases. No tolerance, source row, seed, or
-scope was changed in response.
+Permanent lab review status is `APPROVE_LOCAL_CANDIDATE`. Validation repository
+final evidence HEAD `5a678beff38717478fd333c65e77f005cc2f6b15` is bound by
+`results/consumer-slice-2-validation-record.json`, SHA-256
+`239c84788f75f8c66240c83e4f5874f112e1197dafad6273e1c8ec4efe994d24`.
+Under the frozen `3*u_c` composition contract, validation returned
+`NON_ADMISSION`: 12/17 admitted, rows 002/009/010/011 solved but missed
+composition allowances, row 012 had no package-accepted local state; maximum
+material-balance error 1.11e-16. Package local-candidate approval remains
+distinct from validation admission. Authority effect remains none and
+promotion is blocked. No tolerance, source row, seed, or scope changed.
 
 ## Artifact evidence
 
@@ -149,5 +152,5 @@ Package tests cover provider transport, capsule lifetime, exact directional
 derivatives, input and rejection paths, retained multipliers, local
 certification, the source anchor, and the unchanged accepted pure route.
 
-The all-row concerns prevent a predictive-validation or promotion claim. This
-document records local candidate evidence only and transfers no authority.
+Validation `NON_ADMISSION` blocks promotion. This document records local
+candidate and validation status only and transfers no authority.

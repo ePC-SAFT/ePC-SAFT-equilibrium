@@ -21,13 +21,15 @@ Table 5 rectangular input domain. It fixes the phase count at two and carries
 only solver, numerical-confirmation, and local-physical evidence. It has no
 promotion receipt and changes no runtime authority.
 
-The audited row `may2015-ch4-c2h6-001` is the package source anchor. A
-package-side characterization did not satisfy the proposed full-row predictive
-gate. That characterization is not validation-owned executable evidence and
-does not replace the pending installed-artifact campaign in the validation
-repository. The package retains only compact source-backed anchors and local
-solver rejection evidence. Independent predictive validation and any
-promotion remain pending.
+The audited row `may2015-ch4-c2h6-001` is the package source anchor. Permanent
+lab review status is `APPROVE_LOCAL_CANDIDATE`. Validation repository final
+evidence HEAD `5a678beff38717478fd333c65e77f005cc2f6b15` and record SHA-256
+`239c84788f75f8c66240c83e4f5874f112e1197dafad6273e1c8ec4efe994d24`
+returned `NON_ADMISSION` under the frozen `3*u_c` composition contract: 12/17
+admitted, rows 002/009/010/011 solved but missed composition allowances, row
+012 had no package-accepted local state; maximum material-balance error
+1.11e-16. Package local-candidate approval remains distinct from validation
+admission. Authority effect remains none and promotion is blocked.
 
 `runtime_source_of_truth: true`
 
@@ -38,3 +40,9 @@ promotion remain pending.
 `local_candidate: neutral-two-phase-tp-flash-v1`
 
 `local_candidate_authority_effect: none`
+
+`local_candidate_review: APPROVE_LOCAL_CANDIDATE`
+
+`validation_admission: NON_ADMISSION`
+
+`local_candidate_promotion_status: blocked`

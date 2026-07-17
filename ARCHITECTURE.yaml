@@ -50,7 +50,10 @@ accepted_capability:
 
 local_candidate:
   name: neutral-two-phase-tp-flash-v1
-  promotion_status: not-promoted
+  permanent_lab_review: APPROVE_LOCAL_CANDIDATE
+  validation_admission: NON_ADMISSION
+  promotion_status: blocked
+  authority_effect: none
   scope: >-
     One local neutral nonassociating methane/ethane fixed-two-phase TP
     calculation inside the audited May et al. (2015), Table 5 rectangular
@@ -117,7 +120,7 @@ owners:
   flash_formulation_ipopt_and_local_acceptance: cpp/src/two_phase_flash.cpp
   input_validation_and_typed_results: src/epcsaft_equilibrium/_api.py
   pure_scientific_anchors: data/reference/pure_saturation_anchors.csv
-  flash_predictive_validation: ePC-SAFT-validation (not yet executed as an owned campaign)
+  flash_predictive_validation: ePC-SAFT-validation
 
 public_surface:
   distribution: epcsaft-equilibrium
@@ -145,8 +148,15 @@ evidence:
   derivative_oracle: independent central directional differences in package tests
   flash_source_anchor: may2015-ch4-c2h6-001
   flash_source_anchor_status: package-local-pass
-  package_characterization_status: did-not-satisfy-proposed-full-row-predictive-gate
-  predictive_validation_status: pending-validation-owned-campaign
+  validation_repository_head: 5a678beff38717478fd333c65e77f005cc2f6b15
+  validation_record: results/consumer-slice-2-validation-record.json
+  validation_record_sha256: 239c84788f75f8c66240c83e4f5874f112e1197dafad6273e1c8ec4efe994d24
+  predictive_validation_status: NON_ADMISSION
+  admitted_rows: 12/17
+  solved_composition_miss_rows: ["002", "009", "010", "011"]
+  no_package_accepted_local_state_row: "012"
+  maximum_material_balance_error: 1.11e-16
+  package_local_candidate_approval_distinct_from_validation_admission: true
   pure_scientific_command: python scripts/validate_saturation.py
   pure_physical_oracle: data/reference/pure_saturation_anchors.csv
   pure_isolated_artifact_evidence: receipts/promotion/promotion-0001-pure-saturation-v1-candidate.yaml
