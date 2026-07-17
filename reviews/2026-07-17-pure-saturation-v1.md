@@ -8,6 +8,8 @@ Baseline implementation commit: `eff707fbf4fb011627e8089bc13aad99b9a21dce`
 
 Correction implementation commit: `faba1f9ab9343db333e404dbd2bb1cb9345d798c`
 
+Compatibility-test commit: `95c55705581808ccf38c7bb57891d16ac4b775aa`
+
 Final verdict: `APPROVE_CORRECTIONS_FOR_MANAGER_REVIEW`
 
 ## Scope
@@ -84,6 +86,33 @@ only the equilibrium package in the wheel, one native target built from the two
 equilibrium translation units, a direct Ipopt link, no provider implementation
 material, and no provider/EOS symbols. `git diff --check 5f2b85f..faba1f9` is
 clean.
+
+## Final provider compatibility replay
+
+The implementation owner replayed the unchanged equilibrium wheel against
+provider commit `4b10cb899c94687cae734980285badb224dc95e6`. The provider extends the v1 SDK
+table from the 40-byte fixed-state prefix to 56 bytes. The consumer accepted
+the larger table, retained ABI version 1 and the exact 376-byte fixed-state
+result, required the model context and fixed-state evaluator, and did not read
+the parameterized tail.
+
+The first replay exposed an exact-size assertion in the test contract. Commit
+`95c55705581808ccf38c7bb57891d16ac4b775aa` changed that assertion to require a
+table size of at least the fixed-state v1 prefix. It kept the result-size and
+required-prefix checks exact. The corrected isolated replay passed all 15
+tests. The scientific validator reproduced the original byte-identical log,
+and the binary audit found no provider implementation material or EOS symbols.
+
+Replay evidence:
+
+- provider wheel: `f92f79c8d6f614660e5c201b7061c9b02b5cd1a25a4ed8c8fee0b59adaabf2bf`
+- provider test receipt: `07447721abaca946c6e9221e7d49e431e13fcb8e6867944f67b6ba8337901480`
+- installed-wheel JUnit XML: `f9241eace37708bd81bae8df95f2b38ded3bee6d372f5016194fecfc248e5916`
+- scientific validation log: `e5419987c68bc91274d6e5a48b75e51abf880a06390f23cea1b5c9ec763b3c5d`
+- binary audit: `a916f6f95ff5157b87c242bc7f41d3aa6b942db42a352cb6c8a467bbed7d79ae`
+- extracted native extension: `673367e6bfc50f249e998ea8110148a461ad9594cde4c7e34e8126b35663f4f9`
+
+This replay changes no candidate capability or authority decision.
 
 ## Authority boundary
 

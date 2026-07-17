@@ -38,6 +38,8 @@ destination:
   repository: ePC-SAFT/ePC-SAFT-equilibrium
   implementation_commit: faba1f9ab9343db333e404dbd2bb1cb9345d798c
   implementation_tree: 9810740850262a6ffb2524afb311a53a83cceb2f
+  compatibility_test_commit: 95c55705581808ccf38c7bb57891d16ac4b775aa
+  compatibility_test_tree: dfcd13e9d7951a5ca8d4d18c0da73efb8216dff7
   package: epcsaft_equilibrium
   distribution: epcsaft-equilibrium
   version: 0.1.0.dev0
@@ -57,6 +59,43 @@ provider_pin:
   coordinate_order: [amount_mol, volume_m3]
   derivative_order: 3
 
+compatibility_replay:
+  provider_commit: 4b10cb899c94687cae734980285badb224dc95e6
+  provider_wheel_path: artifacts/provider-native-sdk-v1/4b10cb8/epcsaft-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
+  provider_wheel_sha256: f92f79c8d6f614660e5c201b7061c9b02b5cd1a25a4ed8c8fee0b59adaabf2bf
+  provider_test_receipt_path: artifacts/provider-native-sdk-v1/4b10cb8/provider-tests.xml
+  provider_test_receipt_sha256: 07447721abaca946c6e9221e7d49e431e13fcb8e6867944f67b6ba8337901480
+  installed_public_header_sha256: 414c257d28322d6be41809a8dc6b98023859dd156202a5205079d674b28b4070
+  capsule: epcsaft.native_sdk.v1
+  abi_version: 1
+  fixed_state_table_prefix_size: 40
+  observed_table_size: 56
+  table_size_rule: observed table size is at least the fixed-state v1 prefix
+  fixed_state_result_size: 376
+  model_context_present: true
+  fixed_state_evaluator_present: true
+  parameterized_tail_consumed: false
+  artifact_root: artifacts/equilibrium-pure-saturation-v1/faba1f9/compatibility-provider-4b10cb8
+  installed_wheel_tests:
+    file: equilibrium-tests.xml
+    sha256: f9241eace37708bd81bae8df95f2b38ded3bee6d372f5016194fecfc248e5916
+    result: 15 passed; 0 errors; 0 failures
+  pytest_output:
+    file: pytest-output.txt
+    sha256: 3466f2957c2b2fa83b6e9818522085e8aedec3d60d1e211e34c33258639fcd77
+  scientific_validation:
+    file: scientific-validation.txt
+    sha256: e5419987c68bc91274d6e5a48b75e51abf880a06390f23cea1b5c9ec763b3c5d
+    comparison: byte-identical to the original candidate validation
+  compatibility_metadata:
+    file: compatibility-metadata.txt
+    sha256: a745ca5709779be37b2c03392e46856aeba9b48ecc5d13a9ca4cc0af7e39dd73
+  binary_audit:
+    file: binary-audit.txt
+    sha256: a916f6f95ff5157b87c242bc7f41d3aa6b942db42a352cb6c8a467bbed7d79ae
+  extracted_extension_sha256: 673367e6bfc50f249e998ea8110148a461ad9594cde4c7e34e8126b35663f4f9
+  result: fixed-state v1 prefix compatible
+
 artifacts:
   root: artifacts/equilibrium-pure-saturation-v1/faba1f9
   equilibrium_wheel:
@@ -75,7 +114,7 @@ artifacts:
   architecture_manifest_sha256: bf08db3cb42b2743cd4d75a3fe31cc483c3520be009eda617c39f7381236298a
   anchor_table_sha256: 9fd4b6384a6c751b93075eb7e6eb923ba9fb10af6b94abf463eb51ad93efd985
   anchor_provenance_sha256: 14682e3f16f721b475db8edf66edf4bf9952e5e5d42fc75697c14c6b01b092b2
-  independent_review_sha256: 6de4919a73f9366e7e5361bc72f5c7c17e329ce0fdde3e992a106352af2200bb
+  independent_review_sha256: 41eb6a7b05868e385386121576cf2ea1586f9e04e2c8103f6bb87566351e7600
 
 capability:
   name: pure-component-saturation-v1
