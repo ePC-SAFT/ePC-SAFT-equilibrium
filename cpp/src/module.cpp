@@ -22,6 +22,9 @@ namespace {
 constexpr std::string_view kFlashFingerprint =
     "sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286";
 constexpr std::size_t kPureSdkTableSize = offsetof(epcsaft_native_sdk_v1, component_count);
+constexpr std::size_t kMixtureSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, evaluate_mixture_phase)
+    + sizeof(epcsaft_evaluate_mixture_phase_v1);
 
 const epcsaft_native_sdk_v1& checked_sdk(const py::capsule& capsule) {
     const char* name = capsule.name();
@@ -49,7 +52,7 @@ const epcsaft_native_sdk_v1& checked_sdk(const py::capsule& capsule) {
 
 const epcsaft_native_sdk_v1& checked_mixture_sdk(const py::capsule& capsule) {
     const epcsaft_native_sdk_v1& sdk = checked_sdk(capsule);
-    if (sdk.table_size < sizeof(epcsaft_native_sdk_v1)) {
+    if (sdk.table_size < kMixtureSdkTableSize) {
         throw py::value_error("provider capsule is missing the mixture SDK tail");
     }
     if (sdk.component_count != 2) {
@@ -68,11 +71,12 @@ const epcsaft_native_sdk_v1& checked_mixture_sdk(const py::capsule& capsule) {
 
 py::dict sdk_info(const py::capsule& capsule) {
     const epcsaft_native_sdk_v1& sdk = checked_sdk(capsule);
-    const bool has_mixture_tail = sdk.table_size >= sizeof(epcsaft_native_sdk_v1);
+    const bool has_mixture_tail = sdk.table_size >= kMixtureSdkTableSize;
     py::dict result;
     result["capsule_name"] = EPCSAFT_NATIVE_SDK_V1_CAPSULE_NAME;
     result["abi_version"] = sdk.abi_version;
     result["table_size"] = sdk.table_size;
+    result["mixture_prefix_size"] = kMixtureSdkTableSize;
     result["result_size"] = sdk.result_size;
     result["has_model_context"] = sdk.model_context != nullptr;
     result["has_evaluate_pure_phase"] = sdk.evaluate_pure_phase != nullptr;

@@ -41,8 +41,22 @@ class _NativeSdkTable(ctypes.Structure):
     )
 
 
+class _ExtendedNativeSdkTable(ctypes.Structure):
+    _fields_ = (*_NativeSdkTable._fields_, ("future_tail", ctypes.c_uint64))
+
+
 _CAPSULE_NAME_BUFFERS: list[ctypes.Array[ctypes.c_char]] = []
-_SDK_TABLES: list[_NativeSdkTable] = []
+_SDK_TABLES: list[ctypes.Structure] = []
+
+
+def _capsule(table: ctypes.Structure) -> object:
+    name_buffer = ctypes.create_string_buffer(b"epcsaft.native_sdk.v1")
+    _CAPSULE_NAME_BUFFERS.append(name_buffer)
+    _SDK_TABLES.append(table)
+    new_capsule = ctypes.pythonapi.PyCapsule_New
+    new_capsule.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p)
+    new_capsule.restype = ctypes.py_object
+    return new_capsule(ctypes.addressof(table), name_buffer, None)
 
 
 def _malformed_mixture_capsule(mixture_result_size: int, evaluator: int | None) -> object:
@@ -59,13 +73,7 @@ def _malformed_mixture_capsule(mixture_result_size: int, evaluator: int | None) 
         mixture_result_size,
         evaluator,
     )
-    name_buffer = ctypes.create_string_buffer(b"epcsaft.native_sdk.v1")
-    _CAPSULE_NAME_BUFFERS.append(name_buffer)
-    _SDK_TABLES.append(table)
-    new_capsule = ctypes.pythonapi.PyCapsule_New
-    new_capsule.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p)
-    new_capsule.restype = ctypes.py_object
-    return new_capsule(ctypes.addressof(table), name_buffer, None)
+    return _capsule(table)
 
 
 def _binary_model() -> epcsaft.EPCSAFT:
@@ -111,6 +119,37 @@ def test_native_mixture_transport_uses_reviewed_sdk_tail() -> None:
         _equilibrium.evaluate_mixture_phase(
             capsule, SOURCE_TEMPERATURE_K, (0.4, 0.6), 1.25e-4, "sha256:wrong"
         )
+
+
+def test_native_mixture_transport_accepts_fixed_prefix_and_extended_v1_tables() -> None:
+    model = _binary_model()
+    provider_capsule = epcsaft.native_sdk(model)
+    get_pointer = ctypes.pythonapi.PyCapsule_GetPointer
+    get_pointer.argtypes = (ctypes.py_object, ctypes.c_char_p)
+    get_pointer.restype = ctypes.c_void_p
+    provider_pointer = get_pointer(provider_capsule, b"epcsaft.native_sdk.v1")
+    provider_table = ctypes.cast(provider_pointer, ctypes.POINTER(_NativeSdkTable)).contents
+    prefix_size = _NativeSdkTable.evaluate_mixture_phase.offset + ctypes.sizeof(ctypes.c_void_p)
+
+    values = [getattr(provider_table, name) for name, _ in _NativeSdkTable._fields_]
+    prefix_table = _NativeSdkTable(*values)
+    prefix_table.table_size = prefix_size
+    extended_table = _ExtendedNativeSdkTable(*values, 0xA5A5A5A5A5A5A5A5)
+    extended_table.table_size = ctypes.sizeof(_ExtendedNativeSdkTable)
+
+    for table in (prefix_table, extended_table):
+        capsule = _capsule(table)
+        info = _equilibrium.sdk_info(capsule)
+        assert info["mixture_prefix_size"] == prefix_size
+        assert info["has_evaluate_mixture_phase"] is True
+        phase = _equilibrium.evaluate_mixture_phase(
+            capsule,
+            SOURCE_TEMPERATURE_K,
+            (0.4, 0.6),
+            1.25e-4,
+            BINARY_FINGERPRINT,
+        )
+        assert phase["parameter_fingerprint"] == BINARY_FINGERPRINT
 
 
 @pytest.mark.parametrize(
