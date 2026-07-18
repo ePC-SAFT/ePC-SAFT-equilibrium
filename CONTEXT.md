@@ -48,7 +48,7 @@ admission. Authority effect remains none and promotion is blocked.
 `local_candidate_promotion_status: blocked`
 
 The approved next design is `docs/designs/2026-07-17-neutral-held-v1.md`.
-It replaces a separately promoted fixed-two-phase route with one bounded
+It replaces the unpromoted fixed-two-phase local candidate with one bounded
 Pereira HELD Stage-I/II/III controller and final `tp_flash` operation. The
 design uses this repository's existing native module, Ipopt installation,
 `ProviderContext`, and the installed provider Helmholtz value/gradient/Hessian

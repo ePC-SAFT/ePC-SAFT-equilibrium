@@ -272,6 +272,10 @@ uv run --isolated --no-project --python 3.13 \
   Ipopt/Python environments, test counts, and known failures.
 - [ ] Run cleanup, `git diff --check`, and final status review. Commit only a
   green local candidate and stop for independent review and validation.
+- [ ] After the complete local cutover commit, obtain permanent-lab review of
+  the whole candidate, including proof that `two_phase_flash` and its displaced
+  surface were removed without an alias. Internal checkpoint reviews do not
+  substitute for this final post-cutover candidate review.
 
 ## Completion boundary
 
