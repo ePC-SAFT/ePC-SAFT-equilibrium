@@ -29,6 +29,7 @@ MAY_ROW_011_PRESSURE_PA = 6_691_000.0
 MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE = 0.5627
 
 STAGE_I_PROFILE = "held-stage-i-binary-v1"
+STAGE_II_PROFILE = "held-stage-ii-binary-v1"
 TPD_NEGATIVE_THRESHOLD = -1.0e-8
 OUTER_NUMERICAL_FACTOR = 256.0
 
@@ -199,6 +200,277 @@ def test_held_stage_ii_initial_endpoint_cuts_bracket_may_row_001_feed(
     assert result["outer"]["status"] == "finite"
 
 
+def test_held_stage_ii_lower_exact_derivatives_at_may_row_001(
+    binary_capsule: object,
+    unstable_stage_i: dict[str, object],
+) -> None:
+    reference = unstable_stage_i["reference"]
+    multiplier = reference["gradient"][0]
+    x_methane = MAY_ROW_001_VAPOR_X_METHANE
+    log_volume = math.log(1.0 / 15_000.0)
+    direction = (0.03, -0.04)
+    step = 3.0e-5
+
+    def evaluate(scale: float) -> dict[str, object]:
+        return _equilibrium._held_evaluate_lower(
+            binary_capsule,
+            MAY_ROW_001_TEMPERATURE_K,
+            MAY_ROW_001_PRESSURE_PA,
+            MAY_ROW_001_FEED_X_METHANE,
+            multiplier,
+            x_methane + scale * direction[0],
+            log_volume + scale * direction[1],
+            BINARY_FINGERPRINT,
+        )
+
+    lower = evaluate(-step)
+    center = evaluate(0.0)
+    upper = evaluate(step)
+    state = _equilibrium._held_evaluate_state(
+        binary_capsule,
+        MAY_ROW_001_TEMPERATURE_K,
+        MAY_ROW_001_PRESSURE_PA,
+        x_methane,
+        log_volume,
+        BINARY_FINGERPRINT,
+    )
+    assert center["objective"] == pytest.approx(
+        state["g_bar"] + multiplier * (MAY_ROW_001_FEED_X_METHANE - x_methane),
+        rel=2.0e-15,
+        abs=2.0e-15,
+    )
+    assert center["gradient"] == pytest.approx(
+        (state["gradient"][0] - multiplier, state["gradient"][1])
+    )
+    assert center["hessian"] == pytest.approx(state["hessian"])
+    objective_directional = (upper["objective"] - lower["objective"]) / (2.0 * step)
+    assert objective_directional == pytest.approx(
+        sum(value * delta for value, delta in zip(center["gradient"], direction, strict=True)),
+        rel=2.0e-8,
+        abs=2.0e-10,
+    )
+    for row in range(2):
+        gradient_directional = (upper["gradient"][row] - lower["gradient"][row]) / (2.0 * step)
+        hessian_directional = sum(
+            center["hessian"][2 * row + column] * direction[column] for column in range(2)
+        )
+        assert gradient_directional == pytest.approx(
+            hessian_directional,
+            rel=2.0e-8,
+            abs=2.0e-10,
+        )
+
+
+def test_held_stage_ii_lower_search_is_deterministic_and_stops_below_upper(
+    binary_capsule: object,
+    unstable_stage_i: dict[str, object],
+) -> None:
+    initialization = _equilibrium._held_stage_ii_initial_cuts(
+        binary_capsule,
+        MAY_ROW_001_TEMPERATURE_K,
+        MAY_ROW_001_PRESSURE_PA,
+        MAY_ROW_001_FEED_X_METHANE,
+        BINARY_FINGERPRINT,
+    )
+    result = _equilibrium._held_stage_ii_lower_search(
+        binary_capsule,
+        MAY_ROW_001_TEMPERATURE_K,
+        MAY_ROW_001_PRESSURE_PA,
+        MAY_ROW_001_FEED_X_METHANE,
+        initialization["outer"]["multiplier"],
+        unstable_stage_i["reference"]["g_bar"],
+        [(cut["x_methane"], cut["log_volume"]) for cut in initialization["cuts"]],
+        BINARY_FINGERPRINT,
+    )
+
+    assert result["status"] == "below_upper_found"
+    assert 1 <= result["starts_completed"] <= 20
+    assert result["accepted_cuts"]
+    assert result["accepted_cuts"][-1]["objective"] <= result["upper_bound"]
+    assert result["attempts"][-1]["accepted"] is True
+
+
+def test_held_stage_ii_lower_search_retains_valid_non_tight_cuts_and_cap(
+    binary_capsule: object,
+) -> None:
+    initialization = _equilibrium._held_stage_ii_initial_cuts(
+        binary_capsule,
+        MAY_ROW_001_TEMPERATURE_K,
+        MAY_ROW_001_PRESSURE_PA,
+        MAY_ROW_001_FEED_X_METHANE,
+        BINARY_FINGERPRINT,
+    )
+    multiplier = initialization["outer"]["multiplier"]
+    result = _equilibrium._held_stage_ii_lower_search(
+        binary_capsule,
+        MAY_ROW_001_TEMPERATURE_K,
+        MAY_ROW_001_PRESSURE_PA,
+        MAY_ROW_001_FEED_X_METHANE,
+        multiplier,
+        -1.0e6,
+        [(cut["x_methane"], cut["log_volume"]) for cut in initialization["cuts"]],
+        BINARY_FINGERPRINT,
+    )
+
+    assert result["status"] == "search_exhausted"
+    assert result["starts_completed"] == 20
+    assert len(result["planned_starts"]) == 20
+    assert [start["class"] for start in result["planned_starts"]] == [
+        ("shifted_previous", "component_near", "stratified")[index % 3] for index in range(20)
+    ]
+    assert result["accepted_cuts"]
+    for cut in result["accepted_cuts"]:
+        assert cut["objective"] == pytest.approx(
+            cut["g_bar"] + multiplier * (MAY_ROW_001_FEED_X_METHANE - cut["x_methane"]),
+            rel=2.0e-15,
+            abs=2.0e-15,
+        )
+    objectives = [cut["objective"] for cut in result["accepted_cuts"]]
+    assert max(objectives) > min(objectives) + 1.0e-6
+
+
+def test_held_stage_ii_candidate_lifecycle_deduplicates_by_lowest_objective() -> None:
+    result = _equilibrium._held_stage_ii_candidates(
+        0.5,
+        0.005,
+        0.0,
+        [
+            ("duplicate_higher", 0.005, 0.2, 1.0e-3, 0.0),
+            ("duplicate_lower", 0.001, 0.2005, 1.0005e-3, 0.0),
+            ("second", 0.0, 0.8, 1.0e-2, 0.0),
+        ],
+    )
+
+    assert result["status"] == "stage_iii_ready"
+    assert result["candidate_ids"] == ["duplicate_lower", "second"]
+    assert result["rejections"] == [
+        {
+            "identity": "duplicate_higher",
+            "reason": "duplicate_replaced_by_lower_objective",
+        }
+    ]
+
+
+def test_held_stage_ii_candidate_lifecycle_rejects_a_third_distinct_candidate() -> None:
+    result = _equilibrium._held_stage_ii_candidates(
+        0.5,
+        0.005,
+        0.0,
+        [
+            ("first", 0.0, 0.2, 1.0e-3, 0.0),
+            ("second", 0.0, 0.5, 1.0e-4, 0.0),
+            ("third", 0.0, 0.8, 1.0e-2, 0.0),
+        ],
+    )
+
+    assert result["status"] == "scope_exceeded"
+    assert result["candidate_ids"] == ["first", "second", "third"]
+
+
+@pytest.mark.parametrize(
+    ("major_iterations", "lower_starts", "lower_satisfied"),
+    [
+        pytest.param(100, 0, True, id="major-iteration-cap"),
+        pytest.param(0, 20, False, id="lower-start-cap"),
+    ],
+)
+def test_held_stage_ii_resource_caps_fail_closed(
+    major_iterations: int,
+    lower_starts: int,
+    lower_satisfied: bool,
+) -> None:
+    assert (
+        _equilibrium._held_stage_ii_budget_status(
+            major_iterations,
+            lower_starts,
+            lower_satisfied,
+        )
+        == "search_exhausted"
+    )
+
+
+def test_held_stage_ii_returns_two_distinct_candidates_with_monotone_bounds(
+    unstable_stage_ii: dict[str, object],
+) -> None:
+    assert unstable_stage_ii["outcome"] == "stage_iii_ready"
+    assert unstable_stage_ii["search_status"] == "two_candidates"
+    assert unstable_stage_ii["search_profile"] == STAGE_II_PROFILE
+    assert unstable_stage_ii["globality_certificate"] == "not_guaranteed"
+    assert 1 <= unstable_stage_ii["major_iterations"] <= 100
+    candidates = unstable_stage_ii["candidates"]
+    assert len(candidates) == 2
+    relative_density_difference = abs(
+        1.0 / candidates[0]["volume_m3"] - 1.0 / candidates[1]["volume_m3"]
+    ) / max(1.0 / candidates[0]["volume_m3"], 1.0 / candidates[1]["volume_m3"])
+    assert (
+        abs(candidates[0]["x_methane"] - candidates[1]["x_methane"]) >= 1.0e-3
+        or relative_density_difference >= 1.0e-3
+    )
+
+    trace = unstable_stage_ii["trace"]
+    assert len(trace) == unstable_stage_ii["major_iterations"]
+    upper_bounds = [entry["upper_bound"] for entry in trace]
+    assert upper_bounds == pytest.approx(
+        [min(upper_bounds[: index + 1]) for index in range(len(upper_bounds))],
+        rel=0.0,
+        abs=2.0e-12,
+    )
+    assert all(entry["active_cut_ids"] for entry in trace)
+    assert all(1 <= entry["lower_starts_completed"] <= 20 for entry in trace)
+    retained_ids = {cut["identity"] for cut in unstable_stage_ii["cuts"]}
+    assert all(cut_id in retained_ids for entry in trace for cut_id in entry["accepted_cut_ids"])
+    for cut in unstable_stage_ii["cuts"]:
+        assert cut["intercept"] == pytest.approx(cut["g_bar"])
+        assert cut["slope"] == pytest.approx(MAY_ROW_001_FEED_X_METHANE - cut["x_methane"])
+    assert any(
+        rejection["reason"] == "above_upper" for entry in trace for rejection in entry["rejections"]
+    )
+
+
+def test_held_stage_ii_does_not_start_after_stage_i_no_negative(
+    binary_capsule: object,
+) -> None:
+    result = _equilibrium._held_stage_ii(
+        binary_capsule,
+        MAY_ROW_011_TEMPERATURE_K,
+        MAY_ROW_011_PRESSURE_PA,
+        MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
+        BINARY_FINGERPRINT,
+    )
+
+    assert result["outcome"] == "not_required"
+    assert result["search_status"] == "stage_i_no_negative"
+    assert result["stage_i_outcome"] == "no_negative_found"
+    assert result["major_iterations"] == 0
+    assert result["endpoint_attempts"] == []
+    assert result["cuts"] == []
+    assert result["trace"] == []
+
+
+def test_held_stage_ii_lower_callback_failures_remain_diagnostic(
+    binary_capsule: object,
+) -> None:
+    result = _equilibrium._held_stage_ii_lower_search(
+        binary_capsule,
+        MAY_ROW_001_TEMPERATURE_K,
+        MAY_ROW_001_PRESSURE_PA,
+        MAY_ROW_001_FEED_X_METHANE,
+        0.0,
+        0.0,
+        [],
+        "sha256:wrong-provider-identity",
+    )
+
+    assert result["status"] == "search_exhausted"
+    assert result["starts_completed"] == 20
+    assert result["accepted_cuts"] == []
+    assert all(not attempt["accepted"] for attempt in result["attempts"])
+    assert all(
+        attempt["solver_status"] or attempt["callback_error"] for attempt in result["attempts"]
+    )
+    assert all(attempt["callback_error"] for attempt in result["attempts"])
+
+
 @pytest.fixture(scope="module")
 def binary_capsule() -> object:
     return epcsaft.native_sdk(_binary_model())
@@ -207,6 +479,17 @@ def binary_capsule() -> object:
 @pytest.fixture(scope="module")
 def unstable_stage_i(binary_capsule: object) -> dict[str, object]:
     return _equilibrium._held_stage_i(
+        binary_capsule,
+        MAY_ROW_001_TEMPERATURE_K,
+        MAY_ROW_001_PRESSURE_PA,
+        MAY_ROW_001_FEED_X_METHANE,
+        BINARY_FINGERPRINT,
+    )
+
+
+@pytest.fixture(scope="module")
+def unstable_stage_ii(binary_capsule: object) -> dict[str, object]:
+    return _equilibrium._held_stage_ii(
         binary_capsule,
         MAY_ROW_001_TEMPERATURE_K,
         MAY_ROW_001_PRESSURE_PA,

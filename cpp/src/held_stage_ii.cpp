@@ -26,6 +26,11 @@ constexpr double kVolumeUpperM3PerMol = 1.0e-1;
 constexpr double kLocalPhysicalTolerance = 1.0e-8;
 constexpr double kBoundMargin = 1.0e-7;
 constexpr double kRelativeDensitySeparation = 1.0e-3;
+constexpr double kCandidateGapTolerance = 1.0e-2;
+constexpr double kCandidateMultiplierTolerance = 0.5;
+constexpr double kCandidateCompositionSeparation = 1.0e-3;
+constexpr int kStageIIMajorIterations = 100;
+constexpr int kStageIILowerStarts = 20;
 constexpr int kIpoptIterations = 300;
 
 double numerical_allowance(double left, double right) {
@@ -399,6 +404,73 @@ bool density_is_distinct(
     );
 }
 
+std::string indexed_role(const std::string& start_class, int index) {
+    return start_class + "_" + (index < 10 ? "0" : "") + std::to_string(index);
+}
+
+std::vector<HeldStageIIStart> make_lower_starts(
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    const std::vector<HeldStateEvaluation>& previous_states
+) {
+    const double liquid_log_volume = std::log(1.0 / 20'000.0);
+    const double vapor_log_volume = std::log(std::clamp(
+        2.0 * kGasConstantJPerMolK * temperature_k / pressure_pa,
+        1.01 * kVolumeLowerM3PerMol,
+        0.99 * kVolumeUpperM3PerMol
+    ));
+    constexpr std::array<double, 7> stratified_compositions{
+        0.1, 0.9, 0.25, 0.75, 0.4, 0.6, 0.5,
+    };
+    std::vector<HeldStageIIStart> starts;
+    starts.reserve(kStageIILowerStarts);
+    for (int index = 0; index < kStageIILowerStarts; ++index) {
+        const int group = index / 3;
+        if (index % 3 == 0) {
+            const HeldStateEvaluation* previous = previous_states.empty()
+                ? nullptr
+                : &previous_states[
+                      previous_states.size() - 1
+                      - static_cast<std::size_t>(group) % previous_states.size()
+                  ];
+            const double base_x = previous == nullptr ? feed_x_methane : previous->x_methane;
+            const double base_log_volume =
+                previous == nullptr ? liquid_log_volume : previous->log_volume;
+            const double shift = group % 2 == 0 ? 0.01 : -0.01;
+            starts.push_back({
+                "shifted_previous",
+                indexed_role("shifted_previous", index),
+                std::clamp(base_x + shift, kCompositionLower, kCompositionUpper),
+                base_log_volume,
+            });
+        } else if (index % 3 == 1) {
+            starts.push_back({
+                "component_near",
+                indexed_role("component_near", index),
+                group % 2 == 0 ? 1.0 - 1.0e-4 : 1.0e-4,
+                group % 2 == 0 ? liquid_log_volume : vapor_log_volume,
+            });
+        } else {
+            starts.push_back({
+                "stratified",
+                indexed_role("stratified", index),
+                stratified_compositions[static_cast<std::size_t>(group)
+                                        % stratified_compositions.size()],
+                group % 2 == 0 ? vapor_log_volume : liquid_log_volume,
+            });
+        }
+    }
+    return starts;
+}
+
+double relative_density_difference(double left_volume, double right_volume) {
+    const double left_density = 1.0 / left_volume;
+    const double right_density = 1.0 / right_volume;
+    return std::abs(left_density - right_density)
+        / std::max(left_density, right_density);
+}
+
 }  // namespace
 
 HeldLowerEvaluation evaluate_held_lower(
@@ -643,6 +715,368 @@ HeldStageIIInitialization initialize_held_stage_ii_cuts(
         return result;
     }
     result.status = "initialized";
+    return result;
+}
+
+HeldStageIILowerSearch search_held_stage_ii_lower(
+    const ProviderContext& provider,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    double multiplier,
+    double upper_bound,
+    const std::vector<HeldStateEvaluation>& previous_states,
+    const std::string& identity_prefix
+) {
+    HeldStageIILowerSearch result;
+    result.upper_bound = upper_bound;
+    result.multiplier = multiplier;
+    if (!std::isfinite(temperature_k) || !std::isfinite(pressure_pa)
+        || !std::isfinite(feed_x_methane) || !std::isfinite(multiplier)
+        || !std::isfinite(upper_bound) || temperature_k <= 0.0 || pressure_pa <= 0.0
+        || feed_x_methane <= kCompositionLower
+        || feed_x_methane >= kCompositionUpper || identity_prefix.empty()) {
+        result.status = "invalid_input";
+        return result;
+    }
+    result.planned_starts = make_lower_starts(
+        temperature_k,
+        pressure_pa,
+        feed_x_methane,
+        previous_states
+    );
+    const std::array<double, 2> lower{
+        kCompositionLower,
+        std::log(kVolumeLowerM3PerMol),
+    };
+    const std::array<double, 2> upper{
+        kCompositionUpper,
+        std::log(kVolumeUpperM3PerMol),
+    };
+    for (std::size_t index = 0; index < result.planned_starts.size(); ++index) {
+        const HeldStageIIStart& start = result.planned_starts[index];
+        LowerRun run = run_lower_ipopt(
+            provider,
+            temperature_k,
+            pressure_pa,
+            feed_x_methane,
+            multiplier,
+            {start.x_methane, start.log_volume},
+            lower,
+            upper
+        );
+        HeldStageIIAttempt attempt;
+        attempt.role = start.role;
+        attempt.initial_guess = run.initial_guess;
+        attempt.solver_converged = run.solver_converged;
+        attempt.solver_status = run.solver_status;
+        attempt.iterations = run.iterations;
+        attempt.callback_error = run.callback_error;
+        HeldLowerEvaluation evaluation;
+        if (run.solver_converged && run.callback_error.empty()) {
+            try {
+                evaluation = evaluate_held_lower(
+                    provider,
+                    temperature_k,
+                    pressure_pa,
+                    feed_x_methane,
+                    multiplier,
+                    run.variables[0],
+                    run.variables[1]
+                );
+                attempt.accepted = locally_accepts(run, evaluation);
+                if (attempt.accepted) {
+                    attempt.objective = evaluation.objective;
+                    attempt.pressure_stationarity_relative =
+                        evaluation.state.pressure_stationarity_relative;
+                    const std::string identity = identity_prefix + "_s"
+                        + (index < 10 ? "0" : "") + std::to_string(index);
+                    HeldOuterCut outer{
+                        identity,
+                        evaluation.state.g_bar,
+                        feed_x_methane - evaluation.state.x_methane,
+                    };
+                    result.accepted_cuts.push_back({
+                        identity,
+                        "",
+                        std::move(evaluation.state),
+                        std::move(outer),
+                    });
+                } else {
+                    attempt.callback_error = "local physical acceptance failed";
+                }
+            } catch (const std::exception& error) {
+                attempt.callback_error = error.what();
+            }
+        }
+        result.attempts.push_back(std::move(attempt));
+        ++result.starts_completed;
+        if (!result.accepted_cuts.empty()
+            && result.accepted_cuts.back().outer.intercept
+                    + multiplier * result.accepted_cuts.back().outer.slope
+                <= upper_bound) {
+            result.status = "below_upper_found";
+            return result;
+        }
+    }
+    result.status = "search_exhausted";
+    return result;
+}
+
+HeldStageIICandidateResult select_held_stage_ii_candidates(
+    double feed_x_methane,
+    double upper_bound,
+    double multiplier,
+    const std::vector<HeldCandidateInput>& points
+) {
+    HeldStageIICandidateResult result;
+    for (const HeldCandidateInput& point : points) {
+        const double lower_objective =
+            point.g_bar + multiplier * (feed_x_methane - point.x_methane);
+        if (!std::isfinite(lower_objective) || !std::isfinite(point.volume_m3)
+            || point.volume_m3 <= 0.0) {
+            result.rejections.push_back({point.identity, "invalid_point"});
+            continue;
+        }
+        const double upper_lower_gap = upper_bound - lower_objective;
+        // A pre-stop local point remains a valid outer cut, but only a lower
+        // point satisfying the declared L <= UBD inner-stop condition may
+        // enter the candidate set.
+        if (upper_lower_gap < -numerical_allowance(upper_bound, lower_objective)) {
+            result.rejections.push_back({point.identity, "above_upper"});
+            continue;
+        }
+        if (upper_lower_gap > kCandidateGapTolerance) {
+            result.rejections.push_back({point.identity, "upper_lower_gap"});
+            continue;
+        }
+        const double multiplier_residual =
+            std::abs(point.composition_gradient - multiplier)
+            / std::max(std::abs(multiplier), 1.0);
+        if (multiplier_residual > kCandidateMultiplierTolerance) {
+            result.rejections.push_back({point.identity, "multiplier_residual"});
+            continue;
+        }
+
+        HeldStageIICandidate candidate{
+            point.identity,
+            lower_objective,
+            point.x_methane,
+            point.volume_m3,
+        };
+        auto duplicate = std::find_if(
+            result.candidates.begin(),
+            result.candidates.end(),
+            [&candidate](const HeldStageIICandidate& retained) {
+                return std::abs(candidate.x_methane - retained.x_methane)
+                        < kCandidateCompositionSeparation
+                    && relative_density_difference(
+                           candidate.volume_m3,
+                           retained.volume_m3
+                       )
+                        < kRelativeDensitySeparation;
+            }
+        );
+        if (duplicate == result.candidates.end()) {
+            result.candidates.push_back(std::move(candidate));
+            continue;
+        }
+        if (candidate.objective < duplicate->objective
+            || (candidate.objective == duplicate->objective
+                && candidate.identity < duplicate->identity)) {
+            result.rejections.push_back({
+                duplicate->identity,
+                "duplicate_replaced_by_lower_objective",
+            });
+            *duplicate = std::move(candidate);
+        } else {
+            result.rejections.push_back({
+                candidate.identity,
+                "duplicate_of_lower_objective",
+            });
+        }
+    }
+    if (result.candidates.size() > 2) {
+        result.status = "scope_exceeded";
+    } else if (result.candidates.size() == 2) {
+        result.status = "stage_iii_ready";
+    }
+    return result;
+}
+
+std::string held_stage_ii_budget_status(
+    int major_iterations,
+    int lower_starts,
+    bool lower_satisfied
+) {
+    if (major_iterations >= kStageIIMajorIterations
+        || (!lower_satisfied && lower_starts >= kStageIILowerStarts)) {
+        return "search_exhausted";
+    }
+    return "searching";
+}
+
+HeldStageIIResult solve_held_stage_ii(
+    const ProviderContext& provider,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane
+) {
+    HeldStageIIResult result;
+    const HeldStageIResult stage_i = solve_held_stage_i(
+        provider,
+        temperature_k,
+        pressure_pa,
+        feed_x_methane
+    );
+    result.stage_i_outcome = stage_i.outcome;
+    result.stage_i_search_status = stage_i.search_status;
+    result.best_tpd = stage_i.best_tpd;
+    if (stage_i.outcome == "no_negative_found") {
+        result.outcome = "not_required";
+        result.search_status = "stage_i_no_negative";
+        return result;
+    }
+    if (stage_i.outcome != "negative_tpd") {
+        result.search_status = "stage_i_indeterminate";
+        result.failure_reason = stage_i.failure_reason;
+        return result;
+    }
+
+    HeldStageIIInitialization initialization = initialize_held_stage_ii_cuts(
+        provider,
+        temperature_k,
+        pressure_pa,
+        feed_x_methane
+    );
+    result.endpoint_attempts = std::move(initialization.attempts);
+    result.cuts = std::move(initialization.cuts);
+    if (initialization.status != "initialized") {
+        result.search_status = "endpoint_initialization_failed";
+        result.failure_reason = initialization.failure_reason;
+        return result;
+    }
+    result.upper_bound = stage_i.reference.g_bar;
+    result.search_status = "searching";
+
+    for (int major_iteration = 0; major_iteration < kStageIIMajorIterations;
+         ++major_iteration) {
+        std::vector<HeldOuterCut> outer_cuts;
+        outer_cuts.reserve(result.cuts.size());
+        for (const HeldStageIICut& cut : result.cuts) {
+            outer_cuts.push_back(cut.outer);
+        }
+        const HeldOuterResult outer = solve_held_outer_envelope(outer_cuts);
+        if (outer.status != "finite") {
+            result.search_status = "outer_failed";
+            result.failure_reason = outer.failure_reason;
+            return result;
+        }
+        result.upper_bound = std::min(result.upper_bound, outer.value);
+
+        std::vector<HeldStateEvaluation> previous_states;
+        previous_states.reserve(result.cuts.size());
+        for (const HeldStageIICut& cut : result.cuts) {
+            previous_states.push_back(cut.state);
+        }
+        const std::string identity_prefix =
+            "major_" + (major_iteration < 10 ? std::string("0") : std::string())
+            + std::to_string(major_iteration);
+        HeldStageIILowerSearch lower = search_held_stage_ii_lower(
+            provider,
+            temperature_k,
+            pressure_pa,
+            feed_x_methane,
+            outer.multiplier,
+            result.upper_bound,
+            previous_states,
+            identity_prefix
+        );
+        std::vector<std::string> accepted_cut_ids;
+        accepted_cut_ids.reserve(lower.accepted_cuts.size());
+        for (HeldStageIICut& cut : lower.accepted_cuts) {
+            accepted_cut_ids.push_back(cut.identity);
+            result.cuts.push_back(std::move(cut));
+        }
+
+        std::vector<HeldCandidateInput> candidate_points;
+        candidate_points.reserve(result.cuts.size());
+        for (const HeldStageIICut& cut : result.cuts) {
+            candidate_points.push_back({
+                cut.identity,
+                cut.state.g_bar,
+                cut.state.x_methane,
+                cut.state.volume_m3,
+                cut.state.gradient[0],
+            });
+        }
+        const HeldStageIICandidateResult selection = select_held_stage_ii_candidates(
+            feed_x_methane,
+            result.upper_bound,
+            outer.multiplier,
+            candidate_points
+        );
+        HeldStageIITrace trace;
+        trace.major_iteration = major_iteration;
+        trace.outer_value = outer.value;
+        trace.upper_bound = result.upper_bound;
+        trace.multiplier = outer.multiplier;
+        trace.active_cut_ids = outer.active_cut_ids;
+        trace.accepted_cut_ids = std::move(accepted_cut_ids);
+        trace.lower_starts_completed = lower.starts_completed;
+        trace.rejections = selection.rejections;
+        for (const HeldStageIICandidate& candidate : selection.candidates) {
+            trace.candidate_ids.push_back(candidate.identity);
+        }
+        result.trace.push_back(std::move(trace));
+        ++result.major_iterations;
+
+        if (held_stage_ii_budget_status(
+                result.major_iterations,
+                lower.starts_completed,
+                lower.status == "below_upper_found"
+            )
+            == "search_exhausted") {
+            result.outcome = "search_exhausted";
+            result.search_status = "search_exhausted";
+            result.failure_reason = lower.status == "search_exhausted"
+                ? "Stage II lower-search start budget exhausted"
+                : "Stage II major-iteration budget exhausted";
+            return result;
+        }
+        if (selection.status == "scope_exceeded") {
+            result.outcome = "scope_exceeded";
+            result.search_status = "third_candidate";
+            result.failure_reason = "Stage II found more than two distinct candidates";
+            return result;
+        }
+        if (selection.status == "stage_iii_ready") {
+            for (const HeldStageIICandidate& candidate : selection.candidates) {
+                const auto retained = std::find_if(
+                    result.cuts.begin(),
+                    result.cuts.end(),
+                    [&candidate](const HeldStageIICut& cut) {
+                        return cut.identity == candidate.identity;
+                    }
+                );
+                if (retained != result.cuts.end()) {
+                    result.candidates.push_back(*retained);
+                }
+            }
+            if (result.candidates.size() != 2) {
+                result.search_status = "candidate_lookup_failed";
+                result.failure_reason = "Stage II candidate diagnostics lost a retained cut";
+                return result;
+            }
+            result.outcome = "stage_iii_ready";
+            result.search_status = "two_candidates";
+            return result;
+        }
+    }
+
+    result.outcome = "search_exhausted";
+    result.search_status = "search_exhausted";
+    result.failure_reason = "Stage II major-iteration budget exhausted";
     return result;
 }
 

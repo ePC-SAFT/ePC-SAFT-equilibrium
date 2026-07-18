@@ -161,6 +161,13 @@ struct HeldStageIIAttempt {
     std::string callback_error;
 };
 
+struct HeldStageIIStart {
+    std::string start_class;
+    std::string role;
+    double x_methane = 0.0;
+    double log_volume = 0.0;
+};
+
 struct HeldStageIICut {
     std::string identity;
     std::string endpoint;
@@ -176,11 +183,106 @@ struct HeldStageIIInitialization {
     HeldOuterResult outer{};
 };
 
+struct HeldStageIILowerSearch {
+    std::string status = "search_exhausted";
+    double upper_bound = 0.0;
+    double multiplier = 0.0;
+    std::vector<HeldStageIIStart> planned_starts;
+    std::vector<HeldStageIIAttempt> attempts;
+    std::vector<HeldStageIICut> accepted_cuts;
+    int starts_completed = 0;
+};
+
+struct HeldCandidateInput {
+    std::string identity;
+    double g_bar = 0.0;
+    double x_methane = 0.0;
+    double volume_m3 = 0.0;
+    double composition_gradient = 0.0;
+};
+
+struct HeldStageIICandidate {
+    std::string identity;
+    double objective = 0.0;
+    double x_methane = 0.0;
+    double volume_m3 = 0.0;
+};
+
+struct HeldStageIIRejection {
+    std::string identity;
+    std::string reason;
+};
+
+struct HeldStageIICandidateResult {
+    std::string status = "insufficient_candidates";
+    std::vector<HeldStageIICandidate> candidates;
+    std::vector<HeldStageIIRejection> rejections;
+};
+
+struct HeldStageIITrace {
+    int major_iteration = 0;
+    double outer_value = 0.0;
+    double upper_bound = 0.0;
+    double multiplier = 0.0;
+    std::vector<std::string> active_cut_ids;
+    std::vector<std::string> accepted_cut_ids;
+    int lower_starts_completed = 0;
+    std::vector<std::string> candidate_ids;
+    std::vector<HeldStageIIRejection> rejections;
+};
+
+struct HeldStageIIResult {
+    std::string outcome = "indeterminate";
+    std::string search_status = "not_started";
+    std::string search_profile = "held-stage-ii-binary-v1";
+    std::string failure_reason;
+    std::string stage_i_outcome;
+    std::string stage_i_search_status;
+    double best_tpd = 0.0;
+    int major_iterations = 0;
+    double upper_bound = 0.0;
+    std::vector<HeldStageIIAttempt> endpoint_attempts;
+    std::vector<HeldStageIICut> cuts;
+    std::vector<HeldStageIICut> candidates;
+    std::vector<HeldStageIITrace> trace;
+};
+
 [[nodiscard]] HeldOuterResult solve_held_outer_envelope(
     const std::vector<HeldOuterCut>& cuts
 );
 
 [[nodiscard]] HeldStageIIInitialization initialize_held_stage_ii_cuts(
+    const ProviderContext& provider,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane
+);
+
+[[nodiscard]] HeldStageIILowerSearch search_held_stage_ii_lower(
+    const ProviderContext& provider,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    double multiplier,
+    double upper_bound,
+    const std::vector<HeldStateEvaluation>& previous_states,
+    const std::string& identity_prefix = "lower"
+);
+
+[[nodiscard]] HeldStageIICandidateResult select_held_stage_ii_candidates(
+    double feed_x_methane,
+    double upper_bound,
+    double multiplier,
+    const std::vector<HeldCandidateInput>& points
+);
+
+[[nodiscard]] std::string held_stage_ii_budget_status(
+    int major_iterations,
+    int lower_starts,
+    bool lower_satisfied
+);
+
+[[nodiscard]] HeldStageIIResult solve_held_stage_ii(
     const ProviderContext& provider,
     double temperature_k,
     double pressure_pa,

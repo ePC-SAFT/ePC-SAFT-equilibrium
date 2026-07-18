@@ -398,6 +398,254 @@ py::dict held_stage_ii_initial_cuts(
     return result;
 }
 
+py::dict held_evaluate_lower(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    double multiplier,
+    double x_methane,
+    double log_volume,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule),
+        expected_fingerprint
+    );
+    const epcsaft_equilibrium::HeldLowerEvaluation evaluation =
+        epcsaft_equilibrium::evaluate_held_lower(
+            provider,
+            temperature_k,
+            pressure_pa,
+            feed_x_methane,
+            multiplier,
+            x_methane,
+            log_volume
+        );
+    py::dict result;
+    result["objective"] = evaluation.objective;
+    result["gradient"] = evaluation.gradient;
+    result["hessian"] = evaluation.hessian;
+    result["state"] = held_state_to_dict(evaluation.state);
+    return result;
+}
+
+py::dict held_stage_ii_lower_search(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    double multiplier,
+    double upper_bound,
+    const std::vector<std::array<double, 2>>& raw_previous_states,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule),
+        expected_fingerprint
+    );
+    std::vector<epcsaft_equilibrium::HeldStateEvaluation> previous_states;
+    previous_states.reserve(raw_previous_states.size());
+    for (const auto& values : raw_previous_states) {
+        epcsaft_equilibrium::HeldStateEvaluation state;
+        state.x_methane = values[0];
+        state.log_volume = values[1];
+        previous_states.push_back(std::move(state));
+    }
+    epcsaft_equilibrium::HeldStageIILowerSearch solve;
+    {
+        py::gil_scoped_release release;
+        solve = epcsaft_equilibrium::search_held_stage_ii_lower(
+            provider,
+            temperature_k,
+            pressure_pa,
+            feed_x_methane,
+            multiplier,
+            upper_bound,
+            previous_states
+        );
+    }
+    py::list planned_starts;
+    for (const auto& start : solve.planned_starts) {
+        py::dict item;
+        item["class"] = start.start_class;
+        item["role"] = start.role;
+        item["x_methane"] = start.x_methane;
+        item["log_volume"] = start.log_volume;
+        planned_starts.append(std::move(item));
+    }
+    py::list attempts;
+    for (const auto& attempt : solve.attempts) {
+        py::dict item;
+        item["role"] = attempt.role;
+        item["initial_guess"] = attempt.initial_guess;
+        item["solver_converged"] = attempt.solver_converged;
+        item["solver_status"] = attempt.solver_status;
+        item["iterations"] = attempt.iterations;
+        item["accepted"] = attempt.accepted;
+        item["objective"] = attempt.objective;
+        item["pressure_stationarity_relative"] =
+            attempt.pressure_stationarity_relative;
+        item["callback_error"] = attempt.callback_error;
+        attempts.append(std::move(item));
+    }
+    py::list cuts;
+    for (const auto& cut : solve.accepted_cuts) {
+        py::dict item;
+        item["identity"] = cut.identity;
+        item["g_bar"] = cut.state.g_bar;
+        item["x_methane"] = cut.state.x_methane;
+        item["log_volume"] = cut.state.log_volume;
+        item["volume_m3"] = cut.state.volume_m3;
+        item["composition_gradient"] = cut.state.gradient[0];
+        item["intercept"] = cut.outer.intercept;
+        item["slope"] = cut.outer.slope;
+        item["objective"] = cut.outer.intercept + multiplier * cut.outer.slope;
+        item["pressure_stationarity_relative"] =
+            cut.state.pressure_stationarity_relative;
+        cuts.append(std::move(item));
+    }
+    py::dict result;
+    result["status"] = solve.status;
+    result["upper_bound"] = solve.upper_bound;
+    result["multiplier"] = solve.multiplier;
+    result["starts_completed"] = solve.starts_completed;
+    result["planned_starts"] = planned_starts;
+    result["attempts"] = attempts;
+    result["accepted_cuts"] = cuts;
+    return result;
+}
+
+py::dict held_stage_ii_candidates(
+    double feed_x_methane,
+    double upper_bound,
+    double multiplier,
+    const std::vector<std::tuple<std::string, double, double, double, double>>&
+        raw_points
+) {
+    std::vector<epcsaft_equilibrium::HeldCandidateInput> points;
+    points.reserve(raw_points.size());
+    for (const auto& [identity, g_bar, x_methane, volume_m3, gradient] : raw_points) {
+        points.push_back({identity, g_bar, x_methane, volume_m3, gradient});
+    }
+    const epcsaft_equilibrium::HeldStageIICandidateResult solve =
+        epcsaft_equilibrium::select_held_stage_ii_candidates(
+            feed_x_methane,
+            upper_bound,
+            multiplier,
+            points
+        );
+    py::list candidate_ids;
+    for (const auto& candidate : solve.candidates) {
+        candidate_ids.append(candidate.identity);
+    }
+    py::list rejections;
+    for (const auto& rejection : solve.rejections) {
+        py::dict item;
+        item["identity"] = rejection.identity;
+        item["reason"] = rejection.reason;
+        rejections.append(std::move(item));
+    }
+    py::dict result;
+    result["status"] = solve.status;
+    result["candidate_ids"] = candidate_ids;
+    result["rejections"] = rejections;
+    return result;
+}
+
+py::dict held_stage_ii(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule),
+        expected_fingerprint
+    );
+    epcsaft_equilibrium::HeldStageIIResult solve;
+    {
+        py::gil_scoped_release release;
+        solve = epcsaft_equilibrium::solve_held_stage_ii(
+            provider,
+            temperature_k,
+            pressure_pa,
+            feed_x_methane
+        );
+    }
+    const auto cut_to_dict = [](const epcsaft_equilibrium::HeldStageIICut& cut) {
+        py::dict item;
+        item["identity"] = cut.identity;
+        item["endpoint"] = cut.endpoint;
+        item["g_bar"] = cut.state.g_bar;
+        item["x_methane"] = cut.state.x_methane;
+        item["log_volume"] = cut.state.log_volume;
+        item["volume_m3"] = cut.state.volume_m3;
+        item["composition_gradient"] = cut.state.gradient[0];
+        item["pressure_stationarity_relative"] =
+            cut.state.pressure_stationarity_relative;
+        item["intercept"] = cut.outer.intercept;
+        item["slope"] = cut.outer.slope;
+        return item;
+    };
+    py::list endpoint_attempts;
+    for (const auto& attempt : solve.endpoint_attempts) {
+        py::dict item;
+        item["role"] = attempt.role;
+        item["solver_status"] = attempt.solver_status;
+        item["iterations"] = attempt.iterations;
+        item["accepted"] = attempt.accepted;
+        item["callback_error"] = attempt.callback_error;
+        endpoint_attempts.append(std::move(item));
+    }
+    py::list cuts;
+    for (const auto& cut : solve.cuts) {
+        cuts.append(cut_to_dict(cut));
+    }
+    py::list candidates;
+    for (const auto& candidate : solve.candidates) {
+        candidates.append(cut_to_dict(candidate));
+    }
+    py::list trace;
+    for (const auto& entry : solve.trace) {
+        py::list rejections;
+        for (const auto& rejection : entry.rejections) {
+            py::dict item;
+            item["identity"] = rejection.identity;
+            item["reason"] = rejection.reason;
+            rejections.append(std::move(item));
+        }
+        py::dict item;
+        item["major_iteration"] = entry.major_iteration;
+        item["outer_value"] = entry.outer_value;
+        item["upper_bound"] = entry.upper_bound;
+        item["multiplier"] = entry.multiplier;
+        item["active_cut_ids"] = entry.active_cut_ids;
+        item["accepted_cut_ids"] = entry.accepted_cut_ids;
+        item["lower_starts_completed"] = entry.lower_starts_completed;
+        item["candidate_ids"] = entry.candidate_ids;
+        item["rejections"] = rejections;
+        trace.append(std::move(item));
+    }
+    py::dict result;
+    result["outcome"] = solve.outcome;
+    result["search_status"] = solve.search_status;
+    result["search_profile"] = solve.search_profile;
+    result["globality_certificate"] = "not_guaranteed";
+    result["failure_reason"] = solve.failure_reason;
+    result["stage_i_outcome"] = solve.stage_i_outcome;
+    result["stage_i_search_status"] = solve.stage_i_search_status;
+    result["best_tpd"] = solve.best_tpd;
+    result["major_iterations"] = solve.major_iterations;
+    result["upper_bound"] = solve.upper_bound;
+    result["endpoint_attempts"] = endpoint_attempts;
+    result["cuts"] = cuts;
+    result["candidates"] = candidates;
+    result["trace"] = trace;
+    return result;
+}
+
 py::dict evaluate_phase(
     const py::capsule& capsule,
     double temperature_k,
@@ -738,6 +986,54 @@ PYBIND11_MODULE(_equilibrium, module) {
     module.def(
         "_held_stage_ii_initial_cuts",
         &held_stage_ii_initial_cuts,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("feed_x_methane"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held_evaluate_lower",
+        &held_evaluate_lower,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("feed_x_methane"),
+        py::arg("multiplier"),
+        py::arg("x_methane"),
+        py::arg("log_volume"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held_stage_ii_lower_search",
+        &held_stage_ii_lower_search,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("feed_x_methane"),
+        py::arg("multiplier"),
+        py::arg("upper_bound"),
+        py::arg("previous_states"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held_stage_ii_candidates",
+        &held_stage_ii_candidates,
+        py::arg("feed_x_methane"),
+        py::arg("upper_bound"),
+        py::arg("multiplier"),
+        py::arg("points")
+    );
+    module.def(
+        "_held_stage_ii_budget_status",
+        &epcsaft_equilibrium::held_stage_ii_budget_status,
+        py::arg("major_iterations"),
+        py::arg("lower_starts"),
+        py::arg("lower_satisfied")
+    );
+    module.def(
+        "_held_stage_ii",
+        &held_stage_ii,
         py::arg("capsule"),
         py::arg("temperature_k"),
         py::arg("pressure_pa"),
