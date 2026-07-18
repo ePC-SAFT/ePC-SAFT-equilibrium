@@ -346,16 +346,20 @@ Package evidence is compact and discriminating:
   unsupported-input outcomes; and
 - installed-wheel parity with no lab or sibling source available.
 
-Validation owns the expensive installed-artifact campaign. It uses the
-provider artifact through public interfaces to perform an independent dense
-binary composition/log-volume search plus local polishing, then compares the
-selected phase set and total free energy with HELD. It reruns the complete May
+Validation owns the expensive installed-artifact campaign. It uses only the
+provider's public pressure-state route to sample the binary Gibbs surface on a
+frozen dense composition grid, independently forms the test-only Gibbs value,
+and compares HELD's selected phase set and total free energy with the sampled
+tangent or chord. It does not reproduce HELD's explicit-volume optimizer or
+own a second local-polishing route. This finite scan is an independent sampled
+audit, not a continuous globality proof. Validation reruns the complete May
 table as honest model/data characterization and retains one observation/model
-plot and table. Before implementation, validation must also freeze one
-traceable methane/ethane single-phase state for the one-phase terminal path;
-if no suitable source-backed state is available, that path remains
-`indeterminate` and the candidate cannot be promoted. The four existing
-composition misses remain visible and no tolerance is changed.
+plot and one representative Gibbs-surface plot with their source rows. Before
+implementation, validation must also freeze one traceable methane/ethane
+single-phase state for the one-phase terminal path; if no suitable
+source-backed state is available, that path remains `indeterminate` and the
+candidate cannot be promoted. The four existing composition misses remain
+visible and no tolerance is changed.
 
 Promotion requires independent lab review, complete source and installed-
 wheel suites, negative-space inspection, validation evidence, a migration
