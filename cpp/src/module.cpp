@@ -9,6 +9,7 @@
 
 #include <epcsaft/native_sdk_v1.h>
 
+#include "held.hpp"
 #include "saturation.hpp"
 #include "two_phase_flash.hpp"
 
@@ -97,6 +98,218 @@ py::dict evaluate_mixture_phase(
     result["hessian"] = phase.hessian;
     result["pressure_pa"] = phase.pressure_pa;
     result["parameter_fingerprint"] = phase.parameter_fingerprint;
+    return result;
+}
+
+py::dict held_state_to_dict(const epcsaft_equilibrium::HeldStateEvaluation& state) {
+    py::dict result;
+    result["x_methane"] = state.x_methane;
+    result["log_volume"] = state.log_volume;
+    result["volume_m3"] = state.volume_m3;
+    result["amounts_mol"] = state.amounts_mol;
+    result["g_bar"] = state.g_bar;
+    result["gradient"] = state.gradient;
+    result["hessian"] = state.hessian;
+    result["pressure_pa"] = state.provider.pressure_pa;
+    result["pressure_stationarity_relative"] = state.pressure_stationarity_relative;
+    result["parameter_fingerprint"] = state.provider.parameter_fingerprint;
+    return result;
+}
+
+py::dict held_evaluate_state(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    double x_methane,
+    double log_volume,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule),
+        expected_fingerprint
+    );
+    return held_state_to_dict(epcsaft_equilibrium::evaluate_held_state(
+        provider,
+        temperature_k,
+        pressure_pa,
+        x_methane,
+        log_volume
+    ));
+}
+
+py::dict held_evaluate_tpd(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    double reference_x_methane,
+    double reference_log_volume,
+    double x_methane,
+    double log_volume,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule),
+        expected_fingerprint
+    );
+    const epcsaft_equilibrium::HeldStateEvaluation reference =
+        epcsaft_equilibrium::evaluate_held_state(
+            provider,
+            temperature_k,
+            pressure_pa,
+            reference_x_methane,
+            reference_log_volume
+        );
+    const epcsaft_equilibrium::HeldTpdEvaluation evaluation =
+        epcsaft_equilibrium::evaluate_held_tpd(
+            provider,
+            temperature_k,
+            pressure_pa,
+            reference,
+            x_methane,
+            log_volume
+        );
+    py::dict result;
+    result["d_bar"] = evaluation.d_bar;
+    result["gradient"] = evaluation.gradient;
+    result["hessian"] = evaluation.hessian;
+    result["state"] = held_state_to_dict(evaluation.state);
+    return result;
+}
+
+py::dict held_evaluate_tunneling(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    double reference_x_methane,
+    double reference_log_volume,
+    double minimum_x_methane,
+    double minimum_log_volume,
+    double x_methane,
+    double log_volume,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule),
+        expected_fingerprint
+    );
+    const epcsaft_equilibrium::HeldStateEvaluation reference =
+        epcsaft_equilibrium::evaluate_held_state(
+            provider,
+            temperature_k,
+            pressure_pa,
+            reference_x_methane,
+            reference_log_volume
+        );
+    const epcsaft_equilibrium::HeldTpdEvaluation minimum =
+        epcsaft_equilibrium::evaluate_held_tpd(
+            provider,
+            temperature_k,
+            pressure_pa,
+            reference,
+            minimum_x_methane,
+            minimum_log_volume
+        );
+    const epcsaft_equilibrium::HeldTunnelingEvaluation evaluation =
+        epcsaft_equilibrium::evaluate_held_tunneling(
+            provider,
+            temperature_k,
+            pressure_pa,
+            reference,
+            minimum_x_methane,
+            minimum.d_bar,
+            x_methane,
+            log_volume
+        );
+    py::dict result;
+    result["objective"] = evaluation.objective;
+    result["gradient"] = evaluation.gradient;
+    result["hessian"] = evaluation.hessian;
+    result["d_bar"] = evaluation.tpd.d_bar;
+    return result;
+}
+
+py::dict held_stage_i(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule),
+        expected_fingerprint
+    );
+    epcsaft_equilibrium::HeldStageIResult solve;
+    {
+        py::gil_scoped_release release;
+        solve = epcsaft_equilibrium::solve_held_stage_i(
+            provider,
+            temperature_k,
+            pressure_pa,
+            feed_x_methane
+        );
+    }
+
+    py::list reference_attempts;
+    for (const auto& attempt : solve.reference_attempts) {
+        py::dict item;
+        item["role"] = attempt.role;
+        item["initial_log_volume"] = attempt.initial_log_volume;
+        item["solver_converged"] = attempt.solver_converged;
+        item["solver_status"] = attempt.solver_status;
+        item["iterations"] = attempt.iterations;
+        item["accepted"] = attempt.accepted;
+        item["g_bar"] = attempt.g_bar;
+        item["log_volume"] = attempt.log_volume;
+        item["pressure_stationarity_relative"] =
+            attempt.pressure_stationarity_relative;
+        item["callback_error"] = attempt.callback_error;
+        reference_attempts.append(std::move(item));
+    }
+    py::list planned_starts;
+    for (const auto& start : solve.planned_starts) {
+        py::dict item;
+        item["role"] = start.role;
+        item["x_methane"] = start.x_methane;
+        item["log_volume"] = start.log_volume;
+        planned_starts.append(std::move(item));
+    }
+    py::list attempt_log;
+    for (const auto& attempt : solve.attempt_log) {
+        py::dict item;
+        item["kind"] = attempt.kind;
+        item["role"] = attempt.role;
+        item["initial_guess"] = attempt.initial_guess;
+        item["solver_converged"] = attempt.solver_converged;
+        item["solver_status"] = attempt.solver_status;
+        item["iterations"] = attempt.iterations;
+        item["accepted"] = attempt.accepted;
+        item["materially_perturbed"] = attempt.materially_perturbed;
+        item["objective"] = attempt.objective;
+        item["tpd"] = attempt.tpd;
+        item["pressure_stationarity_relative"] =
+            attempt.pressure_stationarity_relative;
+        item["callback_error"] = attempt.callback_error;
+        attempt_log.append(std::move(item));
+    }
+
+    py::dict result;
+    result["outcome"] = solve.outcome;
+    result["search_status"] = solve.search_status;
+    result["search_profile"] = solve.search_profile;
+    result["globality_certificate"] = "not_guaranteed";
+    result["failure_reason"] = solve.failure_reason;
+    result["reference_attempts"] = reference_attempts;
+    result["planned_starts"] = planned_starts;
+    result["attempt_log"] = attempt_log;
+    result["starts_completed"] = solve.starts_completed;
+    result["negative_confirmations"] = solve.negative_confirmations;
+    result["confirmation_max_difference"] = solve.confirmation_max_difference;
+    result["best_tpd"] = solve.best_tpd;
+    if (solve.has_reference) {
+        result["reference"] = held_state_to_dict(solve.reference);
+        result["best_state"] = held_state_to_dict(solve.best_state);
+    }
     return result;
 }
 
@@ -385,6 +598,51 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("temperature_k"),
         py::arg("amounts_mol"),
         py::arg("volume_m3"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held_evaluate_state",
+        &held_evaluate_state,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("x_methane"),
+        py::arg("log_volume"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held_evaluate_tpd",
+        &held_evaluate_tpd,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("reference_x_methane"),
+        py::arg("reference_log_volume"),
+        py::arg("x_methane"),
+        py::arg("log_volume"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held_evaluate_tunneling",
+        &held_evaluate_tunneling,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("reference_x_methane"),
+        py::arg("reference_log_volume"),
+        py::arg("minimum_x_methane"),
+        py::arg("minimum_log_volume"),
+        py::arg("x_methane"),
+        py::arg("log_volume"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held_stage_i",
+        &held_stage_i,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("feed_x_methane"),
         py::arg("expected_fingerprint")
     );
     module.def(

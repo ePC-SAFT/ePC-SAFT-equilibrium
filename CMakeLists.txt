@@ -26,6 +26,8 @@ pybind11_add_module(
   _equilibrium MODULE
   cpp/src/module.cpp
   cpp/src/provider.cpp
+  cpp/src/held.cpp
+  cpp/src/held_stage_i.cpp
   cpp/src/saturation.cpp
   cpp/src/two_phase_flash.cpp
 )
