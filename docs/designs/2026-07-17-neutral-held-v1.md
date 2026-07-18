@@ -1,10 +1,12 @@
 # Neutral HELD v1 Design
 
-Status: approved in discussion; pending written-spec review
+Status: approved written specification; implementation not started
 
 Approved in discussion: 2026-07-17
 
 Authority effect: none
+
+Implementation plan: `../plans/2026-07-17-neutral-held-v1-plan.md`
 
 ## 1. Purpose
 

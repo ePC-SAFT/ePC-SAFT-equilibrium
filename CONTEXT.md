@@ -59,3 +59,11 @@ complete.
 `next_approved_design: neutral-held-v1`
 
 `next_design_authority_effect: none`
+
+The executable plan is
+`docs/plans/2026-07-17-neutral-held-v1-plan.md`. It freezes internal Stage I,
+Stage II, Stage III, final public cutover, fixed-route deletion, isolated-wheel
+proof, and review checkpoints. Its status is `not_started`; a plan does not
+admit the provider mixture tail or create an equilibrium capability.
+
+`next_implementation_plan_status: not_started`
