@@ -29,6 +29,7 @@ pybind11_add_module(
   cpp/src/held.cpp
   cpp/src/held_stage_i.cpp
   cpp/src/held_stage_ii.cpp
+  cpp/src/held_stage_iii.cpp
   cpp/src/saturation.cpp
   cpp/src/two_phase_flash.cpp
 )

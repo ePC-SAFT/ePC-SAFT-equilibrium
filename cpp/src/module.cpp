@@ -650,6 +650,240 @@ py::dict held_stage_ii(
     return result;
 }
 
+std::vector<epcsaft_equilibrium::HeldStageIIICandidate> held_stage_iii_candidates(
+    const std::vector<std::tuple<std::string, double, double>>& raw_candidates
+) {
+    std::vector<epcsaft_equilibrium::HeldStageIIICandidate> candidates;
+    candidates.reserve(raw_candidates.size());
+    for (const auto& [identity, x_methane, volume_m3_per_mol] : raw_candidates) {
+        candidates.push_back({identity, x_methane, volume_m3_per_mol});
+    }
+    return candidates;
+}
+
+py::dict held_stage_iii_initialization_to_dict(
+    const epcsaft_equilibrium::HeldStageIIIInitialization& initialization
+) {
+    py::dict result;
+    result["status"] = initialization.status;
+    result["failure_reason"] = initialization.failure_reason;
+    result["phase_fractions"] = initialization.phase_fractions;
+    result["initial_variables"] = initialization.has_variables
+        ? py::cast(initialization.initial_variables)
+        : py::cast(std::vector<double>{});
+    result["lower_bounds"] = initialization.has_variables
+        ? py::cast(initialization.lower_bounds)
+        : py::cast(std::vector<double>{});
+    result["upper_bounds"] = initialization.has_variables
+        ? py::cast(initialization.upper_bounds)
+        : py::cast(std::vector<double>{});
+    return result;
+}
+
+py::dict held_stage_iii_initialize(
+    double feed_x_methane,
+    const std::vector<std::tuple<std::string, double, double>>& raw_candidates
+) {
+    return held_stage_iii_initialization_to_dict(
+        epcsaft_equilibrium::initialize_held_stage_iii(
+            feed_x_methane,
+            held_stage_iii_candidates(raw_candidates)
+        )
+    );
+}
+
+py::dict held_stage_iii_classify(const py::dict& raw) {
+    epcsaft_equilibrium::HeldStageIIIAcceptanceEvidence evidence;
+    evidence.solver_converged = raw["solver_converged"].cast<bool>();
+    evidence.callback_error = raw["callback_error"].cast<std::string>();
+    evidence.solver_constraint_violation =
+        raw["solver_constraint_violation"].cast<double>();
+    evidence.material_balance_max_abs = raw["material_balance_max_abs"].cast<double>();
+    evidence.pressure_stationarity_max_relative =
+        raw["pressure_stationarity_max_relative"].cast<double>();
+    evidence.kkt_stationarity_max_abs = raw["kkt_stationarity_max_abs"].cast<double>();
+    evidence.inactive_bounds = raw["inactive_bounds"].cast<bool>();
+    evidence.composition_distance = raw["composition_distance"].cast<double>();
+    evidence.phase_density_distance = raw["phase_density_distance"].cast<double>();
+    evidence.held_gap = raw["held_gap"].cast<double>();
+    evidence.chemical_potential_max_relative =
+        raw["chemical_potential_max_relative"].cast<double>();
+    evidence.confirmation_succeeded = raw["confirmation_succeeded"].cast<bool>();
+    evidence.confirmation_max_difference =
+        raw["confirmation_max_difference"].cast<double>();
+    const auto decision = epcsaft_equilibrium::classify_held_stage_iii(evidence);
+    py::dict result;
+    result["status"] = decision.status;
+    result["failure_reason"] = decision.failure_reason;
+    return result;
+}
+
+double held_stage_iii_mu_difference(
+    const std::array<double, 2>& first,
+    const std::array<double, 2>& second
+) {
+    return epcsaft_equilibrium::held_stage_iii_mu_difference(first, second);
+}
+
+py::dict held_evaluate_stage_iii(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    const std::array<double, 6>& variables,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule),
+        expected_fingerprint
+    );
+    const auto evaluation = epcsaft_equilibrium::evaluate_two_phase_flash_nlp(
+        provider,
+        temperature_k,
+        pressure_pa,
+        {feed_x_methane, 1.0 - feed_x_methane},
+        variables
+    );
+    py::dict result;
+    result["objective"] = evaluation.objective;
+    result["gradient"] = evaluation.gradient;
+    result["constraints"] = evaluation.constraints;
+    result["jacobian"] = evaluation.jacobian;
+    result["hessian_lower"] = evaluation.hessian_lower;
+    return result;
+}
+
+py::dict flash_phase_to_dict(const epcsaft_equilibrium::FlashPhaseEvaluation& phase);
+
+py::list flash_attempt_log_to_list(
+    const std::vector<epcsaft_equilibrium::FlashAttemptRecord>& attempts
+);
+
+py::dict held_stage_iii_to_dict(
+    const epcsaft_equilibrium::HeldStageIIIResult& solve
+) {
+    py::dict result;
+    result["outcome"] = solve.outcome;
+    result["search_profile"] = solve.search_profile;
+    result["failure_reason"] = solve.failure_reason;
+    result["initialization"] = held_stage_iii_initialization_to_dict(solve.initialization);
+    result["solver_converged"] = solve.local.solver_converged;
+    result["solver_status"] = solve.local.solver_status;
+    result["iterations"] = solve.local.iterations;
+    result["attempts"] = solve.local.attempts;
+    result["attempt_log"] = flash_attempt_log_to_list(solve.local.attempt_log);
+    result["solver_lower_bounds"] = solve.local.solver_lower_bounds;
+    result["solver_upper_bounds"] = solve.local.solver_upper_bounds;
+    result["solver_constraint_violation"] = solve.local.solver_constraint_violation;
+    result["confirmation_solves"] = solve.local.confirmation_solves;
+    result["confirmation_succeeded"] = solve.confirmation_succeeded;
+    result["confirmation_max_difference"] = solve.local.confirmation_max_difference;
+    result["material_balance_max_abs"] = solve.local.material_balance_max_abs;
+    result["pressure_stationarity_max_relative"] =
+        solve.local.pressure_stationarity_max_relative;
+    result["kkt_stationarity_max_abs"] = solve.local.kkt_stationarity_max_abs;
+    result["inactive_bounds"] = solve.inactive_bounds;
+    result["composition_distance"] = solve.composition_distance;
+    result["phase_density_distance"] = solve.local.phase_density_distance;
+    result["chemical_potential_max_relative"] = solve.chemical_potential_max_relative;
+    result["held_gap"] = solve.held_gap;
+    result["upper_bound"] = solve.upper_bound;
+    result["equality_multipliers"] = solve.local.equality_multipliers;
+    result["lower_bound_multipliers"] = solve.local.lower_bound_multipliers;
+    result["upper_bound_multipliers"] = solve.local.upper_bound_multipliers;
+    result["total_g_bar"] = solve.local.evaluation.objective;
+    if (solve.local.accepted) {
+        result["first_phase"] = flash_phase_to_dict(solve.local.evaluation.liquid);
+        result["second_phase"] = flash_phase_to_dict(solve.local.evaluation.vapor);
+    }
+    return result;
+}
+
+py::dict held_stage_iii(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    double upper_bound,
+    const std::vector<std::tuple<std::string, double, double>>& raw_candidates,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule),
+        expected_fingerprint
+    );
+    epcsaft_equilibrium::HeldStageIIIResult solve;
+    {
+        py::gil_scoped_release release;
+        solve = epcsaft_equilibrium::solve_held_stage_iii(
+            provider,
+            temperature_k,
+            pressure_pa,
+            feed_x_methane,
+            upper_bound,
+            held_stage_iii_candidates(raw_candidates)
+        );
+    }
+    return held_stage_iii_to_dict(solve);
+}
+
+py::dict held(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule),
+        expected_fingerprint
+    );
+    epcsaft_equilibrium::HeldResult solve;
+    {
+        py::gil_scoped_release release;
+        solve = epcsaft_equilibrium::solve_held(
+            provider,
+            temperature_k,
+            pressure_pa,
+            feed_x_methane
+        );
+    }
+    py::list attempts;
+    for (const auto& attempt : solve.stage_iii_attempts) {
+        py::dict item = held_stage_iii_to_dict(attempt.result);
+        item["major_iteration"] = attempt.major_iteration;
+        attempts.append(std::move(item));
+    }
+    py::list trace;
+    for (const auto& entry : solve.stage_ii.trace) {
+        py::dict item;
+        item["major_iteration"] = entry.major_iteration;
+        item["upper_bound"] = entry.upper_bound;
+        item["multiplier"] = entry.multiplier;
+        item["candidate_ids"] = entry.candidate_ids;
+        item["stage_iii_outcome"] = entry.stage_iii_outcome;
+        item["stage_iii_failure_reason"] = entry.stage_iii_failure_reason;
+        trace.append(std::move(item));
+    }
+    py::dict result;
+    result["outcome"] = solve.outcome;
+    result["search_status"] = solve.search_status;
+    result["failure_reason"] = solve.failure_reason;
+    result["stage_i_outcome"] = solve.stage_ii.stage_i_outcome;
+    result["stage_i_search_status"] = solve.stage_ii.stage_i_search_status;
+    result["major_iterations"] = solve.stage_ii.major_iterations;
+    result["upper_bound"] = solve.stage_ii.upper_bound;
+    result["best_tpd"] = solve.stage_ii.best_tpd;
+    result["stage_iii_attempts"] = attempts;
+    result["trace"] = trace;
+    result["globality_certificate"] = "not_guaranteed";
+    if (solve.outcome == "accepted" && !solve.stage_iii_attempts.empty()) {
+        result["accepted_stage_iii"] =
+            held_stage_iii_to_dict(solve.stage_iii_attempts.back().result);
+    }
+    return result;
+}
+
 py::dict evaluate_phase(
     const py::capsule& capsule,
     double temperature_k,
@@ -1038,6 +1272,53 @@ PYBIND11_MODULE(_equilibrium, module) {
     module.def(
         "_held_stage_ii",
         &held_stage_ii,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("feed_x_methane"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held_stage_iii_initialize",
+        &held_stage_iii_initialize,
+        py::arg("feed_x_methane"),
+        py::arg("candidates")
+    );
+    module.def(
+        "_held_stage_iii_classify",
+        &held_stage_iii_classify,
+        py::arg("evidence")
+    );
+    module.def(
+        "_held_stage_iii_mu_difference",
+        &held_stage_iii_mu_difference,
+        py::arg("first"),
+        py::arg("second")
+    );
+    module.def(
+        "_held_evaluate_stage_iii",
+        &held_evaluate_stage_iii,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("feed_x_methane"),
+        py::arg("variables"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held_stage_iii",
+        &held_stage_iii,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("feed_x_methane"),
+        py::arg("upper_bound"),
+        py::arg("candidates"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held",
+        &held,
         py::arg("capsule"),
         py::arg("temperature_k"),
         py::arg("pressure_pa"),

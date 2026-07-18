@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "provider.hpp"
+#include "two_phase_flash.hpp"
 
 namespace epcsaft_equilibrium {
 
@@ -229,6 +230,8 @@ struct HeldStageIITrace {
     int lower_starts_completed = 0;
     std::vector<std::string> candidate_ids;
     std::vector<HeldStageIIRejection> rejections;
+    std::string stage_iii_outcome;
+    std::string stage_iii_failure_reason;
 };
 
 struct HeldStageIIResult {
@@ -245,6 +248,70 @@ struct HeldStageIIResult {
     std::vector<HeldStageIICut> cuts;
     std::vector<HeldStageIICut> candidates;
     std::vector<HeldStageIITrace> trace;
+};
+
+struct HeldStageIIICandidate {
+    std::string identity;
+    double x_methane = 0.0;
+    double volume_m3_per_mol = 0.0;
+};
+
+struct HeldStageIIIInitialization {
+    std::string status = "return_to_stage_ii";
+    std::string failure_reason;
+    std::array<double, 2> phase_fractions{};
+    std::array<double, 6> initial_variables{};
+    std::array<double, 6> lower_bounds{};
+    std::array<double, 6> upper_bounds{};
+    bool has_variables = false;
+};
+
+struct HeldStageIIIAcceptanceEvidence {
+    bool solver_converged = false;
+    std::string callback_error;
+    double solver_constraint_violation = 0.0;
+    double material_balance_max_abs = 0.0;
+    double pressure_stationarity_max_relative = 0.0;
+    double kkt_stationarity_max_abs = 0.0;
+    bool inactive_bounds = false;
+    double composition_distance = 0.0;
+    double phase_density_distance = 0.0;
+    double held_gap = 0.0;
+    double chemical_potential_max_relative = 0.0;
+    bool confirmation_succeeded = false;
+    double confirmation_max_difference = 0.0;
+};
+
+struct HeldStageIIIAcceptanceDecision {
+    std::string status = "return_to_stage_ii";
+    std::string failure_reason;
+};
+
+struct HeldStageIIIResult {
+    std::string outcome = "return_to_stage_ii";
+    std::string search_profile = "held-stage-iii-binary-v1";
+    std::string failure_reason;
+    HeldStageIIIInitialization initialization{};
+    FlashSolveResult local{};
+    double upper_bound = 0.0;
+    double held_gap = 0.0;
+    double chemical_potential_max_relative = 0.0;
+    double composition_distance = 0.0;
+    bool inactive_bounds = false;
+    bool confirmation_succeeded = false;
+};
+
+struct HeldStageIIIAttempt {
+    int major_iteration = 0;
+    HeldStageIIIResult result{};
+};
+
+struct HeldResult {
+    std::string outcome = "indeterminate";
+    std::string search_status = "not_started";
+    std::string failure_reason;
+    HeldStageIIResult stage_ii{};
+    std::vector<HeldStageIIIAttempt> stage_iii_attempts;
 };
 
 [[nodiscard]] HeldOuterResult solve_held_outer_envelope(
@@ -283,6 +350,36 @@ struct HeldStageIIResult {
 );
 
 [[nodiscard]] HeldStageIIResult solve_held_stage_ii(
+    const ProviderContext& provider,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane
+);
+
+[[nodiscard]] HeldStageIIIInitialization initialize_held_stage_iii(
+    double feed_x_methane,
+    const std::vector<HeldStageIIICandidate>& candidates
+);
+
+[[nodiscard]] double held_stage_iii_mu_difference(
+    const std::array<double, 2>& first,
+    const std::array<double, 2>& second
+);
+
+[[nodiscard]] HeldStageIIIAcceptanceDecision classify_held_stage_iii(
+    const HeldStageIIIAcceptanceEvidence& evidence
+);
+
+[[nodiscard]] HeldStageIIIResult solve_held_stage_iii(
+    const ProviderContext& provider,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    double upper_bound,
+    const std::vector<HeldStageIIICandidate>& candidates
+);
+
+[[nodiscard]] HeldResult solve_held(
     const ProviderContext& provider,
     double temperature_k,
     double pressure_pa,

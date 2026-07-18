@@ -30,8 +30,18 @@ MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE = 0.5627
 
 STAGE_I_PROFILE = "held-stage-i-binary-v1"
 STAGE_II_PROFILE = "held-stage-ii-binary-v1"
+STAGE_III_PROFILE = "held-stage-iii-binary-v1"
 TPD_NEGATIVE_THRESHOLD = -1.0e-8
 OUTER_NUMERICAL_FACTOR = 256.0
+
+# Provider-local Stage III regression state for retained May row 001. The
+# compositions are already frozen by the reviewed fixed-two-phase design; the
+# molar volumes and objective are numerical solver evidence, not source data.
+MAY_ROW_001_REFINED_CANDIDATES = (
+    ("liquid", 0.3025223259589743, 6.614906698837923e-05),
+    ("vapor", 0.6703563353120439, 3.58287622219301e-04),
+)
+MAY_ROW_001_REFINED_G_BAR = 6.46180265452249
 
 
 def _outer_vertex_oracle(
@@ -507,6 +517,269 @@ def one_phase_stage_i(binary_capsule: object) -> dict[str, object]:
         MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
         BINARY_FINGERPRINT,
     )
+
+
+def test_held_stage_iii_lever_rule_candidate_neighborhoods_and_infeasibility() -> None:
+    assert MAY_ROW_001_ID == "may2015-ch4-c2h6-001"
+    initialized = _equilibrium._held_stage_iii_initialize(
+        MAY_ROW_001_FEED_X_METHANE,
+        MAY_ROW_001_REFINED_CANDIDATES,
+    )
+
+    liquid_fraction = (MAY_ROW_001_REFINED_CANDIDATES[1][1] - MAY_ROW_001_FEED_X_METHANE) / (
+        MAY_ROW_001_REFINED_CANDIDATES[1][1] - MAY_ROW_001_REFINED_CANDIDATES[0][1]
+    )
+    expected_fractions = (liquid_fraction, 1.0 - liquid_fraction)
+    expected_amounts = (
+        expected_fractions[0] * MAY_ROW_001_REFINED_CANDIDATES[0][1],
+        expected_fractions[0] * (1.0 - MAY_ROW_001_REFINED_CANDIDATES[0][1]),
+        expected_fractions[1] * MAY_ROW_001_REFINED_CANDIDATES[1][1],
+        expected_fractions[1] * (1.0 - MAY_ROW_001_REFINED_CANDIDATES[1][1]),
+    )
+    assert initialized["status"] == "initialized"
+    assert initialized["phase_fractions"] == pytest.approx(expected_fractions)
+    assert tuple(
+        initialized["initial_variables"][index] for index in (0, 1, 3, 4)
+    ) == pytest.approx(expected_amounts)
+    assert initialized["initial_variables"][2] == pytest.approx(
+        math.log(expected_fractions[0] * MAY_ROW_001_REFINED_CANDIDATES[0][2])
+    )
+    assert initialized["initial_variables"][5] == pytest.approx(
+        math.log(expected_fractions[1] * MAY_ROW_001_REFINED_CANDIDATES[1][2])
+    )
+    for index, center in zip((0, 1, 3, 4), expected_amounts, strict=True):
+        assert initialized["lower_bounds"][index] == pytest.approx(center - 1.0e-3)
+        assert initialized["upper_bounds"][index] == pytest.approx(center + 1.0e-3)
+
+    infeasible = _equilibrium._held_stage_iii_initialize(
+        MAY_ROW_001_FEED_X_METHANE,
+        (("same_side_1", 0.7, 1.0e-4), ("same_side_2", 0.8, 2.0e-4)),
+    )
+    assert infeasible["status"] == "return_to_stage_ii"
+    assert infeasible["failure_reason"] == "candidate lever rule does not contain the feed"
+    assert infeasible["initial_variables"] == []
+
+    trace_bound = _equilibrium._held_stage_iii_initialize(
+        MAY_ROW_001_FEED_X_METHANE,
+        (("trace", 1.0e-8, 1.0e-4), ("interior", 0.8, 2.0e-4)),
+    )
+    assert trace_bound["status"] == "scope_exceeded"
+    assert trace_bound["failure_reason"] == "trace-bound candidate requires a later slice"
+
+
+@pytest.mark.parametrize(
+    ("override", "status", "reason"),
+    (
+        (
+            {"composition_distance": 5.0e-4, "phase_density_distance": 5.0e-4},
+            "return_to_stage_ii",
+            "phase_collapse",
+        ),
+        (
+            {"material_balance_max_abs": 2.0e-10},
+            "return_to_stage_ii",
+            "material_balance_failure",
+        ),
+        (
+            {"pressure_stationarity_max_relative": 2.0e-8},
+            "return_to_stage_ii",
+            "pressure_failure",
+        ),
+        ({"kkt_stationarity_max_abs": 2.0e-8}, "return_to_stage_ii", "kkt_failure"),
+        ({"inactive_bounds": False}, "return_to_stage_ii", "active_bound_failure"),
+        ({"held_gap": 2.0e-6}, "return_to_stage_ii", "held_gap_failure"),
+        (
+            {"chemical_potential_max_relative": 2.0e-6},
+            "return_to_stage_ii",
+            "chemical_potential_failure",
+        ),
+        (
+            {"confirmation_succeeded": False},
+            "return_to_stage_ii",
+            "confirmation_failure",
+        ),
+        ({}, "accepted", ""),
+    ),
+)
+def test_held_stage_iii_acceptance_is_strict_and_fail_closed(
+    override: dict[str, object],
+    status: str,
+    reason: str,
+) -> None:
+    evidence = {
+        "solver_converged": True,
+        "callback_error": "",
+        "solver_constraint_violation": 1.0e-12,
+        "material_balance_max_abs": 1.0e-12,
+        "pressure_stationarity_max_relative": 1.0e-10,
+        "kkt_stationarity_max_abs": 1.0e-10,
+        "inactive_bounds": True,
+        "composition_distance": 0.3,
+        "phase_density_distance": 0.5,
+        "held_gap": 5.0e-7,
+        "chemical_potential_max_relative": 5.0e-7,
+        "confirmation_succeeded": True,
+        "confirmation_max_difference": 1.0e-9,
+    }
+    evidence.update(override)
+
+    result = _equilibrium._held_stage_iii_classify(evidence)
+
+    assert result == {"status": status, "failure_reason": reason}
+
+
+def test_held_stage_iii_zero_safe_chemical_potential_metric() -> None:
+    assert _equilibrium._held_stage_iii_mu_difference((0.0, 0.0), (0.0, 0.0)) == 0.0
+    assert _equilibrium._held_stage_iii_mu_difference(
+        (1.0e-9, -2.0), (-1.0e-9, -2.0)
+    ) == pytest.approx(2.0e-9)
+
+
+def test_held_stage_iii_exact_derivatives_at_may_row_001(
+    binary_capsule: object,
+) -> None:
+    assert MAY_ROW_001_ID == "may2015-ch4-c2h6-001"
+    initialized = _equilibrium._held_stage_iii_initialize(
+        MAY_ROW_001_FEED_X_METHANE,
+        MAY_ROW_001_REFINED_CANDIDATES,
+    )
+    variables = tuple(initialized["initial_variables"])
+    direction = (0.03, -0.02, 0.04, -0.01, 0.02, -0.03)
+    step = 2.0e-5
+
+    def evaluate(scale: float) -> dict[str, object]:
+        point = tuple(
+            value + scale * delta for value, delta in zip(variables, direction, strict=True)
+        )
+        return _equilibrium._held_evaluate_stage_iii(
+            binary_capsule,
+            MAY_ROW_001_TEMPERATURE_K,
+            MAY_ROW_001_PRESSURE_PA,
+            MAY_ROW_001_FEED_X_METHANE,
+            point,
+            BINARY_FINGERPRINT,
+        )
+
+    lower = evaluate(-step)
+    center = evaluate(0.0)
+    upper = evaluate(step)
+    assert center["constraints"] == pytest.approx((0.0, 0.0), abs=2.0e-15)
+    assert center["jacobian"] == [
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+    ]
+    objective_directional = (upper["objective"] - lower["objective"]) / (2.0 * step)
+    assert objective_directional == pytest.approx(
+        sum(value * delta for value, delta in zip(center["gradient"], direction, strict=True)),
+        rel=2.0e-7,
+        abs=2.0e-8,
+    )
+    hessian_lower = center["hessian_lower"]
+    hessian = [[0.0] * 6 for _ in range(6)]
+    index = 0
+    for row in range(6):
+        for column in range(row + 1):
+            hessian[row][column] = hessian_lower[index]
+            hessian[column][row] = hessian_lower[index]
+            index += 1
+    for row in range(6):
+        gradient_directional = (upper["gradient"][row] - lower["gradient"][row]) / (2.0 * step)
+        hessian_directional = sum(hessian[row][column] * direction[column] for column in range(6))
+        assert gradient_directional == pytest.approx(
+            hessian_directional,
+            rel=2.0e-6,
+            abs=2.0e-7,
+        )
+
+
+def test_held_stage_iii_confirms_retained_may_row_001_refinement(
+    binary_capsule: object,
+) -> None:
+    result = _equilibrium._held_stage_iii(
+        binary_capsule,
+        MAY_ROW_001_TEMPERATURE_K,
+        MAY_ROW_001_PRESSURE_PA,
+        MAY_ROW_001_FEED_X_METHANE,
+        MAY_ROW_001_REFINED_G_BAR,
+        MAY_ROW_001_REFINED_CANDIDATES,
+        BINARY_FINGERPRINT,
+    )
+
+    assert result["outcome"] == "accepted"
+    assert result["search_profile"] == STAGE_III_PROFILE
+    assert result["confirmation_solves"] == 1
+    assert result["confirmation_succeeded"] is True
+    assert result["confirmation_max_difference"] <= 1.0e-7
+    assert [attempt["role"] for attempt in result["attempt_log"]] == [
+        "refinement",
+        "confirmation",
+    ]
+    assert (
+        max(
+            abs(
+                result["attempt_log"][1]["initial_guess"][index]
+                - result["attempt_log"][0]["initial_guess"][index]
+            )
+            for index in (0, 1, 3, 4)
+        )
+        >= 1.0e-4
+    )
+    assert result["material_balance_max_abs"] <= 1.0e-10
+    assert result["pressure_stationarity_max_relative"] <= 1.0e-8
+    assert result["kkt_stationarity_max_abs"] <= 1.0e-8
+    assert result["inactive_bounds"] is True
+    assert result["chemical_potential_max_relative"] <= 1.0e-6
+    assert 0.0 <= result["held_gap"] <= 1.0e-6
+    assert result["total_g_bar"] == pytest.approx(MAY_ROW_001_REFINED_G_BAR, abs=2.0e-10)
+
+
+def test_held_controller_returns_failed_refinement_to_stage_ii_and_fails_closed(
+    binary_capsule: object,
+) -> None:
+    result = _equilibrium._held(
+        binary_capsule,
+        MAY_ROW_001_TEMPERATURE_K,
+        MAY_ROW_001_PRESSURE_PA,
+        MAY_ROW_001_FEED_X_METHANE,
+        BINARY_FINGERPRINT,
+    )
+
+    assert result["outcome"] == "scope_exceeded"
+    assert result["search_status"] == "third_candidate"
+    assert result["stage_i_outcome"] == "negative_tpd"
+    assert result["stage_iii_attempts"]
+    assert result["stage_iii_attempts"][0]["outcome"] == "return_to_stage_ii"
+    assert result["major_iterations"] > result["stage_iii_attempts"][0]["major_iteration"]
+    assert any(entry["stage_iii_outcome"] == "return_to_stage_ii" for entry in result["trace"])
+    assert result["globality_certificate"] == "not_guaranteed"
+
+
+def test_held_controller_preserves_stage_i_one_phase_outcome(
+    binary_capsule: object,
+) -> None:
+    result = _equilibrium._held(
+        binary_capsule,
+        MAY_ROW_011_TEMPERATURE_K,
+        MAY_ROW_011_PRESSURE_PA,
+        MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
+        BINARY_FINGERPRINT,
+    )
+
+    assert result["outcome"] == "one_phase"
+    assert result["search_status"] == "stage_i_no_negative"
+    assert result["stage_i_outcome"] == "no_negative_found"
+    assert result["major_iterations"] == 0
+    assert result["stage_iii_attempts"] == []
 
 
 def test_held_one_mole_transform_and_exact_derivatives_at_may_row_001(

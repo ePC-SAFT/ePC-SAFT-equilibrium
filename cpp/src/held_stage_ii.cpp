@@ -916,11 +916,14 @@ std::string held_stage_ii_budget_status(
     return "searching";
 }
 
-HeldStageIIResult solve_held_stage_ii(
+namespace {
+
+HeldStageIIResult solve_held_stage_ii_impl(
     const ProviderContext& provider,
     double temperature_k,
     double pressure_pa,
-    double feed_x_methane
+    double feed_x_methane,
+    HeldResult* controller
 ) {
     HeldStageIIResult result;
     const HeldStageIResult stage_i = solve_held_stage_i(
@@ -1070,13 +1073,97 @@ HeldStageIIResult solve_held_stage_ii(
             }
             result.outcome = "stage_iii_ready";
             result.search_status = "two_candidates";
-            return result;
+            if (controller == nullptr) {
+                return result;
+            }
+            std::vector<HeldStageIIICandidate> stage_iii_candidates;
+            stage_iii_candidates.reserve(result.candidates.size());
+            for (const HeldStageIICut& candidate : result.candidates) {
+                stage_iii_candidates.push_back({
+                    candidate.identity,
+                    candidate.state.x_methane,
+                    candidate.state.volume_m3,
+                });
+            }
+            HeldStageIIIResult refinement = solve_held_stage_iii(
+                provider,
+                temperature_k,
+                pressure_pa,
+                feed_x_methane,
+                result.upper_bound,
+                stage_iii_candidates
+            );
+            result.trace.back().stage_iii_outcome = refinement.outcome;
+            result.trace.back().stage_iii_failure_reason = refinement.failure_reason;
+            controller->stage_iii_attempts.push_back({
+                result.major_iterations,
+                std::move(refinement),
+            });
+            const HeldStageIIIResult& retained = controller->stage_iii_attempts.back().result;
+            if (retained.outcome == "accepted") {
+                result.outcome = "accepted";
+                result.search_status = "stage_iii_accepted";
+                return result;
+            }
+            if (retained.outcome == "scope_exceeded") {
+                result.outcome = "scope_exceeded";
+                result.search_status = "stage_iii_scope_exceeded";
+                result.failure_reason = retained.failure_reason;
+                return result;
+            }
+            result.outcome = "indeterminate";
+            result.search_status = "searching_after_stage_iii";
+            result.failure_reason.clear();
+            result.candidates.clear();
         }
     }
 
     result.outcome = "search_exhausted";
     result.search_status = "search_exhausted";
     result.failure_reason = "Stage II major-iteration budget exhausted";
+    return result;
+}
+
+}  // namespace
+
+HeldStageIIResult solve_held_stage_ii(
+    const ProviderContext& provider,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane
+) {
+    return solve_held_stage_ii_impl(
+        provider,
+        temperature_k,
+        pressure_pa,
+        feed_x_methane,
+        nullptr
+    );
+}
+
+HeldResult solve_held(
+    const ProviderContext& provider,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane
+) {
+    HeldResult result;
+    result.stage_ii = solve_held_stage_ii_impl(
+        provider,
+        temperature_k,
+        pressure_pa,
+        feed_x_methane,
+        &result
+    );
+    result.search_status = result.stage_ii.search_status;
+    result.failure_reason = result.stage_ii.failure_reason;
+    if (result.stage_ii.outcome == "not_required") {
+        result.outcome = "one_phase";
+    } else if (result.stage_ii.outcome == "accepted") {
+        result.outcome = "accepted";
+    } else {
+        result.outcome = result.stage_ii.outcome;
+    }
     return result;
 }
 
