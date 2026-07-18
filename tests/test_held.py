@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import sys
 from collections.abc import Callable
+from decimal import Decimal, getcontext
 
 import epcsaft
 import pytest
@@ -29,6 +30,67 @@ MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE = 0.5627
 
 STAGE_I_PROFILE = "held-stage-i-binary-v1"
 TPD_NEGATIVE_THRESHOLD = -1.0e-8
+OUTER_NUMERICAL_FACTOR = 256.0
+
+
+def _outer_vertex_oracle(
+    cuts: list[tuple[str, float, float]],
+) -> tuple[float, float, tuple[str, ...], tuple[float, ...]]:
+    """Independent high-precision exhaustive oracle for finite binary fixtures."""
+    getcontext().prec = 50
+    decimal_cuts = [
+        (identity, Decimal(repr(intercept)), Decimal(repr(slope)))
+        for identity, intercept, slope in cuts
+    ]
+    candidates: list[tuple[Decimal, Decimal]] = []
+    for left_index, (_, left_intercept, left_slope) in enumerate(decimal_cuts):
+        for _, right_intercept, right_slope in decimal_cuts[left_index + 1 :]:
+            slope_delta = left_slope - right_slope
+            if slope_delta == 0:
+                continue
+            multiplier = (right_intercept - left_intercept) / slope_delta
+            value = left_intercept + left_slope * multiplier
+            if all(value <= intercept + slope * multiplier for _, intercept, slope in decimal_cuts):
+                candidates.append((value, multiplier))
+    assert candidates
+    best_value = max(value for value, _ in candidates)
+    scale = max(1.0, abs(float(best_value)))
+    tolerance = OUTER_NUMERICAL_FACTOR * sys.float_info.epsilon * scale
+    tied = sorted(
+        float(multiplier)
+        for value, multiplier in candidates
+        if abs(float(value - best_value)) <= tolerance
+    )
+    chosen_multiplier = tied[0]
+    active = tuple(
+        identity
+        for identity, intercept, slope in cuts
+        if abs(float(best_value) - (intercept + slope * chosen_multiplier)) <= tolerance
+    )
+    return float(best_value), chosen_multiplier, active, tuple(tied)
+
+
+OUTER_FINITE_FIXTURES = {
+    "unique": [
+        ("left", 0.0, 1.0),
+        ("right", 2.0, -1.0),
+    ],
+    "tied": [
+        ("flat", 0.0, 0.0),
+        ("left", 0.0, 1.0),
+        ("right", 1.0, -1.0),
+    ],
+    "redundant": [
+        ("left", 0.0, 1.0),
+        ("right", 2.0, -1.0),
+        ("redundant", 10.0, 0.0),
+    ],
+    "nearly_parallel": [
+        ("left", 0.0, 1.0),
+        ("nearly_parallel_redundant", 1.0e-9, 1.0 + 1.0e-12),
+        ("right", 2.0, -1.0),
+    ],
+}
 
 
 def _binary_model() -> epcsaft.EPCSAFT:
@@ -38,6 +100,103 @@ def _binary_model() -> epcsaft.EPCSAFT:
     model = epcsaft.EPCSAFT(parameters)
     assert model.parameter_fingerprint == BINARY_FINGERPRINT
     return model
+
+
+@pytest.mark.parametrize(
+    "fixture_name",
+    list(OUTER_FINITE_FIXTURES),
+)
+def test_held_outer_envelope_matches_independent_vertex_oracle(fixture_name: str) -> None:
+    cuts = OUTER_FINITE_FIXTURES[fixture_name]
+    expected_value, expected_multiplier, expected_active, expected_ties = _outer_vertex_oracle(cuts)
+
+    result = _equilibrium._held_outer_envelope(cuts)
+
+    assert result["status"] == "finite"
+    assert result["value"] == pytest.approx(expected_value, rel=0.0, abs=2.0e-12)
+    assert result["multiplier"] == pytest.approx(
+        expected_multiplier,
+        rel=0.0,
+        abs=2.0e-12,
+    )
+    assert tuple(result["active_cut_ids"]) == expected_active
+    assert tuple(result["tied_multipliers"]) == pytest.approx(
+        expected_ties,
+        rel=0.0,
+        abs=2.0e-12,
+    )
+    assert all(
+        result["value"]
+        <= intercept
+        + slope * result["multiplier"]
+        + OUTER_NUMERICAL_FACTOR
+        * sys.float_info.epsilon
+        * max(1.0, abs(result["value"]), abs(intercept))
+        for _, intercept, slope in cuts
+    )
+
+
+def test_held_outer_envelope_reports_missing_opposite_endpoint_cut() -> None:
+    result = _equilibrium._held_outer_envelope(
+        [
+            ("lower_endpoint", 0.0, 1.0),
+            ("interior", 1.0, 0.25),
+        ]
+    )
+
+    assert result == {
+        "status": "unbounded",
+        "failure_reason": "cuts do not bracket the feed with opposite endpoint slopes",
+        "active_cut_ids": [],
+        "tied_multipliers": [],
+    }
+
+
+def test_held_outer_envelope_reports_infeasible_nonfinite_cut() -> None:
+    result = _equilibrium._held_outer_envelope(
+        [
+            ("lower_endpoint", 0.0, 1.0),
+            ("impossible", -math.inf, 0.0),
+            ("upper_endpoint", 0.0, -1.0),
+        ]
+    )
+
+    assert result == {
+        "status": "infeasible",
+        "failure_reason": "a cut has no finite feasible upper value",
+        "active_cut_ids": [],
+        "tied_multipliers": [],
+    }
+
+
+def test_held_stage_ii_initial_endpoint_cuts_bracket_may_row_001_feed(
+    binary_capsule: object,
+) -> None:
+    result = _equilibrium._held_stage_ii_initial_cuts(
+        binary_capsule,
+        MAY_ROW_001_TEMPERATURE_K,
+        MAY_ROW_001_PRESSURE_PA,
+        MAY_ROW_001_FEED_X_METHANE,
+        BINARY_FINGERPRINT,
+    )
+
+    assert result["status"] == "initialized"
+    assert [attempt["role"] for attempt in result["attempts"]] == [
+        "lower_endpoint_liquid",
+        "lower_endpoint_vapor",
+        "upper_endpoint_liquid",
+        "upper_endpoint_vapor",
+    ]
+    assert all(
+        attempt["solver_status"] or attempt["callback_error"] for attempt in result["attempts"]
+    )
+    cuts = result["cuts"]
+    assert any(cut["slope"] > 0.0 for cut in cuts)
+    assert any(cut["slope"] < 0.0 for cut in cuts)
+    assert {cut["endpoint"] for cut in cuts} == {"lower", "upper"}
+    assert all(abs(cut["pressure_stationarity_relative"]) <= 1.0e-8 for cut in cuts)
+    assert all(1.0e-5 < cut["volume_m3"] < 1.0e-1 for cut in cuts)
+    assert result["outer"]["status"] == "finite"
 
 
 @pytest.fixture(scope="module")

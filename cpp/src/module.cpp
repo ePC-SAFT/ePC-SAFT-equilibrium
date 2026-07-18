@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <vector>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -310,6 +312,89 @@ py::dict held_stage_i(
         result["reference"] = held_state_to_dict(solve.reference);
         result["best_state"] = held_state_to_dict(solve.best_state);
     }
+    return result;
+}
+
+py::dict held_outer_to_dict(const epcsaft_equilibrium::HeldOuterResult& solve) {
+    py::dict result;
+    result["status"] = solve.status;
+    result["failure_reason"] = solve.failure_reason;
+    result["active_cut_ids"] = solve.active_cut_ids;
+    result["tied_multipliers"] = solve.tied_multipliers;
+    if (solve.status == "finite") {
+        result["value"] = solve.value;
+        result["multiplier"] = solve.multiplier;
+    }
+    return result;
+}
+
+py::dict held_outer_envelope(
+    const std::vector<std::tuple<std::string, double, double>>& raw_cuts
+) {
+    std::vector<epcsaft_equilibrium::HeldOuterCut> cuts;
+    cuts.reserve(raw_cuts.size());
+    for (const auto& [identity, intercept, slope] : raw_cuts) {
+        cuts.push_back({identity, intercept, slope});
+    }
+    return held_outer_to_dict(epcsaft_equilibrium::solve_held_outer_envelope(cuts));
+}
+
+py::dict held_stage_ii_initial_cuts(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule),
+        expected_fingerprint
+    );
+    epcsaft_equilibrium::HeldStageIIInitialization solve;
+    {
+        py::gil_scoped_release release;
+        solve = epcsaft_equilibrium::initialize_held_stage_ii_cuts(
+            provider,
+            temperature_k,
+            pressure_pa,
+            feed_x_methane
+        );
+    }
+    py::list attempts;
+    for (const auto& attempt : solve.attempts) {
+        py::dict item;
+        item["role"] = attempt.role;
+        item["initial_guess"] = attempt.initial_guess;
+        item["solver_converged"] = attempt.solver_converged;
+        item["solver_status"] = attempt.solver_status;
+        item["iterations"] = attempt.iterations;
+        item["accepted"] = attempt.accepted;
+        item["objective"] = attempt.objective;
+        item["pressure_stationarity_relative"] =
+            attempt.pressure_stationarity_relative;
+        item["callback_error"] = attempt.callback_error;
+        attempts.append(std::move(item));
+    }
+    py::list cuts;
+    for (const auto& cut : solve.cuts) {
+        py::dict item;
+        item["identity"] = cut.identity;
+        item["endpoint"] = cut.endpoint;
+        item["intercept"] = cut.outer.intercept;
+        item["slope"] = cut.outer.slope;
+        item["x_methane"] = cut.state.x_methane;
+        item["log_volume"] = cut.state.log_volume;
+        item["volume_m3"] = cut.state.volume_m3;
+        item["pressure_stationarity_relative"] =
+            cut.state.pressure_stationarity_relative;
+        cuts.append(std::move(item));
+    }
+    py::dict result;
+    result["status"] = solve.status;
+    result["failure_reason"] = solve.failure_reason;
+    result["attempts"] = attempts;
+    result["cuts"] = cuts;
+    result["outer"] = held_outer_to_dict(solve.outer);
     return result;
 }
 
@@ -639,6 +724,20 @@ PYBIND11_MODULE(_equilibrium, module) {
     module.def(
         "_held_stage_i",
         &held_stage_i,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("feed_x_methane"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held_outer_envelope",
+        &held_outer_envelope,
+        py::arg("cuts")
+    );
+    module.def(
+        "_held_stage_ii_initial_cuts",
+        &held_stage_ii_initial_cuts,
         py::arg("capsule"),
         py::arg("temperature_k"),
         py::arg("pressure_pa"),

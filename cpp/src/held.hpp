@@ -117,6 +117,76 @@ struct HeldStageIResult {
     HeldStateEvaluation best_state{};
 };
 
+struct HeldOuterCut {
+    std::string identity;
+    double intercept = 0.0;
+    double slope = 0.0;
+};
+
+struct HeldOuterResult {
+    std::string status = "infeasible";
+    std::string failure_reason;
+    double value = 0.0;
+    double multiplier = 0.0;
+    std::vector<std::string> active_cut_ids;
+    std::vector<double> tied_multipliers;
+};
+
+struct HeldLowerEvaluation {
+    double objective = 0.0;
+    std::array<double, 2> gradient{};
+    std::array<double, 4> hessian{};
+    HeldStateEvaluation state{};
+};
+
+[[nodiscard]] HeldLowerEvaluation evaluate_held_lower(
+    const ProviderContext& provider,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane,
+    double multiplier,
+    double x_methane,
+    double log_volume
+);
+
+struct HeldStageIIAttempt {
+    std::string role;
+    std::array<double, 2> initial_guess{};
+    bool solver_converged = false;
+    std::string solver_status;
+    int iterations = 0;
+    bool accepted = false;
+    double objective = 0.0;
+    double pressure_stationarity_relative = 0.0;
+    std::string callback_error;
+};
+
+struct HeldStageIICut {
+    std::string identity;
+    std::string endpoint;
+    HeldStateEvaluation state{};
+    HeldOuterCut outer{};
+};
+
+struct HeldStageIIInitialization {
+    std::string status = "indeterminate";
+    std::string failure_reason;
+    std::vector<HeldStageIIAttempt> attempts;
+    std::vector<HeldStageIICut> cuts;
+    HeldOuterResult outer{};
+};
+
+[[nodiscard]] HeldOuterResult solve_held_outer_envelope(
+    const std::vector<HeldOuterCut>& cuts
+);
+
+[[nodiscard]] HeldStageIIInitialization initialize_held_stage_ii_cuts(
+    const ProviderContext& provider,
+    double temperature_k,
+    double pressure_pa,
+    double feed_x_methane
+);
+
 [[nodiscard]] HeldStageIResult solve_held_stage_i(
     const ProviderContext& provider,
     double temperature_k,
