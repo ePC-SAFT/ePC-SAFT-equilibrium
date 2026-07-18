@@ -557,6 +557,31 @@ py::dict held_stage_ii_candidates(
     return result;
 }
 
+py::dict held_stage_ii_trace_to_dict(
+    const epcsaft_equilibrium::HeldStageIITrace& entry
+) {
+    py::list rejections;
+    for (const auto& rejection : entry.rejections) {
+        py::dict item;
+        item["identity"] = rejection.identity;
+        item["reason"] = rejection.reason;
+        rejections.append(std::move(item));
+    }
+    py::dict result;
+    result["major_iteration"] = entry.major_iteration;
+    result["outer_value"] = entry.outer_value;
+    result["upper_bound"] = entry.upper_bound;
+    result["multiplier"] = entry.multiplier;
+    result["active_cut_ids"] = entry.active_cut_ids;
+    result["accepted_cut_ids"] = entry.accepted_cut_ids;
+    result["lower_starts_completed"] = entry.lower_starts_completed;
+    result["candidate_ids"] = entry.candidate_ids;
+    result["rejections"] = rejections;
+    result["stage_iii_outcome"] = entry.stage_iii_outcome;
+    result["stage_iii_failure_reason"] = entry.stage_iii_failure_reason;
+    return result;
+}
+
 py::dict held_stage_ii(
     const py::capsule& capsule,
     double temperature_k,
@@ -613,24 +638,7 @@ py::dict held_stage_ii(
     }
     py::list trace;
     for (const auto& entry : solve.trace) {
-        py::list rejections;
-        for (const auto& rejection : entry.rejections) {
-            py::dict item;
-            item["identity"] = rejection.identity;
-            item["reason"] = rejection.reason;
-            rejections.append(std::move(item));
-        }
-        py::dict item;
-        item["major_iteration"] = entry.major_iteration;
-        item["outer_value"] = entry.outer_value;
-        item["upper_bound"] = entry.upper_bound;
-        item["multiplier"] = entry.multiplier;
-        item["active_cut_ids"] = entry.active_cut_ids;
-        item["accepted_cut_ids"] = entry.accepted_cut_ids;
-        item["lower_starts_completed"] = entry.lower_starts_completed;
-        item["candidate_ids"] = entry.candidate_ids;
-        item["rejections"] = rejections;
-        trace.append(std::move(item));
+        trace.append(held_stage_ii_trace_to_dict(entry));
     }
     py::dict result;
     result["outcome"] = solve.outcome;
@@ -856,14 +864,7 @@ py::dict held(
     }
     py::list trace;
     for (const auto& entry : solve.stage_ii.trace) {
-        py::dict item;
-        item["major_iteration"] = entry.major_iteration;
-        item["upper_bound"] = entry.upper_bound;
-        item["multiplier"] = entry.multiplier;
-        item["candidate_ids"] = entry.candidate_ids;
-        item["stage_iii_outcome"] = entry.stage_iii_outcome;
-        item["stage_iii_failure_reason"] = entry.stage_iii_failure_reason;
-        trace.append(std::move(item));
+        trace.append(held_stage_ii_trace_to_dict(entry));
     }
     py::dict result;
     result["outcome"] = solve.outcome;

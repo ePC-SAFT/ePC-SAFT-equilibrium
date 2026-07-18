@@ -18,7 +18,8 @@ namespace {
 
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
 constexpr double kAmountLowerMol = 1.0e-10;
-constexpr double kVolumeLowerM3 = 1.0e-8;
+constexpr double kLegacyVolumeLowerM3 = 1.0e-8;
+constexpr double kStageIIIVolumeLowerM3 = 1.0e-5;
 constexpr double kVolumeUpperM3 = 1.0e-1;
 constexpr double kSolverConstraintTolerance = 1.0e-10;
 constexpr double kPhysicalTolerance = 1.0e-8;
@@ -130,10 +131,10 @@ std::array<double, 6> solver_lower_bounds() {
     return {
         kAmountLowerMol,
         kAmountLowerMol,
-        std::log(kVolumeLowerM3),
+        std::log(kLegacyVolumeLowerM3),
         kAmountLowerMol,
         kAmountLowerMol,
-        std::log(kVolumeLowerM3),
+        std::log(kLegacyVolumeLowerM3),
     };
 }
 
@@ -747,10 +748,10 @@ HeldStageIIIInitialization initialize_held_stage_iii(
     result.lower_bounds = {
         std::max(kAmountLowerMol, result.initial_variables[0] - kStageIIICandidateRadiusMol),
         std::max(kAmountLowerMol, result.initial_variables[1] - kStageIIICandidateRadiusMol),
-        std::log(kVolumeLowerM3),
+        std::log(kStageIIIVolumeLowerM3),
         std::max(kAmountLowerMol, result.initial_variables[3] - kStageIIICandidateRadiusMol),
         std::max(kAmountLowerMol, result.initial_variables[4] - kStageIIICandidateRadiusMol),
-        std::log(kVolumeLowerM3),
+        std::log(kStageIIIVolumeLowerM3),
     };
     result.upper_bounds = {
         result.initial_variables[0] + kStageIIICandidateRadiusMol,

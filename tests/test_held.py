@@ -550,6 +550,12 @@ def test_held_stage_iii_lever_rule_candidate_neighborhoods_and_infeasibility() -
     for index, center in zip((0, 1, 3, 4), expected_amounts, strict=True):
         assert initialized["lower_bounds"][index] == pytest.approx(center - 1.0e-3)
         assert initialized["upper_bounds"][index] == pytest.approx(center + 1.0e-3)
+    assert tuple(initialized["lower_bounds"][index] for index in (2, 5)) == pytest.approx(
+        (math.log(1.0e-5), math.log(1.0e-5))
+    )
+    assert tuple(initialized["upper_bounds"][index] for index in (2, 5)) == pytest.approx(
+        (math.log(1.0e-1), math.log(1.0e-1))
+    )
 
     infeasible = _equilibrium._held_stage_iii_initialize(
         MAY_ROW_001_FEED_X_METHANE,
@@ -760,7 +766,21 @@ def test_held_controller_returns_failed_refinement_to_stage_ii_and_fails_closed(
     assert result["stage_iii_attempts"]
     assert result["stage_iii_attempts"][0]["outcome"] == "return_to_stage_ii"
     assert result["major_iterations"] > result["stage_iii_attempts"][0]["major_iteration"]
-    assert any(entry["stage_iii_outcome"] == "return_to_stage_ii" for entry in result["trace"])
+    trace = result["trace"]
+    assert all(entry["active_cut_ids"] for entry in trace)
+    assert all(1 <= entry["lower_starts_completed"] <= 20 for entry in trace)
+    assert any(entry["accepted_cut_ids"] for entry in trace)
+    assert all(
+        set(rejection) == {"identity", "reason"}
+        for entry in trace
+        for rejection in entry["rejections"]
+    )
+    assert any(
+        rejection["reason"] == "above_upper" for entry in trace for rejection in entry["rejections"]
+    )
+    feedback = [entry for entry in trace if entry["stage_iii_outcome"] == "return_to_stage_ii"]
+    assert len(feedback) == 1
+    assert feedback[0]["stage_iii_failure_reason"]
     assert result["globality_certificate"] == "not_guaranteed"
 
 
