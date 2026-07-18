@@ -425,8 +425,8 @@ std::vector<HeldStageIStart> make_planned_starts(
     };
     append_pair("feed_near_lower", feed_x_methane - 0.02);
     append_pair("feed_near_upper", feed_x_methane + 0.02);
-    append_pair("component_1_rich", 1.0e-4);
-    append_pair("component_2_rich", 1.0 - 1.0e-4);
+    append_pair("component_1_rich", 1.0 - 1.0e-4);
+    append_pair("component_2_rich", 1.0e-4);
     append_pair("stratified_low", 0.1);
     append_pair("stratified_high", 0.9);
     append_pair("stratified_quarter", 0.25);
@@ -483,11 +483,6 @@ HeldStageIResult solve_held_stage_i(
     double feed_x_methane
 ) {
     HeldStageIResult result;
-    result.planned_starts = make_planned_starts(
-        temperature_k,
-        pressure_pa,
-        feed_x_methane
-    );
     if (!std::isfinite(temperature_k) || !std::isfinite(pressure_pa)
         || !std::isfinite(feed_x_methane) || temperature_k <= 0.0 || pressure_pa <= 0.0
         || feed_x_methane <= kCompositionLower
@@ -496,6 +491,11 @@ HeldStageIResult solve_held_stage_i(
         result.failure_reason = "Stage I requires finite positive T and P and an interior feed";
         return result;
     }
+    result.planned_starts = make_planned_starts(
+        temperature_k,
+        pressure_pa,
+        feed_x_methane
+    );
 
     const std::array<std::pair<std::string, double>, 2> reference_starts{{
         {"liquid", std::log(1.0 / 20'000.0)},
@@ -565,17 +565,19 @@ HeldStageIResult solve_held_stage_i(
     result.best_tpd = 0.0;
     result.best_state = result.reference;
     bool search_failed = false;
+    const double numerical_pole_distance =
+        held_tunnel_minimum_finite_exponential_distance();
     for (const HeldStageIStart& start : result.planned_starts) {
         const bool lower_side = start.x_methane < result.best_state.x_methane;
         std::array<double, 2> tunnel_lower{
             lower_side
                 ? kCompositionLower
-                : result.best_state.x_methane + kHeldTunnelPoleExclusion,
+                : result.best_state.x_methane + numerical_pole_distance,
             std::log(kVolumeLowerM3PerMol),
         };
         std::array<double, 2> tunnel_upper{
             lower_side
-                ? result.best_state.x_methane - kHeldTunnelPoleExclusion
+                ? result.best_state.x_methane - numerical_pole_distance
                 : kCompositionUpper,
             std::log(kVolumeUpperM3PerMol),
         };
@@ -601,7 +603,7 @@ HeldStageIResult solve_held_stage_i(
             continue;
         }
 
-        const SearchRun tunnel = run_search_ipopt(
+        SearchRun tunnel = run_search_ipopt(
             provider,
             temperature_k,
             pressure_pa,
@@ -633,8 +635,9 @@ HeldStageIResult solve_held_stage_i(
                        )
                         <= kLocalPhysicalTolerance
                     && volume_is_interior(tunnel_evaluation.tpd.state.log_volume);
-            } catch (const std::exception&) {
+            } catch (const std::exception& error) {
                 tunnel_accepted = false;
+                tunnel.callback_error = error.what();
             }
         }
         result.attempt_log.push_back(make_attempt(
@@ -663,7 +666,7 @@ HeldStageIResult solve_held_stage_i(
             kCompositionUpper,
             std::log(kVolumeUpperM3PerMol),
         };
-        const SearchRun polish = run_search_ipopt(
+        SearchRun polish = run_search_ipopt(
             provider,
             temperature_k,
             pressure_pa,
@@ -688,8 +691,9 @@ HeldStageIResult solve_held_stage_i(
                     polish.variables[1]
                 );
                 polish_accepted = locally_accepts(polish, candidate);
-            } catch (const std::exception&) {
+            } catch (const std::exception& error) {
                 polish_accepted = false;
+                polish.callback_error = error.what();
             }
         }
         result.attempt_log.push_back(make_attempt(
@@ -727,7 +731,7 @@ HeldStageIResult solve_held_stage_i(
         confirmation_initial[1] += volume_shift;
         const bool materially_perturbed = std::abs(composition_shift) >= 0.01
             && std::abs(volume_shift) >= 0.04;
-        const SearchRun confirmation = run_search_ipopt(
+        SearchRun confirmation = run_search_ipopt(
             provider,
             temperature_k,
             pressure_pa,
@@ -739,7 +743,6 @@ HeldStageIResult solve_held_stage_i(
             search_lower,
             search_upper
         );
-        ++result.negative_confirmations;
         HeldTpdEvaluation confirmed;
         bool confirmation_accepted = false;
         if (confirmation.solver_converged && confirmation.callback_error.empty()) {
@@ -762,8 +765,9 @@ HeldStageIResult solve_held_stage_i(
                     confirmation_accepted = result.confirmation_max_difference
                         <= kConfirmationTolerance;
                 }
-            } catch (const std::exception&) {
+            } catch (const std::exception& error) {
                 confirmation_accepted = false;
+                confirmation.callback_error = error.what();
             }
         }
         result.attempt_log.push_back(make_attempt(
@@ -780,6 +784,7 @@ HeldStageIResult solve_held_stage_i(
                                   : std::numeric_limits<double>::infinity()
         ));
         if (confirmation_accepted) {
+            ++result.negative_confirmations;
             result.outcome = "negative_tpd";
             result.search_status = "confirmed_negative";
             result.failure_reason.clear();

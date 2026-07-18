@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import sys
+from collections.abc import Callable
 
 import epcsaft
 import pytest
@@ -139,6 +141,94 @@ def test_held_one_mole_transform_and_exact_derivatives_at_may_row_001(
         )
 
 
+def test_held_tpd_and_tunneling_exact_derivatives_at_may_row_001(
+    binary_capsule: object,
+    unstable_stage_i: dict[str, object],
+) -> None:
+    assert MAY_ROW_001_ID == "may2015-ch4-c2h6-001"
+    reference = unstable_stage_i["reference"]
+    minimum = unstable_stage_i["best_state"]
+    trial_x_methane = MAY_ROW_001_VAPOR_X_METHANE
+    trial_log_volume = math.log(1.0 / 15_000.0)
+    direction = (0.03, -0.04)
+    step = 3.0e-5
+
+    def evaluate_tpd(scale: float) -> dict[str, object]:
+        return _equilibrium._held_evaluate_tpd(
+            binary_capsule,
+            MAY_ROW_001_TEMPERATURE_K,
+            MAY_ROW_001_PRESSURE_PA,
+            MAY_ROW_001_FEED_X_METHANE,
+            reference["log_volume"],
+            trial_x_methane + scale * direction[0],
+            trial_log_volume + scale * direction[1],
+            BINARY_FINGERPRINT,
+        )
+
+    def evaluate_tunneling(scale: float) -> dict[str, object]:
+        return _equilibrium._held_evaluate_tunneling(
+            binary_capsule,
+            MAY_ROW_001_TEMPERATURE_K,
+            MAY_ROW_001_PRESSURE_PA,
+            MAY_ROW_001_FEED_X_METHANE,
+            reference["log_volume"],
+            minimum["x_methane"],
+            minimum["log_volume"],
+            trial_x_methane + scale * direction[0],
+            trial_log_volume + scale * direction[1],
+            BINARY_FINGERPRINT,
+        )
+
+    def check_centered_derivatives(
+        evaluate: Callable[[float], dict[str, object]],
+        objective_name: str,
+    ) -> dict[str, object]:
+        lower = evaluate(-step)
+        center = evaluate(0.0)
+        upper = evaluate(step)
+
+        # Here the directional gradient is O(1e-2) and the Hessian-vector
+        # components are O(1e-1). This step balances centered truncation and
+        # roundoff; 2e-8 relative plus 2e-10 absolute remains tight against
+        # the observed O(1e-11) directional discrepancies.
+        objective_directional = (upper[objective_name] - lower[objective_name]) / (2.0 * step)
+        exact_objective_directional = sum(
+            value * delta for value, delta in zip(center["gradient"], direction, strict=True)
+        )
+        assert objective_directional == pytest.approx(
+            exact_objective_directional,
+            rel=2.0e-8,
+            abs=2.0e-10,
+        )
+        for row in range(2):
+            gradient_directional = (upper["gradient"][row] - lower["gradient"][row]) / (2.0 * step)
+            exact_hessian_directional = sum(
+                center["hessian"][2 * row + column] * direction[column] for column in range(2)
+            )
+            assert gradient_directional == pytest.approx(
+                exact_hessian_directional,
+                rel=2.0e-8,
+                abs=2.0e-10,
+            )
+        return center
+
+    center_tpd = check_centered_derivatives(evaluate_tpd, "d_bar")
+    center_tunneling = check_centered_derivatives(evaluate_tunneling, "objective")
+    assert center_tunneling["hessian"][1] == pytest.approx(
+        center_tunneling["hessian"][2],
+        rel=0.0,
+        abs=1.0e-12,
+    )
+    expected_tunneling = (center_tpd["d_bar"] - unstable_stage_i["best_tpd"]) * math.exp(
+        1.0e-3 / abs(trial_x_methane - minimum["x_methane"])
+    )
+    assert center_tunneling["objective"] == pytest.approx(
+        expected_tunneling,
+        rel=2.0e-15,
+        abs=2.0e-15,
+    )
+
+
 def test_held_reference_selection_and_tpd_sign_at_may_row_001(
     binary_capsule: object,
     unstable_stage_i: dict[str, object],
@@ -191,6 +281,22 @@ def test_held_reference_selection_and_tpd_sign_at_may_row_001(
         BINARY_FINGERPRINT,
     )
     assert math.isfinite(finite_tunnel["objective"])
+    numerical_pole_distance = 1.0e-3 / math.log(sys.float_info.max)
+    near_pole = _equilibrium._held_evaluate_tunneling(
+        binary_capsule,
+        MAY_ROW_001_TEMPERATURE_K,
+        MAY_ROW_001_PRESSURE_PA,
+        MAY_ROW_001_FEED_X_METHANE,
+        reference["log_volume"],
+        unstable_stage_i["best_state"]["x_methane"],
+        unstable_stage_i["best_state"]["log_volume"],
+        unstable_stage_i["best_state"]["x_methane"] + 2.0 * numerical_pole_distance,
+        unstable_stage_i["best_state"]["log_volume"],
+        BINARY_FINGERPRINT,
+    )
+    assert math.isfinite(near_pole["objective"])
+    assert all(math.isfinite(value) for value in near_pole["gradient"])
+    assert all(math.isfinite(value) for value in near_pole["hessian"])
     with pytest.raises(ValueError, match="singular composition neighborhood"):
         _equilibrium._held_evaluate_tunneling(
             binary_capsule,
@@ -198,10 +304,10 @@ def test_held_reference_selection_and_tpd_sign_at_may_row_001(
             MAY_ROW_001_PRESSURE_PA,
             MAY_ROW_001_FEED_X_METHANE,
             reference["log_volume"],
-            MAY_ROW_001_FEED_X_METHANE,
-            reference["log_volume"],
-            MAY_ROW_001_FEED_X_METHANE,
-            reference["log_volume"],
+            unstable_stage_i["best_state"]["x_methane"],
+            unstable_stage_i["best_state"]["log_volume"],
+            unstable_stage_i["best_state"]["x_methane"] + 0.5 * numerical_pole_distance,
+            unstable_stage_i["best_state"]["log_volume"],
             BINARY_FINGERPRINT,
         )
 
@@ -235,6 +341,11 @@ def test_held_stage_i_uses_the_frozen_deterministic_20_start_profile(
         "stratified_inner_high_liquid",
         "stratified_inner_high_vapor",
     ]
+    starts_by_role = {start["role"]: start for start in starts}
+    assert starts_by_role["component_1_rich_liquid"]["x_methane"] == pytest.approx(1.0 - 1.0e-4)
+    assert starts_by_role["component_1_rich_vapor"]["x_methane"] == pytest.approx(1.0 - 1.0e-4)
+    assert starts_by_role["component_2_rich_liquid"]["x_methane"] == pytest.approx(1.0e-4)
+    assert starts_by_role["component_2_rich_vapor"]["x_methane"] == pytest.approx(1.0e-4)
     assert all(1.0e-8 <= start["x_methane"] <= 1.0 - 1.0e-8 for start in starts)
     assert all(1.0e-5 <= math.exp(start["log_volume"]) <= 1.0e-1 for start in starts)
 
@@ -253,6 +364,9 @@ def test_held_stage_i_confirms_negative_tpd_from_a_material_perturbation(
     assert len(confirmation_attempts) == 1
     assert confirmation_attempts[0]["materially_perturbed"] is True
     assert confirmation_attempts[0]["accepted"] is True
+    assert unstable_stage_i["negative_confirmations"] == sum(
+        attempt["accepted"] for attempt in confirmation_attempts
+    )
 
 
 def test_held_stage_i_distinguishes_no_negative_found_from_global_stability(
@@ -284,3 +398,58 @@ def test_held_stage_i_reports_reference_failure_as_indeterminate(
     assert result["failure_reason"]
     assert len(result["reference_attempts"]) == 2
     assert all(not attempt["accepted"] for attempt in result["reference_attempts"])
+
+
+@pytest.mark.parametrize(
+    ("temperature_k", "pressure_pa", "feed_x_methane"),
+    [
+        pytest.param(math.nan, MAY_ROW_001_PRESSURE_PA, 0.5, id="nan-temperature"),
+        pytest.param(MAY_ROW_001_TEMPERATURE_K, math.nan, 0.5, id="nan-pressure"),
+        pytest.param(
+            MAY_ROW_001_TEMPERATURE_K,
+            MAY_ROW_001_PRESSURE_PA,
+            math.nan,
+            id="nan-feed",
+        ),
+        pytest.param(0.0, MAY_ROW_001_PRESSURE_PA, 0.5, id="zero-temperature"),
+        pytest.param(MAY_ROW_001_TEMPERATURE_K, -1.0, 0.5, id="negative-pressure"),
+        pytest.param(
+            MAY_ROW_001_TEMPERATURE_K,
+            MAY_ROW_001_PRESSURE_PA,
+            1.0,
+            id="noninterior-feed",
+        ),
+    ],
+)
+def test_held_stage_i_rejects_invalid_input_before_planning_starts(
+    binary_capsule: object,
+    temperature_k: float,
+    pressure_pa: float,
+    feed_x_methane: float,
+) -> None:
+    result = _equilibrium._held_stage_i(
+        binary_capsule,
+        temperature_k,
+        pressure_pa,
+        feed_x_methane,
+        BINARY_FINGERPRINT,
+    )
+
+    def assert_finite_diagnostic_numbers(value: object) -> None:
+        if isinstance(value, float):
+            assert math.isfinite(value)
+        elif isinstance(value, dict):
+            for item in value.values():
+                assert_finite_diagnostic_numbers(item)
+        elif isinstance(value, list):
+            for item in value:
+                assert_finite_diagnostic_numbers(item)
+
+    assert result["outcome"] == "indeterminate"
+    assert result["search_status"] == "invalid_input"
+    assert result["planned_starts"] == []
+    assert result["reference_attempts"] == []
+    assert result["attempt_log"] == []
+    assert result["starts_completed"] == 0
+    assert result["failure_reason"]
+    assert_finite_diagnostic_numbers(result)

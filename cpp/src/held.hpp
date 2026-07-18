@@ -9,7 +9,8 @@
 namespace epcsaft_equilibrium {
 
 inline constexpr double kHeldTunnelPoleStrength = 1.0e-3;
-inline constexpr double kHeldTunnelPoleExclusion = 1.0e-4;
+
+[[nodiscard]] double held_tunnel_minimum_finite_exponential_distance();
 
 struct HeldStateEvaluation {
     double x_methane = 0.0;

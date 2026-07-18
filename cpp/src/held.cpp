@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -34,6 +35,11 @@ void require_finite(const std::array<double, 4>& values, const char* name) {
 }
 
 }  // namespace
+
+double held_tunnel_minimum_finite_exponential_distance() {
+    // exp(p*/distance) is representable only below log(max double).
+    return kHeldTunnelPoleStrength / std::log(std::numeric_limits<double>::max());
+}
 
 HeldStateEvaluation evaluate_held_state(
     const ProviderContext& provider,
@@ -139,7 +145,7 @@ HeldTunnelingEvaluation evaluate_held_tunneling(
     require_finite(minimum_tpd, "tunneling minimum TPD");
     const double composition_delta = x_methane - minimum_x_methane;
     const double composition_distance = std::abs(composition_delta);
-    if (composition_distance <= kHeldTunnelPoleExclusion) {
+    if (composition_distance <= held_tunnel_minimum_finite_exponential_distance()) {
         throw std::invalid_argument(
             "tunneling point lies in the singular composition neighborhood"
         );
