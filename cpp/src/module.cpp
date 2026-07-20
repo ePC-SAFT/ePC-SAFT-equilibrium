@@ -14,6 +14,7 @@
 #include <epcsaft/native_sdk_v1.h>
 
 #include "held.hpp"
+#include "held2.hpp"
 #include "saturation.hpp"
 
 namespace py = pybind11;
@@ -1230,6 +1231,105 @@ py::dict solve_saturation(
     return result;
 }
 
+py::dict held2_manufactured(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed,
+    const std::array<double, 4>& variables,
+    const std::vector<double>& chemical_potentials
+) {
+    const epcsaft_equilibrium::Held2ManufacturedEvaluation evaluation =
+        epcsaft_equilibrium::evaluate_held2_manufactured(
+            charges,
+            physical_feed,
+            variables,
+            chemical_potentials
+        );
+    py::dict metrics;
+    metrics["modified_balance_abs"] = evaluation.certificate.modified_balance_abs;
+    metrics["ordinary_balance_inf_norm"] =
+        evaluation.certificate.ordinary_balance_inf_norm;
+    metrics["phase_charge_inf_norm"] = evaluation.certificate.phase_charge_inf_norm;
+    metrics["modified_potential_gap"] =
+        evaluation.certificate.modified_potential_gap;
+    metrics["pressure_stationarity_inf_norm"] =
+        evaluation.certificate.pressure_stationarity_inf_norm;
+    metrics["reduced_kkt_inf_norm"] = evaluation.certificate.reduced_kkt_inf_norm;
+    metrics["enumeration_objective_gap"] =
+        evaluation.certificate.enumeration_objective_gap;
+    metrics["independent_modified_composition_count"] =
+        evaluation.certificate.independent_modified_composition_count;
+    py::dict certificate;
+    certificate["accepted"] = evaluation.certificate.accepted;
+    certificate["independent_evidence"] = evaluation.certificate.independent_evidence;
+    certificate["metrics"] = std::move(metrics);
+
+    py::dict result;
+    result["formulation_id"] = epcsaft_equilibrium::kHeld2ManufacturedFormulationId;
+    result["globality_certificate"] = "not_guaranteed";
+    result["eliminated_index"] = evaluation.coordinates.eliminated_index;
+    result["dependent_index"] = evaluation.coordinates.dependent_index;
+    result["retained_indices"] = evaluation.coordinates.retained_indices;
+    result["independent_indices"] = evaluation.coordinates.independent_indices;
+    result["modified_factors"] = evaluation.coordinates.modified_factors;
+    result["independent_lower_bounds"] =
+        evaluation.coordinates.independent_lower_bounds;
+    result["independent_upper_bounds"] =
+        evaluation.coordinates.independent_upper_bounds;
+    result["modified_feed"] = evaluation.modified_feed;
+    result["phase_fraction"] = evaluation.phase_fraction;
+    result["modified_phases"] = evaluation.modified_phases;
+    result["physical_phases"] = evaluation.physical_phases;
+    result["phase_charge_residuals"] = evaluation.phase_charge_residuals;
+    result["modified_balance"] = evaluation.modified_balance;
+    result["ordinary_balance"] = evaluation.ordinary_balance;
+    result["transformed_modified_potentials"] =
+        evaluation.transformed_modified_potentials;
+    result["phase_gibbs_gradients"] = evaluation.phase_gibbs_gradients;
+    result["phase_modified_potentials"] = evaluation.phase_modified_potentials;
+    result["modified_potential_gap"] = evaluation.modified_potential_gap;
+    result["pressure_stationarity_inf_norm"] =
+        evaluation.pressure_stationarity_inf_norm;
+    result["objective"] = evaluation.objective;
+    result["gradient"] = evaluation.gradient;
+    result["certificate"] = std::move(certificate);
+    return result;
+}
+
+py::dict held2_coordinate_evidence(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed,
+    const std::vector<double>& chemical_potentials
+) {
+    const epcsaft_equilibrium::Held2Coordinates coordinates =
+        epcsaft_equilibrium::make_held2_coordinates(charges);
+    const std::vector<double> modified_feed =
+        epcsaft_equilibrium::held2_transform_physical_fractions(
+            coordinates,
+            physical_feed
+        );
+    const std::vector<double> lifted_feed =
+        epcsaft_equilibrium::held2_lift_modified_fractions(
+            coordinates,
+            modified_feed
+        );
+    py::dict result;
+    result["eliminated_index"] = coordinates.eliminated_index;
+    result["dependent_index"] = coordinates.dependent_index;
+    result["retained_indices"] = coordinates.retained_indices;
+    result["independent_indices"] = coordinates.independent_indices;
+    result["modified_factors"] = coordinates.modified_factors;
+    result["independent_lower_bounds"] = coordinates.independent_lower_bounds;
+    result["independent_upper_bounds"] = coordinates.independent_upper_bounds;
+    result["modified_feed"] = modified_feed;
+    result["lifted_feed"] = lifted_feed;
+    result["transformed_modified_potentials"] =
+        epcsaft_equilibrium::held2_transform_modified_potentials(
+            coordinates,
+            chemical_potentials
+        );
+    return result;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_equilibrium, module) {
@@ -1388,6 +1488,21 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("upper_bound"),
         py::arg("candidates"),
         py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_coordinate_evidence,
+        py::arg("charges"),
+        py::arg("physical_feed"),
+        py::arg("chemical_potentials")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_manufactured,
+        py::arg("charges"),
+        py::arg("physical_feed"),
+        py::arg("variables"),
+        py::arg("chemical_potentials")
     );
     module.def(
         "_solve_tp_flash",
