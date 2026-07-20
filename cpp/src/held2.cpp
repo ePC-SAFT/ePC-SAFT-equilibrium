@@ -105,6 +105,45 @@ double manufactured_composition_hessian(double composition) {
            + inner_squared * outer_squared);
 }
 
+std::array<double, 2> manufactured_modified_potentials(
+    double composition,
+    double molar_volume
+);
+
+Held2StateEvaluation evaluate_held2_manufactured_state(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent,
+    double log_volume
+) {
+    if (independent.size() != 1 || !std::isfinite(log_volume)) {
+        throw std::invalid_argument("manufactured HELD2 phase state has the wrong size");
+    }
+    Held2StateEvaluation state;
+    state.physical_amounts = held2_lift_independent_fractions(coordinates, independent);
+    state.modified_fractions = held2_transform_physical_fractions(
+        coordinates,
+        state.physical_amounts
+    );
+    state.volume = std::exp(log_volume);
+    if (!std::isfinite(state.volume) || state.volume <= 0.0) {
+        throw std::invalid_argument("manufactured HELD2 phase volume must be positive");
+    }
+    const double composition = independent.front();
+    const auto phase_gradient = manufactured_gibbs_gradient(composition, state.volume);
+    state.objective = manufactured_gibbs(composition, state.volume);
+    state.gradient = {phase_gradient[0], state.volume * phase_gradient[1]};
+    state.hessian = {
+        manufactured_composition_hessian(composition),
+        0.0,
+        0.0,
+        5.0 * state.volume * state.volume + state.volume * phase_gradient[1],
+    };
+    const auto potentials = manufactured_modified_potentials(composition, state.volume);
+    state.modified_potentials.assign(potentials.begin(), potentials.end());
+    state.pressure_stationarity_relative = phase_gradient[1];
+    return state;
+}
+
 void configure_held2_ipopt(const Ipopt::SmartPtr<Ipopt::IpoptApplication>& application) {
     application->Options()->SetStringValue("option_file_name", "");
     application->Options()->SetIntegerValue("print_level", 0);
@@ -836,42 +875,11 @@ Held2StageIResult solve_held2_manufactured_stage_i(
         const std::vector<double>& independent,
         double log_volume
     ) {
-        if (independent.size() != 1 || !std::isfinite(log_volume)) {
-            throw std::invalid_argument("manufactured HELD2 phase state has the wrong size");
-        }
-        Held2StateEvaluation state;
-        state.physical_amounts = held2_lift_independent_fractions(coordinates, independent);
-        state.modified_fractions = held2_transform_physical_fractions(
+        return evaluate_held2_manufactured_state(
             coordinates,
-            state.physical_amounts
+            independent,
+            log_volume
         );
-        state.volume = std::exp(log_volume);
-        if (!std::isfinite(state.volume) || state.volume <= 0.0) {
-            throw std::invalid_argument("manufactured HELD2 phase volume must be positive");
-        }
-        const double composition = independent.front();
-        const auto phase_gradient = manufactured_gibbs_gradient(
-            composition,
-            state.volume
-        );
-        state.objective = manufactured_gibbs(composition, state.volume);
-        state.gradient = {
-            phase_gradient[0],
-            state.volume * phase_gradient[1],
-        };
-        state.hessian = {
-            manufactured_composition_hessian(composition),
-            0.0,
-            0.0,
-            5.0 * state.volume * state.volume + state.volume * phase_gradient[1],
-        };
-        const auto potentials = manufactured_modified_potentials(
-            composition,
-            state.volume
-        );
-        state.modified_potentials.assign(potentials.begin(), potentials.end());
-        state.pressure_stationarity_relative = phase_gradient[1];
-        return state;
     };
 
     const std::vector<double> reference_initial = {feed_independent, 0.0};
@@ -984,6 +992,201 @@ Held2StageIResult solve_held2_manufactured_stage_i(
     } else {
         result.outcome = "no_negative_found";
     }
+    return result;
+}
+
+Held2StageIIResult solve_held2_manufactured_stage_ii(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed
+) {
+    constexpr int major_iteration_cap = 100;
+    constexpr double stage_ii_tolerance = 1.0e-8;
+    const Held2Coordinates coordinates = make_held2_coordinates(charges);
+    if (coordinates.independent_indices.size() != 1) {
+        throw std::invalid_argument(
+            "manufactured HELD2 Stage II requires one independent modified composition"
+        );
+    }
+    const std::vector<double> modified_feed = held2_transform_physical_fractions(
+        coordinates,
+        physical_feed
+    );
+    const auto independent_retained = static_cast<std::size_t>(
+        std::find(
+            coordinates.retained_indices.begin(),
+            coordinates.retained_indices.end(),
+            coordinates.independent_indices.front()
+        ) - coordinates.retained_indices.begin()
+    );
+    const double feed = modified_feed[independent_retained];
+    const Held2StateEvaluator evaluator = [coordinates](
+        const std::vector<double>& independent,
+        double log_volume
+    ) {
+        return evaluate_held2_manufactured_state(
+            coordinates,
+            independent,
+            log_volume
+        );
+    };
+    std::vector<Held2StateEvaluation> cuts = {
+        evaluator({feed}, 0.0),
+        evaluator({0.5 * feed}, 0.0),
+        evaluator({0.5 * (1.0 + feed)}, 0.0),
+    };
+    const double feed_gibbs = cuts.front().objective;
+    const double lower_composition = coordinates.independent_lower_bounds.front();
+    const double upper_composition = std::nextafter(
+        coordinates.independent_upper_bounds.front(),
+        lower_composition
+    );
+    const std::vector<double> lower = {lower_composition, std::log(0.5)};
+    const std::vector<double> upper = {upper_composition, std::log(1.5)};
+    Held2StageIIResult result;
+    result.lower_starts_per_iteration = 10 * static_cast<int>(charges.size());
+
+    for (int major = 0; major < major_iteration_cap; ++major) {
+        struct Line {
+            double intercept = 0.0;
+            double slope = 0.0;
+        };
+        std::vector<Line> lines;
+        lines.reserve(cuts.size() + 1);
+        for (const Held2StateEvaluation& cut : cuts) {
+            lines.push_back({
+                cut.objective,
+                feed - cut.modified_fractions[independent_retained],
+            });
+        }
+        lines.push_back({feed_gibbs, 0.0});
+        std::vector<double> multiplier_candidates = {0.0};
+        for (std::size_t left = 0; left < lines.size(); ++left) {
+            for (std::size_t right = left + 1; right < lines.size(); ++right) {
+                const double slope_delta = lines[left].slope - lines[right].slope;
+                if (std::abs(slope_delta) <= std::numeric_limits<double>::epsilon()) {
+                    continue;
+                }
+                multiplier_candidates.push_back(
+                    (lines[right].intercept - lines[left].intercept) / slope_delta
+                );
+            }
+        }
+        double upper_bound = -std::numeric_limits<double>::infinity();
+        double multiplier = 0.0;
+        for (double candidate : multiplier_candidates) {
+            double envelope = std::numeric_limits<double>::infinity();
+            for (const Line& line : lines) {
+                envelope = std::min(envelope, line.intercept + line.slope * candidate);
+            }
+            if (envelope > upper_bound) {
+                upper_bound = envelope;
+                multiplier = candidate;
+            }
+        }
+
+        Held2StateEvaluation lower_reference;
+        lower_reference.gradient = {multiplier, 0.0};
+        lower_reference.hessian.assign(4, 0.0);
+        const std::vector<double> lower_reference_variables = {feed, 0.0};
+        std::mt19937 generator(kStageISeed + static_cast<unsigned int>(major));
+        std::uniform_real_distribution<double> composition_distribution(
+            lower_composition,
+            upper_composition
+        );
+        std::uniform_real_distribution<double> log_volume_distribution(
+            lower.back(),
+            upper.back()
+        );
+        std::vector<std::vector<double>> starts = {{0.2, 0.0}, {0.8, 0.0}};
+        while (starts.size() < static_cast<std::size_t>(result.lower_starts_per_iteration)) {
+            starts.push_back({
+                composition_distribution(generator),
+                log_volume_distribution(generator),
+            });
+        }
+        double lower_bound = std::numeric_limits<double>::infinity();
+        Held2StateEvaluation best_state;
+        bool lower_failed = false;
+        for (const std::vector<double>& start : starts) {
+            const Held2SearchRun run = solve_held2_search(
+                evaluator,
+                lower_reference_variables,
+                lower_reference,
+                true,
+                start,
+                lower,
+                upper
+            );
+            if (!run.solver_converged || !run.callback_error.empty()
+                || run.variables.size() != 2) {
+                lower_failed = true;
+                continue;
+            }
+            Held2StateEvaluation state = evaluator(
+                {run.variables.front()},
+                run.variables.back()
+            );
+            const double value = state.objective
+                + multiplier * (feed - state.modified_fractions[independent_retained]);
+            if (value < lower_bound) {
+                lower_bound = value;
+                best_state = std::move(state);
+            }
+        }
+        ++result.major_iterations;
+        if (lower_failed || !std::isfinite(lower_bound)) {
+            result.outcome = "indeterminate";
+            result.cut_count = static_cast<int>(cuts.size());
+            return result;
+        }
+        result.bound_history.push_back({
+            lower_bound,
+            upper_bound,
+            multiplier,
+            static_cast<int>(cuts.size()),
+        });
+        const bool duplicate = std::any_of(
+            cuts.begin(),
+            cuts.end(),
+            [&best_state](const Held2StateEvaluation& cut) {
+                return maximum_abs_difference(
+                           cut.modified_fractions,
+                           best_state.modified_fractions
+                       ) < 1.0e-7
+                    && std::abs(cut.volume - best_state.volume) < 1.0e-7;
+            }
+        );
+        if (!duplicate) {
+            cuts.push_back(best_state);
+        }
+        result.candidates.clear();
+        for (const Held2StateEvaluation& cut : cuts) {
+            const double lower_value = cut.objective
+                + multiplier * (feed - cut.modified_fractions[independent_retained]);
+            const double gap = upper_bound - lower_value;
+            if (gap >= -stage_ii_tolerance && gap <= stage_ii_tolerance
+                && std::abs(cut.gradient.front() - multiplier) <= stage_ii_tolerance
+                && std::abs(cut.gradient.back()) <= stage_ii_tolerance) {
+                result.candidates.push_back({
+                    cut.modified_fractions,
+                    cut.volume,
+                    gap,
+                });
+            }
+        }
+        if (result.candidates.size() > 1) {
+            result.outcome = "candidate_set";
+            result.cut_count = static_cast<int>(cuts.size());
+            return result;
+        }
+        if (duplicate) {
+            result.outcome = "no_progress";
+            result.cut_count = static_cast<int>(cuts.size());
+            return result;
+        }
+    }
+    result.outcome = "resource_limit";
+    result.cut_count = static_cast<int>(cuts.size());
     return result;
 }
 

@@ -80,6 +80,28 @@ struct Held2StageIResult {
     std::vector<Held2StageICandidate> candidates;
 };
 
+struct Held2StageIIBound {
+    double lower_bound = 0.0;
+    double upper_bound = 0.0;
+    double multiplier = 0.0;
+    int cut_count = 0;
+};
+
+struct Held2StageIICandidate {
+    std::vector<double> modified_fractions;
+    double volume = 0.0;
+    double lower_gap = 0.0;
+};
+
+struct Held2StageIIResult {
+    std::string outcome;
+    int major_iterations = 0;
+    int lower_starts_per_iteration = 0;
+    int cut_count = 0;
+    std::vector<Held2StageIIBound> bound_history;
+    std::vector<Held2StageIICandidate> candidates;
+};
+
 [[nodiscard]] Held2StateEvaluation evaluate_held2_phase_block(
     const Held2Coordinates& coordinates,
     const std::vector<double>& independent_modified_fractions,
@@ -90,6 +112,11 @@ struct Held2StageIResult {
 );
 
 [[nodiscard]] Held2StageIResult solve_held2_manufactured_stage_i(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed
+);
+
+[[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed
 );

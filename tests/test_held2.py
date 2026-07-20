@@ -402,3 +402,22 @@ def test_held2_manufactured_stage_i_finds_negative_tpd_with_declared_multistart(
         candidate["modified_fractions"][1] for candidate in result["candidates"]
     ) == pytest.approx([0.2, 0.8], abs=2.0e-7)
     assert all(candidate["tpd"] < -1.0e-8 for candidate in result["candidates"])
+
+
+def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
+    result = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
+
+    assert result["profile"] == "perdomo-held2-stage-ii-manufactured-v1"
+    assert result["outcome"] == "candidate_set"
+    assert result["globality_certificate"] == "not_guaranteed"
+    assert result["major_iterations"] <= 100
+    assert result["lower_starts_per_iteration"] == 30
+    assert len(result["bound_history"]) == result["major_iterations"]
+    assert all(
+        entry["lower_bound"] <= entry["upper_bound"] + 1.0e-10 for entry in result["bound_history"]
+    )
+    assert result["cut_count"] >= 3
+    assert sorted(
+        candidate["modified_fractions"][1] for candidate in result["candidates"]
+    ) == pytest.approx([0.2, 0.8], abs=2.0e-7)
+    assert all(abs(candidate["lower_gap"]) <= 1.0e-8 for candidate in result["candidates"])

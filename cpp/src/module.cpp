@@ -1469,6 +1469,43 @@ py::dict held2_manufactured_stage_i(
     const std::vector<double>& physical_feed,
     const std::string& stage
 ) {
+    if (stage == "stage_ii") {
+        const epcsaft_equilibrium::Held2StageIIResult evaluation =
+            epcsaft_equilibrium::solve_held2_manufactured_stage_ii(
+                charges,
+                physical_feed
+            );
+        py::list history;
+        for (const epcsaft_equilibrium::Held2StageIIBound& bound :
+             evaluation.bound_history) {
+            py::dict item;
+            item["lower_bound"] = bound.lower_bound;
+            item["upper_bound"] = bound.upper_bound;
+            item["multiplier"] = bound.multiplier;
+            item["cut_count"] = bound.cut_count;
+            history.append(std::move(item));
+        }
+        py::list candidates;
+        for (const epcsaft_equilibrium::Held2StageIICandidate& candidate :
+             evaluation.candidates) {
+            py::dict item;
+            item["modified_fractions"] = candidate.modified_fractions;
+            item["volume"] = candidate.volume;
+            item["lower_gap"] = candidate.lower_gap;
+            candidates.append(std::move(item));
+        }
+        py::dict result;
+        result["profile"] = "perdomo-held2-stage-ii-manufactured-v1";
+        result["outcome"] = evaluation.outcome;
+        result["globality_certificate"] = "not_guaranteed";
+        result["major_iterations"] = evaluation.major_iterations;
+        result["lower_starts_per_iteration"] =
+            evaluation.lower_starts_per_iteration;
+        result["cut_count"] = evaluation.cut_count;
+        result["bound_history"] = std::move(history);
+        result["candidates"] = std::move(candidates);
+        return result;
+    }
     if (stage != "stage_i") {
         throw py::value_error("unsupported manufactured HELD2 stage request");
     }
