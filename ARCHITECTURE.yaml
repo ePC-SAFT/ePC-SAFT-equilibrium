@@ -124,7 +124,7 @@ local_candidate:
     no_package_accepted_local_state_row: "012"
     interpretation: historical model/data evidence retained; not reclassified by HELD
   controller_redesign_design:
-    status: pending-permanent-lab-exact-subject-design-review
+    status: deferred-non-production-provenance
     governing_delta: >-
       docs/designs/2026-07-17-neutral-held-v1.md#13-post-validation-binary-controller-redesign-delta
     future_plan_task: >-
@@ -134,6 +134,7 @@ local_candidate:
     validation_commit: 93ff18541d2fe277a27671e4e6d12b6b009a58ed
     validation_tree: 5aa2bc81941d1e807ba4e579231c4af9b7be15d7
     permanent_lab_verdict: APPROVE_NON_ADMISSION_EVIDENCE-EQUILIBRIUM_CONTROLLER_REDESIGN_REQUIRED
+    deferral_reason: user-authorized-Perdomo-HELD2-pivot
     runtime_implementation_authorized: false
     runtime_public_or_resource_delta: none
 

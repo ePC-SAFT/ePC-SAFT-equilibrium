@@ -3,9 +3,8 @@
 Status: Tasks 1--7 are frozen executed-v1 provenance at runtime commit
 `8318e755d4a8e490822fdf7bb2685d8c5af6436c`. Validation commit
 `93ff18541d2fe277a27671e4e6d12b6b009a58ed` is stable `NON_ADMISSION`
-evidence. Task 8 specifies the design-reviewed controller correction but is
-not authorized for implementation until permanent-lab exact-subject approval
-and a separate Migration packet.
+evidence. Task 8 records the proposed controller correction but is deferred
+non-production provenance after the user-authorized Perdomo HELD2 pivot.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:executing-plans` and `superpowers:test-driven-development`.
@@ -287,7 +286,7 @@ uv run --isolated --no-project --python 3.13 \
 
 ### Task 8: Correct the binary candidate-pair lifecycle after NON_ADMISSION
 
-**Status:** future implementation only; this design packet authorizes no code,
+**Status:** deferred non-production provenance; this packet authorizes no code,
 test, build, artifact, receipt, resource, tolerance, or public-surface change.
 
 **Files for a separately authorized implementation:**
@@ -317,15 +316,15 @@ test, build, artifact, receipt, resource, tolerance, or public-surface change.
 - [ ] Prove the diff adds no generic N-phase API, fixed-route revival, Provider
   implementation, resource/tolerance change, public setting, or second owner.
 
-**Design review checkpoint D:** permanent lab must accept the exact design
-subject before Migration may authorize Task 8 implementation. The later
-runtime checkpoint must stop again for independent review and Validation.
+**Design review checkpoint D:** deferred by the user-authorized Perdomo HELD2
+pivot. Any future revival requires a new explicit authorization; this retained
+text is not an active implementation packet.
 
 ## Completion boundary
 
 Tasks 1--7 completed the strongest truthful executed-v1 HELD candidate. The
 installed-artifact campaign retained that subject as `NON_ADMISSION`; Task 8
-is the smallest planned controller correction and remains unauthorized at this
-design checkpoint. Neither state means provider-tail promotion, equilibrium
+is a deferred controller proposal and remains unauthorized. Neither state
+means provider-tail promotion, equilibrium
 promotion, push, release, publication, or a guaranteed global phase-equilibrium
 capability. Those remain Migration and user-approval gates.

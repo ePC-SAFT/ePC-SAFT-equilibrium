@@ -81,6 +81,8 @@ searches, so no two-phase composition comparison was evaluable. Permanent-lab
 review requires a focused controller-lifecycle redesign before another runtime
 candidate. The current wheel remains immutable and unpromoted; the design-only
 delta changes no runtime, tolerance, resource, public type, or globality claim.
+That neutral redesign is retained as deferred provenance while the separately
+authorized Perdomo HELD2 implementation is the active development path.
 
 ## Native boundary
 

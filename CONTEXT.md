@@ -73,8 +73,8 @@ not stop the remaining 20 starts; and a complete nonprogressing pass must fail
 closed promptly with exact reason `no_progress`. The design-only delta is
 Section 13 of `docs/designs/2026-07-17-neutral-held-v1.md`. Runtime, tests,
 artifacts, resources, tolerances, public types, binary scope, and globality are
-unchanged pending exact-subject design review and separate implementation
-authorization.
+unchanged. The user-authorized Perdomo HELD2 pivot defers this neutral redesign
+as non-production provenance; it is no longer the active implementation gate.
 
 `runtime_source_of_truth: true`
 
@@ -107,9 +107,10 @@ The executable plan is
 `docs/plans/2026-07-17-neutral-held-v1-plan.md`. It freezes internal Stage I,
 Stage II, Stage III, final public cutover, fixed-route deletion, isolated-wheel
 proof, and review checkpoints. Tasks 1--7 remain frozen executed-v1 provenance;
-Task 8 now specifies the smallest post-validation controller correction. Its
-local status is `controller_redesign_design_pending_review`; the plan and
+Task 8 records the smallest post-validation controller correction, but the
+Perdomo HELD2 pivot defers it. Its local status is
+`controller_redesign_design_deferred`; the plan and
 candidate receipt do not admit the provider mixture tail or create an accepted
 equilibrium capability.
 
-`implementation_plan_status: controller_redesign_design_pending_review`
+`implementation_plan_status: controller_redesign_design_deferred`

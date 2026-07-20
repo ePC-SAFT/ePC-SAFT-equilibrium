@@ -3,8 +3,9 @@
 Status: executed v1 candidate frozen at implementation commit
 `8318e755d4a8e490822fdf7bb2685d8c5af6436c`; Validation commit
 `93ff18541d2fe277a27671e4e6d12b6b009a58ed` is stable `NON_ADMISSION`
-evidence; the design-only controller delta in Section 13 awaits permanent-lab
-review and authorizes no runtime implementation
+evidence; the design-only controller delta in Section 13 is deferred
+non-production provenance after the user-authorized Perdomo HELD2 pivot and
+authorizes no runtime implementation
 
 Approved in discussion: 2026-07-17
 
@@ -386,6 +387,11 @@ discovery remains a separately formulated capability and must not be labeled
 neutral HELD or Pereira HELD2.
 
 ## 13. Post-validation binary controller redesign delta
+
+**Deferral:** This design-only delta is retained as historical analysis and is
+not the active implementation gate. The user-authorized Perdomo HELD2 pivot
+superseded its proposed review/implementation sequence without changing the
+frozen neutral runtime, evidence, or authority.
 
 Sections 1--12 and Migration decision D-021 remain the frozen specification
 and provenance of the executed v1 candidate. Validation commit
