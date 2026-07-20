@@ -117,7 +117,7 @@ owners:
   provider_capsule_context: cpp/src/provider.cpp
   capsule_abi_validation: cpp/src/module.cpp checked_sdk()
   pure_saturation_formulation_and_ipopt: cpp/src/saturation.cpp
-  flash_formulation_ipopt_and_local_acceptance: cpp/src/two_phase_flash.cpp
+  held_controller_and_local_acceptance: cpp/src/held.cpp and cpp/src/held_stage_i.cpp through held_stage_iii.cpp
   input_validation_and_typed_results: src/epcsaft_equilibrium/_api.py
   pure_scientific_anchors: data/reference/pure_saturation_anchors.csv
   flash_predictive_validation: ePC-SAFT-validation
@@ -126,16 +126,16 @@ public_surface:
   distribution: epcsaft-equilibrium
   package: epcsaft_equilibrium
   exports:
-    - FlashDiagnostics
     - FlashError
+    - HeldDiagnostics
     - PhaseState
     - SaturationDiagnostics
     - SaturationError
     - SaturationResult
     - SolverAttemptDiagnostics
-    - TwoPhaseFlashResult
+    - TpFlashResult
     - saturation
-    - two_phase_flash
+    - tp_flash
   native_modules: [epcsaft_equilibrium._equilibrium]
   native_targets: 1
   runtime_dependencies: [epcsaft==0.1.0.dev0, Pint>=0.25]
@@ -144,7 +144,7 @@ public_surface:
 evidence:
   package_tests:
     - tests/test_saturation.py
-    - tests/test_two_phase_flash.py
+    - tests/test_held.py
   derivative_oracle: independent central directional differences in package tests
   flash_source_anchor: may2015-ch4-c2h6-001
   flash_source_anchor_status: package-local-pass

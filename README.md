@@ -4,8 +4,8 @@
 `epcsaft` provider. The accepted first capability solves a pure-component
 saturation boundary for the provider-approved methane, ethane, or propane
 model under promotion receipt `promotion-0018-equilibrium-pure-saturation-v1`.
-The package also contains a non-authoritative local candidate for one neutral
-methane/ethane fixed-two-phase `T,P,z` calculation.
+The package also contains a non-authoritative local candidate for one bounded
+neutral methane/ethane HELD `T,P,z` calculation.
 
 ```python
 import epcsaft
@@ -33,46 +33,40 @@ equality, positive distinct phase states, local mechanical stability, bounds,
 finite values, and the provider fingerprint. It carries no globality or phase
 discovery certificate.
 
-## Local methane/ethane flash candidate
+## Local neutral HELD candidate
 
 ```python
 import epcsaft
-from epcsaft_equilibrium import two_phase_flash
+from epcsaft_equilibrium import tp_flash
 
 parameters = epcsaft.ParameterBundle.from_catalog(
     "gross-2001-methane-ethane", version=1
 ).select(("methane", "ethane"))
 model = epcsaft.EPCSAFT(parameters)
 
-result = two_phase_flash(
+result = tp_flash(
     model,
-    243.58 * epcsaft.unit_registry.kelvin,
-    3.949 * epcsaft.unit_registry.megapascal,
-    (0.48815, 0.51185),
+    243.61 * epcsaft.unit_registry.kelvin,
+    6.691 * epcsaft.unit_registry.megapascal,
+    (0.5627, 0.4373),
 )
-print(result.liquid.mole_fractions, result.vapor.mole_fractions)
-print(result.diagnostics.kkt_stationarity_max_abs)
+print(result.phases, result.phase_fractions)
+print(result.diagnostics.outcome, result.diagnostics.globality_certificate)
 ```
 
-This route directly minimizes the total two-phase Helmholtz-plus-`PV` energy
-with two linear material balances. It admits only the reviewed binary
-fingerprint inside the rectangular May et al. (2015), Table 5 source domain:
-203.22--243.61 K, 2.124--6.885 MPa, and methane feed fraction
-0.4661--0.66705. Being inside that rectangle does not guarantee that a
-distinct two-phase local minimum exists. `FlashError` reports rejected local
-states with solver, confirmation, material-balance, stationarity, and retained
-Ipopt multiplier diagnostics.
-
-The candidate fixes the phase count at two. It performs no phase discovery,
-TPD/global-stability analysis, continuation, or fallback solve, and it does
-not claim that the returned local result is the globally stable state. The
-accepted pure-saturation authority above is unchanged.
+The controller admits only the reviewed binary fingerprint inside the
+rectangular May et al. (2015), Table 5 source domain: 203.22--243.61 K,
+2.124--6.885 MPa, and methane feed fraction 0.4661--0.66705. It returns one or
+two phases after the declared finite Stage-I/II/III search. `FlashError`
+retains invalid-input, provider, exhausted-search, scope, and indeterminate
+diagnostics. Every result reports `globality_certificate="not_guaranteed"`;
+the accepted pure-saturation authority above is unchanged.
 
 ## Native boundary
 
 The extension calls `epcsaft.native_sdk(model)` and retains one model-bound
 `epcsaft.native_sdk.v1` capsule while Ipopt evaluates the phase contexts. The
-flash candidate consumes the reviewed mixture value/gradient/Hessian tail;
+HELD candidate consumes the reviewed mixture value/gradient/Hessian tail;
 the pure route continues to consume the accepted prefix. The extension
 compiles against the declaration header installed by the provider wheel. It
 does not link provider implementation symbols, compile provider sources, or
@@ -99,7 +93,7 @@ python scripts/validate_saturation.py
 
 The design and equations are recorded in
 `docs/designs/2026-07-17-pure-saturation-slice.md` and
-`docs/designs/2026-07-17-neutral-two-phase-tp-flash.md`. Migration receipt
+`docs/designs/2026-07-17-neutral-held-v1.md`. Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
 solve is not a phase-discovery or global-stability proof.

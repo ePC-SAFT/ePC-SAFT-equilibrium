@@ -1,27 +1,27 @@
 """Bounded local equilibrium routes over the public ePC-SAFT provider."""
 
 from ._api import (
-    FlashDiagnostics,
     FlashError,
+    HeldDiagnostics,
     PhaseState,
     SaturationDiagnostics,
     SaturationError,
     SaturationResult,
     SolverAttemptDiagnostics,
-    TwoPhaseFlashResult,
+    TpFlashResult,
     saturation,
-    two_phase_flash,
+    tp_flash,
 )
 
 __all__ = [
-    "FlashDiagnostics",
     "FlashError",
+    "HeldDiagnostics",
     "PhaseState",
     "SaturationDiagnostics",
     "SaturationError",
     "SaturationResult",
     "SolverAttemptDiagnostics",
-    "TwoPhaseFlashResult",
+    "TpFlashResult",
     "saturation",
-    "two_phase_flash",
+    "tp_flash",
 ]

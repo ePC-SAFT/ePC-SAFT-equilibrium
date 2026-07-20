@@ -1,4 +1,5 @@
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -13,7 +14,6 @@
 
 #include "held.hpp"
 #include "saturation.hpp"
-#include "two_phase_flash.hpp"
 
 namespace py = pybind11;
 
@@ -745,7 +745,7 @@ py::dict held_evaluate_stage_iii(
         checked_mixture_sdk(capsule),
         expected_fingerprint
     );
-    const auto evaluation = epcsaft_equilibrium::evaluate_two_phase_flash_nlp(
+    const auto evaluation = epcsaft_equilibrium::evaluate_held_stage_iii_nlp(
         provider,
         temperature_k,
         pressure_pa,
@@ -761,10 +761,12 @@ py::dict held_evaluate_stage_iii(
     return result;
 }
 
-py::dict flash_phase_to_dict(const epcsaft_equilibrium::FlashPhaseEvaluation& phase);
+py::dict held_stage_iii_phase_to_dict(
+    const epcsaft_equilibrium::HeldStageIIIPhaseEvaluation& phase
+);
 
-py::list flash_attempt_log_to_list(
-    const std::vector<epcsaft_equilibrium::FlashAttemptRecord>& attempts
+py::list held_stage_iii_attempt_log_to_list(
+    const std::vector<epcsaft_equilibrium::HeldStageIIILocalAttempt>& attempts
 );
 
 py::dict held_stage_iii_to_dict(
@@ -779,7 +781,7 @@ py::dict held_stage_iii_to_dict(
     result["solver_status"] = solve.local.solver_status;
     result["iterations"] = solve.local.iterations;
     result["attempts"] = solve.local.attempts;
-    result["attempt_log"] = flash_attempt_log_to_list(solve.local.attempt_log);
+    result["attempt_log"] = held_stage_iii_attempt_log_to_list(solve.local.attempt_log);
     result["solver_lower_bounds"] = solve.local.solver_lower_bounds;
     result["solver_upper_bounds"] = solve.local.solver_upper_bounds;
     result["solver_constraint_violation"] = solve.local.solver_constraint_violation;
@@ -801,8 +803,12 @@ py::dict held_stage_iii_to_dict(
     result["upper_bound_multipliers"] = solve.local.upper_bound_multipliers;
     result["total_g_bar"] = solve.local.evaluation.objective;
     if (solve.local.accepted) {
-        result["first_phase"] = flash_phase_to_dict(solve.local.evaluation.liquid);
-        result["second_phase"] = flash_phase_to_dict(solve.local.evaluation.vapor);
+        result["first_phase"] = held_stage_iii_phase_to_dict(
+            solve.local.evaluation.liquid
+        );
+        result["second_phase"] = held_stage_iii_phase_to_dict(
+            solve.local.evaluation.vapor
+        );
     }
     return result;
 }
@@ -835,16 +841,25 @@ py::dict held_stage_iii(
     return held_stage_iii_to_dict(solve);
 }
 
-py::dict held(
+py::dict solve_tp_flash(
     const py::capsule& capsule,
     double temperature_k,
     double pressure_pa,
-    double feed_x_methane,
-    const std::string& expected_fingerprint
+    const std::array<double, 2>& overall_mole_fractions
 ) {
+    if (!std::isfinite(temperature_k) || temperature_k <= 0.0
+        || !std::isfinite(pressure_pa) || pressure_pa <= 0.0
+        || !std::isfinite(overall_mole_fractions[0])
+        || !std::isfinite(overall_mole_fractions[1])
+        || overall_mole_fractions[0] <= 0.0
+        || overall_mole_fractions[1] <= 0.0
+        || std::abs(overall_mole_fractions[0] + overall_mole_fractions[1] - 1.0)
+            > 1.0e-12) {
+        throw py::value_error("tp_flash native inputs must be positive, finite, and normalized");
+    }
     const epcsaft_equilibrium::ProviderContext provider(
         checked_mixture_sdk(capsule),
-        expected_fingerprint
+        std::string(kFlashFingerprint)
     );
     epcsaft_equilibrium::HeldResult solve;
     {
@@ -853,11 +868,19 @@ py::dict held(
             provider,
             temperature_k,
             pressure_pa,
-            feed_x_methane
+            overall_mole_fractions[0]
         );
+    }
+    int attempt_count = static_cast<int>(
+        solve.stage_i.reference_attempts.size() + solve.stage_i.attempt_log.size()
+        + solve.stage_ii.endpoint_attempts.size()
+    );
+    for (const auto& entry : solve.stage_ii.trace) {
+        attempt_count += entry.lower_starts_completed;
     }
     py::list attempts;
     for (const auto& attempt : solve.stage_iii_attempts) {
+        attempt_count += attempt.result.local.attempts;
         py::dict item = held_stage_iii_to_dict(attempt.result);
         item["major_iteration"] = attempt.major_iteration;
         attempts.append(std::move(item));
@@ -866,21 +889,95 @@ py::dict held(
     for (const auto& entry : solve.stage_ii.trace) {
         trace.append(held_stage_ii_trace_to_dict(entry));
     }
+    py::list search_profiles;
+    search_profiles.append(solve.stage_i.search_profile);
+    if (solve.stage_i.outcome == "negative_tpd") {
+        search_profiles.append(solve.stage_ii.search_profile);
+    }
+    if (!solve.stage_iii_attempts.empty()) {
+        search_profiles.append(solve.stage_iii_attempts.front().result.search_profile);
+    }
     py::dict result;
     result["outcome"] = solve.outcome;
     result["search_status"] = solve.search_status;
     result["failure_reason"] = solve.failure_reason;
-    result["stage_i_outcome"] = solve.stage_ii.stage_i_outcome;
-    result["stage_i_search_status"] = solve.stage_ii.stage_i_search_status;
+    result["stage_i_outcome"] = solve.stage_i.outcome;
+    result["stage_i_search_status"] = solve.stage_i.search_status;
+    result["attempts"] = attempt_count;
     result["major_iterations"] = solve.stage_ii.major_iterations;
-    result["upper_bound"] = solve.stage_ii.upper_bound;
-    result["best_tpd"] = solve.stage_ii.best_tpd;
+    result["best_tpd"] = solve.stage_i.best_tpd;
+    result["lower_bound"] = py::none();
+    result["upper_bound"] = py::none();
+    result["held_gap"] = py::none();
+    result["material_balance_max_abs"] = py::none();
+    result["pressure_stationarity_max_relative"] = py::none();
+    result["kkt_stationarity_max_abs"] = py::none();
+    result["chemical_potential_max_relative"] = py::none();
+    result["confirmation_succeeded"] = false;
+    result["confirmation_max_difference"] = py::none();
+    result["search_profiles"] = search_profiles;
     result["stage_iii_attempts"] = attempts;
     result["trace"] = trace;
     result["globality_certificate"] = "not_guaranteed";
-    if (solve.outcome == "accepted" && !solve.stage_iii_attempts.empty()) {
-        result["accepted_stage_iii"] =
-            held_stage_iii_to_dict(solve.stage_iii_attempts.back().result);
+    result["temperature_k"] = temperature_k;
+    result["pressure_pa"] = pressure_pa;
+    result["overall_mole_fractions"] = overall_mole_fractions;
+    result["parameter_fingerprint"] = std::string(kFlashFingerprint);
+
+    if (solve.outcome == "one_phase" && solve.stage_i.has_reference) {
+        const auto& state = solve.stage_i.reference;
+        py::dict phase;
+        phase["amount_mol"] = 1.0;
+        phase["mole_fractions"] = state.amounts_mol;
+        phase["volume_m3"] = state.volume_m3;
+        phase["molar_density_mol_m3"] = 1.0 / state.volume_m3;
+        phase["pressure_pa"] = state.provider.pressure_pa;
+        phase["chemical_potential_over_rt"] = std::array<double, 2>{
+            state.provider.gradient[0],
+            state.provider.gradient[1],
+        };
+        py::list phases;
+        phases.append(std::move(phase));
+        result["phases"] = phases;
+        result["phase_fractions"] = std::array<double, 1>{1.0};
+        result["total_free_energy_over_rt"] = state.g_bar;
+        result["pressure_stationarity_max_relative"] =
+            std::abs(state.pressure_stationarity_relative);
+    } else if (!solve.stage_iii_attempts.empty()) {
+        const auto& refinement = solve.stage_iii_attempts.back().result;
+        const auto& local = refinement.local;
+        result["upper_bound"] = refinement.upper_bound;
+        if (local.solver_converged) {
+            result["lower_bound"] = local.evaluation.objective;
+            result["held_gap"] = refinement.held_gap;
+            result["material_balance_max_abs"] = local.material_balance_max_abs;
+            result["pressure_stationarity_max_relative"] =
+                local.pressure_stationarity_max_relative;
+            result["kkt_stationarity_max_abs"] = local.kkt_stationarity_max_abs;
+            result["chemical_potential_max_relative"] =
+                refinement.chemical_potential_max_relative;
+        }
+        if (local.confirmation_solves > 0) {
+            result["confirmation_succeeded"] = refinement.confirmation_succeeded;
+            result["confirmation_max_difference"] = local.confirmation_max_difference;
+        }
+        if (solve.outcome == "accepted") {
+            py::list phases;
+            phases.append(held_stage_iii_phase_to_dict(local.evaluation.liquid));
+            phases.append(held_stage_iii_phase_to_dict(local.evaluation.vapor));
+            result["phases"] = phases;
+            result["phase_fractions"] = std::array<double, 2>{
+                local.evaluation.liquid.amounts_mol[0]
+                    + local.evaluation.liquid.amounts_mol[1],
+                local.evaluation.vapor.amounts_mol[0]
+                    + local.evaluation.vapor.amounts_mol[1],
+            };
+            result["total_free_energy_over_rt"] = local.evaluation.objective;
+            result["accepted_stage_iii"] = held_stage_iii_to_dict(refinement);
+        }
+    } else if (!solve.stage_ii.trace.empty()) {
+        result["lower_bound"] = solve.stage_ii.trace.back().outer_value;
+        result["upper_bound"] = solve.stage_ii.upper_bound;
     }
     return result;
 }
@@ -944,35 +1041,6 @@ py::dict evaluate_nlp(
     return result;
 }
 
-py::dict evaluate_two_phase_flash_nlp(
-    const py::capsule& capsule,
-    double temperature_k,
-    double pressure_pa,
-    const std::array<double, 2>& overall_mole_fractions,
-    const std::array<double, 6>& variables,
-    const std::string& expected_fingerprint
-) {
-    const epcsaft_equilibrium::ProviderContext provider(
-        checked_mixture_sdk(capsule),
-        expected_fingerprint
-    );
-    const epcsaft_equilibrium::FlashNlpEvaluation evaluation =
-        epcsaft_equilibrium::evaluate_two_phase_flash_nlp(
-            provider,
-            temperature_k,
-            pressure_pa,
-            overall_mole_fractions,
-            variables
-        );
-    py::dict result;
-    result["objective"] = evaluation.objective;
-    result["gradient"] = evaluation.gradient;
-    result["constraints"] = evaluation.constraints;
-    result["jacobian"] = evaluation.jacobian;
-    result["hessian_lower"] = evaluation.hessian_lower;
-    return result;
-}
-
 py::dict phase_to_dict(const epcsaft_equilibrium::PhaseEvaluation& phase) {
     py::dict result;
     result["amount_mol"] = phase.amount_mol;
@@ -983,7 +1051,9 @@ py::dict phase_to_dict(const epcsaft_equilibrium::PhaseEvaluation& phase) {
     return result;
 }
 
-py::dict flash_phase_to_dict(const epcsaft_equilibrium::FlashPhaseEvaluation& phase) {
+py::dict held_stage_iii_phase_to_dict(
+    const epcsaft_equilibrium::HeldStageIIIPhaseEvaluation& phase
+) {
     const double amount_mol = phase.amounts_mol[0] + phase.amounts_mol[1];
     py::dict result;
     result["amount_mol"] = amount_mol;
@@ -1019,8 +1089,8 @@ py::list attempt_log_to_list(
     return result;
 }
 
-py::list flash_attempt_log_to_list(
-    const std::vector<epcsaft_equilibrium::FlashAttemptRecord>& attempts
+py::list held_stage_iii_attempt_log_to_list(
+    const std::vector<epcsaft_equilibrium::HeldStageIIILocalAttempt>& attempts
 ) {
     py::list result;
     for (const auto& attempt : attempts) {
@@ -1033,72 +1103,6 @@ py::list flash_attempt_log_to_list(
         item["constraint_violation"] = attempt.constraint_violation;
         item["callback_error"] = attempt.callback_error;
         result.append(std::move(item));
-    }
-    return result;
-}
-
-py::dict solve_two_phase_flash(
-    const py::capsule& capsule,
-    double temperature_k,
-    double pressure_pa,
-    const std::array<double, 2>& overall_mole_fractions
-) {
-    const epcsaft_equilibrium::ProviderContext provider(
-        checked_mixture_sdk(capsule),
-        std::string(kFlashFingerprint)
-    );
-    epcsaft_equilibrium::FlashSolveResult solve;
-    {
-        py::gil_scoped_release release;
-        solve = epcsaft_equilibrium::solve_two_phase_flash(
-            provider,
-            temperature_k,
-            pressure_pa,
-            overall_mole_fractions
-        );
-    }
-
-    py::dict diagnostics;
-    diagnostics["solver_converged"] = solve.solver_converged;
-    diagnostics["solver_status"] = solve.solver_status;
-    diagnostics["iterations"] = solve.iterations;
-    diagnostics["attempts"] = solve.attempts;
-    diagnostics["attempt_log"] = flash_attempt_log_to_list(solve.attempt_log);
-    diagnostics["solver_lower_bounds"] = solve.solver_lower_bounds;
-    diagnostics["solver_upper_bounds"] = solve.solver_upper_bounds;
-    diagnostics["solver_constraint_violation"] = solve.solver_constraint_violation;
-    diagnostics["numerical_converged"] = solve.numerical_converged;
-    diagnostics["confirmation_solves"] = solve.confirmation_solves;
-    diagnostics["confirmation_max_difference"] = solve.confirmation_max_difference;
-    diagnostics["physical_accepted"] = solve.physical_accepted;
-    diagnostics["material_balance_max_abs"] = solve.material_balance_max_abs;
-    diagnostics["pressure_stationarity_max_relative"] =
-        solve.pressure_stationarity_max_relative;
-    diagnostics["chemical_potential_max_abs"] = solve.chemical_potential_max_abs;
-    diagnostics["kkt_stationarity_max_abs"] = solve.kkt_stationarity_max_abs;
-    diagnostics["phase_density_distance"] = solve.phase_density_distance;
-    diagnostics["equality_multipliers"] = solve.equality_multipliers;
-    diagnostics["lower_bound_multipliers"] = solve.lower_bound_multipliers;
-    diagnostics["upper_bound_multipliers"] = solve.upper_bound_multipliers;
-    diagnostics["exact_derivatives"] = true;
-    diagnostics["globality_certificate"] = false;
-    diagnostics["failure_reason"] = solve.failure_reason;
-
-    py::dict result;
-    result["accepted"] = solve.accepted;
-    result["temperature_k"] = temperature_k;
-    result["pressure_pa"] = pressure_pa;
-    result["overall_mole_fractions"] = overall_mole_fractions;
-    result["parameter_fingerprint"] = std::string(kFlashFingerprint);
-    result["diagnostics"] = diagnostics;
-    if (solve.accepted) {
-        result["liquid"] = flash_phase_to_dict(solve.evaluation.liquid);
-        result["vapor"] = flash_phase_to_dict(solve.evaluation.vapor);
-        result["liquid_phase_fraction"] =
-            solve.evaluation.liquid.amounts_mol[0] + solve.evaluation.liquid.amounts_mol[1];
-        result["vapor_phase_fraction"] =
-            solve.evaluation.vapor.amounts_mol[0] + solve.evaluation.vapor.amounts_mol[1];
-        result["total_free_energy_over_rt"] = solve.evaluation.objective;
     }
     return result;
 }
@@ -1318,13 +1322,12 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("expected_fingerprint")
     );
     module.def(
-        "_held",
-        &held,
+        "_solve_tp_flash",
+        &solve_tp_flash,
         py::arg("capsule"),
         py::arg("temperature_k"),
         py::arg("pressure_pa"),
-        py::arg("feed_x_methane"),
-        py::arg("expected_fingerprint")
+        py::arg("overall_mole_fractions")
     );
     module.def(
         "evaluate_phase",
@@ -1336,16 +1339,6 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("expected_fingerprint")
     );
     module.def(
-        "evaluate_two_phase_flash_nlp",
-        &evaluate_two_phase_flash_nlp,
-        py::arg("capsule"),
-        py::arg("temperature_k"),
-        py::arg("pressure_pa"),
-        py::arg("overall_mole_fractions"),
-        py::arg("variables"),
-        py::arg("expected_fingerprint")
-    );
-    module.def(
         "evaluate_nlp",
         &evaluate_nlp,
         py::arg("capsule"),
@@ -1353,14 +1346,6 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("expected_fingerprint"),
         py::arg("variables"),
         py::arg("multipliers")
-    );
-    module.def(
-        "_solve_two_phase_flash",
-        &solve_two_phase_flash,
-        py::arg("capsule"),
-        py::arg("temperature_k"),
-        py::arg("pressure_pa"),
-        py::arg("overall_mole_fractions")
     );
     module.def(
         "solve_saturation",

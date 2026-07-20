@@ -31,7 +31,6 @@ pybind11_add_module(
   cpp/src/held_stage_ii.cpp
   cpp/src/held_stage_iii.cpp
   cpp/src/saturation.cpp
-  cpp/src/two_phase_flash.cpp
 )
 target_compile_features(_equilibrium PRIVATE cxx_std_17)
 target_include_directories(_equilibrium PRIVATE "${epcsaft_include_dir}")

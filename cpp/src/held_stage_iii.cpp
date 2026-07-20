@@ -1,5 +1,4 @@
 #include "held.hpp"
-#include "two_phase_flash.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -18,7 +17,6 @@ namespace {
 
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
 constexpr double kAmountLowerMol = 1.0e-10;
-constexpr double kLegacyVolumeLowerM3 = 1.0e-8;
 constexpr double kStageIIIVolumeLowerM3 = 1.0e-5;
 constexpr double kVolumeUpperM3 = 1.0e-1;
 constexpr double kSolverConstraintTolerance = 1.0e-10;
@@ -40,7 +38,7 @@ std::size_t lower_index(std::size_t row, std::size_t column) {
     return row * (row + 1) / 2 + column;
 }
 
-FlashPhaseEvaluation evaluate_phase(
+HeldStageIIIPhaseEvaluation evaluate_phase(
     const ProviderContext& provider,
     double temperature_k,
     const std::array<double, 2>& amounts_mol,
@@ -60,7 +58,7 @@ FlashPhaseEvaluation evaluate_phase(
 }
 
 void add_phase_derivatives(
-    const FlashPhaseEvaluation& phase,
+    const HeldStageIIIPhaseEvaluation& phase,
     double pressure_over_rt,
     std::size_t offset,
     std::array<double, 6>& gradient,
@@ -127,30 +125,6 @@ std::string ipopt_status_name(Ipopt::ApplicationReturnStatus status) {
     }
 }
 
-std::array<double, 6> solver_lower_bounds() {
-    return {
-        kAmountLowerMol,
-        kAmountLowerMol,
-        std::log(kLegacyVolumeLowerM3),
-        kAmountLowerMol,
-        kAmountLowerMol,
-        std::log(kLegacyVolumeLowerM3),
-    };
-}
-
-std::array<double, 6> solver_upper_bounds(
-    const std::array<double, 2>& overall_mole_fractions
-) {
-    return {
-        overall_mole_fractions[0],
-        overall_mole_fractions[1],
-        std::log(kVolumeUpperM3),
-        overall_mole_fractions[0],
-        overall_mole_fractions[1],
-        std::log(kVolumeUpperM3),
-    };
-}
-
 struct AttemptResult {
     bool solver_converged = false;
     std::string solver_status;
@@ -164,9 +138,9 @@ struct AttemptResult {
     std::array<double, 6> upper_bound_multipliers{};
 };
 
-class FlashTnlp final : public Ipopt::TNLP {
+class HeldStageIIITnlp final : public Ipopt::TNLP {
 public:
-    FlashTnlp(
+    HeldStageIIITnlp(
         const ProviderContext& provider,
         double temperature_k,
         double pressure_pa,
@@ -262,7 +236,7 @@ public:
             return false;
         }
         try {
-            const FlashNlpEvaluation evaluation = evaluate(x);
+            const HeldStageIIINlpEvaluation evaluation = evaluate(x);
             std::copy(evaluation.gradient.begin(), evaluation.gradient.end(), gradient);
             return true;
         } catch (const std::exception& error) {
@@ -282,7 +256,7 @@ public:
             return false;
         }
         try {
-            const FlashNlpEvaluation evaluation = evaluate(x);
+            const HeldStageIIINlpEvaluation evaluation = evaluate(x);
             std::copy(evaluation.constraints.begin(), evaluation.constraints.end(), constraints);
             return true;
         } catch (const std::exception& error) {
@@ -314,7 +288,7 @@ public:
             return true;
         }
         try {
-            const FlashNlpEvaluation evaluation = evaluate(x);
+            const HeldStageIIINlpEvaluation evaluation = evaluate(x);
             std::copy(evaluation.jacobian.begin(), evaluation.jacobian.end(), values);
             return true;
         } catch (const std::exception& error) {
@@ -351,7 +325,7 @@ public:
             return true;
         }
         try {
-            const FlashNlpEvaluation evaluation = evaluate(x);
+            const HeldStageIIINlpEvaluation evaluation = evaluate(x);
             for (std::size_t index = 0; index < evaluation.hessian_lower.size(); ++index) {
                 values[index] = objective_factor * evaluation.hessian_lower[index];
             }
@@ -397,8 +371,8 @@ public:
     [[nodiscard]] const std::string& callback_error() const { return callback_error_; }
 
 private:
-    [[nodiscard]] FlashNlpEvaluation evaluate(const Ipopt::Number* x) const {
-        return evaluate_two_phase_flash_nlp(
+    [[nodiscard]] HeldStageIIINlpEvaluation evaluate(const Ipopt::Number* x) const {
+        return evaluate_held_stage_iii_nlp(
             provider_,
             temperature_k_,
             pressure_pa_,
@@ -430,7 +404,7 @@ AttemptResult run_ipopt(
     const std::array<double, 6>& lower,
     const std::array<double, 6>& upper
 ) {
-    auto* raw_problem = new FlashTnlp(
+    auto* raw_problem = new HeldStageIIITnlp(
         provider,
         temperature_k,
         pressure_pa,
@@ -486,7 +460,7 @@ AttemptResult run_ipopt(
     return result;
 }
 
-void canonicalize_phases(FlashNlpEvaluation& evaluation) {
+void canonicalize_phases(HeldStageIIINlpEvaluation& evaluation) {
     const double liquid_density =
         (evaluation.liquid.amounts_mol[0] + evaluation.liquid.amounts_mol[1])
         / evaluation.liquid.volume_m3;
@@ -516,23 +490,23 @@ double relative_difference(double first, double second) {
     return std::abs(first - second) / std::max({std::abs(first), std::abs(second), 1.0e-12});
 }
 
-double phase_amount(const FlashPhaseEvaluation& phase) {
+double phase_amount(const HeldStageIIIPhaseEvaluation& phase) {
     return phase.amounts_mol[0] + phase.amounts_mol[1];
 }
 
-double phase_composition(const FlashPhaseEvaluation& phase, std::size_t component) {
+double phase_composition(const HeldStageIIIPhaseEvaluation& phase, std::size_t component) {
     return phase.amounts_mol[component] / phase_amount(phase);
 }
 
 bool physical_acceptance(
     const AttemptResult& attempt,
-    FlashNlpEvaluation& evaluation,
+    HeldStageIIINlpEvaluation& evaluation,
     double pressure_pa,
     const std::array<double, 6>& lower,
     const std::array<double, 6>& upper,
     bool require_legacy_chemical_potential_tolerance,
     bool require_density_separation,
-    FlashSolveResult& result
+    HeldStageIIILocalResult& result
 ) {
     canonicalize_phases(evaluation);
     result.material_balance_max_abs = std::max(
@@ -596,8 +570,8 @@ bool physical_acceptance(
 }
 
 double confirmation_difference(
-    const FlashNlpEvaluation& first,
-    const FlashNlpEvaluation& second
+    const HeldStageIIINlpEvaluation& first,
+    const HeldStageIIINlpEvaluation& second
 ) {
     double difference = relative_difference(first.objective, second.objective);
     difference = std::max(
@@ -637,7 +611,7 @@ double confirmation_difference(
 
 }  // namespace
 
-FlashNlpEvaluation evaluate_two_phase_flash_nlp(
+HeldStageIIINlpEvaluation evaluate_held_stage_iii_nlp(
     const ProviderContext& provider,
     double temperature_k,
     double pressure_pa,
@@ -656,13 +630,13 @@ FlashNlpEvaluation evaluate_two_phase_flash_nlp(
         require_finite(value, "flash NLP variable");
     }
 
-    FlashPhaseEvaluation liquid = evaluate_phase(
+    HeldStageIIIPhaseEvaluation liquid = evaluate_phase(
         provider,
         temperature_k,
         {variables[0], variables[1]},
         variables[2]
     );
-    FlashPhaseEvaluation vapor = evaluate_phase(
+    HeldStageIIIPhaseEvaluation vapor = evaluate_phase(
         provider,
         temperature_k,
         {variables[3], variables[4]},
@@ -670,7 +644,7 @@ FlashNlpEvaluation evaluate_two_phase_flash_nlp(
     );
     const double pressure_over_rt = pressure_pa / (kGasConstantJPerMolK * temperature_k);
 
-    FlashNlpEvaluation result;
+    HeldStageIIINlpEvaluation result;
     result.objective = liquid.provider.value + vapor.provider.value
         + pressure_over_rt * (liquid.volume_m3 + vapor.volume_m3);
     result.constraints = {
@@ -915,7 +889,7 @@ HeldStageIIIResult solve_held_stage_iii(
     }
 
     try {
-        result.local.evaluation = evaluate_two_phase_flash_nlp(
+        result.local.evaluation = evaluate_held_stage_iii_nlp(
             provider,
             temperature_k,
             pressure_pa,
@@ -1021,11 +995,11 @@ HeldStageIIIResult solve_held_stage_iii(
         confirmation.constraint_violation,
         confirmation.callback_error,
     });
-    FlashNlpEvaluation confirmed;
-    FlashSolveResult confirmed_local;
+    HeldStageIIINlpEvaluation confirmed;
+    HeldStageIIILocalResult confirmed_local;
     if (confirmation.solver_converged && confirmation.callback_error.empty()) {
         try {
-            confirmed = evaluate_two_phase_flash_nlp(
+            confirmed = evaluate_held_stage_iii_nlp(
                 provider,
                 temperature_k,
                 pressure_pa,
@@ -1061,178 +1035,6 @@ HeldStageIIIResult solve_held_stage_iii(
     result.local.numerical_converged = true;
     result.failure_reason.clear();
     return result;
-}
-
-FlashSolveResult solve_two_phase_flash(
-    const ProviderContext& provider,
-    double temperature_k,
-    double pressure_pa,
-    const std::array<double, 2>& overall_mole_fractions
-) {
-    FlashSolveResult last_result;
-    last_result.failure_reason = "no deterministic seed produced an accepted local two-phase result";
-    const std::array<double, 6> lower = solver_lower_bounds();
-    const std::array<double, 6> upper = solver_upper_bounds(overall_mole_fractions);
-    last_result.solver_lower_bounds = lower;
-    last_result.solver_upper_bounds = upper;
-    const double delta = std::min(
-        0.20,
-        0.45 * std::min(overall_mole_fractions[0], 1.0 - overall_mole_fractions[0])
-    );
-    for (double sign : {1.0, -1.0}) {
-        const double liquid_x0 = overall_mole_fractions[0] - sign * delta;
-        const double vapor_x0 = overall_mole_fractions[0] + sign * delta;
-        const std::array<double, 6> initial{
-            0.5 * liquid_x0,
-            0.5 * (1.0 - liquid_x0),
-            std::log(0.5 / 20'000.0),
-            0.5 * vapor_x0,
-            0.5 * (1.0 - vapor_x0),
-            std::log(0.5 * kGasConstantJPerMolK * temperature_k / pressure_pa),
-        };
-        AttemptResult attempt = run_ipopt(
-            provider,
-            temperature_k,
-            pressure_pa,
-            overall_mole_fractions,
-            initial,
-            lower,
-            upper
-        );
-        ++last_result.attempts;
-        last_result.attempt_log.push_back({
-            "search",
-            attempt.initial_guess,
-            attempt.solver_converged,
-            attempt.solver_status,
-            attempt.iterations,
-            attempt.constraint_violation,
-            attempt.callback_error,
-        });
-        last_result.solver_converged = attempt.solver_converged;
-        last_result.solver_status = attempt.solver_status;
-        last_result.iterations = attempt.iterations;
-        last_result.solver_constraint_violation = attempt.constraint_violation;
-        if (!attempt.callback_error.empty()) {
-            last_result.failure_reason = attempt.callback_error;
-        }
-        if (!attempt.solver_converged) {
-            continue;
-        }
-        FlashNlpEvaluation candidate;
-        try {
-            candidate = evaluate_two_phase_flash_nlp(
-                provider,
-                temperature_k,
-                pressure_pa,
-                overall_mole_fractions,
-                attempt.variables
-            );
-        } catch (const std::exception& error) {
-            last_result.failure_reason = error.what();
-            continue;
-        }
-        FlashSolveResult candidate_result = last_result;
-        candidate_result.evaluation = candidate;
-        candidate_result.physical_accepted = physical_acceptance(
-            attempt,
-            candidate_result.evaluation,
-            pressure_pa,
-            lower,
-            upper,
-            true,
-            true,
-            candidate_result
-        );
-        if (!candidate_result.physical_accepted) {
-            candidate_result.failure_reason = "Ipopt solution failed local physical acceptance";
-            last_result = candidate_result;
-            continue;
-        }
-
-        std::array<double, 6> confirmation_seed = attempt.variables;
-        double transfer_sign = 1.0;
-        if (confirmation_seed[3] - 0.02 * overall_mole_fractions[0] <= kAmountLowerMol
-            || confirmation_seed[4] - 0.02 * overall_mole_fractions[1] <= kAmountLowerMol) {
-            transfer_sign = -1.0;
-        }
-        for (std::size_t component = 0; component < 2; ++component) {
-            const double transfer = transfer_sign * 0.02 * overall_mole_fractions[component];
-            confirmation_seed[component] += transfer;
-            confirmation_seed[component + 3] -= transfer;
-        }
-        confirmation_seed[2] += 0.05;
-        confirmation_seed[5] -= 0.05;
-        AttemptResult confirmation = run_ipopt(
-            provider,
-            temperature_k,
-            pressure_pa,
-            overall_mole_fractions,
-            confirmation_seed,
-            lower,
-            upper
-        );
-        ++candidate_result.attempts;
-        ++candidate_result.confirmation_solves;
-        candidate_result.attempt_log.push_back({
-            "confirmation",
-            confirmation.initial_guess,
-            confirmation.solver_converged,
-            confirmation.solver_status,
-            confirmation.iterations,
-            confirmation.constraint_violation,
-            confirmation.callback_error,
-        });
-        if (!confirmation.solver_converged || !confirmation.callback_error.empty()) {
-            candidate_result.failure_reason = "perturbed confirmation solve failed";
-            last_result = candidate_result;
-            continue;
-        }
-        FlashNlpEvaluation confirmed;
-        try {
-            confirmed = evaluate_two_phase_flash_nlp(
-                provider,
-                temperature_k,
-                pressure_pa,
-                overall_mole_fractions,
-                confirmation.variables
-            );
-        } catch (const std::exception& error) {
-            candidate_result.failure_reason = error.what();
-            last_result = candidate_result;
-            continue;
-        }
-        FlashSolveResult confirmed_result;
-        if (!physical_acceptance(
-                confirmation,
-                confirmed,
-                pressure_pa,
-                lower,
-                upper,
-                true,
-                true,
-                confirmed_result
-            )) {
-            candidate_result.failure_reason = "perturbed confirmation failed local acceptance";
-            last_result = candidate_result;
-            continue;
-        }
-        candidate_result.confirmation_max_difference = confirmation_difference(
-            candidate_result.evaluation,
-            confirmed
-        );
-        candidate_result.numerical_converged =
-            candidate_result.confirmation_max_difference <= kConfirmationTolerance;
-        if (!candidate_result.numerical_converged) {
-            candidate_result.failure_reason = "perturbed confirmation disagreed with the local result";
-            last_result = candidate_result;
-            continue;
-        }
-        candidate_result.accepted = true;
-        candidate_result.failure_reason.clear();
-        return candidate_result;
-    }
-    return last_result;
 }
 
 }  // namespace epcsaft_equilibrium

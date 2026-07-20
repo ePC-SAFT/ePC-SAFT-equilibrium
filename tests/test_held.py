@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ctypes
+import inspect
 import math
 import sys
 from collections.abc import Callable
@@ -8,6 +10,7 @@ from decimal import Decimal, getcontext
 import epcsaft
 import pytest
 
+import epcsaft_equilibrium
 from epcsaft_equilibrium import _equilibrium
 
 BINARY_FINGERPRINT = "sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286"
@@ -42,6 +45,39 @@ MAY_ROW_001_REFINED_CANDIDATES = (
     ("vapor", 0.6703563353120439, 3.58287622219301e-04),
 )
 MAY_ROW_001_REFINED_G_BAR = 6.46180265452249
+
+
+class _MixtureSdkTable(ctypes.Structure):
+    _fields_ = (
+        ("abi_version", ctypes.c_uint32),
+        ("table_size", ctypes.c_size_t),
+        ("result_size", ctypes.c_size_t),
+        ("model_context", ctypes.c_void_p),
+        ("evaluate_pure_phase", ctypes.c_void_p),
+        ("parameterized_result_size", ctypes.c_size_t),
+        ("evaluate_pure_phase_parameters", ctypes.c_void_p),
+        ("component_count", ctypes.c_size_t),
+        ("mixture_result_size", ctypes.c_size_t),
+        ("evaluate_mixture_phase", ctypes.c_void_p),
+    )
+
+
+class _ExtendedMixtureSdkTable(ctypes.Structure):
+    _fields_ = (*_MixtureSdkTable._fields_, ("future_tail", ctypes.c_uint64))
+
+
+_CAPSULE_NAME_BUFFERS: list[ctypes.Array[ctypes.c_char]] = []
+_SDK_TABLES: list[ctypes.Structure] = []
+
+
+def _capsule(table: ctypes.Structure) -> object:
+    name_buffer = ctypes.create_string_buffer(b"epcsaft.native_sdk.v1")
+    _CAPSULE_NAME_BUFFERS.append(name_buffer)
+    _SDK_TABLES.append(table)
+    new_capsule = ctypes.pythonapi.PyCapsule_New
+    new_capsule.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p)
+    new_capsule.restype = ctypes.py_object
+    return new_capsule(ctypes.addressof(table), name_buffer, None)
 
 
 def _outer_vertex_oracle(
@@ -486,6 +522,383 @@ def binary_capsule() -> object:
     return epcsaft.native_sdk(_binary_model())
 
 
+def test_tp_flash_native_transport_accepts_prefix_and_rejects_malformed_tables() -> None:
+    model = _binary_model()
+    provider_capsule = epcsaft.native_sdk(model)
+    get_pointer = ctypes.pythonapi.PyCapsule_GetPointer
+    get_pointer.argtypes = (ctypes.py_object, ctypes.c_char_p)
+    get_pointer.restype = ctypes.c_void_p
+    pointer = get_pointer(provider_capsule, b"epcsaft.native_sdk.v1")
+    provider_table = ctypes.cast(pointer, ctypes.POINTER(_MixtureSdkTable)).contents
+    values = [getattr(provider_table, name) for name, _ in _MixtureSdkTable._fields_]
+    prefix_size = _MixtureSdkTable.evaluate_mixture_phase.offset + ctypes.sizeof(ctypes.c_void_p)
+
+    prefix_table = _MixtureSdkTable(*values)
+    prefix_table.table_size = prefix_size
+    extended_table = _ExtendedMixtureSdkTable(*values, 0xA5A5A5A5A5A5A5A5)
+    extended_table.table_size = ctypes.sizeof(_ExtendedMixtureSdkTable)
+    for table in (prefix_table, extended_table):
+        result = _equilibrium._solve_tp_flash(
+            _capsule(table),
+            MAY_ROW_011_TEMPERATURE_K,
+            MAY_ROW_011_PRESSURE_PA,
+            (MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE, 1.0 - MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE),
+        )
+        assert result["outcome"] == "one_phase"
+
+    provider_info = _equilibrium.sdk_info(provider_capsule)
+    for table, message in (
+        (
+            _MixtureSdkTable(
+                1,
+                prefix_size,
+                int(provider_info["result_size"]),
+                1,
+                1,
+                0,
+                None,
+                2,
+                int(provider_info["mixture_result_size"]) - 1,
+                1,
+            ),
+            "mixture result size",
+        ),
+        (
+            _MixtureSdkTable(
+                1,
+                prefix_size,
+                int(provider_info["result_size"]),
+                1,
+                1,
+                0,
+                None,
+                2,
+                int(provider_info["mixture_result_size"]),
+                None,
+            ),
+            "mixture phase evaluator",
+        ),
+        (
+            _MixtureSdkTable(
+                2,
+                prefix_size,
+                int(provider_info["result_size"]),
+                1,
+                1,
+                0,
+                None,
+                2,
+                int(provider_info["mixture_result_size"]),
+                1,
+            ),
+            "ABI version",
+        ),
+    ):
+        with pytest.raises(ValueError, match=message):
+            _equilibrium._solve_tp_flash(
+                _capsule(table),
+                MAY_ROW_011_TEMPERATURE_K,
+                MAY_ROW_011_PRESSURE_PA,
+                (0.5, 0.5),
+            )
+
+
+def test_public_tp_flash_returns_the_retained_real_one_phase_state() -> None:
+    result = epcsaft_equilibrium.tp_flash(
+        _binary_model(),
+        MAY_ROW_011_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+        MAY_ROW_011_PRESSURE_PA * epcsaft.unit_registry.pascal,
+        (MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE, 1.0 - MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE),
+    )
+
+    assert isinstance(result, epcsaft_equilibrium.TpFlashResult)
+    assert len(result.phases) == 1
+    assert isinstance(result.phases[0], epcsaft_equilibrium.PhaseState)
+    assert result.phase_fractions == pytest.approx((1.0,))
+    assert result.phases[0].amount_mol == pytest.approx(1.0)
+    assert result.phases[0].mole_fractions == pytest.approx(result.overall_mole_fractions)
+    assert math.isfinite(result.total_free_energy_over_rt)
+    assert isinstance(result.diagnostics, epcsaft_equilibrium.HeldDiagnostics)
+    assert result.diagnostics.outcome == "one_phase"
+    assert result.diagnostics.major_iterations == 0
+    assert result.diagnostics.attempts >= 22
+    assert result.diagnostics.best_tpd >= TPD_NEGATIVE_THRESHOLD
+    assert result.diagnostics.lower_bound is None
+    assert result.diagnostics.upper_bound is None
+    assert result.diagnostics.held_gap is None
+    assert result.diagnostics.pressure_stationarity_max_relative <= 1.0e-8
+    assert result.diagnostics.search_profiles == (STAGE_I_PROFILE,)
+    assert result.diagnostics.globality_certificate == "not_guaranteed"
+
+
+def test_public_tp_flash_maps_one_reviewed_two_phase_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    phase_fractions = (0.45, 0.55)
+    phases = (
+        {
+            "amount_mol": phase_fractions[0],
+            "mole_fractions": (0.30, 0.70),
+            "volume_m3": 3.0e-5,
+            "molar_density_mol_m3": 15_000.0,
+            "pressure_pa": MAY_ROW_001_PRESSURE_PA,
+            "chemical_potential_over_rt": (1.0, 2.0),
+        },
+        {
+            "amount_mol": phase_fractions[1],
+            "mole_fractions": (0.67, 0.33),
+            "volume_m3": 2.2e-4,
+            "molar_density_mol_m3": 2_500.0,
+            "pressure_pa": MAY_ROW_001_PRESSURE_PA,
+            "chemical_potential_over_rt": (1.0, 2.0),
+        },
+    )
+    monkeypatch.setattr(
+        _equilibrium,
+        "_solve_tp_flash",
+        lambda *_args: {
+            "outcome": "accepted",
+            "search_status": "stage_iii_accepted",
+            "failure_reason": "",
+            "attempts": 29,
+            "major_iterations": 3,
+            "best_tpd": -1.0e-3,
+            "lower_bound": MAY_ROW_001_REFINED_G_BAR,
+            "upper_bound": MAY_ROW_001_REFINED_G_BAR + 5.0e-7,
+            "held_gap": 5.0e-7,
+            "material_balance_max_abs": 1.0e-12,
+            "pressure_stationarity_max_relative": 1.0e-10,
+            "kkt_stationarity_max_abs": 1.0e-10,
+            "chemical_potential_max_relative": 1.0e-10,
+            "confirmation_succeeded": True,
+            "confirmation_max_difference": 1.0e-9,
+            "search_profiles": (STAGE_I_PROFILE, STAGE_II_PROFILE, STAGE_III_PROFILE),
+            "globality_certificate": "not_guaranteed",
+            "temperature_k": MAY_ROW_001_TEMPERATURE_K,
+            "pressure_pa": MAY_ROW_001_PRESSURE_PA,
+            "overall_mole_fractions": (
+                MAY_ROW_001_FEED_X_METHANE,
+                1.0 - MAY_ROW_001_FEED_X_METHANE,
+            ),
+            "parameter_fingerprint": BINARY_FINGERPRINT,
+            "phases": phases,
+            "phase_fractions": phase_fractions,
+            "total_free_energy_over_rt": MAY_ROW_001_REFINED_G_BAR,
+        },
+        raising=False,
+    )
+
+    result = epcsaft_equilibrium.tp_flash(
+        _binary_model(),
+        MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+        MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+        (MAY_ROW_001_FEED_X_METHANE, 1.0 - MAY_ROW_001_FEED_X_METHANE),
+    )
+
+    assert isinstance(result, epcsaft_equilibrium.TpFlashResult)
+    assert len(result.phases) == 2
+    assert all(isinstance(phase, epcsaft_equilibrium.PhaseState) for phase in result.phases)
+    assert result.phase_fractions == pytest.approx(phase_fractions)
+    assert sum(result.phase_fractions) == pytest.approx(1.0)
+    assert result.diagnostics.outcome == "accepted"
+    assert result.diagnostics.held_gap == pytest.approx(5.0e-7)
+    assert result.diagnostics.confirmation_succeeded is True
+    assert result.diagnostics.globality_certificate == "not_guaranteed"
+
+
+def test_public_tp_flash_preserves_fail_closed_outcomes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(epcsaft_equilibrium.FlashError) as failed:
+        epcsaft_equilibrium.tp_flash(
+            _binary_model(),
+            MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            (MAY_ROW_001_FEED_X_METHANE, 1.0 - MAY_ROW_001_FEED_X_METHANE),
+        )
+
+    diagnostics = failed.value.diagnostics
+    assert isinstance(diagnostics, epcsaft_equilibrium.HeldDiagnostics)
+    assert diagnostics.outcome == "scope_exceeded"
+    assert diagnostics.search_status == "third_candidate"
+    assert diagnostics.attempts > 0
+    assert diagnostics.major_iterations == 4
+    assert diagnostics.best_tpd < TPD_NEGATIVE_THRESHOLD
+    assert diagnostics.search_profiles == (STAGE_I_PROFILE, STAGE_II_PROFILE, STAGE_III_PROFILE)
+    assert diagnostics.globality_certificate == "not_guaranteed"
+    assert diagnostics.failure_reason
+
+    for outcome in ("search_exhausted", "indeterminate"):
+        payload = vars(diagnostics) | {
+            "outcome": outcome,
+            "search_status": outcome,
+            "failure_reason": f"synthetic {outcome}",
+        }
+        monkeypatch.setattr(
+            _equilibrium,
+            "_solve_tp_flash",
+            lambda *_args, payload=payload: payload,
+        )
+        with pytest.raises(epcsaft_equilibrium.FlashError) as rejected:
+            epcsaft_equilibrium.tp_flash(
+                _binary_model(),
+                MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+                MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+                (MAY_ROW_001_FEED_X_METHANE, 1.0 - MAY_ROW_001_FEED_X_METHANE),
+            )
+        assert rejected.value.diagnostics.outcome == outcome
+        assert rejected.value.diagnostics.globality_certificate == "not_guaranteed"
+
+
+@pytest.mark.parametrize(
+    ("temperature", "pressure", "feed"),
+    (
+        (MAY_ROW_001_TEMPERATURE_K, MAY_ROW_001_PRESSURE_PA, (0.5, 0.5)),
+        (
+            MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            MAY_ROW_001_PRESSURE_PA,
+            (0.5, 0.5),
+        ),
+        (
+            MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            1.0 * epcsaft.unit_registry.meter,
+            (0.5, 0.5),
+        ),
+        (
+            math.nan * epcsaft.unit_registry.kelvin,
+            MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            (0.5, 0.5),
+        ),
+        (
+            MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            math.inf * epcsaft.unit_registry.pascal,
+            (0.5, 0.5),
+        ),
+        (
+            MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            (math.nan, math.nan),
+        ),
+        (
+            MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            (0.0, 1.0),
+        ),
+        (
+            MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            (0.5,),
+        ),
+        (
+            MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            (0.4, 0.5),
+        ),
+        (
+            300.0 * epcsaft.unit_registry.kelvin,
+            MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            (0.5, 0.5),
+        ),
+    ),
+)
+def test_public_tp_flash_rejects_invalid_input_before_native_dispatch(
+    temperature: object,
+    pressure: object,
+    feed: tuple[float, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        epcsaft,
+        "native_sdk",
+        lambda _model: pytest.fail("invalid input reached native dispatch"),
+    )
+    with pytest.raises(epcsaft_equilibrium.FlashError) as failed:
+        epcsaft_equilibrium.tp_flash(_binary_model(), temperature, pressure, feed)
+
+    assert isinstance(failed.value.diagnostics, epcsaft_equilibrium.HeldDiagnostics)
+    assert failed.value.diagnostics.outcome == "invalid_input"
+    assert failed.value.diagnostics.attempts == 0
+    assert failed.value.diagnostics.globality_certificate == "not_guaranteed"
+
+
+def test_public_tp_flash_rejects_wrong_fingerprint_and_provider_abi(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pure_model = epcsaft.EPCSAFT(
+        epcsaft.ParameterBundle.from_catalog("gross-2001-methane-ethane", version=1).select(
+            ("methane",)
+        )
+    )
+    with pytest.raises(epcsaft_equilibrium.FlashError) as wrong_fingerprint:
+        epcsaft_equilibrium.tp_flash(
+            pure_model,
+            MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            (0.5, 0.5),
+        )
+    assert wrong_fingerprint.value.diagnostics.outcome == "invalid_input"
+
+    provider_info = _equilibrium.sdk_info(epcsaft.native_sdk(_binary_model()))
+    malformed_abi = _MixtureSdkTable(
+        2,
+        ctypes.sizeof(_MixtureSdkTable),
+        int(provider_info["result_size"]),
+        1,
+        1,
+        0,
+        None,
+        2,
+        int(provider_info["mixture_result_size"]),
+        1,
+    )
+    monkeypatch.setattr(epcsaft, "native_sdk", lambda _model: _capsule(malformed_abi))
+    with pytest.raises(epcsaft_equilibrium.FlashError) as wrong_abi:
+        epcsaft_equilibrium.tp_flash(
+            _binary_model(),
+            MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            (0.5, 0.5),
+        )
+    assert wrong_abi.value.diagnostics.outcome == "error"
+    assert wrong_abi.value.diagnostics.attempts == 0
+
+
+def test_task_6_public_surface_has_no_fixed_route_or_solver_controls() -> None:
+    assert tuple(inspect.signature(epcsaft_equilibrium.tp_flash).parameters) == (
+        "model",
+        "temperature",
+        "pressure",
+        "overall_mole_fractions",
+    )
+    assert set(epcsaft_equilibrium.__all__) == {
+        "FlashError",
+        "HeldDiagnostics",
+        "PhaseState",
+        "SaturationDiagnostics",
+        "SaturationError",
+        "SaturationResult",
+        "SolverAttemptDiagnostics",
+        "TpFlashResult",
+        "saturation",
+        "tp_flash",
+    }
+    for retired in ("FlashDiagnostics", "TwoPhaseFlashResult", "two_phase_flash"):
+        assert not hasattr(epcsaft_equilibrium, retired)
+    assert hasattr(_equilibrium, "_solve_tp_flash")
+    for retired in ("_held", "_solve_two_phase_flash", "evaluate_two_phase_flash_nlp"):
+        assert not hasattr(_equilibrium, retired)
+    valid_arguments = (
+        _binary_model(),
+        MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+        MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+        (0.5, 0.5),
+    )
+    with pytest.raises(TypeError):
+        epcsaft_equilibrium.tp_flash(*valid_arguments, initial_guess=(0.3, 0.7))
+    with pytest.raises(TypeError):
+        epcsaft_equilibrium.tp_flash(*valid_arguments, solver_options={"tol": 1.0e-4})
+
+
 @pytest.fixture(scope="module")
 def unstable_stage_i(binary_capsule: object) -> dict[str, object]:
     return _equilibrium._held_stage_i(
@@ -752,12 +1165,11 @@ def test_held_stage_iii_confirms_retained_may_row_001_refinement(
 def test_held_controller_returns_failed_refinement_to_stage_ii_and_fails_closed(
     binary_capsule: object,
 ) -> None:
-    result = _equilibrium._held(
+    result = _equilibrium._solve_tp_flash(
         binary_capsule,
         MAY_ROW_001_TEMPERATURE_K,
         MAY_ROW_001_PRESSURE_PA,
-        MAY_ROW_001_FEED_X_METHANE,
-        BINARY_FINGERPRINT,
+        (MAY_ROW_001_FEED_X_METHANE, 1.0 - MAY_ROW_001_FEED_X_METHANE),
     )
 
     assert result["outcome"] == "scope_exceeded"
@@ -787,12 +1199,14 @@ def test_held_controller_returns_failed_refinement_to_stage_ii_and_fails_closed(
 def test_held_controller_preserves_stage_i_one_phase_outcome(
     binary_capsule: object,
 ) -> None:
-    result = _equilibrium._held(
+    result = _equilibrium._solve_tp_flash(
         binary_capsule,
         MAY_ROW_011_TEMPERATURE_K,
         MAY_ROW_011_PRESSURE_PA,
-        MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
-        BINARY_FINGERPRINT,
+        (
+            MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
+            1.0 - MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
+        ),
     )
 
     assert result["outcome"] == "one_phase"

@@ -932,6 +932,9 @@ HeldStageIIResult solve_held_stage_ii_impl(
         pressure_pa,
         feed_x_methane
     );
+    if (controller != nullptr) {
+        controller->stage_i = stage_i;
+    }
     result.stage_i_outcome = stage_i.outcome;
     result.stage_i_search_status = stage_i.search_status;
     result.best_tpd = stage_i.best_tpd;
