@@ -38,6 +38,12 @@ public:
         double volume_m3
     ) const;
 
+    [[nodiscard]] MixturePhaseEvaluation evaluate_electrolyte(
+        double temperature_k,
+        const std::vector<double>& amounts_mol,
+        double volume_m3
+    ) const;
+
     [[nodiscard]] const std::string& fingerprint() const;
 
 private:

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -319,6 +320,49 @@ std::vector<double> held2_lift_modified_fractions(
     return physical;
 }
 
+std::vector<double> held2_lift_independent_fractions(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent_modified_fractions
+) {
+    const std::size_t independent_count = coordinates.independent_indices.size();
+    if (independent_modified_fractions.size() != independent_count) {
+        throw std::invalid_argument(
+            "independent modified composition size does not match the HELD2 chart"
+        );
+    }
+    require_finite_vector(independent_modified_fractions, "independent modified fractions");
+    std::vector<double> modified_fractions(coordinates.retained_indices.size(), 0.0);
+    double independent_sum = 0.0;
+    for (std::size_t independent = 0; independent < independent_count; ++independent) {
+        const double value = independent_modified_fractions[independent];
+        if (value < coordinates.independent_lower_bounds[independent]
+            || value > coordinates.independent_upper_bounds[independent]) {
+            throw std::invalid_argument("independent modified fraction is outside its source bound");
+        }
+        const auto retained = static_cast<std::size_t>(
+            std::find(
+                coordinates.retained_indices.begin(),
+                coordinates.retained_indices.end(),
+                coordinates.independent_indices[independent]
+            ) - coordinates.retained_indices.begin()
+        );
+        modified_fractions[retained] = value;
+        independent_sum += value;
+    }
+    if (!(independent_sum < 1.0)) {
+        throw std::invalid_argument("independent modified fractions must leave a positive dependent fraction");
+    }
+    const auto dependent_retained = static_cast<std::size_t>(
+        std::find(
+            coordinates.retained_indices.begin(),
+            coordinates.retained_indices.end(),
+            coordinates.dependent_index
+        ) - coordinates.retained_indices.begin()
+    );
+    modified_fractions[dependent_retained] = 1.0 - independent_sum;
+    return held2_lift_modified_fractions(coordinates, modified_fractions);
+}
+
 std::vector<double> held2_transform_modified_potentials(
     const Held2Coordinates& coordinates,
     const std::vector<double>& chemical_potentials
@@ -376,13 +420,8 @@ Held2StateEvaluation evaluate_held2_phase_block(
 
     Held2StateEvaluation result;
     result.modified_fractions.resize(coordinates.retained_indices.size(), 0.0);
-    double independent_sum = 0.0;
     for (std::size_t independent = 0; independent < independent_count; ++independent) {
         const double value = independent_modified_fractions[independent];
-        if (value < coordinates.independent_lower_bounds[independent]
-            || value > coordinates.independent_upper_bounds[independent]) {
-            throw std::invalid_argument("independent modified fraction is outside its source bound");
-        }
         const auto retained = static_cast<std::size_t>(
             std::find(
                 coordinates.retained_indices.begin(),
@@ -391,11 +430,11 @@ Held2StateEvaluation evaluate_held2_phase_block(
             ) - coordinates.retained_indices.begin()
         );
         result.modified_fractions[retained] = value;
-        independent_sum += value;
     }
-    if (!(independent_sum < 1.0)) {
-        throw std::invalid_argument("independent modified fractions must leave a positive dependent fraction");
-    }
+    result.physical_amounts = held2_lift_independent_fractions(
+        coordinates,
+        independent_modified_fractions
+    );
     const auto dependent_retained = static_cast<std::size_t>(
         std::find(
             coordinates.retained_indices.begin(),
@@ -403,11 +442,12 @@ Held2StateEvaluation evaluate_held2_phase_block(
             coordinates.dependent_index
         ) - coordinates.retained_indices.begin()
     );
-    result.modified_fractions[dependent_retained] = 1.0 - independent_sum;
-    result.physical_amounts = held2_lift_modified_fractions(
-        coordinates,
-        result.modified_fractions
-    );
+    result.modified_fractions[dependent_retained] =
+        1.0 - std::accumulate(
+            independent_modified_fractions.begin(),
+            independent_modified_fractions.end(),
+            0.0
+        );
     result.volume = std::exp(log_volume);
     if (!std::isfinite(result.volume) || result.volume <= 0.0) {
         throw std::invalid_argument("HELD2 phase volume must be finite and positive");

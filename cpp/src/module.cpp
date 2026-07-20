@@ -27,6 +27,10 @@ constexpr std::size_t kPureSdkTableSize = offsetof(epcsaft_native_sdk_v1, compon
 constexpr std::size_t kMixtureSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_mixture_phase)
     + sizeof(epcsaft_evaluate_mixture_phase_v1);
+constexpr std::size_t kElectrolyteSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, evaluate_electrolyte_phase)
+    + sizeof(epcsaft_evaluate_mixture_phase_v1);
+constexpr double kGasConstantJPerMolK = 8.31446261815324;
 
 const epcsaft_native_sdk_v1& checked_sdk(const py::capsule& capsule) {
     const char* name = capsule.name();
@@ -67,6 +71,23 @@ const epcsaft_native_sdk_v1& checked_mixture_sdk(const py::capsule& capsule) {
     }
     if (sdk.evaluate_mixture_phase == nullptr) {
         throw py::value_error("provider capsule is missing its mixture phase evaluator");
+    }
+    return sdk;
+}
+
+const epcsaft_native_sdk_v1& checked_electrolyte_sdk(const py::capsule& capsule) {
+    const epcsaft_native_sdk_v1& sdk = checked_sdk(capsule);
+    if (sdk.table_size < kElectrolyteSdkTableSize) {
+        throw py::value_error("provider capsule is missing the electrolyte SDK tail");
+    }
+    if (sdk.component_count < 3 || sdk.component_ids == nullptr
+        || sdk.component_charges == nullptr || sdk.evaluate_electrolyte_phase == nullptr) {
+        throw py::value_error("provider capsule is missing the electrolyte phase contract");
+    }
+    if (sdk.mixture_result_size != sizeof(epcsaft_mixture_phase_block_result_v1)) {
+        throw py::value_error(
+            "provider capsule mixture result size does not match the v1 contract"
+        );
     }
     return sdk;
 }
@@ -1370,6 +1391,79 @@ py::dict held2_phase_block_evidence(
     return result;
 }
 
+py::dict held2_installed_phase_block(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& independent_modified_fractions,
+    double log_volume,
+    const std::string& expected_fingerprint
+) {
+    if (!std::isfinite(temperature_k) || !std::isfinite(pressure_pa)
+        || temperature_k <= 0.0 || pressure_pa <= 0.0) {
+        throw py::value_error("HELD2 temperature and pressure must be finite and positive");
+    }
+    const epcsaft_native_sdk_v1& sdk = checked_electrolyte_sdk(capsule);
+    std::vector<double> charges;
+    std::vector<std::string> component_ids;
+    charges.reserve(sdk.component_count);
+    component_ids.reserve(sdk.component_count);
+    for (std::size_t component = 0; component < sdk.component_count; ++component) {
+        if (sdk.component_ids[component] == nullptr
+            || sdk.component_ids[component][0] == '\0') {
+            throw py::value_error("provider electrolyte component ID must not be empty");
+        }
+        charges.push_back(static_cast<double>(sdk.component_charges[component]));
+        component_ids.emplace_back(sdk.component_ids[component]);
+    }
+    const epcsaft_equilibrium::Held2Coordinates coordinates =
+        epcsaft_equilibrium::make_held2_coordinates(charges);
+    const std::vector<double> physical_amounts =
+        epcsaft_equilibrium::held2_lift_independent_fractions(
+            coordinates,
+            independent_modified_fractions
+        );
+    const double volume_m3 = std::exp(log_volume);
+    if (!std::isfinite(volume_m3) || volume_m3 <= 0.0) {
+        throw py::value_error("HELD2 phase volume must be finite and positive");
+    }
+    const epcsaft_equilibrium::ProviderContext provider(sdk, expected_fingerprint);
+    const epcsaft_equilibrium::MixturePhaseEvaluation provider_phase =
+        provider.evaluate_electrolyte(temperature_k, physical_amounts, volume_m3);
+    epcsaft_equilibrium::Held2PhysicalPhaseBlock block;
+    block.helmholtz_over_rt = provider_phase.value;
+    block.gradient = provider_phase.gradient;
+    block.hessian = provider_phase.hessian;
+    block.pressure_pa = provider_phase.pressure_pa;
+    const double pressure_over_rt = pressure_pa / (kGasConstantJPerMolK * temperature_k);
+    const epcsaft_equilibrium::Held2StateEvaluation evaluation =
+        epcsaft_equilibrium::evaluate_held2_phase_block(
+            coordinates,
+            independent_modified_fractions,
+            log_volume,
+            pressure_over_rt,
+            pressure_pa,
+            block
+        );
+    py::dict result;
+    result["component_ids"] = std::move(component_ids);
+    result["charges"] = std::move(charges);
+    result["modified_fractions"] = evaluation.modified_fractions;
+    result["physical_amounts"] = evaluation.physical_amounts;
+    result["volume"] = evaluation.volume;
+    result["objective"] = evaluation.objective;
+    result["gradient"] = evaluation.gradient;
+    result["hessian"] = evaluation.hessian;
+    result["modified_potentials"] = evaluation.modified_potentials;
+    result["pressure_stationarity_relative"] =
+        evaluation.pressure_stationarity_relative;
+    result["provider_pressure_pa"] = provider_phase.pressure_pa;
+    result["pressure_over_rt"] = pressure_over_rt;
+    result["parameter_fingerprint"] = provider_phase.parameter_fingerprint;
+    result["globality_certificate"] = "not_guaranteed";
+    return result;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_equilibrium, module) {
@@ -1556,6 +1650,16 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("gradient"),
         py::arg("hessian"),
         py::arg("provider_pressure_pa")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_installed_phase_block,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("independent_modified_fractions"),
+        py::arg("log_volume"),
+        py::arg("expected_fingerprint")
     );
     module.def(
         "_solve_tp_flash",

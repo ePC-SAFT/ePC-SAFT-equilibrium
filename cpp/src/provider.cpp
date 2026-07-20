@@ -28,6 +28,89 @@ void require_finite(double value, const char* name) {
     }
 }
 
+MixturePhaseEvaluation evaluate_mixture_callback(
+    const epcsaft_native_sdk_v1& sdk,
+    epcsaft_evaluate_mixture_phase_v1 callback,
+    const std::string& fingerprint,
+    double temperature_k,
+    const std::vector<double>& amounts_mol,
+    double volume_m3
+) {
+    if (sdk.component_count < 2 || amounts_mol.size() != sdk.component_count) {
+        throw std::invalid_argument("provider mixture component count mismatch");
+    }
+    if (sdk.mixture_result_size != sizeof(epcsaft_mixture_phase_block_result_v1)
+        || callback == nullptr) {
+        throw std::invalid_argument("provider capsule is missing the mixture phase contract");
+    }
+    const std::size_t coordinate_count = sdk.component_count + 1;
+    std::vector<double> gradient(coordinate_count, 0.0);
+    std::vector<double> hessian(coordinate_count * coordinate_count, 0.0);
+    epcsaft_mixture_phase_block_result_v1 phase{};
+    phase.struct_size = sizeof(phase);
+    phase.coordinate_count = coordinate_count;
+    phase.gradient_capacity = gradient.size();
+    phase.hessian_capacity = hessian.size();
+    phase.gradient = gradient.data();
+    phase.hessian = hessian.data();
+    const int status = callback(
+        sdk.model_context,
+        temperature_k,
+        amounts_mol.data(),
+        amounts_mol.size(),
+        volume_m3,
+        &phase
+    );
+    if (phase.struct_size != sizeof(epcsaft_mixture_phase_block_result_v1)) {
+        throw std::invalid_argument("provider mixture result struct size mismatch");
+    }
+    if (status != phase.status) {
+        throw std::runtime_error("provider mixture evaluation returned inconsistent status values");
+    }
+    if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
+        const std::string error = decode_provider_char_array(
+            phase.error,
+            sizeof(phase.error),
+            "provider mixture error"
+        );
+        throw std::domain_error("provider mixture phase evaluation failed: " + error);
+    }
+    if (phase.coordinate_count != coordinate_count
+        || phase.gradient_capacity != gradient.size()
+        || phase.hessian_capacity != hessian.size()
+        || phase.gradient != gradient.data()
+        || phase.hessian != hessian.data()) {
+        throw std::invalid_argument("provider mixture result buffer contract changed");
+    }
+    require_finite(phase.helmholtz_over_rt_reference_amount, "provider mixture value");
+    require_finite(phase.pressure_pa, "provider mixture pressure");
+    if (!std::all_of(gradient.begin(), gradient.end(), [](double value) {
+            return std::isfinite(value);
+        })
+        || !std::all_of(hessian.begin(), hessian.end(), [](double value) {
+            return std::isfinite(value);
+        })) {
+        throw std::invalid_argument("provider mixture tensors must be finite");
+    }
+    const std::string parameter_fingerprint = decode_provider_char_array(
+        phase.parameter_fingerprint,
+        sizeof(phase.parameter_fingerprint),
+        "provider mixture parameter fingerprint"
+    );
+    if (parameter_fingerprint != fingerprint) {
+        throw std::invalid_argument(
+            "provider mixture result fingerprint does not match the requested model"
+        );
+    }
+    return {
+        phase.helmholtz_over_rt_reference_amount,
+        std::move(gradient),
+        std::move(hessian),
+        phase.pressure_pa,
+        std::move(parameter_fingerprint),
+    };
+}
+
 }  // namespace
 
 ProviderContext::ProviderContext(const epcsaft_native_sdk_v1& sdk, std::string fingerprint)
@@ -83,79 +166,19 @@ MixturePhaseEvaluation ProviderContext::evaluate_mixture(
     const std::vector<double>& amounts_mol,
     double volume_m3
 ) const {
-    if (sdk_.component_count < 2 || amounts_mol.size() != sdk_.component_count) {
-        throw std::invalid_argument("provider mixture component count mismatch");
-    }
-    if (sdk_.mixture_result_size != sizeof(epcsaft_mixture_phase_block_result_v1)
-        || sdk_.evaluate_mixture_phase == nullptr) {
-        throw std::invalid_argument("provider capsule is missing the mixture phase contract");
-    }
-    const std::size_t coordinate_count = sdk_.component_count + 1;
-    std::vector<double> gradient(coordinate_count, 0.0);
-    std::vector<double> hessian(coordinate_count * coordinate_count, 0.0);
-    epcsaft_mixture_phase_block_result_v1 phase{};
-    phase.struct_size = sizeof(phase);
-    phase.coordinate_count = coordinate_count;
-    phase.gradient_capacity = gradient.size();
-    phase.hessian_capacity = hessian.size();
-    phase.gradient = gradient.data();
-    phase.hessian = hessian.data();
-    const int status = sdk_.evaluate_mixture_phase(
-        sdk_.model_context,
-        temperature_k,
-        amounts_mol.data(),
-        amounts_mol.size(),
-        volume_m3,
-        &phase
+    return evaluate_mixture_callback(
+        sdk_, sdk_.evaluate_mixture_phase, fingerprint_, temperature_k, amounts_mol, volume_m3
     );
-    if (phase.struct_size != sizeof(epcsaft_mixture_phase_block_result_v1)) {
-        throw std::invalid_argument("provider mixture result struct size mismatch");
-    }
-    if (status != phase.status) {
-        throw std::runtime_error("provider mixture evaluation returned inconsistent status values");
-    }
-    if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
-        const std::string error = decode_provider_char_array(
-            phase.error,
-            sizeof(phase.error),
-            "provider mixture error"
-        );
-        throw std::domain_error("provider mixture phase evaluation failed: " + error);
-    }
-    if (phase.coordinate_count != coordinate_count
-        || phase.gradient_capacity != gradient.size()
-        || phase.hessian_capacity != hessian.size()
-        || phase.gradient != gradient.data()
-        || phase.hessian != hessian.data()) {
-        throw std::invalid_argument("provider mixture result buffer contract changed");
-    }
-    require_finite(phase.helmholtz_over_rt_reference_amount, "provider mixture value");
-    require_finite(phase.pressure_pa, "provider mixture pressure");
-    if (!std::all_of(gradient.begin(), gradient.end(), [](double value) {
-            return std::isfinite(value);
-        })
-        || !std::all_of(hessian.begin(), hessian.end(), [](double value) {
-            return std::isfinite(value);
-        })) {
-        throw std::invalid_argument("provider mixture tensors must be finite");
-    }
-    const std::string parameter_fingerprint = decode_provider_char_array(
-        phase.parameter_fingerprint,
-        sizeof(phase.parameter_fingerprint),
-        "provider mixture parameter fingerprint"
+}
+
+MixturePhaseEvaluation ProviderContext::evaluate_electrolyte(
+    double temperature_k,
+    const std::vector<double>& amounts_mol,
+    double volume_m3
+) const {
+    return evaluate_mixture_callback(
+        sdk_, sdk_.evaluate_electrolyte_phase, fingerprint_, temperature_k, amounts_mol, volume_m3
     );
-    if (parameter_fingerprint != fingerprint_) {
-        throw std::invalid_argument(
-            "provider mixture result fingerprint does not match the requested model"
-        );
-    }
-    return {
-        phase.helmholtz_over_rt_reference_amount,
-        std::move(gradient),
-        std::move(hessian),
-        phase.pressure_pa,
-        std::move(parameter_fingerprint),
-    };
 }
 
 const std::string& ProviderContext::fingerprint() const {

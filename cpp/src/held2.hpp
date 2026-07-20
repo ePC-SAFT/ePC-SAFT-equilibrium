@@ -35,6 +35,11 @@ struct Held2Coordinates {
     const std::vector<double>& modified_fractions
 );
 
+[[nodiscard]] std::vector<double> held2_lift_independent_fractions(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent_modified_fractions
+);
+
 [[nodiscard]] std::vector<double> held2_transform_modified_potentials(
     const Held2Coordinates& coordinates,
     const std::vector<double>& chemical_potentials

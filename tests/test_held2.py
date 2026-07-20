@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
+import epcsaft
 import pytest
 
 from epcsaft_equilibrium import _equilibrium
@@ -11,6 +12,14 @@ FORMULATION_ID = "perdomo-held2.modified-mole.manufactured.v1"
 CHARGES = (0.0, 1.0, -1.0)
 PHYSICAL_FEED = (0.5, 0.25, 0.25)
 CHEMICAL_POTENTIALS = (3.0, -2.0, 4.0)
+GAS_CONSTANT_J_PER_MOL_K = 8.31446261815324
+
+
+def _figiel_brine_model() -> epcsaft.EPCSAFT:
+    parameters = epcsaft.ParameterBundle.from_catalog(
+        "figiel-2025-reference-electrolytes", version=1
+    ).select(("water", "sodium-cation", "chloride-anion"))
+    return epcsaft.EPCSAFT(parameters)
 
 
 def _manufactured_helmholtz(composition: float, molar_volume: float) -> float:
@@ -325,3 +334,53 @@ def test_held2_phase_block_affine_transform_has_exact_gradient_and_hessian() -> 
         tuple(result["hessian"][4 * column + row] for row in range(4) for column in range(4)),
         abs=2.0e-14,
     )
+
+
+def test_held2_installed_electrolyte_sdk_phase_block_has_exact_reduced_derivatives() -> None:
+    model = _figiel_brine_model()
+    capsule = epcsaft.native_sdk(model)
+    temperature_k = 298.15
+    pressure_pa = 100_000.0
+    center = (0.02, math.log(1.0e-3))
+    direction = (0.007, -0.03)
+
+    def evaluate(values: tuple[float, float]) -> dict[str, object]:
+        return _equilibrium._held2_adapter(
+            capsule,
+            temperature_k,
+            pressure_pa,
+            values[0:1],
+            values[1],
+            model.parameter_fingerprint,
+        )
+
+    step = 2.0e-5
+    lower = evaluate(
+        tuple(value - step * delta for value, delta in zip(center, direction, strict=True))
+    )
+    result = evaluate(center)
+    upper = evaluate(
+        tuple(value + step * delta for value, delta in zip(center, direction, strict=True))
+    )
+
+    assert result["component_ids"] == ["water", "sodium-cation", "chloride-anion"]
+    assert result["charges"] == [0.0, 1.0, -1.0]
+    assert result["physical_amounts"] == pytest.approx([0.98, 0.01, 0.01], abs=1.0e-15)
+    assert result["parameter_fingerprint"] == model.parameter_fingerprint
+    assert result["globality_certificate"] == "not_guaranteed"
+    objective_directional = (upper["objective"] - lower["objective"]) / (2.0 * step)
+    assert objective_directional == pytest.approx(
+        sum(value * delta for value, delta in zip(result["gradient"], direction, strict=True)),
+        rel=1.0e-9,
+        abs=1.0e-10,
+    )
+    for row in range(2):
+        gradient_directional = (upper["gradient"][row] - lower["gradient"][row]) / (2.0 * step)
+        hessian_directional = sum(
+            result["hessian"][2 * row + column] * direction[column] for column in range(2)
+        )
+        assert gradient_directional == pytest.approx(hessian_directional, rel=1.0e-8, abs=1.0e-10)
+    assert result["pressure_over_rt"] == pytest.approx(
+        pressure_pa / (GAS_CONSTANT_J_PER_MOL_K * temperature_k), rel=2.0e-15
+    )
+    assert math.isfinite(result["provider_pressure_pa"])
