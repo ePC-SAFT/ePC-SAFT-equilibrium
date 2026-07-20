@@ -36,6 +36,7 @@ STAGE_II_PROFILE = "held-stage-ii-binary-v1"
 STAGE_III_PROFILE = "held-stage-iii-binary-v1"
 TPD_NEGATIVE_THRESHOLD = -1.0e-8
 OUTER_NUMERICAL_FACTOR = 256.0
+HELD_STATUS_FIELDS = ("solver_status", "numerical_status", "physical_status")
 
 # Provider-local Stage III regression state for retained May row 001. The
 # compositions are already frozen by the reviewed fixed-two-phase design; the
@@ -147,6 +148,13 @@ def _binary_model() -> epcsaft.EPCSAFT:
     model = epcsaft.EPCSAFT(parameters)
     assert model.parameter_fingerprint == BINARY_FINGERPRINT
     return model
+
+
+def _assert_held_statuses(
+    diagnostics: epcsaft_equilibrium.HeldDiagnostics,
+    expected: str,
+) -> None:
+    assert all(getattr(diagnostics, field) == expected for field in HELD_STATUS_FIELDS)
 
 
 @pytest.mark.parametrize(
@@ -628,6 +636,7 @@ def test_public_tp_flash_returns_the_retained_real_one_phase_state() -> None:
     assert result.diagnostics.held_gap is None
     assert result.diagnostics.pressure_stationarity_max_relative <= 1.0e-8
     assert result.diagnostics.search_profiles == (STAGE_I_PROFILE,)
+    _assert_held_statuses(result.diagnostics, "passed")
     assert result.diagnostics.globality_certificate == "not_guaranteed"
 
 
@@ -673,6 +682,9 @@ def test_public_tp_flash_maps_one_reviewed_two_phase_payload(
             "confirmation_succeeded": True,
             "confirmation_max_difference": 1.0e-9,
             "search_profiles": (STAGE_I_PROFILE, STAGE_II_PROFILE, STAGE_III_PROFILE),
+            "solver_status": "passed",
+            "numerical_status": "passed",
+            "physical_status": "passed",
             "globality_certificate": "not_guaranteed",
             "temperature_k": MAY_ROW_001_TEMPERATURE_K,
             "pressure_pa": MAY_ROW_001_PRESSURE_PA,
@@ -703,6 +715,7 @@ def test_public_tp_flash_maps_one_reviewed_two_phase_payload(
     assert result.diagnostics.outcome == "accepted"
     assert result.diagnostics.held_gap == pytest.approx(5.0e-7)
     assert result.diagnostics.confirmation_succeeded is True
+    _assert_held_statuses(result.diagnostics, "passed")
     assert result.diagnostics.globality_certificate == "not_guaranteed"
 
 
@@ -725,6 +738,7 @@ def test_public_tp_flash_preserves_fail_closed_outcomes(
     assert diagnostics.major_iterations == 4
     assert diagnostics.best_tpd < TPD_NEGATIVE_THRESHOLD
     assert diagnostics.search_profiles == (STAGE_I_PROFILE, STAGE_II_PROFILE, STAGE_III_PROFILE)
+    _assert_held_statuses(diagnostics, "not_adjudicated")
     assert diagnostics.globality_certificate == "not_guaranteed"
     assert diagnostics.failure_reason
 
@@ -747,6 +761,7 @@ def test_public_tp_flash_preserves_fail_closed_outcomes(
                 (MAY_ROW_001_FEED_X_METHANE, 1.0 - MAY_ROW_001_FEED_X_METHANE),
             )
         assert rejected.value.diagnostics.outcome == outcome
+        _assert_held_statuses(rejected.value.diagnostics, "not_adjudicated")
         assert rejected.value.diagnostics.globality_certificate == "not_guaranteed"
 
 
@@ -818,6 +833,7 @@ def test_public_tp_flash_rejects_invalid_input_before_native_dispatch(
     assert isinstance(failed.value.diagnostics, epcsaft_equilibrium.HeldDiagnostics)
     assert failed.value.diagnostics.outcome == "invalid_input"
     assert failed.value.diagnostics.attempts == 0
+    _assert_held_statuses(failed.value.diagnostics, "not_adjudicated")
     assert failed.value.diagnostics.globality_certificate == "not_guaranteed"
 
 
@@ -861,6 +877,55 @@ def test_public_tp_flash_rejects_wrong_fingerprint_and_provider_abi(
         )
     assert wrong_abi.value.diagnostics.outcome == "error"
     assert wrong_abi.value.diagnostics.attempts == 0
+    _assert_held_statuses(wrong_abi.value.diagnostics, "not_adjudicated")
+
+
+def test_public_tp_flash_rejects_malformed_native_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_equilibrium, "_solve_tp_flash", lambda *_args: {"outcome": "accepted"})
+    with pytest.raises(epcsaft_equilibrium.FlashError) as failed:
+        epcsaft_equilibrium.tp_flash(
+            _binary_model(),
+            MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            MAY_ROW_001_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            (MAY_ROW_001_FEED_X_METHANE, 1.0 - MAY_ROW_001_FEED_X_METHANE),
+        )
+    assert failed.value.diagnostics.outcome == "error"
+    _assert_held_statuses(failed.value.diagnostics, "not_adjudicated")
+    assert failed.value.diagnostics.globality_certificate == "not_guaranteed"
+
+
+def test_public_tp_flash_rejects_unknown_status_vocabulary(
+    binary_capsule: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = dict(
+        _equilibrium._solve_tp_flash(
+            binary_capsule,
+            MAY_ROW_011_TEMPERATURE_K,
+            MAY_ROW_011_PRESSURE_PA,
+            (
+                MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
+                1.0 - MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
+            ),
+        )
+    )
+    payload["solver_status"] = "unknown"
+    monkeypatch.setattr(_equilibrium, "_solve_tp_flash", lambda *_args: payload)
+    with pytest.raises(epcsaft_equilibrium.FlashError) as failed:
+        epcsaft_equilibrium.tp_flash(
+            _binary_model(),
+            MAY_ROW_011_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            MAY_ROW_011_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            (
+                MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
+                1.0 - MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
+            ),
+        )
+    assert failed.value.diagnostics.outcome == "error"
+    _assert_held_statuses(failed.value.diagnostics, "not_adjudicated")
+    assert failed.value.diagnostics.globality_certificate == "not_guaranteed"
 
 
 def test_task_6_public_surface_has_no_fixed_route_or_solver_controls() -> None:
@@ -1214,6 +1279,12 @@ def test_held_controller_preserves_stage_i_one_phase_outcome(
     assert result["stage_i_outcome"] == "no_negative_found"
     assert result["major_iterations"] == 0
     assert result["stage_iii_attempts"] == []
+    assert tuple(result[field] for field in HELD_STATUS_FIELDS) == (
+        "passed",
+        "passed",
+        "passed",
+    )
+    assert result["globality_certificate"] == "not_guaranteed"
 
 
 def test_held_one_mole_transform_and_exact_derivatives_at_may_row_001(

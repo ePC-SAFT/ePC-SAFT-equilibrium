@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -919,6 +920,73 @@ py::dict solve_tp_flash(
     result["stage_iii_attempts"] = attempts;
     result["trace"] = trace;
     result["globality_certificate"] = "not_guaranteed";
+
+    result["solver_status"] = "not_adjudicated";
+    result["numerical_status"] = "not_adjudicated";
+    result["physical_status"] = "not_adjudicated";
+    const bool accepted_reference = solve.stage_i.has_reference
+        && std::any_of(
+            solve.stage_i.reference_attempts.begin(),
+            solve.stage_i.reference_attempts.end(),
+            [](const auto& attempt) { return attempt.accepted; }
+        );
+    const bool failed_reference_solver_attempt = std::any_of(
+        solve.stage_i.reference_attempts.begin(),
+        solve.stage_i.reference_attempts.end(),
+        [](const auto& attempt) {
+            return !attempt.solver_converged || !attempt.callback_error.empty();
+        }
+    );
+    const bool failed_reference_attempt = std::any_of(
+        solve.stage_i.reference_attempts.begin(),
+        solve.stage_i.reference_attempts.end(),
+        [](const auto& attempt) { return !attempt.accepted; }
+    );
+    const bool failed_stage_i_solver_attempt = std::any_of(
+        solve.stage_i.attempt_log.begin(),
+        solve.stage_i.attempt_log.end(),
+        [](const auto& attempt) {
+            return !attempt.solver_converged || !attempt.callback_error.empty();
+        }
+    );
+    const bool failed_stage_i_search_attempt = std::any_of(
+        solve.stage_i.attempt_log.begin(),
+        solve.stage_i.attempt_log.end(),
+        [](const auto& attempt) {
+            return !attempt.solver_converged
+                || !attempt.callback_error.empty()
+                || !attempt.accepted;
+        }
+    );
+    const bool all_stage_i_starts_completed = solve.stage_i.planned_starts.size() == 20
+        && solve.stage_i.starts_completed == 20;
+    const bool no_stage_i_confirmation = solve.stage_i.negative_confirmations == 0
+        && std::none_of(
+            solve.stage_i.attempt_log.begin(),
+            solve.stage_i.attempt_log.end(),
+            [](const auto& attempt) { return attempt.kind == "confirmation"; }
+        );
+    const bool no_negative_tpd = std::isfinite(solve.stage_i.best_tpd)
+        && solve.stage_i.best_tpd >= -1.0e-8;
+    const bool completed_one_phase_search = accepted_reference
+        && all_stage_i_starts_completed
+        && no_stage_i_confirmation
+        && no_negative_tpd;
+    if (completed_one_phase_search) {
+        const bool solver_passed = !failed_reference_solver_attempt
+            && !failed_stage_i_solver_attempt;
+        const bool numerical_passed = solver_passed
+            && !failed_reference_attempt
+            && !failed_stage_i_search_attempt;
+        result["solver_status"] = solver_passed ? "passed" : "failed";
+        result["numerical_status"] = numerical_passed ? "passed" : "failed";
+        result["physical_status"] = numerical_passed ? "passed" : "not_adjudicated";
+    } else if (solve.outcome == "accepted" && !solve.stage_iii_attempts.empty()) {
+        const auto& local = solve.stage_iii_attempts.back().result.local;
+        result["solver_status"] = local.solver_converged ? "passed" : "failed";
+        result["numerical_status"] = local.numerical_converged ? "passed" : "failed";
+        result["physical_status"] = local.physical_accepted ? "passed" : "failed";
+    }
     result["temperature_k"] = temperature_k;
     result["pressure_pa"] = pressure_pa;
     result["overall_mole_fractions"] = overall_mole_fractions;

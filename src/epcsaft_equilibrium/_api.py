@@ -88,6 +88,9 @@ class HeldDiagnostics:
 
     outcome: str
     search_status: str
+    solver_status: str
+    numerical_status: str
+    physical_status: str
     attempts: int
     major_iterations: int
     best_tpd: float
@@ -293,9 +296,21 @@ def _optional_float(payload: Mapping[str, object], name: str) -> float | None:
 
 def _held_diagnostics(payload: Mapping[str, object]) -> HeldDiagnostics:
     profiles = cast(Sequence[object], payload["search_profiles"])
+    statuses = tuple(
+        payload[name] for name in ("solver_status", "numerical_status", "physical_status")
+    )
+    if not all(
+        isinstance(status, str) and status in {"passed", "failed", "not_adjudicated"}
+        for status in statuses
+    ):
+        raise ValueError("native HELD payload has an invalid status vocabulary")
+    typed_statuses = cast(tuple[str, str, str], statuses)
     return HeldDiagnostics(
         outcome=str(payload["outcome"]),
         search_status=str(payload["search_status"]),
+        solver_status=typed_statuses[0],
+        numerical_status=typed_statuses[1],
+        physical_status=typed_statuses[2],
         attempts=int(cast(int, payload["attempts"])),
         major_iterations=int(cast(int, payload["major_iterations"])),
         best_tpd=float(cast(float, payload["best_tpd"])),
@@ -320,6 +335,9 @@ def _failed_held_diagnostics(outcome: str, search_status: str, reason: str) -> H
     return HeldDiagnostics(
         outcome=outcome,
         search_status=search_status,
+        solver_status="not_adjudicated",
+        numerical_status="not_adjudicated",
+        physical_status="not_adjudicated",
         attempts=0,
         major_iterations=0,
         best_tpd=0.0,

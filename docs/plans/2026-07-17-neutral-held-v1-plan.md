@@ -42,7 +42,8 @@ stage_ii_major_iterations_max: 100
 stage_ii_lower_starts_per_iter: 20
 ipopt_iterations_per_solve:    300
 composition_bounds:            [1e-8, 1 - 1e-8]
-molar_volume_bounds_m3_mol:    [1e-5, 1e-1]
+stage_i_ii_molar_volume_bounds_m3_mol: [1e-5, 1e-1]
+stage_iii_phase_volume_bounds_m3:     [1e-5, 1e-1]
 tpd_negative_threshold:        -1e-8
 epsilon_lambda:                0.5
 epsilon_b:                     1e-2

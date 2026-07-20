@@ -60,7 +60,9 @@ rectangular May et al. (2015), Table 5 source domain: 203.22--243.61 K,
 two phases after the declared finite Stage-I/II/III search. `FlashError`
 retains invalid-input, provider, exhausted-search, scope, and indeterminate
 diagnostics. Every result reports `globality_certificate="not_guaranteed"`;
-the accepted pure-saturation authority above is unchanged.
+the accepted pure-saturation authority above is unchanged. HELD diagnostics
+classify solver, numerical, and physical evidence independently as `passed`,
+`failed`, or `not_adjudicated`; those axes do not change the globality claim.
 
 The candidate fingerprint is
 `sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286`.
@@ -88,13 +90,13 @@ import private provider modules.
 Source builds require Python 3.13, CMake, a C++17 compiler, pkg-config, Ipopt,
 and the non-editable provider wheel installed in the build environment. The
 local candidate gate hashes the exact provider wheel before creating an
-isolated build environment. Implementation commit `549162a3` is retained as
-one read-only wheel under
-`artifacts/equilibrium-neutral-held-v1/549162a/`; the replayable commands,
-declared `SOURCE_DATE_EPOCH`, and artifact hashes are recorded in
-`receipts/promotion/promotion-0002-neutral-held-v1-candidate.yaml`. Only one
-clean candidate build was performed, so no archive-byte reproducibility claim
-is made.
+isolated build environment. Candidate wheels are retained as read-only files
+under a commit-bound `artifacts/equilibrium-neutral-held-v1/<commit>/`
+directory and are never overwritten by a correction. The exact candidate
+commit, declared `SOURCE_DATE_EPOCH`, artifact hashes, review status, and
+replayable commands are recorded in
+`receipts/promotion/promotion-0002-neutral-held-v1-candidate.yaml`.
+One clean build does not support an archive-byte reproducibility claim.
 
 ```text
 uv run --isolated --no-project --python 3.13 \

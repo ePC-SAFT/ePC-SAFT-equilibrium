@@ -105,8 +105,9 @@ needed.
 
 ## 5. Stage I: initialization and stability search
 
-At the normalized feed `z`, equilibrium first minimizes `g_bar(z,V)` over
-positive volume from declared liquid-like and vapor-like starts. The lowest
+At the normalized feed `z`, equilibrium first minimizes `g_bar(z,V)` from
+declared liquid-like and vapor-like starts over molar-volume bounds
+`[1e-5,1e-1] m3/mol`. The lowest
 locally accepted homogeneous reference supplies `V_z` and the reference
 chemical potentials.
 
@@ -178,7 +179,8 @@ maximum `v`. It is not a reusable general LP package. An independent
 test-only exhaustive vertex oracle must agree on value, multiplier, active
 cuts, infeasibility, degeneracy, and tie handling.
 
-Each nonconvex lower problem uses Ipopt over `(x,log V)`. Its deterministic
+Each nonconvex lower problem uses Ipopt over `(x,log V)` with molar-volume
+bounds `[1e-5,1e-1] m3/mol`. Its deterministic
 start classes alternate shifted prior solutions, component-near states, and
 stratified states until an accepted lower value no greater than the current
 best upper bound is found or the declared search budget is exhausted. Every
@@ -236,6 +238,7 @@ Stage III amount bounds are centered on those Stage II candidate amounts with
 the source neighborhood `+/- 1e-3 mol`, exactly corresponding to Pereira's
 `+/- 1e-3 M_i` mass-number bounds after `q_i=M_i n_i`. If the component
 balances are infeasible inside that neighborhood, control returns to Stage II.
+Each extensive per-phase volume uses bounds `[1e-5,1e-1] m3`.
 
 The existing fixed-two-phase objective, exact log-volume chain rules, linear
 balances, retained Ipopt multipliers, KKT check, distinct-phase check, and
