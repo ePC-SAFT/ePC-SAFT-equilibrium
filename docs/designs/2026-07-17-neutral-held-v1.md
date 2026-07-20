@@ -1,8 +1,10 @@
 # Neutral HELD v1 Design
 
-Status: corrected complete local candidate at implementation commit
-`8318e755d4a8e490822fdf7bb2685d8c5af6436c`; awaiting permanent-lab
-corrected-candidate rereview and Validation's installed-artifact campaign
+Status: executed v1 candidate frozen at implementation commit
+`8318e755d4a8e490822fdf7bb2685d8c5af6436c`; Validation commit
+`93ff18541d2fe277a27671e4e6d12b6b009a58ed` is stable `NON_ADMISSION`
+evidence; the design-only controller delta in Section 13 awaits permanent-lab
+review and authorizes no runtime implementation
 
 Approved in discussion: 2026-07-17
 
@@ -382,3 +384,128 @@ After accepted neutral HELD, the next equilibrium capability may extend the
 same controller to association-aware provider evaluations. Electrolyte phase
 discovery remains a separately formulated capability and must not be labeled
 neutral HELD or Pereira HELD2.
+
+## 13. Post-validation binary controller redesign delta
+
+Sections 1--12 and Migration decision D-021 remain the frozen specification
+and provenance of the executed v1 candidate. Validation commit
+`93ff18541d2fe277a27671e4e6d12b6b009a58ed`, tree
+`5aa2bc81941d1e807ba4e579231c4af9b7be15d7`, is accepted as authority-neutral
+`NON_ADMISSION` evidence. Its thirteen `third_candidate` exits show that v1
+treated loose Stage-II provisional points as confirmed phases before Stage III
+could refine them. Its repeated rows 003, 016, and 017 show that a duplicate
+below-upper-bound basin stopped the remaining starts without changing the
+controller state. This section supersedes only those candidate-lifecycle and
+inner-search stopping rules when a future implementation packet is authorized.
+It does not reinterpret row 012, which remains a separate Validation-owned
+Provider topology question.
+
+### 13.1 Separate cut and candidate-pair ownership
+
+The Stage-II cut pool owns every distinct mathematically valid outer cut
+accepted during the current controller solve. Cuts are additive evidence for
+the dual envelope: candidate merging, pair rejection, or provisional-candidate
+retirement must never remove a cut. A duplicate lower basin may reference an
+existing identical cut rather than create a second identity, but its attempt
+and rejection evidence remains in the existing trace owner.
+
+The provisional phase-candidate pool is separate controller state. A point may
+enter that pool under the existing upper/lower proximity, multiplier,
+composition, and relative-density rules without thereby becoming a confirmed
+phase. The current binary candidate-pair pool is derived from those provisional
+points and owns only canonical candidate-ID pairs plus their refinement state.
+Neither pool creates a public type or a second trace/diagnostics owner.
+The provisional-candidate hull means the deterministic composition/free-energy
+geometry induced by those retained candidates and their feed-bracketing
+relations; it is not another outer cut pool or a generic hull solver.
+
+For one current dual/controller state, define progress by the existing
+comparison rules: at least one active cut identity, the selected multiplier,
+the upper bound, or the provisional-candidate hull changes. Failed-pair memory
+is keyed by canonical candidate IDs and retains the exact rejection reason only
+for that state. When progress changes the state, feasible pairs are enumerated
+again from the updated pool; a rejection is not a permanent blacklist across a
+changed envelope or hull.
+
+### 13.2 Deterministic binary pair refinement
+
+Order candidates deterministically by their retained stable identities. For
+each distinct pair with compositions `x_a < x_b`, require
+
+```text
+x_a <= z <= x_b
+beta = (z - x_a)/(x_b - x_a)
+phase fractions = (1-beta, beta).
+```
+
+Pairs that do not bracket the feed are recorded as nonbracketing and are not
+sent to Stage III. Rank feed-bracketing pairs first by increasing lever-rule
+provisional free energy
+
+```text
+G_pair_0 = (1-beta) * g_bar_a + beta * g_bar_b,
+```
+
+then lexicographically by the two stable candidate identities. This ordering
+adds no acceptance tolerance or solver setting. Refine each not-yet-rejected
+pair in that order through the existing Stage III lever-rule initialization,
+candidate neighborhoods, exact Hessian, and unchanged material, pressure,
+KKT, inactive-bound, HELD-gap, chemical-potential, distinct-phase, and
+confirmation gates.
+
+A Stage-III infeasibility or failed gate rejects only that pair for the current
+dual/controller state and records the existing failure evidence. The
+controller then considers the next ranked pair and continues the remaining
+declared lower starts. More than two provisional points is therefore not by
+itself a `scope_exceeded` result.
+
+After refinement evidence exists, phases that collapse under the existing
+composition/relative-density distinctness rules are merged in the provisional
+pool. A refined point that is equivalent to an already retained provisional
+point supersedes the higher-free-energy representative, with stable identity
+as the final tie-break. Participating pairs are retired or regenerated as
+needed, while every cut remains in the cut pool. If refinement leaves more
+than one incompatible certified binary phase pair, or more than two distinct
+refined phases that the existing rules cannot merge, the ambiguity is genuine
+and remains fail-closed as `scope_exceeded`.
+
+### 13.3 Multistart progress and termination
+
+An accepted lower result below the current upper bound does not stop the
+20-start pass when it returns to a duplicate basin and changes no active cut,
+selected multiplier, upper bound, or provisional-candidate hull. The attempt
+is retained, any already-known cut identity remains valid, and the controller
+continues the remaining starts in the unchanged deterministic order.
+
+If one complete 20-start pass changes none of those progress quantities and
+produces no newly refinable pair, the controller terminates immediately rather
+than repeating the state to the 100-major-iteration cap. It uses the existing
+fail-closed `search_exhausted` outcome and the exact failure reason
+`no_progress`; no new public outcome or status vocabulary is introduced. If a
+start does make progress, the envelope and current candidate-pair pool are
+recomputed and the existing major-iteration cap continues to apply.
+
+### 13.4 Frozen contract and future evidence
+
+The redesign changes no thermodynamic equation, derivative transform, Stage
+III physics, tolerance, comparison scale, start ordering, start count, major-
+iteration cap, provider dependency, binary methane/ethane domain, public
+`tp_flash`/`TpFlashResult`/`HeldDiagnostics`/`FlashError` owner, or
+`globality_certificate="not_guaranteed"`. The fixed resource profile remains
+20 Stage-II lower starts per iteration and 100 major iterations.
+
+A future authorized implementation must first add focused RED evidence for:
+
+- more than two provisional candidates with one valid feed-bracketing pair
+  that refines successfully;
+- degenerate provisional candidates that merge or retire only after refinement;
+- genuine post-refinement ambiguity that remains `scope_exceeded`;
+- a failed or nonbracketing pair that leads to alternative starts or pairs
+  instead of an identical loop;
+- twenty duplicate/nonprogressing starts that terminate promptly with
+  `search_exhausted` and exact reason `no_progress`; and
+- unchanged derivatives, three-axis diagnostics mapping, globality, retired-
+  owner negative space, and exact artifact binding.
+
+No generic N-phase API, retired fixed-two-phase route, Provider implementation,
+new resource, or tolerance change is part of this delta.

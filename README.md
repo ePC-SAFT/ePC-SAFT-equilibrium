@@ -74,8 +74,13 @@ test, validation, or runtime dependency.
 The earlier fixed-two-phase campaign remains `NON_ADMISSION` under the frozen
 May `3*u_c` composition contract: 12 of 17 rows passed, rows 002/009/010/011
 were solved model/data misses, and row 012 had no package-accepted local state.
-HELD does not erase or reclassify those results. Validation's separate HELD
-campaign has not run yet.
+HELD does not erase or reclassify those results. The later installed-artifact
+HELD campaign is also stable `NON_ADMISSION`: it returned two one-phase
+results, thirteen fail-closed third-candidate results, and three exhausted
+searches, so no two-phase composition comparison was evaluable. Permanent-lab
+review requires a focused controller-lifecycle redesign before another runtime
+candidate. The current wheel remains immutable and unpromoted; the design-only
+delta changes no runtime, tolerance, resource, public type, or globality claim.
 
 ## Native boundary
 

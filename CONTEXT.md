@@ -55,9 +55,26 @@ The earlier `549162a3` wheel with SHA-256
 `be50837d73facbf0f2cb02cc3cfa7568f820b317b7b3984780ec1d992dbce76c`
 remains immutable rejected-subject provenance and was not overwritten.
 The candidate receipt is
-`receipts/promotion/promotion-0002-neutral-held-v1-candidate.yaml`. Permanent-
-lab corrected-candidate rereview and Validation's separate HELD campaign remain
-pending; no promotion or authority transfer has occurred.
+`receipts/promotion/promotion-0002-neutral-held-v1-candidate.yaml` and remains
+immutable evidence for that exact pre-validation subject. Permanent lab
+approved the local candidate, while Validation commit
+`93ff18541d2fe277a27671e4e6d12b6b009a58ed`, tree
+`5aa2bc81941d1e807ba4e579231c4af9b7be15d7`, retained the installed-artifact
+campaign as stable `NON_ADMISSION`: two one-phase results, thirteen
+`scope_exceeded/third_candidate` results, three `search_exhausted` results,
+and no evaluable two-phase composition comparisons. No promotion or authority
+transfer has occurred.
+
+Permanent-lab causal review accepted that evidence and requires a focused
+binary controller redesign. Loose Stage-II cuts must remain separate from
+provisional phase-candidate pairs; feasible pairs must be refined before
+degenerate merging or genuine ambiguity is adjudicated; duplicate basins must
+not stop the remaining 20 starts; and a complete nonprogressing pass must fail
+closed promptly with exact reason `no_progress`. The design-only delta is
+Section 13 of `docs/designs/2026-07-17-neutral-held-v1.md`. Runtime, tests,
+artifacts, resources, tolerances, public types, binary scope, and globality are
+unchanged pending exact-subject design review and separate implementation
+authorization.
 
 `runtime_source_of_truth: true`
 
@@ -69,9 +86,9 @@ pending; no promotion or authority transfer has occurred.
 
 `local_candidate_authority_effect: none`
 
-`local_candidate_review: pending-corrected-candidate-rereview`
+`local_candidate_review: approved-local-candidate-controller-redesign-required`
 
-`validation_admission: not_run`
+`validation_admission: NON_ADMISSION`
 
 `local_candidate_promotion_status: not_requested`
 
@@ -89,8 +106,10 @@ explicit user approval all complete.
 The executable plan is
 `docs/plans/2026-07-17-neutral-held-v1-plan.md`. It freezes internal Stage I,
 Stage II, Stage III, final public cutover, fixed-route deletion, isolated-wheel
-proof, and review checkpoints. Its local implementation status is
-`corrected_candidate_pending_rereview`; the plan and candidate receipt do not
-admit the provider mixture tail or create an accepted equilibrium capability.
+proof, and review checkpoints. Tasks 1--7 remain frozen executed-v1 provenance;
+Task 8 now specifies the smallest post-validation controller correction. Its
+local status is `controller_redesign_design_pending_review`; the plan and
+candidate receipt do not admit the provider mixture tail or create an accepted
+equilibrium capability.
 
-`implementation_plan_status: corrected_candidate_pending_rereview`
+`implementation_plan_status: controller_redesign_design_pending_review`

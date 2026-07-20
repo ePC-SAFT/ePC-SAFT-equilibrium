@@ -50,12 +50,12 @@ accepted_capability:
 
 local_candidate:
   name: neutral-held-v1
-  implementation_status: corrected-complete-local-candidate
+  implementation_status: frozen-local-candidate-controller-redesign-required
   implementation_commit: 8318e755d4a8e490822fdf7bb2685d8c5af6436c
   implementation_tree: 3e8c98a13f1daca975b33c26fce3d143a1f34493
-  permanent_lab_review: pending-corrected-candidate-rereview
-  validation_admission: not-run
-  promotion_status: not-requested
+  permanent_lab_review: approved-local-candidate-controller-redesign-required
+  validation_admission: NON_ADMISSION
+  promotion_status: not-requested-controller-redesign-required
   authority_effect: none
   scope: >-
     One bounded neutral nonassociating methane/ethane TP calculation using the
@@ -123,6 +123,19 @@ local_candidate:
     solved_composition_miss_rows: ["002", "009", "010", "011"]
     no_package_accepted_local_state_row: "012"
     interpretation: historical model/data evidence retained; not reclassified by HELD
+  controller_redesign_design:
+    status: pending-permanent-lab-exact-subject-design-review
+    governing_delta: >-
+      docs/designs/2026-07-17-neutral-held-v1.md#13-post-validation-binary-controller-redesign-delta
+    future_plan_task: >-
+      docs/plans/2026-07-17-neutral-held-v1-plan.md#task-8-correct-the-binary-candidate-pair-lifecycle-after-non_admission
+    migration_gate_commit: bd1f8782b4d46df3f00dcc72568f851f6eac8125
+    migration_gate_tree: 6b4bd2f834f5a78f7776ede2f380b00be3cdb4c9
+    validation_commit: 93ff18541d2fe277a27671e4e6d12b6b009a58ed
+    validation_tree: 5aa2bc81941d1e807ba4e579231c4af9b7be15d7
+    permanent_lab_verdict: APPROVE_NON_ADMISSION_EVIDENCE-EQUILIBRIUM_CONTROLLER_REDESIGN_REQUIRED
+    runtime_implementation_authorized: false
+    runtime_public_or_resource_delta: none
 
 provider_pins:
   accepted_pure_prefix:
@@ -204,8 +217,18 @@ evidence:
   source_test_result: 78 passed
   installed_wheel_test_result: 78 passed
   installed_exact_derivative_result: 4 passed
-  corrected_candidate_rereview: pending
-  held_validation_campaign: not-run
+  corrected_candidate_rereview: APPROVE_LOCAL_CANDIDATE
+  held_validation_campaign: NON_ADMISSION
+  held_validation:
+    commit: 93ff18541d2fe277a27671e4e6d12b6b009a58ed
+    tree: 5aa2bc81941d1e807ba4e579231c4af9b7be15d7
+    accepted_one_phase_outcomes: 2
+    third_candidate_scope_exceeded_outcomes: 13
+    search_exhausted_outcomes: 3
+    evaluable_two_phase_composition_comparisons: 0
+    composition_comparison_status: NOT_EVALUATED
+    authority_effect: none
+    permanent_lab_verdict: APPROVE_NON_ADMISSION_EVIDENCE-EQUILIBRIUM_CONTROLLER_REDESIGN_REQUIRED
   previous_rejected_subject:
     implementation_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
     evidence_commit: 5a9eb868a4bcad2c3821ff7bfc3274d1f609ac00

@@ -1,5 +1,12 @@
 # Neutral HELD v1 Implementation Plan
 
+Status: Tasks 1--7 are frozen executed-v1 provenance at runtime commit
+`8318e755d4a8e490822fdf7bb2685d8c5af6436c`. Validation commit
+`93ff18541d2fe277a27671e4e6d12b6b009a58ed` is stable `NON_ADMISSION`
+evidence. Task 8 specifies the design-reviewed controller correction but is
+not authorized for implementation until permanent-lab exact-subject approval
+and a separate Migration packet.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:executing-plans` and `superpowers:test-driven-development`.
 > Stop at every named review checkpoint. Do not push, promote, publish, or
@@ -278,9 +285,47 @@ uv run --isolated --no-project --python 3.13 \
   surface were removed without an alias. Internal checkpoint reviews do not
   substitute for this final post-cutover candidate review.
 
+### Task 8: Correct the binary candidate-pair lifecycle after NON_ADMISSION
+
+**Status:** future implementation only; this design packet authorizes no code,
+test, build, artifact, receipt, resource, tolerance, or public-surface change.
+
+**Files for a separately authorized implementation:**
+
+- Modify: `cpp/src/held_stage_ii.cpp`
+- Modify: `cpp/src/held.hpp`
+- Modify: `cpp/src/held.cpp` only if controller handoff requires it
+- Modify: `cpp/src/module.cpp` only for the existing private trace converter
+- Modify: `tests/test_held.py`
+
+- [ ] Treat design Section 13 as the sole semantic owner. Implement its
+  separate cut/provisional-candidate/current-pair ownership, deterministic
+  feed-bracketing pair ranking and Stage-III refinement, state-scoped rejected-
+  pair memory, post-refinement merge/retirement, and multistart progress rules
+  without restating or widening that contract in code-facing documentation.
+- [ ] Begin with focused RED tests for: more than two provisional candidates
+  with one successfully refined feed-bracketing pair; post-refinement
+  degenerate merge/retirement; genuine ambiguity remaining `scope_exceeded`;
+  alternative search after a rejected or nonbracketing pair; and all 20 starts
+  returning duplicate/nonprogressing basins followed promptly by existing
+  outcome `search_exhausted` with exact failure reason `no_progress`.
+- [ ] Preserve the complete cut pool and existing private trace/diagnostics
+  owner while recording candidate-pair identities and exact rejection reasons.
+- [ ] Re-run unchanged derivative, three-axis diagnostics, globality, retired-
+  owner negative-space, exact artifact-binding, Stage I, Stage III, saturation,
+  and complete package evidence without changing their contracts.
+- [ ] Prove the diff adds no generic N-phase API, fixed-route revival, Provider
+  implementation, resource/tolerance change, public setting, or second owner.
+
+**Design review checkpoint D:** permanent lab must accept the exact design
+subject before Migration may authorize Task 8 implementation. The later
+runtime checkpoint must stop again for independent review and Validation.
+
 ## Completion boundary
 
-Completion means a strongest truthful local HELD candidate. It does not mean
-provider-tail promotion, equilibrium promotion, push, release, publication,
-or a guaranteed global phase-equilibrium capability. Those remain migration
-and user approval gates.
+Tasks 1--7 completed the strongest truthful executed-v1 HELD candidate. The
+installed-artifact campaign retained that subject as `NON_ADMISSION`; Task 8
+is the smallest planned controller correction and remains unauthorized at this
+design checkpoint. Neither state means provider-tail promotion, equilibrium
+promotion, push, release, publication, or a guaranteed global phase-equilibrium
+capability. Those remain Migration and user-approval gates.
