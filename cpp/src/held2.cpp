@@ -110,7 +110,7 @@ std::array<double, 2> manufactured_modified_potentials(
     double molar_volume
 );
 
-Held2StateEvaluation evaluate_held2_manufactured_state(
+Held2StateEvaluation evaluate_manufactured_state_impl(
     const Held2Coordinates& coordinates,
     const std::vector<double>& independent,
     double log_volume
@@ -483,6 +483,22 @@ double enumerated_manufactured_objective(double feed_composition) {
 }
 
 }  // namespace
+
+Held2StateEvaluation evaluate_held2_manufactured_state(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent_modified_fractions,
+    double log_volume
+) {
+    return evaluate_manufactured_state_impl(
+        coordinates,
+        independent_modified_fractions,
+        log_volume
+    );
+}
+
+double held2_manufactured_enumerated_objective(double feed_composition) {
+    return enumerated_manufactured_objective(feed_composition);
+}
 
 Held2Coordinates make_held2_coordinates(const std::vector<double>& charges) {
     if (charges.size() < 3) {
@@ -875,7 +891,7 @@ Held2StageIResult solve_held2_manufactured_stage_i(
         const std::vector<double>& independent,
         double log_volume
     ) {
-        return evaluate_held2_manufactured_state(
+        return evaluate_manufactured_state_impl(
             coordinates,
             independent,
             log_volume
@@ -1023,7 +1039,7 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
         const std::vector<double>& independent,
         double log_volume
     ) {
-        return evaluate_held2_manufactured_state(
+        return evaluate_manufactured_state_impl(
             coordinates,
             independent,
             log_volume

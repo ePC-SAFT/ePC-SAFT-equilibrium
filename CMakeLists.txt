@@ -31,6 +31,7 @@ pybind11_add_module(
   cpp/src/held_stage_ii.cpp
   cpp/src/held_stage_iii.cpp
   cpp/src/held2.cpp
+  cpp/src/held2_stage_iii.cpp
   cpp/src/saturation.cpp
 )
 target_compile_features(_equilibrium PRIVATE cxx_std_17)

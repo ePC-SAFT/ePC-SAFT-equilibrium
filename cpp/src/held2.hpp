@@ -21,6 +21,8 @@ struct Held2Coordinates {
     std::vector<double> independent_upper_bounds;
 };
 
+struct Held2StateEvaluation;
+
 [[nodiscard]] Held2Coordinates make_held2_coordinates(
     const std::vector<double>& charges
 );
@@ -43,6 +45,16 @@ struct Held2Coordinates {
 [[nodiscard]] std::vector<double> held2_transform_modified_potentials(
     const Held2Coordinates& coordinates,
     const std::vector<double>& chemical_potentials
+);
+
+[[nodiscard]] Held2StateEvaluation evaluate_held2_manufactured_state(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent_modified_fractions,
+    double log_volume
+);
+
+[[nodiscard]] double held2_manufactured_enumerated_objective(
+    double feed_composition
 );
 
 struct Held2PhysicalPhaseBlock {
@@ -102,6 +114,45 @@ struct Held2StageIIResult {
     std::vector<Held2StageIICandidate> candidates;
 };
 
+struct Held2StageIIINlpEvaluation {
+    double objective = 0.0;
+    std::vector<double> objective_gradient;
+    std::vector<double> constraints;
+    std::vector<double> constraint_jacobian;
+    std::vector<double> lagrangian_gradient;
+    std::vector<double> lagrangian_hessian;
+};
+
+struct Held2StageIIIPhase {
+    double phase_fraction = 0.0;
+    std::vector<double> modified_fractions;
+    std::vector<double> physical_fractions;
+    double volume = 0.0;
+};
+
+struct Held2StageIIIResult {
+    std::string solver_status = "not_run";
+    std::string numerical_status = "not_adjudicated";
+    std::string physical_status = "not_adjudicated";
+    std::string feedback = "return_to_stage_ii";
+    std::string failure_reason;
+    std::string trace_refinement_status = "not_adjudicated";
+    int input_candidate_count = 0;
+    int retired_duplicate_count = 0;
+    int trace_component_count = 0;
+    int certified_modified_potential_count = 0;
+    double objective = 0.0;
+    double modified_balance_inf_norm = 0.0;
+    double ordinary_balance_inf_norm = 0.0;
+    double phase_charge_inf_norm = 0.0;
+    double pressure_stationarity_inf_norm = 0.0;
+    double modified_potential_mixed_gap = 0.0;
+    double minimum_phase_distance = 0.0;
+    double kkt_stationarity_inf_norm = 0.0;
+    double enumeration_objective_gap = 0.0;
+    std::vector<Held2StageIIIPhase> phases;
+};
+
 [[nodiscard]] Held2StateEvaluation evaluate_held2_phase_block(
     const Held2Coordinates& coordinates,
     const std::vector<double>& independent_modified_fractions,
@@ -119,6 +170,20 @@ struct Held2StageIIResult {
 [[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed
+);
+
+[[nodiscard]] Held2StageIIINlpEvaluation evaluate_held2_manufactured_stage_iii_nlp(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed,
+    const std::vector<std::array<double, 2>>& candidates,
+    const std::vector<double>& variables,
+    const std::vector<double>& equality_multipliers
+);
+
+[[nodiscard]] Held2StageIIIResult solve_held2_manufactured_stage_iii(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed,
+    const std::vector<std::array<double, 2>>& candidates
 );
 
 struct Held2Certificate {

@@ -421,3 +421,108 @@ def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
         candidate["modified_fractions"][1] for candidate in result["candidates"]
     ) == pytest.approx([0.2, 0.8], abs=2.0e-7)
     assert all(abs(candidate["lower_gap"]) <= 1.0e-8 for candidate in result["candidates"])
+
+
+def test_held2_general_mp_stage_iii_exact_lagrangian_hessian() -> None:
+    candidates = ((0.2, 1.0), (0.20000002, 1.0), (0.8, 1.0))
+    center = (0.25, 0.2, 1.0, 0.25, 0.21, 1.0, 0.5, 0.795, 1.0)
+    multipliers = (0.3, -0.2)
+    direction = (0.01, -0.02, 0.03, -0.01, 0.015, -0.02, 0.0, 0.005, 0.01)
+
+    def evaluate(values: tuple[float, ...]) -> dict[str, object]:
+        return _equilibrium._held2_adapter(
+            CHARGES,
+            PHYSICAL_FEED,
+            candidates,
+            values,
+            multipliers,
+            "stage_iii_derivatives",
+        )
+
+    step = 2.0e-5
+    lower = evaluate(
+        tuple(value - step * delta for value, delta in zip(center, direction, strict=True))
+    )
+    result = evaluate(center)
+    upper = evaluate(
+        tuple(value + step * delta for value, delta in zip(center, direction, strict=True))
+    )
+
+    objective_directional = (upper["objective"] - lower["objective"]) / (2.0 * step)
+    assert objective_directional == pytest.approx(
+        sum(
+            value * delta
+            for value, delta in zip(result["objective_gradient"], direction, strict=True)
+        ),
+        rel=2.0e-9,
+        abs=2.0e-10,
+    )
+    size = len(center)
+    for row in range(size):
+        numerical = (upper["lagrangian_gradient"][row] - lower["lagrangian_gradient"][row]) / (
+            2.0 * step
+        )
+        analytic = sum(
+            result["lagrangian_hessian"][size * row + column] * direction[column]
+            for column in range(size)
+        )
+        assert numerical == pytest.approx(analytic, rel=3.0e-8, abs=3.0e-9)
+    assert tuple(result["lagrangian_hessian"]) == pytest.approx(
+        tuple(
+            result["lagrangian_hessian"][size * column + row]
+            for row in range(size)
+            for column in range(size)
+        ),
+        abs=2.0e-14,
+    )
+
+
+def test_held2_general_mp_stage_iii_refines_then_merges_duplicate_phases() -> None:
+    result = _equilibrium._held2_adapter(
+        CHARGES,
+        PHYSICAL_FEED,
+        ((0.2, 1.0), (0.20000002, 1.0), (0.8, 1.0)),
+        "stage_iii",
+    )
+
+    assert result["profile"] == "perdomo-held2-stage-iii-manufactured-v1"
+    assert result["solver_status"] in {"solve_succeeded", "solved_to_acceptable_level"}
+    assert result["numerical_status"] == "converged"
+    assert result["physical_status"] == "accepted"
+    assert result["globality_certificate"] == "not_guaranteed"
+    assert result["feedback"] == "none"
+    assert result["input_candidate_count"] == 3
+    assert result["retired_duplicate_count"] == 1
+    assert len(result["phases"]) == 2
+    assert sorted(phase["modified_fractions"][1] for phase in result["phases"]) == pytest.approx(
+        [0.2, 0.8], abs=2.0e-7
+    )
+    assert sorted(phase["phase_fraction"] for phase in result["phases"]) == pytest.approx(
+        [0.5, 0.5], abs=2.0e-7
+    )
+    assert result["modified_balance_inf_norm"] < 1.0e-9
+    assert result["ordinary_balance_inf_norm"] < 1.0e-9
+    assert result["phase_charge_inf_norm"] < 1.0e-12
+    assert result["pressure_stationarity_inf_norm"] < 1.0e-9
+    assert result["modified_potential_mixed_gap"] < 1.0e-9
+    assert result["certified_modified_potential_count"] == 2
+    assert result["trace_component_count"] == 0
+    assert result["trace_refinement_status"] == "not_required"
+    assert result["minimum_phase_distance"] > 1.0e-3
+    assert result["kkt_stationarity_inf_norm"] < 1.0e-7
+    assert abs(result["enumeration_objective_gap"]) < 1.0e-9
+
+
+def test_held2_general_mp_stage_iii_returns_infeasible_set_to_stage_ii() -> None:
+    result = _equilibrium._held2_adapter(
+        CHARGES,
+        PHYSICAL_FEED,
+        ((0.1, 1.0), (0.2, 1.0), (0.3, 1.0)),
+        "stage_iii",
+    )
+
+    assert result["numerical_status"] == "not_adjudicated"
+    assert result["physical_status"] == "not_adjudicated"
+    assert result["feedback"] == "return_to_stage_ii"
+    assert result["failure_reason"] == "candidate_set_does_not_bracket_feed"
+    assert result["globality_certificate"] == "not_guaranteed"

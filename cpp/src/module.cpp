@@ -1538,6 +1538,88 @@ py::dict held2_manufactured_stage_i(
     return result;
 }
 
+py::dict held2_manufactured_stage_iii_derivatives(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed,
+    const std::vector<std::array<double, 2>>& candidates,
+    const std::vector<double>& variables,
+    const std::vector<double>& equality_multipliers,
+    const std::string& stage
+) {
+    if (stage != "stage_iii_derivatives") {
+        throw py::value_error("unsupported manufactured HELD2 derivative request");
+    }
+    const epcsaft_equilibrium::Held2StageIIINlpEvaluation evaluation =
+        epcsaft_equilibrium::evaluate_held2_manufactured_stage_iii_nlp(
+            charges,
+            physical_feed,
+            candidates,
+            variables,
+            equality_multipliers
+        );
+    py::dict result;
+    result["objective"] = evaluation.objective;
+    result["objective_gradient"] = evaluation.objective_gradient;
+    result["constraints"] = evaluation.constraints;
+    result["constraint_jacobian"] = evaluation.constraint_jacobian;
+    result["lagrangian_gradient"] = evaluation.lagrangian_gradient;
+    result["lagrangian_hessian"] = evaluation.lagrangian_hessian;
+    return result;
+}
+
+py::dict held2_manufactured_stage_iii(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed,
+    const std::vector<std::array<double, 2>>& candidates,
+    const std::string& stage
+) {
+    if (stage != "stage_iii") {
+        throw py::value_error("unsupported manufactured HELD2 Stage III request");
+    }
+    const epcsaft_equilibrium::Held2StageIIIResult evaluation =
+        epcsaft_equilibrium::solve_held2_manufactured_stage_iii(
+            charges,
+            physical_feed,
+            candidates
+        );
+    py::list phases;
+    for (const epcsaft_equilibrium::Held2StageIIIPhase& phase : evaluation.phases) {
+        py::dict item;
+        item["phase_fraction"] = phase.phase_fraction;
+        item["modified_fractions"] = phase.modified_fractions;
+        item["physical_fractions"] = phase.physical_fractions;
+        item["volume"] = phase.volume;
+        phases.append(std::move(item));
+    }
+    py::dict result;
+    result["profile"] = "perdomo-held2-stage-iii-manufactured-v1";
+    result["solver_status"] = evaluation.solver_status;
+    result["numerical_status"] = evaluation.numerical_status;
+    result["physical_status"] = evaluation.physical_status;
+    result["globality_certificate"] = "not_guaranteed";
+    result["feedback"] = evaluation.feedback;
+    result["failure_reason"] = evaluation.failure_reason;
+    result["trace_refinement_status"] = evaluation.trace_refinement_status;
+    result["input_candidate_count"] = evaluation.input_candidate_count;
+    result["retired_duplicate_count"] = evaluation.retired_duplicate_count;
+    result["trace_component_count"] = evaluation.trace_component_count;
+    result["certified_modified_potential_count"] =
+        evaluation.certified_modified_potential_count;
+    result["objective"] = evaluation.objective;
+    result["modified_balance_inf_norm"] = evaluation.modified_balance_inf_norm;
+    result["ordinary_balance_inf_norm"] = evaluation.ordinary_balance_inf_norm;
+    result["phase_charge_inf_norm"] = evaluation.phase_charge_inf_norm;
+    result["pressure_stationarity_inf_norm"] =
+        evaluation.pressure_stationarity_inf_norm;
+    result["modified_potential_mixed_gap"] =
+        evaluation.modified_potential_mixed_gap;
+    result["minimum_phase_distance"] = evaluation.minimum_phase_distance;
+    result["kkt_stationarity_inf_norm"] = evaluation.kkt_stationarity_inf_norm;
+    result["enumeration_objective_gap"] = evaluation.enumeration_objective_gap;
+    result["phases"] = std::move(phases);
+    return result;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_equilibrium, module) {
@@ -1740,6 +1822,24 @@ PYBIND11_MODULE(_equilibrium, module) {
         &held2_manufactured_stage_i,
         py::arg("charges"),
         py::arg("physical_feed"),
+        py::arg("stage")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_manufactured_stage_iii,
+        py::arg("charges"),
+        py::arg("physical_feed"),
+        py::arg("candidates"),
+        py::arg("stage")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_manufactured_stage_iii_derivatives,
+        py::arg("charges"),
+        py::arg("physical_feed"),
+        py::arg("candidates"),
+        py::arg("variables"),
+        py::arg("equality_multipliers"),
         py::arg("stage")
     );
     module.def(
