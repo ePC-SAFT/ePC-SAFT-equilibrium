@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -75,20 +76,58 @@ struct Held2StateEvaluation {
     double pressure_stationarity_relative = 0.0;
 };
 
+using Held2StateEvaluator = std::function<Held2StateEvaluation(
+    const std::vector<double>&,
+    double
+)>;
+
+using Held2VolumeBoundsEvaluator = std::function<std::array<double, 2>(
+    const std::vector<double>&
+)>;
+
 struct Held2StageICandidate {
     std::vector<double> modified_fractions;
     double volume = 0.0;
     double tpd = 0.0;
+    std::array<double, 2> molar_volume_bounds{};
+    double pressure_stationarity_relative = 0.0;
+    double volume_gradient = 0.0;
+    bool lower_volume_bound_active = false;
+    bool upper_volume_bound_active = false;
+};
+
+struct Held2ReferenceRoot {
+    double log_volume = 0.0;
+    double volume = 0.0;
+    double objective = 0.0;
+    double pressure_residual = 0.0;
+    double curvature = 0.0;
+    bool mechanically_stable = false;
 };
 
 struct Held2StageIResult {
     std::string outcome;
+    int reference_scan_interval_count = 0;
+    int reference_scan_point_count = 0;
+    int reference_root_count = 0;
+    int reference_stable_root_count = 0;
+    int reference_evaluation_failure_count = 0;
+    int reference_refinement_failure_count = 0;
     int declared_start_count = 0;
     int completed_start_count = 0;
     int failed_start_count = 0;
+    int candidate_domain_evaluation_failure_count = 0;
+    int candidate_domain_rejection_count = 0;
+    int failed_start_index = -1;
+    int failed_start_solver_status = 999;
+    bool failed_start_solver_converged = false;
+    std::string failed_start_reason;
+    std::vector<double> failed_start_initial;
+    bool volume_domain_search_complete = true;
     std::vector<double> reference_modified_fractions;
     double reference_volume = 0.0;
     double minimum_tpd = 0.0;
+    std::vector<Held2ReferenceRoot> reference_roots;
     std::vector<Held2StageICandidate> candidates;
 };
 
@@ -165,6 +204,15 @@ struct Held2StageIIIResult {
 [[nodiscard]] Held2StageIResult solve_held2_manufactured_stage_i(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed
+);
+
+[[nodiscard]] Held2StageIResult solve_held2_stage_i(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const Held2StateEvaluator& evaluator,
+    const std::array<double, 2>& molar_volume_bounds,
+    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
+    bool volume_domain_search_complete
 );
 
 [[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii(

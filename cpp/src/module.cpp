@@ -30,7 +30,17 @@ constexpr std::size_t kMixtureSdkTableSize =
 constexpr std::size_t kElectrolyteSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_electrolyte_phase)
     + sizeof(epcsaft_evaluate_mixture_phase_v1);
+constexpr std::size_t kMolarVolumeSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, evaluate_molar_volume_bounds)
+    + sizeof(epcsaft_evaluate_molar_volume_bounds_v1);
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
+constexpr double kHeld2PackingFractionMinimum = 1.0e-6;
+constexpr double kHeld2PackingFractionMaximum = 0.74;
+
+struct Held2ProviderMetadata {
+    std::vector<double> charges;
+    std::vector<std::string> component_ids;
+};
 
 const epcsaft_native_sdk_v1& checked_sdk(const py::capsule& capsule) {
     const char* name = capsule.name();
@@ -90,6 +100,30 @@ const epcsaft_native_sdk_v1& checked_electrolyte_sdk(const py::capsule& capsule)
         );
     }
     return sdk;
+}
+
+const epcsaft_native_sdk_v1& checked_molar_volume_sdk(const py::capsule& capsule) {
+    const epcsaft_native_sdk_v1& sdk = checked_electrolyte_sdk(capsule);
+    if (sdk.table_size < kMolarVolumeSdkTableSize
+        || sdk.evaluate_molar_volume_bounds == nullptr) {
+        throw py::value_error("provider capsule is missing the molar-volume domain contract");
+    }
+    return sdk;
+}
+
+Held2ProviderMetadata held2_provider_metadata(const epcsaft_native_sdk_v1& sdk) {
+    Held2ProviderMetadata result;
+    result.charges.reserve(sdk.component_count);
+    result.component_ids.reserve(sdk.component_count);
+    for (std::size_t component = 0; component < sdk.component_count; ++component) {
+        if (sdk.component_ids[component] == nullptr
+            || sdk.component_ids[component][0] == '\0') {
+            throw py::value_error("provider electrolyte component ID must not be empty");
+        }
+        result.charges.push_back(static_cast<double>(sdk.component_charges[component]));
+        result.component_ids.emplace_back(sdk.component_ids[component]);
+    }
+    return result;
 }
 
 py::dict sdk_info(const py::capsule& capsule) {
@@ -1404,20 +1438,9 @@ py::dict held2_installed_phase_block(
         throw py::value_error("HELD2 temperature and pressure must be finite and positive");
     }
     const epcsaft_native_sdk_v1& sdk = checked_electrolyte_sdk(capsule);
-    std::vector<double> charges;
-    std::vector<std::string> component_ids;
-    charges.reserve(sdk.component_count);
-    component_ids.reserve(sdk.component_count);
-    for (std::size_t component = 0; component < sdk.component_count; ++component) {
-        if (sdk.component_ids[component] == nullptr
-            || sdk.component_ids[component][0] == '\0') {
-            throw py::value_error("provider electrolyte component ID must not be empty");
-        }
-        charges.push_back(static_cast<double>(sdk.component_charges[component]));
-        component_ids.emplace_back(sdk.component_ids[component]);
-    }
+    Held2ProviderMetadata metadata = held2_provider_metadata(sdk);
     const epcsaft_equilibrium::Held2Coordinates coordinates =
-        epcsaft_equilibrium::make_held2_coordinates(charges);
+        epcsaft_equilibrium::make_held2_coordinates(metadata.charges);
     const std::vector<double> physical_amounts =
         epcsaft_equilibrium::held2_lift_independent_fractions(
             coordinates,
@@ -1446,8 +1469,8 @@ py::dict held2_installed_phase_block(
             block
         );
     py::dict result;
-    result["component_ids"] = std::move(component_ids);
-    result["charges"] = std::move(charges);
+    result["component_ids"] = std::move(metadata.component_ids);
+    result["charges"] = std::move(metadata.charges);
     result["modified_fractions"] = evaluation.modified_fractions;
     result["physical_amounts"] = evaluation.physical_amounts;
     result["volume"] = evaluation.volume;
@@ -1461,6 +1484,198 @@ py::dict held2_installed_phase_block(
     result["pressure_over_rt"] = pressure_over_rt;
     result["parameter_fingerprint"] = provider_phase.parameter_fingerprint;
     result["globality_certificate"] = "not_guaranteed";
+    return result;
+}
+
+py::dict held2_stage_i_to_dict(
+    const epcsaft_equilibrium::Held2StageIResult& evaluation,
+    const char* profile
+) {
+    py::list candidates;
+    for (const epcsaft_equilibrium::Held2StageICandidate& candidate :
+         evaluation.candidates) {
+        py::dict item;
+        item["modified_fractions"] = candidate.modified_fractions;
+        item["volume"] = candidate.volume;
+        item["tpd"] = candidate.tpd;
+        item["molar_volume_bounds"] = candidate.molar_volume_bounds;
+        item["pressure_stationarity_relative"] =
+            candidate.pressure_stationarity_relative;
+        item["volume_gradient"] = candidate.volume_gradient;
+        item["lower_volume_bound_active"] =
+            candidate.lower_volume_bound_active;
+        item["upper_volume_bound_active"] =
+            candidate.upper_volume_bound_active;
+        candidates.append(std::move(item));
+    }
+    py::dict result;
+    result["profile"] = profile;
+    result["outcome"] = evaluation.outcome;
+    result["globality_certificate"] = "not_guaranteed";
+    result["reference_scan_interval_count"] =
+        evaluation.reference_scan_interval_count;
+    result["reference_scan_point_count"] =
+        evaluation.reference_scan_point_count;
+    result["reference_root_count"] = evaluation.reference_root_count;
+    result["reference_stable_root_count"] =
+        evaluation.reference_stable_root_count;
+    result["reference_evaluation_failure_count"] =
+        evaluation.reference_evaluation_failure_count;
+    result["reference_refinement_failure_count"] =
+        evaluation.reference_refinement_failure_count;
+    result["declared_start_count"] = evaluation.declared_start_count;
+    result["completed_start_count"] = evaluation.completed_start_count;
+    result["failed_start_count"] = evaluation.failed_start_count;
+    result["candidate_domain_evaluation_failure_count"] =
+        evaluation.candidate_domain_evaluation_failure_count;
+    result["candidate_domain_rejection_count"] =
+        evaluation.candidate_domain_rejection_count;
+    result["volume_domain_search_complete"] =
+        evaluation.volume_domain_search_complete;
+    if (evaluation.failed_start_index < 0) {
+        result["failed_start_index"] = py::none();
+        result["failed_start_solver_status"] = py::none();
+        result["failed_start_solver_converged"] = py::none();
+        result["failed_start_reason"] = py::none();
+        result["failed_start_initial"] = py::none();
+    } else {
+        result["failed_start_index"] = evaluation.failed_start_index;
+        result["failed_start_solver_status"] =
+            evaluation.failed_start_solver_status;
+        result["failed_start_solver_converged"] =
+            evaluation.failed_start_solver_converged;
+        result["failed_start_reason"] = evaluation.failed_start_reason;
+        result["failed_start_initial"] = evaluation.failed_start_initial;
+    }
+    result["reference_modified_fractions"] =
+        evaluation.reference_modified_fractions;
+    if (evaluation.reference_modified_fractions.empty()) {
+        result["reference_volume"] = py::none();
+    } else {
+        result["reference_volume"] = evaluation.reference_volume;
+    }
+    if (std::isfinite(evaluation.minimum_tpd)) {
+        result["minimum_tpd"] = evaluation.minimum_tpd;
+    } else {
+        result["minimum_tpd"] = py::none();
+    }
+    py::list reference_roots;
+    for (const epcsaft_equilibrium::Held2ReferenceRoot& root :
+         evaluation.reference_roots) {
+        py::dict item;
+        item["log_volume"] = root.log_volume;
+        item["volume"] = root.volume;
+        item["objective"] = root.objective;
+        item["pressure_residual"] = root.pressure_residual;
+        item["curvature"] = root.curvature;
+        item["mechanically_stable"] = root.mechanically_stable;
+        reference_roots.append(std::move(item));
+    }
+    result["reference_roots"] = std::move(reference_roots);
+    result["candidates"] = std::move(candidates);
+    return result;
+}
+
+py::dict held2_installed_stage_i(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& physical_feed,
+    const std::string& expected_fingerprint,
+    const std::string& stage
+) {
+    if (stage != "stage_i") {
+        throw py::value_error("unsupported installed HELD2 stage request");
+    }
+    if (!std::isfinite(temperature_k) || !std::isfinite(pressure_pa)
+        || temperature_k <= 0.0 || pressure_pa <= 0.0) {
+        throw py::value_error("HELD2 temperature and pressure must be finite and positive");
+    }
+    const epcsaft_native_sdk_v1& sdk = checked_molar_volume_sdk(capsule);
+    Held2ProviderMetadata metadata = held2_provider_metadata(sdk);
+    const epcsaft_equilibrium::Held2Coordinates coordinates =
+        epcsaft_equilibrium::make_held2_coordinates(metadata.charges);
+    static_cast<void>(epcsaft_equilibrium::held2_transform_physical_fractions(
+        coordinates,
+        physical_feed
+    ));
+    const epcsaft_equilibrium::ProviderContext provider(sdk, expected_fingerprint);
+    const std::array<double, 2> molar_volume_bounds =
+        provider.evaluate_molar_volume_bounds(
+            temperature_k,
+            physical_feed,
+            kHeld2PackingFractionMinimum,
+            kHeld2PackingFractionMaximum
+        );
+    const double pressure_over_rt =
+        pressure_pa / (kGasConstantJPerMolK * temperature_k);
+    const epcsaft_equilibrium::Held2StateEvaluator evaluator =
+        [&provider, coordinates, temperature_k, pressure_pa, pressure_over_rt](
+            const std::vector<double>& independent_modified_fractions,
+            double log_volume
+        ) {
+            const std::vector<double> physical_amounts =
+                epcsaft_equilibrium::held2_lift_independent_fractions(
+                    coordinates,
+                    independent_modified_fractions
+                );
+            const epcsaft_equilibrium::MixturePhaseEvaluation phase =
+                provider.evaluate_electrolyte(
+                    temperature_k,
+                    physical_amounts,
+                    std::exp(log_volume)
+                );
+            epcsaft_equilibrium::Held2PhysicalPhaseBlock block;
+            block.helmholtz_over_rt = phase.value;
+            block.gradient = phase.gradient;
+            block.hessian = phase.hessian;
+            block.pressure_pa = phase.pressure_pa;
+            return epcsaft_equilibrium::evaluate_held2_phase_block(
+                coordinates,
+                independent_modified_fractions,
+                log_volume,
+                pressure_over_rt,
+                pressure_pa,
+                block
+            );
+        };
+    const epcsaft_equilibrium::Held2VolumeBoundsEvaluator volume_bounds_evaluator =
+        [&provider, temperature_k](const std::vector<double>& physical_amounts) {
+            return provider.evaluate_molar_volume_bounds(
+                temperature_k,
+                physical_amounts,
+                kHeld2PackingFractionMinimum,
+                kHeld2PackingFractionMaximum
+            );
+        };
+    epcsaft_equilibrium::Held2StageIResult evaluation;
+    {
+        py::gil_scoped_release release;
+        evaluation = epcsaft_equilibrium::solve_held2_stage_i(
+            coordinates,
+            physical_feed,
+            evaluator,
+            molar_volume_bounds,
+            volume_bounds_evaluator,
+            false
+        );
+    }
+    py::dict result = held2_stage_i_to_dict(
+        evaluation,
+        "perdomo-held2-stage-i-installed-v1"
+    );
+    result["component_ids"] = std::move(metadata.component_ids);
+    result["charges"] = std::move(metadata.charges);
+    result["parameter_fingerprint"] = expected_fingerprint;
+    result["packing_fraction_bounds"] = std::array<double, 2>{
+        kHeld2PackingFractionMinimum,
+        kHeld2PackingFractionMaximum,
+    };
+    result["molar_volume_bounds"] = molar_volume_bounds;
+    result["log_molar_volume_bounds"] = std::array<double, 2>{
+        std::log(molar_volume_bounds[0]),
+        std::log(molar_volume_bounds[1]),
+    };
     return result;
 }
 
@@ -1514,28 +1729,10 @@ py::dict held2_manufactured_stage_i(
             charges,
             physical_feed
         );
-    py::list candidates;
-    for (const epcsaft_equilibrium::Held2StageICandidate& candidate :
-         evaluation.candidates) {
-        py::dict item;
-        item["modified_fractions"] = candidate.modified_fractions;
-        item["volume"] = candidate.volume;
-        item["tpd"] = candidate.tpd;
-        candidates.append(std::move(item));
-    }
-    py::dict result;
-    result["profile"] = "perdomo-held2-stage-i-manufactured-v1";
-    result["outcome"] = evaluation.outcome;
-    result["globality_certificate"] = "not_guaranteed";
-    result["declared_start_count"] = evaluation.declared_start_count;
-    result["completed_start_count"] = evaluation.completed_start_count;
-    result["failed_start_count"] = evaluation.failed_start_count;
-    result["reference_modified_fractions"] =
-        evaluation.reference_modified_fractions;
-    result["reference_volume"] = evaluation.reference_volume;
-    result["minimum_tpd"] = evaluation.minimum_tpd;
-    result["candidates"] = std::move(candidates);
-    return result;
+    return held2_stage_i_to_dict(
+        evaluation,
+        "perdomo-held2-stage-i-manufactured-v1"
+    );
 }
 
 py::dict held2_manufactured_stage_iii_derivatives(
@@ -1816,6 +2013,16 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("independent_modified_fractions"),
         py::arg("log_volume"),
         py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_installed_stage_i,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("physical_feed"),
+        py::arg("expected_fingerprint"),
+        py::arg("stage")
     );
     module.def(
         "_held2_adapter",

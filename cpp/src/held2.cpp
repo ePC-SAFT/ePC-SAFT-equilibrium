@@ -25,11 +25,6 @@ constexpr double kStageITpdThreshold = -1.0e-8;
 constexpr int kStageIIpoptIterations = 300;
 constexpr unsigned int kStageISeed = 2025;
 
-using Held2StateEvaluator = std::function<Held2StateEvaluation(
-    const std::vector<double>&,
-    double
-)>;
-
 void require_finite_vector(const std::vector<double>& values, const char* name) {
     if (!std::all_of(values.begin(), values.end(), [](double value) {
             return std::isfinite(value);
@@ -164,6 +159,7 @@ struct Held2SearchRun {
     bool solver_converged = false;
     std::string callback_error;
     std::vector<double> variables;
+    int solver_status = 999;
 };
 
 class Held2SearchTnlp final : public Ipopt::TNLP {
@@ -175,7 +171,8 @@ public:
         bool use_tpd,
         std::vector<double> initial,
         std::vector<double> lower,
-        std::vector<double> upper
+        std::vector<double> upper,
+        double composition_sum_upper
     )
         : evaluator_(std::move(evaluator)),
           reference_variables_(std::move(reference_variables)),
@@ -183,7 +180,8 @@ public:
           use_tpd_(use_tpd),
           initial_(std::move(initial)),
           lower_(std::move(lower)),
-          upper_(std::move(upper)) {}
+          upper_(std::move(upper)),
+          composition_sum_upper_(composition_sum_upper) {}
 
     bool get_nlp_info(
         Ipopt::Index& n,
@@ -193,8 +191,8 @@ public:
         IndexStyleEnum& index_style
     ) override {
         n = static_cast<Ipopt::Index>(initial_.size());
-        m = 0;
-        nnz_jac_g = 0;
+        m = constraint_count();
+        nnz_jac_g = m == 0 ? 0 : n - 1;
         nnz_h_lag = n * (n + 1) / 2;
         index_style = TNLP::C_STYLE;
         return true;
@@ -205,14 +203,18 @@ public:
         Ipopt::Number* x_l,
         Ipopt::Number* x_u,
         Ipopt::Index m,
-        Ipopt::Number*,
-        Ipopt::Number*
+        Ipopt::Number* g_l,
+        Ipopt::Number* g_u
     ) override {
-        if (n != static_cast<Ipopt::Index>(initial_.size()) || m != 0) {
+        if (n != static_cast<Ipopt::Index>(initial_.size()) || m != constraint_count()) {
             return false;
         }
         std::copy(lower_.begin(), lower_.end(), x_l);
         std::copy(upper_.begin(), upper_.end(), x_u);
+        if (m == 1) {
+            g_l[0] = -2.0e19;
+            g_u[0] = composition_sum_upper_;
+        }
         return true;
     }
 
@@ -227,7 +229,7 @@ public:
         bool init_lambda,
         Ipopt::Number*
     ) override {
-        if (n != static_cast<Ipopt::Index>(initial_.size()) || m != 0 || !init_x
+        if (n != static_cast<Ipopt::Index>(initial_.size()) || m != constraint_count() || !init_x
             || init_z || init_lambda) {
             return false;
         }
@@ -267,26 +269,45 @@ public:
     }
 
     bool eval_g(
-        Ipopt::Index,
-        const Ipopt::Number*,
+        Ipopt::Index n,
+        const Ipopt::Number* x,
         bool,
         Ipopt::Index m,
-        Ipopt::Number*
+        Ipopt::Number* constraints
     ) override {
-        return m == 0;
+        if (m != constraint_count()) {
+            return false;
+        }
+        if (m == 1) {
+            constraints[0] = std::accumulate(x, x + n - 1, 0.0);
+        }
+        return true;
     }
 
     bool eval_jac_g(
-        Ipopt::Index,
+        Ipopt::Index n,
         const Ipopt::Number*,
         bool,
         Ipopt::Index m,
         Ipopt::Index nonzero_count,
-        Ipopt::Index*,
-        Ipopt::Index*,
-        Ipopt::Number*
+        Ipopt::Index* rows,
+        Ipopt::Index* columns,
+        Ipopt::Number* values
     ) override {
-        return m == 0 && nonzero_count == 0;
+        if (m != constraint_count() || nonzero_count != (m == 0 ? 0 : n - 1)) {
+            return false;
+        }
+        if (m == 1) {
+            for (Ipopt::Index index = 0; index < n - 1; ++index) {
+                if (values == nullptr) {
+                    rows[index] = 0;
+                    columns[index] = index;
+                } else {
+                    values[index] = 1.0;
+                }
+            }
+        }
+        return true;
     }
 
     bool eval_h(
@@ -302,7 +323,7 @@ public:
         Ipopt::Index* columns,
         Ipopt::Number* values
     ) override {
-        if (m != 0 || nonzero_count != n * (n + 1) / 2) {
+        if (m != constraint_count() || nonzero_count != n * (n + 1) / 2) {
             return false;
         }
         Ipopt::Index position = 0;
@@ -338,14 +359,16 @@ public:
         const Ipopt::Number* x,
         const Ipopt::Number*,
         const Ipopt::Number*,
-        Ipopt::Index,
+        Ipopt::Index m,
         const Ipopt::Number*,
         const Ipopt::Number*,
         Ipopt::Number,
         const Ipopt::IpoptData*,
         Ipopt::IpoptCalculatedQuantities*
     ) override {
-        variables_.assign(x, x + n);
+        if (m == constraint_count() && x != nullptr) {
+            variables_.assign(x, x + n);
+        }
         solver_converged_ = status == Ipopt::SUCCESS
             || status == Ipopt::STOP_AT_ACCEPTABLE_POINT;
     }
@@ -355,6 +378,10 @@ public:
     }
 
 private:
+    [[nodiscard]] Ipopt::Index constraint_count() const {
+        return std::isfinite(composition_sum_upper_) ? 1 : 0;
+    }
+
     [[nodiscard]] Held2StateEvaluation evaluate(
         Ipopt::Index n,
         const Ipopt::Number* x
@@ -383,6 +410,7 @@ private:
     std::vector<double> initial_;
     std::vector<double> lower_;
     std::vector<double> upper_;
+    double composition_sum_upper_ = std::numeric_limits<double>::infinity();
     bool solver_converged_ = false;
     std::string callback_error_;
     std::vector<double> variables_;
@@ -395,7 +423,8 @@ Held2SearchRun solve_held2_search(
     bool use_tpd,
     const std::vector<double>& initial,
     const std::vector<double>& lower,
-    const std::vector<double>& upper
+    const std::vector<double>& upper,
+    double composition_sum_upper = std::numeric_limits<double>::infinity()
 ) {
     Ipopt::SmartPtr<Held2SearchTnlp> problem = new Held2SearchTnlp(
         evaluator,
@@ -404,15 +433,18 @@ Held2SearchRun solve_held2_search(
         use_tpd,
         initial,
         lower,
-        upper
+        upper,
+        composition_sum_upper
     );
     Ipopt::SmartPtr<Ipopt::IpoptApplication> application = IpoptApplicationFactory();
     configure_held2_ipopt(application);
     if (application->Initialize() != Ipopt::Solve_Succeeded) {
         return {};
     }
-    application->OptimizeTNLP(problem);
-    return problem->result();
+    const Ipopt::ApplicationReturnStatus status = application->OptimizeTNLP(problem);
+    Held2SearchRun result = problem->result();
+    result.solver_status = static_cast<int>(status);
+    return result;
 }
 
 std::array<double, 2> manufactured_modified_potentials(
@@ -865,96 +897,221 @@ Held2StateEvaluation evaluate_held2_phase_block(
     return result;
 }
 
-Held2StageIResult solve_held2_manufactured_stage_i(
-    const std::vector<double>& charges,
-    const std::vector<double>& physical_feed
+Held2StageIResult solve_held2_stage_i(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const Held2StateEvaluator& evaluator,
+    const std::array<double, 2>& molar_volume_bounds,
+    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
+    bool volume_domain_search_complete
 ) {
-    const Held2Coordinates coordinates = make_held2_coordinates(charges);
-    if (coordinates.independent_indices.size() != 1) {
+    if (!std::isfinite(molar_volume_bounds[0]) || !std::isfinite(molar_volume_bounds[1])
+        || molar_volume_bounds[0] <= 0.0
+        || molar_volume_bounds[1] <= molar_volume_bounds[0]) {
         throw std::invalid_argument(
-            "manufactured HELD2 Stage I requires one independent modified composition"
+            "HELD2 Stage I molar-volume bounds must be finite, positive, and ordered"
         );
     }
     const std::vector<double> modified_feed = held2_transform_physical_fractions(
         coordinates,
         physical_feed
     );
-    const auto independent_retained = static_cast<std::size_t>(
-        std::find(
-            coordinates.retained_indices.begin(),
-            coordinates.retained_indices.end(),
-            coordinates.independent_indices.front()
-        ) - coordinates.retained_indices.begin()
-    );
-    const double feed_independent = modified_feed[independent_retained];
-    const Held2StateEvaluator evaluator = [coordinates](
-        const std::vector<double>& independent,
-        double log_volume
-    ) {
-        return evaluate_manufactured_state_impl(
-            coordinates,
-            independent,
-            log_volume
+    std::vector<double> feed_independent;
+    feed_independent.reserve(coordinates.independent_indices.size());
+    for (std::size_t independent : coordinates.independent_indices) {
+        const auto retained = static_cast<std::size_t>(
+            std::find(
+                coordinates.retained_indices.begin(),
+                coordinates.retained_indices.end(),
+                independent
+            ) - coordinates.retained_indices.begin()
         );
-    };
+        feed_independent.push_back(modified_feed[retained]);
+    }
 
-    const std::vector<double> reference_initial = {feed_independent, 0.0};
-    const Held2StateEvaluation initial_reference = evaluator({feed_independent}, 0.0);
-    const Held2SearchRun reference_run = solve_held2_search(
-        evaluator,
-        reference_initial,
-        initial_reference,
-        false,
-        reference_initial,
-        {feed_independent, std::log(0.5)},
-        {feed_independent, std::log(1.5)}
-    );
     Held2StageIResult result;
-    result.declared_start_count = 10 * static_cast<int>(charges.size());
+    result.volume_domain_search_complete = volume_domain_search_complete;
+    result.declared_start_count = 10 * static_cast<int>(coordinates.charges.size());
+    result.reference_scan_interval_count = result.declared_start_count;
     result.minimum_tpd = std::numeric_limits<double>::infinity();
-    if (!reference_run.solver_converged || !reference_run.callback_error.empty()
-        || reference_run.variables.size() != 2) {
+    const double reference_log_lower = std::log(molar_volume_bounds[0]);
+    const double reference_log_upper = std::log(molar_volume_bounds[1]);
+    const double reference_log_span = reference_log_upper - reference_log_lower;
+    std::vector<std::pair<double, Held2StateEvaluation>> reference_scan;
+    reference_scan.reserve(
+        static_cast<std::size_t>(result.reference_scan_interval_count + 1)
+    );
+    for (int point = 0; point <= result.reference_scan_interval_count; ++point) {
+        const double fraction = static_cast<double>(point)
+            / static_cast<double>(result.reference_scan_interval_count);
+        const double log_volume = reference_log_lower + fraction * reference_log_span;
+        try {
+            reference_scan.emplace_back(
+                log_volume,
+                evaluator(feed_independent, log_volume)
+            );
+            ++result.reference_scan_point_count;
+        } catch (const std::exception&) {
+            ++result.reference_evaluation_failure_count;
+        }
+    }
+    if (result.reference_evaluation_failure_count != 0
+        || result.reference_scan_point_count
+            != result.reference_scan_interval_count + 1) {
         result.outcome = "indeterminate";
         return result;
     }
-    const Held2StateEvaluation reference = evaluator(
-        {reference_run.variables.front()},
-        reference_run.variables.back()
-    );
+
+    Held2StateEvaluation reference;
+    std::vector<double> reference_variables;
+    double reference_objective = std::numeric_limits<double>::infinity();
+    for (std::size_t interval = 0; interval + 1 < reference_scan.size(); ++interval) {
+        double left_log_volume = reference_scan[interval].first;
+        Held2StateEvaluation left_state = reference_scan[interval].second;
+        double right_log_volume = reference_scan[interval + 1].first;
+        Held2StateEvaluation right_state = reference_scan[interval + 1].second;
+        double left_residual = left_state.pressure_stationarity_relative;
+        double right_residual = right_state.pressure_stationarity_relative;
+        if (left_residual * right_residual > 0.0) {
+            continue;
+        }
+
+        double root_log_volume = 0.0;
+        Held2StateEvaluation root_state;
+        bool refined = false;
+        if (std::abs(left_residual) <= kCertificateTolerance) {
+            root_log_volume = left_log_volume;
+            root_state = std::move(left_state);
+            refined = true;
+        } else if (std::abs(right_residual) <= kCertificateTolerance) {
+            root_log_volume = right_log_volume;
+            root_state = std::move(right_state);
+            refined = true;
+        } else {
+            for (int iteration = 0; iteration < 100; ++iteration) {
+                root_log_volume = 0.5 * (left_log_volume + right_log_volume);
+                try {
+                    root_state = evaluator(feed_independent, root_log_volume);
+                } catch (const std::exception&) {
+                    ++result.reference_evaluation_failure_count;
+                    break;
+                }
+                const double root_residual =
+                    root_state.pressure_stationarity_relative;
+                if (std::abs(root_residual) <= kCertificateTolerance) {
+                    refined = true;
+                    break;
+                }
+                if (left_residual * root_residual <= 0.0) {
+                    right_log_volume = root_log_volume;
+                    right_residual = root_residual;
+                } else {
+                    left_log_volume = root_log_volume;
+                    left_residual = root_residual;
+                }
+            }
+        }
+        if (!refined) {
+            ++result.reference_refinement_failure_count;
+            continue;
+        }
+        const bool duplicate = std::any_of(
+            result.reference_roots.begin(),
+            result.reference_roots.end(),
+            [root_log_volume](const Held2ReferenceRoot& root) {
+                return std::abs(root.log_volume - root_log_volume) < 1.0e-8;
+            }
+        );
+        if (duplicate) {
+            continue;
+        }
+        const double curvature = root_state.hessian.back();
+        if (!std::isfinite(curvature) || curvature == 0.0) {
+            ++result.reference_refinement_failure_count;
+            continue;
+        }
+        const bool mechanically_stable = curvature > 0.0;
+        result.reference_roots.push_back({
+            root_log_volume,
+            root_state.volume,
+            root_state.objective,
+            root_state.pressure_stationarity_relative,
+            curvature,
+            mechanically_stable,
+        });
+        if (!mechanically_stable) {
+            continue;
+        }
+        ++result.reference_stable_root_count;
+        if (root_state.objective < reference_objective) {
+            reference_objective = root_state.objective;
+            reference = std::move(root_state);
+            reference_variables = feed_independent;
+            reference_variables.push_back(root_log_volume);
+        }
+    }
+    result.reference_root_count = static_cast<int>(result.reference_roots.size());
+    if (result.reference_evaluation_failure_count != 0
+        || result.reference_refinement_failure_count != 0
+        || result.reference_root_count == 0
+        || result.reference_stable_root_count == 0
+        || reference_variables.empty()) {
+        result.outcome = "indeterminate";
+        return result;
+    }
     result.reference_modified_fractions = reference.modified_fractions;
     result.reference_volume = reference.volume;
 
-    const double lower_composition = coordinates.independent_lower_bounds.front();
-    const double upper_composition = std::nextafter(
-        coordinates.independent_upper_bounds.front(),
-        lower_composition
-    );
-    const std::vector<double> lower = {lower_composition, std::log(0.5)};
-    const std::vector<double> upper = {upper_composition, std::log(1.5)};
+    std::vector<double> lower = coordinates.independent_lower_bounds;
+    std::vector<double> upper = coordinates.independent_upper_bounds;
+    for (std::size_t index = 0; index < upper.size(); ++index) {
+        upper[index] = std::nextafter(upper[index], lower[index]);
+    }
+    lower.push_back(std::log(molar_volume_bounds[0]));
+    upper.push_back(std::log(molar_volume_bounds[1]));
     std::mt19937 generator(kStageISeed);
-    std::uniform_real_distribution<double> composition_distribution(
-        lower_composition,
-        upper_composition
-    );
     std::uniform_real_distribution<double> log_volume_distribution(
         lower.back(),
         upper.back()
     );
+    const auto dependent_retained = static_cast<std::size_t>(
+        std::find(
+            coordinates.retained_indices.begin(),
+            coordinates.retained_indices.end(),
+            coordinates.dependent_index
+        ) - coordinates.retained_indices.begin()
+    );
+    const double composition_sum_upper =
+        1.0 - kModifiedLowerScale * coordinates.modified_factors[dependent_retained];
     std::vector<std::vector<double>> starts;
     starts.reserve(static_cast<std::size_t>(result.declared_start_count));
-    starts.push_back({0.2, 0.0});
-    starts.push_back({0.8, 0.0});
-    while (starts.size() < static_cast<std::size_t>(result.declared_start_count)) {
-        starts.push_back({
-            composition_distribution(generator),
-            log_volume_distribution(generator),
-        });
+    if (feed_independent.size() == 1 && molar_volume_bounds[0] <= 1.0
+        && molar_volume_bounds[1] >= 1.0) {
+        starts.push_back({0.2, 0.0});
+        starts.push_back({0.8, 0.0});
     }
-    const std::vector<double> reference_variables = {
-        reference_run.variables.front(),
-        reference_run.variables.back(),
-    };
-    for (const std::vector<double>& start : starts) {
+    int rejected_draws = 0;
+    while (starts.size() < static_cast<std::size_t>(result.declared_start_count)) {
+        std::vector<double> start;
+        start.reserve(feed_independent.size() + 1);
+        double sum = 0.0;
+        for (std::size_t index = 0; index < feed_independent.size(); ++index) {
+            std::uniform_real_distribution<double> distribution(lower[index], upper[index]);
+            start.push_back(distribution(generator));
+            sum += start.back();
+        }
+        if (!(sum <= composition_sum_upper) && ++rejected_draws < 10000) {
+            continue;
+        }
+        if (!(sum <= composition_sum_upper)) {
+            result.outcome = "indeterminate";
+            return result;
+        }
+        start.push_back(log_volume_distribution(generator));
+        starts.push_back(std::move(start));
+    }
+    for (std::size_t start_index = 0; start_index < starts.size(); ++start_index) {
+        const std::vector<double>& start = starts[start_index];
         const Held2SearchRun run = solve_held2_search(
             evaluator,
             reference_variables,
@@ -962,14 +1119,43 @@ Held2StageIResult solve_held2_manufactured_stage_i(
             true,
             start,
             lower,
-            upper
+            upper,
+            composition_sum_upper
         );
-        if (!run.solver_converged || !run.callback_error.empty() || run.variables.size() != 2) {
+        if (!run.solver_converged || !run.callback_error.empty()
+            || run.variables.size() != feed_independent.size() + 1) {
+            if (result.failed_start_index < 0) {
+                result.failed_start_index = static_cast<int>(start_index);
+                result.failed_start_solver_status = run.solver_status;
+                result.failed_start_solver_converged = run.solver_converged;
+                result.failed_start_reason = run.callback_error.empty()
+                    ? "TPD solve did not return a complete accepted state"
+                    : run.callback_error;
+                result.failed_start_initial = start;
+            }
             ++result.failed_start_count;
             continue;
         }
         ++result.completed_start_count;
-        Held2StateEvaluation state = evaluator({run.variables.front()}, run.variables.back());
+        const std::vector<double> composition(
+            run.variables.begin(),
+            run.variables.end() - 1
+        );
+        Held2StateEvaluation state;
+        try {
+            state = evaluator(composition, run.variables.back());
+        } catch (const std::exception& error) {
+            --result.completed_start_count;
+            if (result.failed_start_index < 0) {
+                result.failed_start_index = static_cast<int>(start_index);
+                result.failed_start_solver_status = run.solver_status;
+                result.failed_start_solver_converged = run.solver_converged;
+                result.failed_start_reason = error.what();
+                result.failed_start_initial = start;
+            }
+            ++result.failed_start_count;
+            continue;
+        }
         double tpd = state.objective - reference.objective;
         for (std::size_t index = 0; index < state.gradient.size(); ++index) {
             tpd -= reference.gradient[index]
@@ -977,6 +1163,34 @@ Held2StageIResult solve_held2_manufactured_stage_i(
         }
         result.minimum_tpd = std::min(result.minimum_tpd, tpd);
         if (tpd >= kStageITpdThreshold) {
+            continue;
+        }
+        std::array<double, 2> candidate_volume_bounds = molar_volume_bounds;
+        if (volume_bounds_evaluator) {
+            try {
+                candidate_volume_bounds = volume_bounds_evaluator(state.physical_amounts);
+            } catch (const std::exception&) {
+                ++result.candidate_domain_evaluation_failure_count;
+                continue;
+            }
+        }
+        const double lower_relative_distance = std::abs(
+            state.volume - candidate_volume_bounds[0]
+        ) / std::max(state.volume, candidate_volume_bounds[0]);
+        const double upper_relative_distance = std::abs(
+            state.volume - candidate_volume_bounds[1]
+        ) / std::max(state.volume, candidate_volume_bounds[1]);
+        const bool lower_active = lower_relative_distance <= kCertificateTolerance;
+        const bool upper_active = upper_relative_distance <= kCertificateTolerance;
+        const double volume_gradient = state.gradient.back();
+        const bool volume_in_domain = state.volume >= candidate_volume_bounds[0]
+            && state.volume <= candidate_volume_bounds[1];
+        const bool volume_stationary =
+            std::abs(state.pressure_stationarity_relative) <= kCertificateTolerance
+            || (lower_active && volume_gradient >= -kCertificateTolerance)
+            || (upper_active && volume_gradient <= kCertificateTolerance);
+        if (!volume_in_domain || !volume_stationary) {
+            ++result.candidate_domain_rejection_count;
             continue;
         }
         const bool duplicate = std::any_of(
@@ -991,7 +1205,16 @@ Held2StageIResult solve_held2_manufactured_stage_i(
             }
         );
         if (!duplicate) {
-            result.candidates.push_back({state.modified_fractions, state.volume, tpd});
+            result.candidates.push_back({
+                state.modified_fractions,
+                state.volume,
+                tpd,
+                candidate_volume_bounds,
+                state.pressure_stationarity_relative,
+                volume_gradient,
+                lower_active,
+                upper_active,
+            });
         }
     }
     std::sort(
@@ -1001,14 +1224,51 @@ Held2StageIResult solve_held2_manufactured_stage_i(
             return left.modified_fractions < right.modified_fractions;
         }
     );
-    if (result.failed_start_count != 0) {
-        result.outcome = "indeterminate";
-    } else if (!result.candidates.empty()) {
+    if (!result.candidates.empty()) {
         result.outcome = "negative_tpd";
+    } else if (result.failed_start_count != 0
+        || result.candidate_domain_evaluation_failure_count != 0
+        || !result.volume_domain_search_complete) {
+        result.outcome = "indeterminate";
     } else {
         result.outcome = "no_negative_found";
     }
     return result;
+}
+
+Held2StageIResult solve_held2_manufactured_stage_i(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed
+) {
+    const Held2Coordinates coordinates = make_held2_coordinates(charges);
+    if (coordinates.independent_indices.size() != 1) {
+        throw std::invalid_argument(
+            "manufactured HELD2 Stage I requires one independent modified composition"
+        );
+    }
+    const Held2StateEvaluator evaluator = [coordinates](
+        const std::vector<double>& independent,
+        double log_volume
+    ) {
+        return evaluate_manufactured_state_impl(
+            coordinates,
+            independent,
+            log_volume
+        );
+    };
+    const Held2VolumeBoundsEvaluator volume_bounds_evaluator = [](
+        const std::vector<double>&
+    ) {
+        return std::array<double, 2>{0.5, 1.5};
+    };
+    return solve_held2_stage_i(
+        coordinates,
+        physical_feed,
+        evaluator,
+        {0.5, 1.5},
+        volume_bounds_evaluator,
+        true
+    );
 }
 
 Held2StageIIResult solve_held2_manufactured_stage_ii(

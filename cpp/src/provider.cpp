@@ -181,6 +181,57 @@ MixturePhaseEvaluation ProviderContext::evaluate_electrolyte(
     );
 }
 
+std::array<double, 2> ProviderContext::evaluate_molar_volume_bounds(
+    double temperature_k,
+    const std::vector<double>& mole_fractions,
+    double packing_fraction_min,
+    double packing_fraction_max
+) const {
+    if (sdk_.evaluate_molar_volume_bounds == nullptr
+        || mole_fractions.size() != sdk_.component_count) {
+        throw std::invalid_argument("provider capsule is missing the molar-volume domain contract");
+    }
+    require_finite(temperature_k, "temperature");
+    require_finite(packing_fraction_min, "minimum packing fraction");
+    require_finite(packing_fraction_max, "maximum packing fraction");
+    if (temperature_k <= 0.0 || packing_fraction_min <= 0.0
+        || packing_fraction_max <= packing_fraction_min) {
+        throw std::invalid_argument(
+            "temperature and packing-fraction bounds must be positive and ordered"
+        );
+    }
+    if (!std::all_of(mole_fractions.begin(), mole_fractions.end(), [](double value) {
+            return std::isfinite(value) && value >= 0.0;
+        })) {
+        throw std::invalid_argument("mole fractions must be finite and nonnegative");
+    }
+    std::array<double, 2> bounds{};
+    const int status = sdk_.evaluate_molar_volume_bounds(
+        sdk_.model_context,
+        fingerprint_.c_str(),
+        temperature_k,
+        mole_fractions.data(),
+        mole_fractions.size(),
+        packing_fraction_min,
+        packing_fraction_max,
+        bounds.data(),
+        bounds.size()
+    );
+    if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
+        throw std::domain_error(
+            "provider molar-volume domain evaluation failed with status "
+            + std::to_string(status)
+        );
+    }
+    if (!std::isfinite(bounds[0]) || !std::isfinite(bounds[1])
+        || bounds[0] <= 0.0 || bounds[1] <= bounds[0]) {
+        throw std::invalid_argument(
+            "provider molar-volume bounds must be finite, positive, and ordered"
+        );
+    }
+    return bounds;
+}
+
 const std::string& ProviderContext::fingerprint() const {
     return fingerprint_;
 }

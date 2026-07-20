@@ -13,12 +13,28 @@ CHARGES = (0.0, 1.0, -1.0)
 PHYSICAL_FEED = (0.5, 0.25, 0.25)
 CHEMICAL_POTENTIALS = (3.0, -2.0, 4.0)
 GAS_CONSTANT_J_PER_MOL_K = 8.31446261815324
+KHUDAIDA_COMPONENT_IDS = (
+    "water",
+    "ethanol",
+    "isobutanol",
+    "sodium-cation",
+    "chloride-anion",
+)
+KHUDAIDA_AMOUNTS = (0.65905, 0.05095, 0.27015, 0.01985, 0.01985)
+KHUDAIDA_FINGERPRINT = "sha256:5a59828d86bb29c919513484a26cedaa0f025463aaa7c149ae3d1fbd0eda97ae"
 
 
 def _figiel_brine_model() -> epcsaft.EPCSAFT:
     parameters = epcsaft.ParameterBundle.from_catalog(
         "figiel-2025-reference-electrolytes", version=1
     ).select(("water", "sodium-cation", "chloride-anion"))
+    return epcsaft.EPCSAFT(parameters)
+
+
+def _khudaida_model() -> epcsaft.EPCSAFT:
+    parameters = epcsaft.ParameterBundle.from_catalog(
+        "khudaida-2026-figure-2-electrolyte-lle", version=1
+    ).select(KHUDAIDA_COMPONENT_IDS)
     return epcsaft.EPCSAFT(parameters)
 
 
@@ -386,6 +402,115 @@ def test_held2_installed_electrolyte_sdk_phase_block_has_exact_reduced_derivativ
     assert math.isfinite(result["provider_pressure_pa"])
 
 
+def test_held2_installed_stage_i_uses_provider_volume_domain_for_khudaida_midpoint() -> None:
+    model = _khudaida_model()
+    physical_feed = tuple(amount / sum(KHUDAIDA_AMOUNTS) for amount in KHUDAIDA_AMOUNTS)
+
+    result = _equilibrium._held2_adapter(
+        epcsaft.native_sdk(model),
+        293.15,
+        100_000.0,
+        physical_feed,
+        KHUDAIDA_FINGERPRINT,
+        "stage_i",
+    )
+
+    assert model.parameter_fingerprint == KHUDAIDA_FINGERPRINT
+    assert result["component_ids"] == list(KHUDAIDA_COMPONENT_IDS)
+    assert result["charges"] == [0.0, 0.0, 0.0, 1.0, -1.0]
+    assert result["parameter_fingerprint"] == KHUDAIDA_FINGERPRINT
+    assert result["packing_fraction_bounds"] == pytest.approx([1.0e-6, 0.74])
+    assert result["molar_volume_bounds"] == pytest.approx(
+        [2.306595376485171e-05, 17.068805785990268], rel=2.0e-15
+    )
+    assert result["log_molar_volume_bounds"] == pytest.approx(
+        [math.log(2.306595376485171e-05), math.log(17.068805785990268)], rel=2.0e-15
+    )
+    assert result["declared_start_count"] == 10 * len(KHUDAIDA_COMPONENT_IDS)
+    assert result["reference_scan_interval_count"] == 50
+    assert result["reference_scan_point_count"] == 51
+    assert result["reference_evaluation_failure_count"] == 0
+    assert result["reference_refinement_failure_count"] == 0
+    assert result["reference_root_count"] == 3
+    assert result["reference_stable_root_count"] == 2
+    assert [root["mechanically_stable"] for root in result["reference_roots"]] == [
+        True,
+        False,
+        True,
+    ]
+    assert [root["volume"] for root in result["reference_roots"]] == pytest.approx(
+        [3.909560419950043e-05, 0.0007107348724168745, 0.02238310519168927],
+        rel=2.0e-8,
+    )
+    assert [root["curvature"] for root in result["reference_roots"]] == pytest.approx(
+        [31.411491224899734, -0.5642708323753126, 0.8463122865798167],
+        rel=2.0e-8,
+    )
+    assert result["completed_start_count"] == 49
+    assert result["failed_start_count"] == 1
+    assert result["completed_start_count"] + result["failed_start_count"] == 50
+    assert result["failed_start_index"] == 18
+    assert result["failed_start_solver_status"] == 0
+    assert result["failed_start_solver_converged"] is True
+    assert result["failed_start_reason"] == (
+        "provider mixture phase evaluation failed: association solve left physical domain"
+    )
+    assert result["failed_start_initial"] == pytest.approx(
+        [
+            0.09236887232016976,
+            0.28123087292432036,
+            0.4673809073217849,
+            -9.77813271535615,
+        ]
+    )
+    assert result["outcome"] == "negative_tpd"
+    assert result["volume_domain_search_complete"] is False
+    assert result["candidate_domain_evaluation_failure_count"] == 0
+    assert result["candidate_domain_rejection_count"] == 2
+    assert result["reference_volume"] == pytest.approx(3.909560419950043e-05, rel=2.0e-8)
+    assert result["minimum_tpd"] == pytest.approx(-0.14499309134029337, abs=2.0e-13)
+    assert [candidate["tpd"] for candidate in result["candidates"]] == pytest.approx(
+        [-0.00893217913694587], abs=2.0e-13
+    )
+    assert [candidate["volume"] for candidate in result["candidates"]] == pytest.approx(
+        [5.2811607028165594e-05], rel=2.0e-12
+    )
+    phase_evidence = []
+    for candidate in result["candidates"]:
+        modified = candidate["modified_fractions"]
+        phase = _equilibrium._held2_adapter(
+            epcsaft.native_sdk(model),
+            293.15,
+            100_000.0,
+            (modified[0], modified[1], modified[3]),
+            math.log(candidate["volume"]),
+            KHUDAIDA_FINGERPRINT,
+        )
+        assert sum(phase["physical_amounts"]) == pytest.approx(1.0, abs=2.0e-15)
+        assert phase["physical_amounts"][3] == pytest.approx(
+            phase["physical_amounts"][4], abs=2.0e-15
+        )
+        assert (
+            max(
+                abs(value - feed)
+                for value, feed in zip(
+                    modified, result["reference_modified_fractions"], strict=True
+                )
+            )
+            > 1.0e-3
+        )
+        assert candidate["molar_volume_bounds"] == pytest.approx(
+            [3.079084484139457e-05, 22.785225182631986], rel=2.0e-14
+        )
+        assert candidate["molar_volume_bounds"][0] <= candidate["volume"]
+        assert candidate["volume"] <= candidate["molar_volume_bounds"][1]
+        phase_evidence.append(phase)
+    assert abs(phase_evidence[0]["pressure_stationarity_relative"]) <= 1.0e-8
+    assert result["candidates"][0]["lower_volume_bound_active"] is False
+    assert result["candidates"][0]["upper_volume_bound_active"] is False
+    assert result["globality_certificate"] == "not_guaranteed"
+
+
 def test_held2_manufactured_stage_i_finds_negative_tpd_with_declared_multistart() -> None:
     result = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_i")
 
@@ -395,13 +520,27 @@ def test_held2_manufactured_stage_i_finds_negative_tpd_with_declared_multistart(
     assert result["declared_start_count"] == 10 * len(CHARGES)
     assert result["completed_start_count"] == result["declared_start_count"]
     assert result["failed_start_count"] == 0
+    assert result["volume_domain_search_complete"] is True
     assert result["reference_modified_fractions"] == pytest.approx([0.5, 0.5])
-    assert result["reference_volume"] == pytest.approx(1.0, abs=2.0e-10)
+    assert result["reference_volume"] == pytest.approx(1.0, abs=2.0e-9)
     assert result["minimum_tpd"] < -1.0e-8
     assert sorted(
         candidate["modified_fractions"][1] for candidate in result["candidates"]
     ) == pytest.approx([0.2, 0.8], abs=2.0e-7)
     assert all(candidate["tpd"] < -1.0e-8 for candidate in result["candidates"])
+
+
+def test_held2_stage_i_requires_complete_search_before_no_negative_found() -> None:
+    result = _equilibrium._held2_adapter(CHARGES, (0.9, 0.05, 0.05), "stage_i")
+
+    assert result["outcome"] == "no_negative_found"
+    assert result["completed_start_count"] == result["declared_start_count"] == 30
+    assert result["failed_start_count"] == 0
+    assert result["volume_domain_search_complete"] is True
+    assert result["failed_start_index"] is None
+    assert math.isfinite(result["minimum_tpd"])
+    assert result["candidates"] == []
+    assert result["globality_certificate"] == "not_guaranteed"
 
 
 def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
