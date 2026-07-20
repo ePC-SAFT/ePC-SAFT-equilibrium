@@ -97,6 +97,9 @@ commit, declared `SOURCE_DATE_EPOCH`, artifact hashes, review status, and
 replayable commands are recorded in
 `receipts/promotion/promotion-0002-neutral-held-v1-candidate.yaml`.
 One clean build does not support an archive-byte reproducibility claim.
+The current corrected subject is implementation commit `8318e755`, retained
+under `artifacts/equilibrium-neutral-held-v1/8318e75/`; the rejected
+`549162a3` artifact remains immutable provenance.
 
 ```text
 uv run --isolated --no-project --python 3.13 \

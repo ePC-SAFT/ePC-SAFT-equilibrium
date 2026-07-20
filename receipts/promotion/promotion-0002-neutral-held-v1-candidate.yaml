@@ -1,19 +1,26 @@
 schema_version: 1
 receipt_id: promotion-0002-neutral-held-v1-candidate
 kind: promotion_candidate
-status: ready_for_permanent_lab_review
+status: ready_for_permanent_lab_rereview
 authority_effect: none
 subject: Complete local bounded neutral methane/ethane HELD candidate
 producer: codex-implementation-owner:/root
-reviewer: "pending:permanent-lab"
+reviewer: "pending:permanent-lab-rereview"
 
 approval:
+  coordination_gate:
+    repository: ePC-SAFT/ePC-SAFT-migration
+    commit: 6ab67888c6eae2ce68ef71d93b17278d6bbbee71
+    tree: fd19b564eff173639f6a50118a94ba087021d0f0
   implementation_authorization:
     state: approved
     approver: tannerpolley
     source_thread: 019f7142-b9de-79a1-ad8c-c488d37cfb7f
-    scope: Task 7 documentation, immutable artifact, and candidate evidence only
+    scope: Permanent-lab status-axis correction, immutable artifact, and rebound candidate evidence only
   complete_candidate_review:
+    state: correction_required
+    reviewed_subject_commit: 5a9eb868a4bcad2c3821ff7bfc3274d1f609ac00
+  corrected_candidate_rereview:
     state: pending
     reviewer: permanent-lab
   validation_campaign:
@@ -47,8 +54,10 @@ scientific_source:
 
 destination:
   repository: ePC-SAFT/ePC-SAFT-equilibrium
-  implementation_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
-  implementation_tree: fe96ea3469405242cb4dbdb652e105dab5003f65
+  implementation_commit: 8318e755d4a8e490822fdf7bb2685d8c5af6436c
+  implementation_tree: 3e8c98a13f1daca975b33c26fce3d143a1f34493
+  cutover_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
+  cutover_tree: fe96ea3469405242cb4dbdb652e105dab5003f65
   review_c_commit: a33341138ade9a1861a7b88249a641971ae7e650
   review_c_tree: 484e6cc8271bcc7ca0c85b2d1983dce5aa7bbd1f
   package: epcsaft_equilibrium
@@ -79,31 +88,36 @@ provider_pin:
   derivative_order: 2
 
 artifact:
-  root: artifacts/equilibrium-neutral-held-v1/549162a
+  root: artifacts/equilibrium-neutral-held-v1/8318e75
+  root_mode: "0555"
   equilibrium_wheel:
     file: epcsaft_equilibrium-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
-    sha256: be50837d73facbf0f2cb02cc3cfa7568f820b317b7b3984780ec1d992dbce76c
-    size_bytes: 258033
+    sha256: 8ecd70e0192b76b3a107629201c3e8bf34f2d945ca7c8192f824a0df7c9dde12
+    size_bytes: 261599
     mode: "0444"
   source_date_epoch:
-    value: 1784567529
-    derivation: git show -s --format=%ct 549162a3a9cfd6f02894f8189c624ba1aa2139fb
+    value: 1784573453
+    derivation: git show -s --format=%ct 8318e755d4a8e490822fdf7bb2685d8c5af6436c
   clean_builds_performed: 1
   second_clean_build_performed: false
   archive_byte_reproducibility_claimed: false
   wheel_files: 9
   wheel_native_modules: 1
-  wheel_record_sha256: 7783a4e55a870d0f6b064d8493b3e0436ea0d97b4912a734a13a33044788ce0a
+  wheel_record_sha256: 55fd3a3d4f086d9a07cd65990d548fbe541f589e63434c349ccde10d3abadf9e
   wheel_record_verification: 8 hashed entries passed; RECORD self-entry intentionally unhashed
-  installed_record_sha256: fa4e7a3f6b41ad4ccabe9747910760492334df5be84608573a8558673e7d8267
-  extracted_extension_sha256: 412f004fe6254a4e60f2bd270e9e82bb15627648f6aa466b44158fac46445016
+  installed_record_sha256: 07726c83baa83e083d8e3c577fc514bcfc330990bd4c7dc77cbb489334f0e1dd
+  extracted_extension_sha256: ef796357a992b5cbe2f3442fd2a4005172d684caabb9dfe77ea8262943d01661
 
 build:
   clean_implementation_tree: true
   command: >-
-    SOURCE_DATE_EPOCH=1784567529 uv run --isolated --no-project --python 3.13
+    SOURCE_DATE_EPOCH=1784573453
+    UV_CACHE_DIR=/tmp/epcsaft-equilibrium-8318e75-build/uv-cache
+    uv run --isolated --no-project --python 3.13
     --with "$PINNED_PROVIDER_WHEEL" --with scikit-build-core --with pybind11
-    -- uv build --no-build-isolation --wheel --out-dir "$ARTIFACT_ROOT"
+    -- uv build --no-build-isolation --wheel
+    --out-dir /tmp/epcsaft-equilibrium-8318e75-build/out
+  retention: copied once into the commit-bound artifact root, wheel mode 0444 and root mode 0555
   result: passed; 8 native configure/build/link steps completed
   cmake_provider_check: exact epcsaft 0.1.0.dev0 non-editable distribution required
 
@@ -116,7 +130,7 @@ verification:
     mypy_command: .venv/bin/mypy --no-incremental
     mypy_strict: passed; 3 source files
     pytest_command: .venv/bin/python -m pytest -p no:cacheprovider -q
-    pytest: 76 passed
+    pytest: 78 passed
     scientific_command: .venv/bin/python scripts/validate_saturation.py
     scientific_result: methane, ethane, and propane anchors passed unchanged
   isolated_install:
@@ -126,12 +140,23 @@ verification:
     command: >-
       cd /run && env -u PYTHONPATH "$ISOLATED_PYTHON" -I -m pytest
       -p no:cacheprovider "$EQUILIBRIUM_CHECKOUT/tests" -q
-    result: 76 passed
+    result: 78 passed
+    status_mapping_command: >-
+      cd /run && env -u PYTHONPATH "$ISOLATED_PYTHON" -I -m pytest
+      -p no:cacheprovider "$EQUILIBRIUM_CHECKOUT/tests/test_held.py"
+      -k 'public_tp_flash_returns_the_retained_real_one_phase_state or
+      public_tp_flash_maps_one_reviewed_two_phase_payload or
+      public_tp_flash_preserves_fail_closed_outcomes or
+      public_tp_flash_rejects_invalid_input_before_native_dispatch or
+      rejects_wrong_fingerprint_and_provider_abi or
+      rejects_malformed_native_payload or rejects_unknown_status_vocabulary or
+      preserves_stage_i_one_phase_outcome' -q
+    status_mapping_result: 17 passed; 46 deselected
     derivative_command: >-
       cd /run && env -u PYTHONPATH "$ISOLATED_PYTHON" -I -m pytest
       -p no:cacheprovider "$EQUILIBRIUM_CHECKOUT/tests/test_held.py"
       -k 'exact_derivatives_at_may_row_001' -q
-    derivative_result: 4 passed; 57 deselected
+    derivative_result: 4 passed; 59 deselected
     scientific_command: >-
       cd /run && env -u PYTHONPATH "$ISOLATED_PYTHON" -I
       "$EQUILIBRIUM_CHECKOUT/scripts/validate_saturation.py"
@@ -148,6 +173,8 @@ capability:
   public_operation: tp_flash
   public_result: TpFlashResult
   public_diagnostics: HeldDiagnostics
+  diagnostic_status_axes: [solver_status, numerical_status, physical_status]
+  diagnostic_status_vocabulary: [passed, failed, not_adjudicated]
   globality_certificate: not_guaranteed
   provider_ownership: extensive neutral-mixture Helmholtz value, gradient, Hessian, and pressure diagnostic in component amounts and volume
   equilibrium_ownership: exact coordinate transforms, Stage I tunneling, binary Stage II envelope/lower search, Stage III direct refinement, Ipopt, certification, diagnostics, and result serialization
@@ -160,7 +187,8 @@ resource_profile:
   stage_ii_lower_starts_per_iteration: 20
   ipopt_iterations_per_solve: 300
   composition_bounds: [1.0e-8, 0.99999999]
-  molar_volume_bounds_m3_mol: [1.0e-5, 1.0e-1]
+  stage_i_ii_molar_volume_bounds_m3_mol: [1.0e-5, 1.0e-1]
+  stage_iii_extensive_phase_volume_bounds_m3: [1.0e-5, 1.0e-1]
   tpd_negative_threshold: -1.0e-8
   epsilon_lambda: 0.5
   epsilon_b: 1.0e-2
@@ -182,6 +210,9 @@ installed_scientific_evidence:
     feed: [0.5627, 0.4373]
     outcome: one_phase
     search_status: stage_i_no_negative
+    solver_status: passed
+    numerical_status: passed
+    physical_status: passed
     phase_volume_m3: 7.560240774632844e-05
     phase_density_mol_m3: 13227.091964522308
     eos_pressure_pa: 6690999.999913541
@@ -193,6 +224,9 @@ installed_scientific_evidence:
     source_row: may2015-ch4-c2h6-001
     outcome: scope_exceeded
     search_status: third_candidate
+    solver_status: not_adjudicated
+    numerical_status: not_adjudicated
+    physical_status: not_adjudicated
     lower_bound: 6.47076258511698
     upper_bound: 6.4712745739279685
     held_gap: 0.0005119888109881288
@@ -231,6 +265,8 @@ public_and_binary_audit:
     - saturation
     - tp_flash
   private_native_controller_binding: _solve_tp_flash
+  held_diagnostics_fields_added_by_correction: [solver_status, numerical_status, physical_status]
+  held_status_vocabulary: [passed, failed, not_adjudicated]
   public_stage_api: none
   public_solver_settings_seed_or_backend: none
   displaced_exports_absent: [FlashDiagnostics, TwoPhaseFlashResult, two_phase_flash]
@@ -261,8 +297,48 @@ architecture_ratchet:
   build_dependencies_added: []
   second_result_or_diagnostics_owner_added: false
 
+status_axis_mapping:
+  one_phase:
+    solver_status: passed only when the homogeneous reference was accepted and every reference and all 20 declared Stage-I starts completed without solver/callback failure
+    numerical_status: passed only when the solver condition passed and the accepted reference and all 20 declared Stage-I starts had accepted numerical evidence
+    physical_status: passed only after the complete no-negative Stage-I evidence; otherwise not_adjudicated
+  accepted:
+    solver_status: mapped from the accepted Stage-III local solver evidence
+    numerical_status: mapped from the accepted Stage-III numerical certificate
+    physical_status: mapped from the accepted Stage-III physical certificate
+  scope_exceeded: [not_adjudicated, not_adjudicated, not_adjudicated]
+  search_exhausted: [not_adjudicated, not_adjudicated, not_adjudicated]
+  indeterminate: [not_adjudicated, not_adjudicated, not_adjudicated]
+  invalid_input: [not_adjudicated, not_adjudicated, not_adjudicated]
+  provider_or_native_transport_failure: [not_adjudicated, not_adjudicated, not_adjudicated]
+  malformed_native_payload: [not_adjudicated, not_adjudicated, not_adjudicated]
+  globality_certificate: not_guaranteed independently of every status-axis value
+
+previous_rejected_subject:
+  disposition: correction_required
+  implementation_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
+  implementation_tree: fe96ea3469405242cb4dbdb652e105dab5003f65
+  evidence_commit: 5a9eb868a4bcad2c3821ff7bfc3274d1f609ac00
+  evidence_tree: 04751f650030dd539021a835e6a0066ddf8781ad
+  artifact_root: artifacts/equilibrium-neutral-held-v1/549162a
+  equilibrium_wheel_sha256: be50837d73facbf0f2cb02cc3cfa7568f820b317b7b3984780ec1d992dbce76c
+  receipt_sha256: c5798485a643d5c6f2461b8a8f6f95dc424d5719b97b9d6d503d941c04f06e28
+  preservation: retained read-only and never overwritten
+
+correction_ratchet:
+  comparison_base_commit: 5a9eb868a4bcad2c3821ff7bfc3274d1f609ac00
+  implementation_commit: 8318e755d4a8e490822fdf7bb2685d8c5af6436c
+  implementation_tree: 3e8c98a13f1daca975b33c26fce3d143a1f34493
+  files_changed: 7
+  insertions: 179
+  deletions: 15
+  equations_search_profile_solver_settings_bounds_or_tolerances_changed: false
+  public_exports_changed: false
+  public_diagnostics_fields_added: [solver_status, numerical_status, physical_status]
+  second_result_or_diagnostics_owner_added: false
+
 pending_gates:
-  permanent_lab_complete_candidate_review: pending
+  permanent_lab_corrected_candidate_rereview: pending
   validation_installed_artifact_campaign: not_run
   provider_tail_promotion: not_requested
   equilibrium_promotion: not_requested

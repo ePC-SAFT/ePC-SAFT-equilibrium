@@ -1,8 +1,8 @@
 # Neutral HELD v1 Design
 
-Status: complete local candidate at implementation commit
-`549162a3a9cfd6f02894f8189c624ba1aa2139fb`; awaiting permanent-lab
-complete-candidate review and Validation's installed-artifact campaign
+Status: corrected complete local candidate at implementation commit
+`8318e755d4a8e490822fdf7bb2685d8c5af6436c`; awaiting permanent-lab
+corrected-candidate rereview and Validation's installed-artifact campaign
 
 Approved in discussion: 2026-07-17
 

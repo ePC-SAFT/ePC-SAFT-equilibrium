@@ -50,10 +50,10 @@ accepted_capability:
 
 local_candidate:
   name: neutral-held-v1
-  implementation_status: complete-local-candidate
-  implementation_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
-  implementation_tree: fe96ea3469405242cb4dbdb652e105dab5003f65
-  permanent_lab_review: pending-complete-candidate-review
+  implementation_status: corrected-complete-local-candidate
+  implementation_commit: 8318e755d4a8e490822fdf7bb2685d8c5af6436c
+  implementation_tree: 3e8c98a13f1daca975b33c26fce3d143a1f34493
+  permanent_lab_review: pending-corrected-candidate-rereview
   validation_admission: not-run
   promotion_status: not-requested
   authority_effect: none
@@ -83,13 +83,16 @@ local_candidate:
   internal_phase_coordinates: [x_CH4, log_V]
   stage_iii_coordinates: [n_L_CH4, n_L_C2H6, log_V_L, n_V_CH4, n_V_C2H6, log_V_V]
   globality_certificate: not_guaranteed
+  diagnostic_status_axes: [solver_status, numerical_status, physical_status]
+  diagnostic_status_vocabulary: [passed, failed, not_adjudicated]
   resource_profile:
     stage_i_tunneling_starts: 20
     stage_ii_major_iterations_max: 100
     stage_ii_lower_starts_per_iteration: 20
     ipopt_iterations_per_solve: 300
     composition_bounds: [1.0e-8, 0.99999999]
-    molar_volume_bounds_m3_mol: [1.0e-5, 1.0e-1]
+    stage_i_ii_molar_volume_bounds_m3_mol: [1.0e-5, 1.0e-1]
+    stage_iii_extensive_phase_volume_bounds_m3: [1.0e-5, 1.0e-1]
   local_certificate:
     - distinct negative, no-negative-found, and indeterminate Stage I outcomes
     - exact transformed provider gradient and Hessian evidence
@@ -178,17 +181,18 @@ public_surface:
   build_dependencies: [scikit-build-core, pybind11, CMake, pkg-config, Ipopt]
 
 evidence:
-  implementation_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
-  implementation_tree: fe96ea3469405242cb4dbdb652e105dab5003f65
+  implementation_commit: 8318e755d4a8e490822fdf7bb2685d8c5af6436c
+  implementation_tree: 3e8c98a13f1daca975b33c26fce3d143a1f34493
   candidate_receipt: receipts/promotion/promotion-0002-neutral-held-v1-candidate.yaml
   artifact:
-    path: artifacts/equilibrium-neutral-held-v1/549162a/epcsaft_equilibrium-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
-    sha256: be50837d73facbf0f2cb02cc3cfa7568f820b317b7b3984780ec1d992dbce76c
-    source_date_epoch: 1784567529
+    path: artifacts/equilibrium-neutral-held-v1/8318e75/epcsaft_equilibrium-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
+    sha256: 8ecd70e0192b76b3a107629201c3e8bf34f2d945ca7c8192f824a0df7c9dde12
+    source_date_epoch: 1784573453
     clean_builds_performed: 1
     archive_byte_reproducibility_claimed: false
-    wheel_record_sha256: 7783a4e55a870d0f6b064d8493b3e0436ea0d97b4912a734a13a33044788ce0a
-    extracted_extension_sha256: 412f004fe6254a4e60f2bd270e9e82bb15627648f6aa466b44158fac46445016
+    wheel_record_sha256: 55fd3a3d4f086d9a07cd65990d548fbe541f589e63434c349ccde10d3abadf9e
+    installed_record_sha256: 07726c83baa83e083d8e3c577fc514bcfc330990bd4c7dc77cbb489334f0e1dd
+    extracted_extension_sha256: ef796357a992b5cbe2f3442fd2a4005172d684caabb9dfe77ea8262943d01661
   package_tests:
     - tests/test_saturation.py
     - tests/test_held.py
@@ -197,11 +201,17 @@ evidence:
   flash_source_anchor_status: package-local-pass
   one_phase_source_inference_anchor: may2015-ch4-c2h6-011
   one_phase_source_inference_feed: [0.5627, 0.4373]
-  source_test_result: 76 passed
-  installed_wheel_test_result: 76 passed
+  source_test_result: 78 passed
+  installed_wheel_test_result: 78 passed
   installed_exact_derivative_result: 4 passed
-  complete_candidate_review: pending
+  corrected_candidate_rereview: pending
   held_validation_campaign: not-run
+  previous_rejected_subject:
+    implementation_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
+    evidence_commit: 5a9eb868a4bcad2c3821ff7bfc3274d1f609ac00
+    artifact_sha256: be50837d73facbf0f2cb02cc3cfa7568f820b317b7b3984780ec1d992dbce76c
+    receipt_sha256: c5798485a643d5c6f2461b8a8f6f95dc424d5719b97b9d6d503d941c04f06e28
+    disposition: correction-required; retained immutable provenance
   previous_fixed_route_validation:
     repository_head: 5a678beff38717478fd333c65e77f005cc2f6b15
     record: results/consumer-slice-2-validation-record.json
@@ -259,3 +269,13 @@ ratchet:
     build_dependencies_added: []
     tracked_files_at_implementation_commit: 49
     tracked_files_with_candidate_receipt: 50
+  neutral_held_status_correction:
+    comparison_base_commit: 5a9eb868a4bcad2c3821ff7bfc3274d1f609ac00
+    implementation_commit: 8318e755d4a8e490822fdf7bb2685d8c5af6436c
+    implementation_tree: 3e8c98a13f1daca975b33c26fce3d143a1f34493
+    files_changed: 7
+    insertions: 179
+    deletions: 15
+    public_exports_added: []
+    public_fields_added: [solver_status, numerical_status, physical_status]
+    second_result_or_diagnostics_owner_added: false

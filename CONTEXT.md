@@ -14,10 +14,10 @@ The lab copy is non-authoritative provenance and research for this accepted
 slice. The receipt does not imply phase discovery, global stability, mixture
 equilibrium, release publication, or any capability outside its exact subject.
 
-The repository now also contains the complete local `neutral-held-v1`
-candidate at implementation commit
-`549162a3a9cfd6f02894f8189c624ba1aa2139fb`, tree
-`fe96ea3469405242cb4dbdb652e105dab5003f65`. It is limited to the reviewed
+The repository now also contains the corrected complete local
+`neutral-held-v1` candidate at implementation commit
+`8318e755d4a8e490822fdf7bb2685d8c5af6436c`, tree
+`3e8c98a13f1daca975b33c26fce3d143a1f34493`. It is limited to the reviewed
 Gross--Sadowski methane/ethane fingerprint
 `sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286`
 and the audited May et al. (2015), Table 5 rectangle: 203.22--243.61 K,
@@ -29,7 +29,9 @@ supplied phase count or phase guesses. Finite search cannot prove global
 stability: every result retains
 `globality_certificate="not_guaranteed"`, and search exhaustion, unsupported
 trace or third-phase cases, provider failures, and indeterminate states fail
-closed. The accepted pure-saturation route and authority are unchanged.
+closed. HELD diagnostics report solver, numerical, and physical evidence on
+independent `passed`, `failed`, or `not_adjudicated` axes. The accepted pure-
+saturation route and authority are unchanged.
 
 The retained scientific source is the Pereira Markdown in the permanent lab
 at commit `13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b`, blob
@@ -45,13 +47,16 @@ record 12/17 admitted rows, solved composition misses 002/009/010/011, row 012
 without a package-accepted local state, and maximum material-balance error
 1.11e-16. HELD does not erase or reclassify those model/data results.
 
-The complete HELD candidate is retained as one wheel built from implementation
-commit `549162a3` with `SOURCE_DATE_EPOCH=1784567529` under
-`artifacts/equilibrium-neutral-held-v1/549162a/`. Its SHA-256 is
-`be50837d73facbf0f2cb02cc3cfa7568f820b317b7b3984780ec1d992dbce76c`.
+The corrected HELD candidate is retained as one wheel built from implementation
+commit `8318e755` with `SOURCE_DATE_EPOCH=1784573453` under
+`artifacts/equilibrium-neutral-held-v1/8318e75/`. Its SHA-256 is
+`8ecd70e0192b76b3a107629201c3e8bf34f2d945ca7c8192f824a0df7c9dde12`.
+The earlier `549162a3` wheel with SHA-256
+`be50837d73facbf0f2cb02cc3cfa7568f820b317b7b3984780ec1d992dbce76c`
+remains immutable rejected-subject provenance and was not overwritten.
 The candidate receipt is
 `receipts/promotion/promotion-0002-neutral-held-v1-candidate.yaml`. Permanent-
-lab complete-candidate review and Validation's separate HELD campaign remain
+lab corrected-candidate rereview and Validation's separate HELD campaign remain
 pending; no promotion or authority transfer has occurred.
 
 `runtime_source_of_truth: true`
@@ -64,7 +69,7 @@ pending; no promotion or authority transfer has occurred.
 
 `local_candidate_authority_effect: none`
 
-`local_candidate_review: pending-complete-candidate-review`
+`local_candidate_review: pending-corrected-candidate-rereview`
 
 `validation_admission: not_run`
 
@@ -85,7 +90,7 @@ The executable plan is
 `docs/plans/2026-07-17-neutral-held-v1-plan.md`. It freezes internal Stage I,
 Stage II, Stage III, final public cutover, fixed-route deletion, isolated-wheel
 proof, and review checkpoints. Its local implementation status is
-`complete_candidate_pending_review`; the plan and candidate receipt do not
+`corrected_candidate_pending_rereview`; the plan and candidate receipt do not
 admit the provider mixture tail or create an accepted equilibrium capability.
 
-`implementation_plan_status: complete_candidate_pending_review`
+`implementation_plan_status: corrected_candidate_pending_rereview`
