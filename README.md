@@ -62,6 +62,19 @@ retains invalid-input, provider, exhausted-search, scope, and indeterminate
 diagnostics. Every result reports `globality_certificate="not_guaranteed"`;
 the accepted pure-saturation authority above is unchanged.
 
+The candidate fingerprint is
+`sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286`.
+The retained Pereira source is the permanent-lab Markdown at commit
+`13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b`, blob
+`dde7f02d4c93cce86804a8e6b62d37602990ac21`; it is provenance, not a build,
+test, validation, or runtime dependency.
+
+The earlier fixed-two-phase campaign remains `NON_ADMISSION` under the frozen
+May `3*u_c` composition contract: 12 of 17 rows passed, rows 002/009/010/011
+were solved model/data misses, and row 012 had no package-accepted local state.
+HELD does not erase or reclassify those results. Validation's separate HELD
+campaign has not run yet.
+
 ## Native boundary
 
 The extension calls `epcsaft.native_sdk(model)` and retains one model-bound
@@ -74,9 +87,14 @@ import private provider modules.
 
 Source builds require Python 3.13, CMake, a C++17 compiler, pkg-config, Ipopt,
 and the non-editable provider wheel installed in the build environment. The
-admission gate hashes the exact provider wheel before creating an isolated
-build environment; the replayable commands and both wheel hashes are recorded
-in the candidate receipt.
+local candidate gate hashes the exact provider wheel before creating an
+isolated build environment. Implementation commit `549162a3` is retained as
+one read-only wheel under
+`artifacts/equilibrium-neutral-held-v1/549162a/`; the replayable commands,
+declared `SOURCE_DATE_EPOCH`, and artifact hashes are recorded in
+`receipts/promotion/promotion-0002-neutral-held-v1-candidate.yaml`. Only one
+clean candidate build was performed, so no archive-byte reproducibility claim
+is made.
 
 ```text
 uv run --isolated --no-project --python 3.13 \
@@ -96,4 +114,6 @@ The design and equations are recorded in
 `docs/designs/2026-07-17-neutral-held-v1.md`. Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
-solve is not a phase-discovery or global-stability proof.
+solve is not a phase-discovery or global-stability proof. The local HELD
+candidate has authority effect `none` until separate review, validation,
+provider-tail promotion, equilibrium promotion, and explicit user approval.

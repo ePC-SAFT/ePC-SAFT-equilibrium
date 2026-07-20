@@ -1,5 +1,5 @@
 version: 1
-status: accepted-pure-saturation-with-local-flash-candidate
+status: accepted-pure-saturation-with-local-neutral-held-v1-candidate
 
 authority:
   governance_doctrine_revision: 2
@@ -7,7 +7,7 @@ authority:
   production_owner: ePC-SAFT/ePC-SAFT-equilibrium
   effective_receipt: promotion-0018-equilibrium-pure-saturation-v1
   promotion_status: accepted
-  local_flash_authority_effect: none
+  local_candidate_authority_effect: none
 
 accepted_capability:
   name: pure-component-saturation-v1
@@ -49,49 +49,85 @@ accepted_capability:
       temperature_domain_k: [85.0, 523.0]
 
 local_candidate:
-  name: neutral-two-phase-tp-flash-v1
-  permanent_lab_review: APPROVE_LOCAL_CANDIDATE
-  validation_admission: NON_ADMISSION
-  promotion_status: blocked
+  name: neutral-held-v1
+  implementation_status: complete-local-candidate
+  implementation_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
+  implementation_tree: fe96ea3469405242cb4dbdb652e105dab5003f65
+  permanent_lab_review: pending-complete-candidate-review
+  validation_admission: not-run
+  promotion_status: not-requested
   authority_effect: none
   scope: >-
-    One local neutral nonassociating methane/ethane fixed-two-phase TP
-    calculation inside the audited May et al. (2015), Table 5 rectangular
-    temperature, pressure, and methane-feed domain.
+    One bounded neutral nonassociating methane/ethane TP calculation using the
+    complete Pereira HELD Stage-I/II/III controller inside the audited May et
+    al. (2015), Table 5 rectangular temperature, pressure, and methane-feed
+    domain, with one- or two-phase outcomes and no caller-supplied phase count.
   parameter_fingerprint: sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286
   temperature_domain_k: [203.22, 243.61]
   pressure_domain_pa: [2124000.0, 6885000.0]
   methane_feed_domain: [0.4661, 0.66705]
+  retained_source:
+    repository: tannerpolley/ePC-SAFT-lab
+    commit: 13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b
+    blob: dde7f02d4c93cce86804a8e6b62d37602990ac21
+    path: >-
+      docs/papers/md/Equilibrium/Pereira et al. - 2012 - The HELD algorithm
+      for multicomponent, multiphase equilibrium calculations with generic
+      equations of.md
+    runtime_dependency: false
   formulation: >-
-    Exact direct minimization of the dimensionless two-phase Helmholtz-plus-PV
-    objective in component amounts and log phase volumes, subject to two
-    linear component balances.
-  coordinates: [n_L_CH4, n_L_C2H6, log_V_L, n_V_CH4, n_V_C2H6, log_V_V]
+    Finite deterministic Stage I homogeneous-reference and TPD/tunneling
+    search, binary Stage II dual outer/lower envelope and candidate lifecycle,
+    and direct total-free-energy Stage III refinement with feedback.
+  provider_coordinates: [n_CH4, n_C2H6, V]
+  internal_phase_coordinates: [x_CH4, log_V]
+  stage_iii_coordinates: [n_L_CH4, n_L_C2H6, log_V_L, n_V_CH4, n_V_C2H6, log_V_V]
+  globality_certificate: not_guaranteed
+  resource_profile:
+    stage_i_tunneling_starts: 20
+    stage_ii_major_iterations_max: 100
+    stage_ii_lower_starts_per_iteration: 20
+    ipopt_iterations_per_solve: 300
+    composition_bounds: [1.0e-8, 0.99999999]
+    molar_volume_bounds_m3_mol: [1.0e-5, 1.0e-1]
   local_certificate:
-    - accepted Ipopt termination and material-balance closure
-    - one perturbed confirmation solve
-    - specified-pressure stationarity in both phases
-    - component chemical-potential equality
-    - independent KKT residual using retained equality and bound multipliers
-    - positive distinct phase densities and inactive bounds
-    - exact provider fingerprint and Hessian evidence
-  globality_certificate: none
+    - distinct negative, no-negative-found, and indeterminate Stage I outcomes
+    - exact transformed provider gradient and Hessian evidence
+    - deterministic bounded search profiles with fail-closed resource caps
+    - independently checked binary outer envelope and retained cut diagnostics
+    - direct Stage III material, pressure, KKT, inactive-bound, HELD-gap, chemical-potential, distinct-phase, and confirmation checks
+    - exact provider fingerprint and immutable installed-wheel evidence
   tolerances:
+    tpd_negative_threshold: -1.0e-8
+    epsilon_lambda: 0.5
+    epsilon_b: 1.0e-2
+    epsilon_x: 1.0e-3
+    epsilon_mu: 1.0e-6
+    epsilon_g: 1.0e-6
     solver_constraint_max: 1.0e-10
     material_balance_max_abs: 1.0e-10
     pressure_stationarity_max_relative: 1.0e-8
-    chemical_potential_max_abs: 1.0e-8
     kkt_stationarity_max_abs: 1.0e-8
     confirmation_max_difference: 1.0e-7
     minimum_relative_phase_density_distance: 1.0e-3
     inactive_bound_margin: 1.0e-7
+    stage_iii_candidate_radius_mol: 1.0e-3
+  fail_closed_outcomes: [search_exhausted, scope_exceeded, indeterminate, error]
+  known_non_admission:
+    subject: neutral-two-phase-tp-flash-v1
+    validation_status: NON_ADMISSION
+    admitted_rows: 12/17
+    solved_composition_miss_rows: ["002", "009", "010", "011"]
+    no_package_accepted_local_state_row: "012"
+    interpretation: historical model/data evidence retained; not reclassified by HELD
 
 provider_pins:
   accepted_pure_prefix:
     commit: 02a03a440cf53f3b1d4304556a19a54c79c70179
     wheel_sha256: e83f4b108d2df73888f7768f99f1c54b01ad86541b55afc1e43bbef2e1fb8f93
     test_receipt_sha256: 7c097c3ec8742d1714ea435973c605d5c18290e27729c1a12b3852926e61c399
-  flash_mixture_tail:
+  neutral_held_mixture_tail:
+    published_provider_main: 2a4743d9a8dfeede609163279bdbe6085c214020
     candidate_records_commit: 25e597289b044ff3e5af70b3572279293555b9f9
     code_commit: 0cd75b96f1dddba024c324df500493bd1564bf5c
     wheel_sha256: 17c6735ee117469b13b76b6a669d0b4430071c8eaebdf1e405baefc9adcb838b
@@ -142,31 +178,49 @@ public_surface:
   build_dependencies: [scikit-build-core, pybind11, CMake, pkg-config, Ipopt]
 
 evidence:
+  implementation_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
+  implementation_tree: fe96ea3469405242cb4dbdb652e105dab5003f65
+  candidate_receipt: receipts/promotion/promotion-0002-neutral-held-v1-candidate.yaml
+  artifact:
+    path: artifacts/equilibrium-neutral-held-v1/549162a/epcsaft_equilibrium-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
+    sha256: be50837d73facbf0f2cb02cc3cfa7568f820b317b7b3984780ec1d992dbce76c
+    source_date_epoch: 1784567529
+    clean_builds_performed: 1
+    archive_byte_reproducibility_claimed: false
+    wheel_record_sha256: 7783a4e55a870d0f6b064d8493b3e0436ea0d97b4912a734a13a33044788ce0a
+    extracted_extension_sha256: 412f004fe6254a4e60f2bd270e9e82bb15627648f6aa466b44158fac46445016
   package_tests:
     - tests/test_saturation.py
     - tests/test_held.py
   derivative_oracle: independent central directional differences in package tests
   flash_source_anchor: may2015-ch4-c2h6-001
   flash_source_anchor_status: package-local-pass
-  validation_repository_head: 5a678beff38717478fd333c65e77f005cc2f6b15
-  validation_record: results/consumer-slice-2-validation-record.json
-  validation_record_sha256: 239c84788f75f8c66240c83e4f5874f112e1197dafad6273e1c8ec4efe994d24
-  predictive_validation_status: NON_ADMISSION
-  admitted_rows: 12/17
-  solved_composition_miss_rows: ["002", "009", "010", "011"]
-  no_package_accepted_local_state_row: "012"
-  maximum_material_balance_error: 1.11e-16
-  package_local_candidate_approval_distinct_from_validation_admission: true
+  one_phase_source_inference_anchor: may2015-ch4-c2h6-011
+  one_phase_source_inference_feed: [0.5627, 0.4373]
+  source_test_result: 76 passed
+  installed_wheel_test_result: 76 passed
+  installed_exact_derivative_result: 4 passed
+  complete_candidate_review: pending
+  held_validation_campaign: not-run
+  previous_fixed_route_validation:
+    repository_head: 5a678beff38717478fd333c65e77f005cc2f6b15
+    record: results/consumer-slice-2-validation-record.json
+    record_sha256: 239c84788f75f8c66240c83e4f5874f112e1197dafad6273e1c8ec4efe994d24
+    predictive_validation_status: NON_ADMISSION
+    admitted_rows: 12/17
+    solved_composition_miss_rows: ["002", "009", "010", "011"]
+    no_package_accepted_local_state_row: "012"
+    maximum_material_balance_error: 1.11e-16
   pure_scientific_command: python scripts/validate_saturation.py
   pure_physical_oracle: data/reference/pure_saturation_anchors.csv
   pure_isolated_artifact_evidence: receipts/promotion/promotion-0001-pure-saturation-v1-candidate.yaml
   pure_independent_review: reviews/2026-07-17-pure-saturation-v1.md
 
 excluded:
-  - phase discovery and variable phase count
-  - TPD and global stability
+  - guaranteed deterministic global optimization or a global-stability certificate
+  - arbitrary component counts, more than two phases, and trace-bound refinement
   - density closure and density-root derivatives
-  - third derivatives for the flash route
+  - third derivatives for neutral HELD
   - association, electrolyte, ionic, and reactive equilibrium
   - bubble-pressure and dew-pressure routes
   - critical completion and continuation
@@ -181,3 +235,27 @@ ratchet:
     Every increase beyond the accepted pure-saturation baseline requires a
     named capability and retained evidence; local candidate code creates no
     authority without a promotion receipt.
+  neutral_held_cutover:
+    review_c_base_commit: a33341138ade9a1861a7b88249a641971ae7e650
+    review_c_base_tree: 484e6cc8271bcc7ca0c85b2d1983dce5aa7bbd1f
+    implementation_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
+    implementation_tree: fe96ea3469405242cb4dbdb652e105dab5003f65
+    files_changed: 14
+    insertions: 797
+    deletions: 1080
+    net_lines: -283
+    retired_files:
+      - cpp/src/two_phase_flash.cpp
+      - cpp/src/two_phase_flash.hpp
+      - tests/test_two_phase_flash.py
+    removed_public_exports: [FlashDiagnostics, TwoPhaseFlashResult, two_phase_flash]
+    added_public_exports: [HeldDiagnostics, TpFlashResult, tp_flash]
+    compatibility_aliases_added: 0
+    native_targets_before: 1
+    native_targets_after: 1
+    native_modules_before: 1
+    native_modules_after: 1
+    runtime_dependencies_added: []
+    build_dependencies_added: []
+    tracked_files_at_implementation_commit: 49
+    tracked_files_with_candidate_receipt: 50

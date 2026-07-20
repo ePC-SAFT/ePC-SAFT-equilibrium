@@ -1,6 +1,8 @@
 # Neutral HELD v1 Design
 
-Status: approved written specification; implementation not started
+Status: complete local candidate at implementation commit
+`549162a3a9cfd6f02894f8189c624ba1aa2139fb`; awaiting permanent-lab
+complete-candidate review and Validation's installed-artifact campaign
 
 Approved in discussion: 2026-07-17
 

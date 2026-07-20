@@ -1,0 +1,290 @@
+schema_version: 1
+receipt_id: promotion-0002-neutral-held-v1-candidate
+kind: promotion_candidate
+status: ready_for_permanent_lab_review
+authority_effect: none
+subject: Complete local bounded neutral methane/ethane HELD candidate
+producer: codex-implementation-owner:/root
+reviewer: "pending:permanent-lab"
+
+approval:
+  implementation_authorization:
+    state: approved
+    approver: tannerpolley
+    source_thread: 019f7142-b9de-79a1-ad8c-c488d37cfb7f
+    scope: Task 7 documentation, immutable artifact, and candidate evidence only
+  complete_candidate_review:
+    state: pending
+    reviewer: permanent-lab
+  validation_campaign:
+    state: not_run
+    owner: ePC-SAFT/ePC-SAFT-validation
+  promotion_authority:
+    state: pending
+    approver: tannerpolley
+  authority_transferred: false
+
+environment:
+  os: Linux 7.0.0-28-generic x86_64
+  python: CPython 3.13.14
+  compiler: GNU C++ 13.3.0
+  cmake: 3.28.3
+  ipopt: 3.11.9
+  uv: 0.11.28
+  git: 2.43.0
+  isolation: exact local provider and equilibrium wheels; test tooling and declared runtime dependencies only; Python isolated mode; no sibling-source import
+
+scientific_source:
+  repository: tannerpolley/ePC-SAFT-lab
+  commit: 13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b
+  tree: c821e06e169ff3c3218cb5dbcf52309e46cb9199
+  path: >-
+    docs/papers/md/Equilibrium/Pereira et al. - 2012 - The HELD algorithm
+    for multicomponent, multiphase equilibrium calculations with generic
+    equations of.md
+  blob: dde7f02d4c93cce86804a8e6b62d37602990ac21
+  role: retained provenance distilled by the repository design; not a build, test, validation, or runtime dependency
+
+destination:
+  repository: ePC-SAFT/ePC-SAFT-equilibrium
+  implementation_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
+  implementation_tree: fe96ea3469405242cb4dbdb652e105dab5003f65
+  review_c_commit: a33341138ade9a1861a7b88249a641971ae7e650
+  review_c_tree: 484e6cc8271bcc7ca0c85b2d1983dce5aa7bbd1f
+  package: epcsaft_equilibrium
+  distribution: epcsaft-equilibrium
+  version: 0.1.0.dev0
+  native_modules: 1
+  native_targets: 1
+
+provider_pin:
+  repository: ePC-SAFT/ePC-SAFT
+  published_main_commit: 2a4743d9a8dfeede609163279bdbe6085c214020
+  published_main_tree: c86c7efe1c364819bd09c2c1a05c8597630d4ab7
+  neutral_mixture_implementation_commit: 0cd75b96f1dddba024c324df500493bd1564bf5c
+  neutral_mixture_implementation_tree: 11a0a4ea1363de7915334b36d4887fafd5944598
+  candidate_record_commit: 25e597289b044ff3e5af70b3572279293555b9f9
+  candidate_record_tree: f5c45a7d2b20fdda6aca8846d00b479af4413fad
+  promotion_status: unpromoted-candidate-prerequisite
+  wheel_path: artifacts/provider-neutral-mixture-sdk-v1/25e5972/epcsaft-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
+  wheel_sha256: 17c6735ee117469b13b76b6a669d0b4430071c8eaebdf1e405baefc9adcb838b
+  installed_public_header: epcsaft/include/epcsaft/native_sdk_v1.h
+  installed_public_header_sha256: b1dc4a666799603ea87fe515ff08226455a11e52908b7109ebe1841369cb92df
+  capsule: epcsaft.native_sdk.v1
+  abi_version: 1
+  fixed_mixture_prefix_ends_through: evaluate_mixture_phase
+  table_size_rule: table size is at least the fixed v1 mixture prefix; an appended future tail is allowed
+  component_count: 2
+  coordinate_order: [n_CH4_mol, n_C2H6_mol, V_m3]
+  derivative_order: 2
+
+artifact:
+  root: artifacts/equilibrium-neutral-held-v1/549162a
+  equilibrium_wheel:
+    file: epcsaft_equilibrium-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
+    sha256: be50837d73facbf0f2cb02cc3cfa7568f820b317b7b3984780ec1d992dbce76c
+    size_bytes: 258033
+    mode: "0444"
+  source_date_epoch:
+    value: 1784567529
+    derivation: git show -s --format=%ct 549162a3a9cfd6f02894f8189c624ba1aa2139fb
+  clean_builds_performed: 1
+  second_clean_build_performed: false
+  archive_byte_reproducibility_claimed: false
+  wheel_files: 9
+  wheel_native_modules: 1
+  wheel_record_sha256: 7783a4e55a870d0f6b064d8493b3e0436ea0d97b4912a734a13a33044788ce0a
+  wheel_record_verification: 8 hashed entries passed; RECORD self-entry intentionally unhashed
+  installed_record_sha256: fa4e7a3f6b41ad4ccabe9747910760492334df5be84608573a8558673e7d8267
+  extracted_extension_sha256: 412f004fe6254a4e60f2bd270e9e82bb15627648f6aa466b44158fac46445016
+
+build:
+  clean_implementation_tree: true
+  command: >-
+    SOURCE_DATE_EPOCH=1784567529 uv run --isolated --no-project --python 3.13
+    --with "$PINNED_PROVIDER_WHEEL" --with scikit-build-core --with pybind11
+    -- uv build --no-build-isolation --wheel --out-dir "$ARTIFACT_ROOT"
+  result: passed; 8 native configure/build/link steps completed
+  cmake_provider_check: exact epcsaft 0.1.0.dev0 non-editable distribution required
+
+verification:
+  source_checks:
+    ruff_command: .venv/bin/ruff check --no-cache .
+    ruff: passed
+    ruff_format_command: .venv/bin/ruff format --check .
+    ruff_format: passed; 6 files already formatted
+    mypy_command: .venv/bin/mypy --no-incremental
+    mypy_strict: passed; 3 source files
+    pytest_command: .venv/bin/python -m pytest -p no:cacheprovider -q
+    pytest: 76 passed
+    scientific_command: .venv/bin/python scripts/validate_saturation.py
+    scientific_result: methane, ethane, and propane anchors passed unchanged
+  isolated_install:
+    environment: second CPython 3.13.14 virtual environment
+    installed_distributions: exact provider wheel, exact equilibrium wheel, pytest, and declared runtime/test dependencies
+    source_checkout_on_sys_path: false
+    command: >-
+      cd /run && env -u PYTHONPATH "$ISOLATED_PYTHON" -I -m pytest
+      -p no:cacheprovider "$EQUILIBRIUM_CHECKOUT/tests" -q
+    result: 76 passed
+    derivative_command: >-
+      cd /run && env -u PYTHONPATH "$ISOLATED_PYTHON" -I -m pytest
+      -p no:cacheprovider "$EQUILIBRIUM_CHECKOUT/tests/test_held.py"
+      -k 'exact_derivatives_at_may_row_001' -q
+    derivative_result: 4 passed; 57 deselected
+    scientific_command: >-
+      cd /run && env -u PYTHONPATH "$ISOLATED_PYTHON" -I
+      "$EQUILIBRIUM_CHECKOUT/scripts/validate_saturation.py"
+    scientific_result: byte-for-value parity with source execution
+    import_check: provider, equilibrium package, and native module loaded only from the isolated site-packages directory
+
+capability:
+  name: neutral-held-v1
+  route: bounded neutral methane/ethane TP phase discovery with one complete HELD Stage-I/II/III controller
+  parameter_fingerprint: sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286
+  temperature_domain_k: [203.22, 243.61]
+  pressure_domain_pa: [2124000.0, 6885000.0]
+  methane_feed_domain: [0.4661, 0.66705]
+  public_operation: tp_flash
+  public_result: TpFlashResult
+  public_diagnostics: HeldDiagnostics
+  globality_certificate: not_guaranteed
+  provider_ownership: extensive neutral-mixture Helmholtz value, gradient, Hessian, and pressure diagnostic in component amounts and volume
+  equilibrium_ownership: exact coordinate transforms, Stage I tunneling, binary Stage II envelope/lower search, Stage III direct refinement, Ipopt, certification, diagnostics, and result serialization
+  accepted_terminal_outcomes: [one_phase, accepted]
+  fail_closed_outcomes: [search_exhausted, scope_exceeded, indeterminate, error]
+
+resource_profile:
+  stage_i_tunneling_starts: 20
+  stage_ii_major_iterations_max: 100
+  stage_ii_lower_starts_per_iteration: 20
+  ipopt_iterations_per_solve: 300
+  composition_bounds: [1.0e-8, 0.99999999]
+  molar_volume_bounds_m3_mol: [1.0e-5, 1.0e-1]
+  tpd_negative_threshold: -1.0e-8
+  epsilon_lambda: 0.5
+  epsilon_b: 1.0e-2
+  epsilon_x: 1.0e-3
+  relative_density_separation: 1.0e-3
+  epsilon_mu: 1.0e-6
+  epsilon_g: 1.0e-6
+  solver_constraint_tolerance: 1.0e-10
+  local_physical_tolerance: 1.0e-8
+  confirmation_tolerance: 1.0e-7
+  stage_iii_candidate_radius_mol: 1.0e-3
+
+installed_scientific_evidence:
+  one_phase_case:
+    source_row: may2015-ch4-c2h6-011
+    source_status: source-backed-inference; not a direct observation or global proof
+    temperature_k: 243.61
+    pressure_pa: 6691000.0
+    feed: [0.5627, 0.4373]
+    outcome: one_phase
+    search_status: stage_i_no_negative
+    phase_volume_m3: 7.560240774632844e-05
+    phase_density_mol_m3: 13227.091964522308
+    eos_pressure_pa: 6690999.999913541
+    total_free_energy_over_rt: 6.746961017154733
+    attempts: 42
+    best_tpd: -2.9899255183455087e-15
+    globality_certificate: not_guaranteed
+  fail_closed_case:
+    source_row: may2015-ch4-c2h6-001
+    outcome: scope_exceeded
+    search_status: third_candidate
+    lower_bound: 6.47076258511698
+    upper_bound: 6.4712745739279685
+    held_gap: 0.0005119888109881288
+    material_balance_max_abs: 1.1102230246251565e-16
+    pressure_stationarity_max_relative: 1.6688515197992264e-10
+    kkt_stationarity_max_abs: 1.5987211554602254e-14
+    chemical_potential_max_relative: 0.05065053051278392
+    confirmation_succeeded: false
+    attempts: 15
+    major_iterations: 4
+    globality_certificate: not_guaranteed
+
+previous_non_admission:
+  subject: neutral-two-phase-tp-flash-v1
+  validation_repository_commit: 5a678beff38717478fd333c65e77f005cc2f6b15
+  validation_record: results/consumer-slice-2-validation-record.json
+  validation_record_sha256: 239c84788f75f8c66240c83e4f5874f112e1197dafad6273e1c8ec4efe994d24
+  comparison_contract: absolute composition error <= 3*uc with no model-accuracy floor
+  result: NON_ADMISSION
+  admitted_rows: 12/17
+  solved_composition_miss_rows: ["002", "009", "010", "011"]
+  no_package_accepted_local_state_row: "012"
+  maximum_material_balance_error: 1.11e-16
+  interpretation: historical model/data evidence retained; HELD does not erase or reclassify it
+
+public_and_binary_audit:
+  python_exports:
+    - FlashError
+    - HeldDiagnostics
+    - PhaseState
+    - SaturationDiagnostics
+    - SaturationError
+    - SaturationResult
+    - SolverAttemptDiagnostics
+    - TpFlashResult
+    - saturation
+    - tp_flash
+  private_native_controller_binding: _solve_tp_flash
+  public_stage_api: none
+  public_solver_settings_seed_or_backend: none
+  displaced_exports_absent: [FlashDiagnostics, TwoPhaseFlashResult, two_phase_flash]
+  displaced_native_bindings_absent: [_held, _solve_two_phase_flash, evaluate_two_phase_flash_nlp]
+  compatibility_aliases: none
+  wheel_contains_provider_source_or_objects: false
+  provider_or_eos_dynamic_symbols: none
+  direct_native_link: Ipopt and platform numerical/runtime libraries only
+  defined_native_entry_points: [PyInit__equilibrium]
+  native_targets: 1
+  native_modules: 1
+  lab_migration_or_sibling_dependency: none
+
+architecture_ratchet:
+  comparison_base_commit: a33341138ade9a1861a7b88249a641971ae7e650
+  implementation_commit: 549162a3a9cfd6f02894f8189c624ba1aa2139fb
+  files_changed: 14
+  insertions: 797
+  deletions: 1080
+  net_lines: -283
+  retired_files:
+    - cpp/src/two_phase_flash.cpp
+    - cpp/src/two_phase_flash.hpp
+    - tests/test_two_phase_flash.py
+  removed_public_exports: [FlashDiagnostics, TwoPhaseFlashResult, two_phase_flash]
+  added_public_exports: [HeldDiagnostics, TpFlashResult, tp_flash]
+  runtime_dependencies_added: []
+  build_dependencies_added: []
+  second_result_or_diagnostics_owner_added: false
+
+pending_gates:
+  permanent_lab_complete_candidate_review: pending
+  validation_installed_artifact_campaign: not_run
+  provider_tail_promotion: not_requested
+  equilibrium_promotion: not_requested
+  push_publication_or_release: not_authorized
+
+excluded:
+  - guaranteed deterministic global optimization or a global-stability proof
+  - arbitrary multicomponent systems, more than two phases, and trace-bound refinement
+  - association, electrolyte, ionic, and reactive equilibrium
+  - density closure, density roots, and third derivatives
+  - bubble-pressure and dew-pressure routes
+  - critical completion and continuation
+  - regression and Ceres
+  - provider equations, source compilation, private headers, and private Python imports
+  - generic LP/NLP, route, phase-topology, fallback, seed, solver-setting, and backend APIs
+  - compatibility aliases for the displaced fixed-two-phase route
+  - Validation's HELD campaign, release machinery, publication, promotion, and remote mutation
+
+authority_effect_statement: >-
+  This candidate receipt transfers no authority. Accepted pure saturation is
+  unchanged, the provider mixture tail remains an unpromoted prerequisite,
+  and the lab remains the transitional runtime authority for neutral HELD
+  until separate review, validation, ordered promotion receipts, and explicit
+  user approval bind the exact artifacts. No guaranteed globality or excluded
+  capability is implied.
