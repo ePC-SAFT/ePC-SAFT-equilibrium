@@ -1330,6 +1330,46 @@ py::dict held2_coordinate_evidence(
     return result;
 }
 
+py::dict held2_phase_block_evidence(
+    const std::vector<double>& charges,
+    const std::vector<double>& independent_modified_fractions,
+    double log_volume,
+    double pressure_over_rt,
+    double target_pressure_pa,
+    double helmholtz_over_rt,
+    const std::vector<double>& gradient,
+    const std::vector<double>& hessian,
+    double provider_pressure_pa
+) {
+    const epcsaft_equilibrium::Held2Coordinates coordinates =
+        epcsaft_equilibrium::make_held2_coordinates(charges);
+    epcsaft_equilibrium::Held2PhysicalPhaseBlock block;
+    block.helmholtz_over_rt = helmholtz_over_rt;
+    block.gradient = gradient;
+    block.hessian = hessian;
+    block.pressure_pa = provider_pressure_pa;
+    const epcsaft_equilibrium::Held2StateEvaluation evaluation =
+        epcsaft_equilibrium::evaluate_held2_phase_block(
+            coordinates,
+            independent_modified_fractions,
+            log_volume,
+            pressure_over_rt,
+            target_pressure_pa,
+            block
+        );
+    py::dict result;
+    result["modified_fractions"] = evaluation.modified_fractions;
+    result["physical_amounts"] = evaluation.physical_amounts;
+    result["volume"] = evaluation.volume;
+    result["objective"] = evaluation.objective;
+    result["gradient"] = evaluation.gradient;
+    result["hessian"] = evaluation.hessian;
+    result["modified_potentials"] = evaluation.modified_potentials;
+    result["pressure_stationarity_relative"] =
+        evaluation.pressure_stationarity_relative;
+    return result;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_equilibrium, module) {
@@ -1503,6 +1543,19 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("physical_feed"),
         py::arg("variables"),
         py::arg("chemical_potentials")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_phase_block_evidence,
+        py::arg("charges"),
+        py::arg("independent_modified_fractions"),
+        py::arg("log_volume"),
+        py::arg("pressure_over_rt"),
+        py::arg("target_pressure_pa"),
+        py::arg("helmholtz_over_rt"),
+        py::arg("gradient"),
+        py::arg("hessian"),
+        py::arg("provider_pressure_pa")
     );
     module.def(
         "_solve_tp_flash",

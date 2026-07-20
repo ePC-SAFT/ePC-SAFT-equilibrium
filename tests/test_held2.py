@@ -238,3 +238,90 @@ def test_held2_manufactured_enforces_declared_modified_composition_bounds() -> N
             (0.2, 1.0 + 1.0e-12, 1.0, 1.0),
             CHEMICAL_POTENTIALS,
         )
+
+
+def test_held2_phase_block_affine_transform_has_exact_gradient_and_hessian() -> None:
+    charges = (0.0, 1.0, 2.0, -1.0, -2.0)
+    center = (0.12, 0.18, 0.08, math.log(0.9))
+    direction = (0.03, -0.02, 0.01, -0.04)
+    pressure_over_rt = 1.3
+    target_pressure_pa = 1.3
+    linear = (0.2, -0.1, 0.3, -0.2, 0.4, -0.15)
+    hessian = tuple(
+        tuple(
+            (1.0 if row == column else 0.0) + 0.02 * (min(row, column) + 1) * (max(row, column) + 2)
+            for column in range(6)
+        )
+        for row in range(6)
+    )
+
+    def physical_coordinates(values: tuple[float, ...]) -> tuple[float, ...]:
+        first, second, third, log_volume = values
+        modified = (1.0 - first - second - third, first, second, third)
+        physical = [0.0] * 5
+        physical[0] = modified[0]
+        physical[1] = modified[1] / 1.5
+        physical[2] = modified[2] / 2.0
+        physical[3] = modified[3] / 0.5
+        physical[4] = (physical[1] + 2.0 * physical[2] - physical[3]) / 2.0
+        return (*physical, math.exp(log_volume))
+
+    def block(values: tuple[float, ...]) -> tuple[float, tuple[float, ...], tuple[float, ...]]:
+        coordinates = physical_coordinates(values)
+        gradient = tuple(
+            linear[row] + sum(hessian[row][column] * coordinates[column] for column in range(6))
+            for row in range(6)
+        )
+        value = 0.7 + sum(linear[index] * coordinates[index] for index in range(6))
+        value += 0.5 * sum(
+            coordinates[row] * hessian[row][column] * coordinates[column]
+            for row in range(6)
+            for column in range(6)
+        )
+        return value, gradient, tuple(value for row in hessian for value in row)
+
+    def evaluate(values: tuple[float, ...]) -> dict[str, object]:
+        value, gradient, flat_hessian = block(values)
+        return _equilibrium._held2_adapter(
+            charges,
+            values[:3],
+            values[3],
+            pressure_over_rt,
+            target_pressure_pa,
+            value,
+            gradient,
+            flat_hessian,
+            -gradient[-1],
+        )
+
+    step = 2.0e-5
+    lower = evaluate(
+        tuple(value - step * delta for value, delta in zip(center, direction, strict=True))
+    )
+    result = evaluate(center)
+    upper = evaluate(
+        tuple(value + step * delta for value, delta in zip(center, direction, strict=True))
+    )
+
+    expected_coordinates = physical_coordinates(center)
+    assert result["physical_amounts"] == pytest.approx(expected_coordinates[:5], abs=1.0e-15)
+    assert result["volume"] == pytest.approx(expected_coordinates[-1], abs=1.0e-15)
+    assert result["objective"] == pytest.approx(
+        block(center)[0] + pressure_over_rt * expected_coordinates[-1], abs=1.0e-14
+    )
+    objective_directional = (upper["objective"] - lower["objective"]) / (2.0 * step)
+    assert objective_directional == pytest.approx(
+        sum(value * delta for value, delta in zip(result["gradient"], direction, strict=True)),
+        rel=2.0e-9,
+        abs=2.0e-10,
+    )
+    for row in range(4):
+        gradient_directional = (upper["gradient"][row] - lower["gradient"][row]) / (2.0 * step)
+        hessian_directional = sum(
+            result["hessian"][4 * row + column] * direction[column] for column in range(4)
+        )
+        assert gradient_directional == pytest.approx(hessian_directional, rel=3.0e-9, abs=3.0e-10)
+    assert tuple(result["hessian"]) == pytest.approx(
+        tuple(result["hessian"][4 * column + row] for row in range(4) for column in range(4)),
+        abs=2.0e-14,
+    )

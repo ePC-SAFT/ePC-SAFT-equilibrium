@@ -40,6 +40,33 @@ struct Held2Coordinates {
     const std::vector<double>& chemical_potentials
 );
 
+struct Held2PhysicalPhaseBlock {
+    double helmholtz_over_rt = 0.0;
+    std::vector<double> gradient;
+    std::vector<double> hessian;
+    double pressure_pa = 0.0;
+};
+
+struct Held2StateEvaluation {
+    std::vector<double> modified_fractions;
+    std::vector<double> physical_amounts;
+    double volume = 0.0;
+    double objective = 0.0;
+    std::vector<double> gradient;
+    std::vector<double> hessian;
+    std::vector<double> modified_potentials;
+    double pressure_stationarity_relative = 0.0;
+};
+
+[[nodiscard]] Held2StateEvaluation evaluate_held2_phase_block(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent_modified_fractions,
+    double log_volume,
+    double pressure_over_rt,
+    double target_pressure_pa,
+    const Held2PhysicalPhaseBlock& block
+);
+
 struct Held2Certificate {
     bool accepted = false;
     bool independent_evidence = false;

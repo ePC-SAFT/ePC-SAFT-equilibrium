@@ -341,6 +341,141 @@ std::vector<double> held2_transform_modified_potentials(
     return modified;
 }
 
+Held2StateEvaluation evaluate_held2_phase_block(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent_modified_fractions,
+    double log_volume,
+    double pressure_over_rt,
+    double target_pressure_pa,
+    const Held2PhysicalPhaseBlock& block
+) {
+    const std::size_t component_count = coordinates.charges.size();
+    const std::size_t independent_count = coordinates.independent_indices.size();
+    const std::size_t provider_coordinate_count = component_count + 1;
+    const std::size_t reduced_coordinate_count = independent_count + 1;
+    if (independent_modified_fractions.size() != independent_count) {
+        throw std::invalid_argument(
+            "independent modified composition size does not match the HELD2 chart"
+        );
+    }
+    require_finite_vector(independent_modified_fractions, "independent modified fractions");
+    if (!std::isfinite(log_volume) || !std::isfinite(pressure_over_rt)
+        || !std::isfinite(target_pressure_pa) || pressure_over_rt <= 0.0
+        || target_pressure_pa <= 0.0) {
+        throw std::invalid_argument("HELD2 phase state and pressure scales must be finite and positive");
+    }
+    if (block.gradient.size() != provider_coordinate_count
+        || block.hessian.size() != provider_coordinate_count * provider_coordinate_count) {
+        throw std::invalid_argument("HELD2 physical phase block has the wrong tensor dimensions");
+    }
+    require_finite_vector(block.gradient, "HELD2 physical phase gradient");
+    require_finite_vector(block.hessian, "HELD2 physical phase Hessian");
+    if (!std::isfinite(block.helmholtz_over_rt) || !std::isfinite(block.pressure_pa)) {
+        throw std::invalid_argument("HELD2 physical phase block scalars must be finite");
+    }
+
+    Held2StateEvaluation result;
+    result.modified_fractions.resize(coordinates.retained_indices.size(), 0.0);
+    double independent_sum = 0.0;
+    for (std::size_t independent = 0; independent < independent_count; ++independent) {
+        const double value = independent_modified_fractions[independent];
+        if (value < coordinates.independent_lower_bounds[independent]
+            || value > coordinates.independent_upper_bounds[independent]) {
+            throw std::invalid_argument("independent modified fraction is outside its source bound");
+        }
+        const auto retained = static_cast<std::size_t>(
+            std::find(
+                coordinates.retained_indices.begin(),
+                coordinates.retained_indices.end(),
+                coordinates.independent_indices[independent]
+            ) - coordinates.retained_indices.begin()
+        );
+        result.modified_fractions[retained] = value;
+        independent_sum += value;
+    }
+    if (!(independent_sum < 1.0)) {
+        throw std::invalid_argument("independent modified fractions must leave a positive dependent fraction");
+    }
+    const auto dependent_retained = static_cast<std::size_t>(
+        std::find(
+            coordinates.retained_indices.begin(),
+            coordinates.retained_indices.end(),
+            coordinates.dependent_index
+        ) - coordinates.retained_indices.begin()
+    );
+    result.modified_fractions[dependent_retained] = 1.0 - independent_sum;
+    result.physical_amounts = held2_lift_modified_fractions(
+        coordinates,
+        result.modified_fractions
+    );
+    result.volume = std::exp(log_volume);
+    if (!std::isfinite(result.volume) || result.volume <= 0.0) {
+        throw std::invalid_argument("HELD2 phase volume must be finite and positive");
+    }
+
+    std::vector<double> jacobian(
+        provider_coordinate_count * reduced_coordinate_count,
+        0.0
+    );
+    for (std::size_t independent = 0; independent < independent_count; ++independent) {
+        for (std::size_t retained = 0; retained < coordinates.retained_indices.size(); ++retained) {
+            const std::size_t component = coordinates.retained_indices[retained];
+            double modified_derivative = 0.0;
+            if (component == coordinates.independent_indices[independent]) {
+                modified_derivative = 1.0;
+            } else if (component == coordinates.dependent_index) {
+                modified_derivative = -1.0;
+            }
+            jacobian[component * reduced_coordinate_count + independent] =
+                modified_derivative / coordinates.modified_factors[retained];
+        }
+        double eliminated_derivative = 0.0;
+        const double eliminated_charge = coordinates.charges[coordinates.eliminated_index];
+        for (std::size_t component : coordinates.retained_indices) {
+            eliminated_derivative -= coordinates.charges[component] / eliminated_charge
+                * jacobian[component * reduced_coordinate_count + independent];
+        }
+        jacobian[coordinates.eliminated_index * reduced_coordinate_count + independent] =
+            eliminated_derivative;
+    }
+    jacobian[component_count * reduced_coordinate_count + independent_count] = result.volume;
+
+    std::vector<double> augmented_gradient = block.gradient;
+    augmented_gradient.back() += pressure_over_rt;
+    result.objective = block.helmholtz_over_rt + pressure_over_rt * result.volume;
+    result.gradient.assign(reduced_coordinate_count, 0.0);
+    for (std::size_t reduced = 0; reduced < reduced_coordinate_count; ++reduced) {
+        for (std::size_t provider = 0; provider < provider_coordinate_count; ++provider) {
+            result.gradient[reduced] +=
+                jacobian[provider * reduced_coordinate_count + reduced]
+                * augmented_gradient[provider];
+        }
+    }
+    result.hessian.assign(reduced_coordinate_count * reduced_coordinate_count, 0.0);
+    for (std::size_t row = 0; row < reduced_coordinate_count; ++row) {
+        for (std::size_t column = 0; column < reduced_coordinate_count; ++column) {
+            double value = 0.0;
+            for (std::size_t left = 0; left < provider_coordinate_count; ++left) {
+                for (std::size_t right = 0; right < provider_coordinate_count; ++right) {
+                    value += jacobian[left * reduced_coordinate_count + row]
+                        * block.hessian[left * provider_coordinate_count + right]
+                        * jacobian[right * reduced_coordinate_count + column];
+                }
+            }
+            result.hessian[row * reduced_coordinate_count + column] = value;
+        }
+    }
+    result.hessian.back() += result.volume * augmented_gradient.back();
+    std::vector<double> physical_potentials(block.gradient.begin(), block.gradient.end() - 1);
+    result.modified_potentials = held2_transform_modified_potentials(
+        coordinates,
+        physical_potentials
+    );
+    result.pressure_stationarity_relative =
+        (block.pressure_pa - target_pressure_pa) / target_pressure_pa;
+    return result;
+}
+
 Held2ManufacturedEvaluation evaluate_held2_manufactured(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed,
