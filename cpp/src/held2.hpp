@@ -63,6 +63,23 @@ struct Held2StateEvaluation {
     double pressure_stationarity_relative = 0.0;
 };
 
+struct Held2StageICandidate {
+    std::vector<double> modified_fractions;
+    double volume = 0.0;
+    double tpd = 0.0;
+};
+
+struct Held2StageIResult {
+    std::string outcome;
+    int declared_start_count = 0;
+    int completed_start_count = 0;
+    int failed_start_count = 0;
+    std::vector<double> reference_modified_fractions;
+    double reference_volume = 0.0;
+    double minimum_tpd = 0.0;
+    std::vector<Held2StageICandidate> candidates;
+};
+
 [[nodiscard]] Held2StateEvaluation evaluate_held2_phase_block(
     const Held2Coordinates& coordinates,
     const std::vector<double>& independent_modified_fractions,
@@ -70,6 +87,11 @@ struct Held2StateEvaluation {
     double pressure_over_rt,
     double target_pressure_pa,
     const Held2PhysicalPhaseBlock& block
+);
+
+[[nodiscard]] Held2StageIResult solve_held2_manufactured_stage_i(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed
 );
 
 struct Held2Certificate {

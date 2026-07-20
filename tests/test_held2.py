@@ -384,3 +384,21 @@ def test_held2_installed_electrolyte_sdk_phase_block_has_exact_reduced_derivativ
         pressure_pa / (GAS_CONSTANT_J_PER_MOL_K * temperature_k), rel=2.0e-15
     )
     assert math.isfinite(result["provider_pressure_pa"])
+
+
+def test_held2_manufactured_stage_i_finds_negative_tpd_with_declared_multistart() -> None:
+    result = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_i")
+
+    assert result["profile"] == "perdomo-held2-stage-i-manufactured-v1"
+    assert result["outcome"] == "negative_tpd"
+    assert result["globality_certificate"] == "not_guaranteed"
+    assert result["declared_start_count"] == 10 * len(CHARGES)
+    assert result["completed_start_count"] == result["declared_start_count"]
+    assert result["failed_start_count"] == 0
+    assert result["reference_modified_fractions"] == pytest.approx([0.5, 0.5])
+    assert result["reference_volume"] == pytest.approx(1.0, abs=2.0e-10)
+    assert result["minimum_tpd"] < -1.0e-8
+    assert sorted(
+        candidate["modified_fractions"][1] for candidate in result["candidates"]
+    ) == pytest.approx([0.2, 0.8], abs=2.0e-7)
+    assert all(candidate["tpd"] < -1.0e-8 for candidate in result["candidates"])

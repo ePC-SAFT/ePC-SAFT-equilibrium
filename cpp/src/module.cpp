@@ -1464,6 +1464,43 @@ py::dict held2_installed_phase_block(
     return result;
 }
 
+py::dict held2_manufactured_stage_i(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed,
+    const std::string& stage
+) {
+    if (stage != "stage_i") {
+        throw py::value_error("unsupported manufactured HELD2 stage request");
+    }
+    const epcsaft_equilibrium::Held2StageIResult evaluation =
+        epcsaft_equilibrium::solve_held2_manufactured_stage_i(
+            charges,
+            physical_feed
+        );
+    py::list candidates;
+    for (const epcsaft_equilibrium::Held2StageICandidate& candidate :
+         evaluation.candidates) {
+        py::dict item;
+        item["modified_fractions"] = candidate.modified_fractions;
+        item["volume"] = candidate.volume;
+        item["tpd"] = candidate.tpd;
+        candidates.append(std::move(item));
+    }
+    py::dict result;
+    result["profile"] = "perdomo-held2-stage-i-manufactured-v1";
+    result["outcome"] = evaluation.outcome;
+    result["globality_certificate"] = "not_guaranteed";
+    result["declared_start_count"] = evaluation.declared_start_count;
+    result["completed_start_count"] = evaluation.completed_start_count;
+    result["failed_start_count"] = evaluation.failed_start_count;
+    result["reference_modified_fractions"] =
+        evaluation.reference_modified_fractions;
+    result["reference_volume"] = evaluation.reference_volume;
+    result["minimum_tpd"] = evaluation.minimum_tpd;
+    result["candidates"] = std::move(candidates);
+    return result;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_equilibrium, module) {
@@ -1660,6 +1697,13 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("independent_modified_fractions"),
         py::arg("log_volume"),
         py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_manufactured_stage_i,
+        py::arg("charges"),
+        py::arg("physical_feed"),
+        py::arg("stage")
     );
     module.def(
         "_solve_tp_flash",

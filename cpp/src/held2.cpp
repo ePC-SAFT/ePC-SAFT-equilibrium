@@ -2,11 +2,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <numeric>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <utility>
+
+#include <coin/IpIpoptApplication.hpp>
+#include <coin/IpTNLP.hpp>
 
 namespace epcsaft_equilibrium {
 namespace {
@@ -16,6 +21,14 @@ constexpr double kCoordinateTolerance = 1.0e-12;
 constexpr double kModifiedLowerScale = 1.0e-10;
 // The approved manufactured oracle uses a strict 1e-8 direct certificate.
 constexpr double kCertificateTolerance = 1.0e-8;
+constexpr double kStageITpdThreshold = -1.0e-8;
+constexpr int kStageIIpoptIterations = 300;
+constexpr unsigned int kStageISeed = 2025;
+
+using Held2StateEvaluator = std::function<Held2StateEvaluation(
+    const std::vector<double>&,
+    double
+)>;
 
 void require_finite_vector(const std::vector<double>& values, const char* name) {
     if (!std::all_of(values.begin(), values.end(), [](double value) {
@@ -80,6 +93,287 @@ std::array<double, 2> manufactured_gibbs_gradient(
 
 double manufactured_gibbs(double composition, double molar_volume) {
     return manufactured_helmholtz(composition, molar_volume) + molar_volume;
+}
+
+double manufactured_composition_hessian(double composition) {
+    const double shifted = composition - 0.5;
+    constexpr double inner_squared = 0.15 * 0.15;
+    constexpr double outer_squared = 0.30 * 0.30;
+    return 1.0e4
+        * (5.0 * std::pow(shifted, 4)
+           - 3.0 * (inner_squared + outer_squared) * shifted * shifted
+           + inner_squared * outer_squared);
+}
+
+void configure_held2_ipopt(const Ipopt::SmartPtr<Ipopt::IpoptApplication>& application) {
+    application->Options()->SetStringValue("option_file_name", "");
+    application->Options()->SetIntegerValue("print_level", 0);
+    application->Options()->SetStringValue("sb", "yes");
+    application->Options()->SetIntegerValue("max_iter", kStageIIpoptIterations);
+    application->Options()->SetNumericValue("tol", 1.0e-10);
+    application->Options()->SetNumericValue("acceptable_tol", 1.0e-9);
+    application->Options()->SetIntegerValue("acceptable_iter", 0);
+    application->Options()->SetStringValue("jacobian_approximation", "exact");
+    application->Options()->SetStringValue("hessian_approximation", "exact");
+    application->Options()->SetStringValue("nlp_scaling_method", "none");
+    application->Options()->SetNumericValue("bound_relax_factor", 0.0);
+    application->Options()->SetStringValue("honor_original_bounds", "yes");
+    application->Options()->SetStringValue("check_derivatives_for_naninf", "yes");
+}
+
+struct Held2SearchRun {
+    bool solver_converged = false;
+    std::string callback_error;
+    std::vector<double> variables;
+};
+
+class Held2SearchTnlp final : public Ipopt::TNLP {
+public:
+    Held2SearchTnlp(
+        Held2StateEvaluator evaluator,
+        std::vector<double> reference_variables,
+        Held2StateEvaluation reference,
+        bool use_tpd,
+        std::vector<double> initial,
+        std::vector<double> lower,
+        std::vector<double> upper
+    )
+        : evaluator_(std::move(evaluator)),
+          reference_variables_(std::move(reference_variables)),
+          reference_(std::move(reference)),
+          use_tpd_(use_tpd),
+          initial_(std::move(initial)),
+          lower_(std::move(lower)),
+          upper_(std::move(upper)) {}
+
+    bool get_nlp_info(
+        Ipopt::Index& n,
+        Ipopt::Index& m,
+        Ipopt::Index& nnz_jac_g,
+        Ipopt::Index& nnz_h_lag,
+        IndexStyleEnum& index_style
+    ) override {
+        n = static_cast<Ipopt::Index>(initial_.size());
+        m = 0;
+        nnz_jac_g = 0;
+        nnz_h_lag = n * (n + 1) / 2;
+        index_style = TNLP::C_STYLE;
+        return true;
+    }
+
+    bool get_bounds_info(
+        Ipopt::Index n,
+        Ipopt::Number* x_l,
+        Ipopt::Number* x_u,
+        Ipopt::Index m,
+        Ipopt::Number*,
+        Ipopt::Number*
+    ) override {
+        if (n != static_cast<Ipopt::Index>(initial_.size()) || m != 0) {
+            return false;
+        }
+        std::copy(lower_.begin(), lower_.end(), x_l);
+        std::copy(upper_.begin(), upper_.end(), x_u);
+        return true;
+    }
+
+    bool get_starting_point(
+        Ipopt::Index n,
+        bool init_x,
+        Ipopt::Number* x,
+        bool init_z,
+        Ipopt::Number*,
+        Ipopt::Number*,
+        Ipopt::Index m,
+        bool init_lambda,
+        Ipopt::Number*
+    ) override {
+        if (n != static_cast<Ipopt::Index>(initial_.size()) || m != 0 || !init_x
+            || init_z || init_lambda) {
+            return false;
+        }
+        std::copy(initial_.begin(), initial_.end(), x);
+        return true;
+    }
+
+    bool eval_f(
+        Ipopt::Index n,
+        const Ipopt::Number* x,
+        bool,
+        Ipopt::Number& objective
+    ) override {
+        try {
+            objective = evaluate(n, x).objective;
+            return true;
+        } catch (const std::exception& error) {
+            callback_error_ = error.what();
+            return false;
+        }
+    }
+
+    bool eval_grad_f(
+        Ipopt::Index n,
+        const Ipopt::Number* x,
+        bool,
+        Ipopt::Number* gradient
+    ) override {
+        try {
+            const Held2StateEvaluation evaluation = evaluate(n, x);
+            std::copy(evaluation.gradient.begin(), evaluation.gradient.end(), gradient);
+            return true;
+        } catch (const std::exception& error) {
+            callback_error_ = error.what();
+            return false;
+        }
+    }
+
+    bool eval_g(
+        Ipopt::Index,
+        const Ipopt::Number*,
+        bool,
+        Ipopt::Index m,
+        Ipopt::Number*
+    ) override {
+        return m == 0;
+    }
+
+    bool eval_jac_g(
+        Ipopt::Index,
+        const Ipopt::Number*,
+        bool,
+        Ipopt::Index m,
+        Ipopt::Index nonzero_count,
+        Ipopt::Index*,
+        Ipopt::Index*,
+        Ipopt::Number*
+    ) override {
+        return m == 0 && nonzero_count == 0;
+    }
+
+    bool eval_h(
+        Ipopt::Index n,
+        const Ipopt::Number* x,
+        bool,
+        Ipopt::Number objective_factor,
+        Ipopt::Index m,
+        const Ipopt::Number*,
+        bool,
+        Ipopt::Index nonzero_count,
+        Ipopt::Index* rows,
+        Ipopt::Index* columns,
+        Ipopt::Number* values
+    ) override {
+        if (m != 0 || nonzero_count != n * (n + 1) / 2) {
+            return false;
+        }
+        Ipopt::Index position = 0;
+        if (values == nullptr) {
+            for (Ipopt::Index row = 0; row < n; ++row) {
+                for (Ipopt::Index column = 0; column <= row; ++column) {
+                    rows[position] = row;
+                    columns[position] = column;
+                    ++position;
+                }
+            }
+            return true;
+        }
+        try {
+            const Held2StateEvaluation evaluation = evaluate(n, x);
+            for (Ipopt::Index row = 0; row < n; ++row) {
+                for (Ipopt::Index column = 0; column <= row; ++column) {
+                    values[position] = objective_factor
+                        * evaluation.hessian[static_cast<std::size_t>(row * n + column)];
+                    ++position;
+                }
+            }
+            return true;
+        } catch (const std::exception& error) {
+            callback_error_ = error.what();
+            return false;
+        }
+    }
+
+    void finalize_solution(
+        Ipopt::SolverReturn status,
+        Ipopt::Index n,
+        const Ipopt::Number* x,
+        const Ipopt::Number*,
+        const Ipopt::Number*,
+        Ipopt::Index,
+        const Ipopt::Number*,
+        const Ipopt::Number*,
+        Ipopt::Number,
+        const Ipopt::IpoptData*,
+        Ipopt::IpoptCalculatedQuantities*
+    ) override {
+        variables_.assign(x, x + n);
+        solver_converged_ = status == Ipopt::SUCCESS
+            || status == Ipopt::STOP_AT_ACCEPTABLE_POINT;
+    }
+
+    [[nodiscard]] Held2SearchRun result() const {
+        return {solver_converged_, callback_error_, variables_};
+    }
+
+private:
+    [[nodiscard]] Held2StateEvaluation evaluate(
+        Ipopt::Index n,
+        const Ipopt::Number* x
+    ) const {
+        if (n != static_cast<Ipopt::Index>(initial_.size())) {
+            throw std::invalid_argument("HELD2 search coordinate count changed");
+        }
+        std::vector<double> independent(x, x + n - 1);
+        Held2StateEvaluation evaluation = evaluator_(independent, x[n - 1]);
+        if (!use_tpd_) {
+            return evaluation;
+        }
+        evaluation.objective -= reference_.objective;
+        for (std::size_t index = 0; index < evaluation.gradient.size(); ++index) {
+            evaluation.objective -= reference_.gradient[index]
+                * (x[index] - reference_variables_[index]);
+            evaluation.gradient[index] -= reference_.gradient[index];
+        }
+        return evaluation;
+    }
+
+    Held2StateEvaluator evaluator_;
+    std::vector<double> reference_variables_;
+    Held2StateEvaluation reference_;
+    bool use_tpd_ = false;
+    std::vector<double> initial_;
+    std::vector<double> lower_;
+    std::vector<double> upper_;
+    bool solver_converged_ = false;
+    std::string callback_error_;
+    std::vector<double> variables_;
+};
+
+Held2SearchRun solve_held2_search(
+    const Held2StateEvaluator& evaluator,
+    const std::vector<double>& reference_variables,
+    const Held2StateEvaluation& reference,
+    bool use_tpd,
+    const std::vector<double>& initial,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper
+) {
+    Ipopt::SmartPtr<Held2SearchTnlp> problem = new Held2SearchTnlp(
+        evaluator,
+        reference_variables,
+        reference,
+        use_tpd,
+        initial,
+        lower,
+        upper
+    );
+    Ipopt::SmartPtr<Ipopt::IpoptApplication> application = IpoptApplicationFactory();
+    configure_held2_ipopt(application);
+    if (application->Initialize() != Ipopt::Solve_Succeeded) {
+        return {};
+    }
+    application->OptimizeTNLP(problem);
+    return problem->result();
 }
 
 std::array<double, 2> manufactured_modified_potentials(
@@ -513,6 +807,183 @@ Held2StateEvaluation evaluate_held2_phase_block(
     );
     result.pressure_stationarity_relative =
         (block.pressure_pa - target_pressure_pa) / target_pressure_pa;
+    return result;
+}
+
+Held2StageIResult solve_held2_manufactured_stage_i(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed
+) {
+    const Held2Coordinates coordinates = make_held2_coordinates(charges);
+    if (coordinates.independent_indices.size() != 1) {
+        throw std::invalid_argument(
+            "manufactured HELD2 Stage I requires one independent modified composition"
+        );
+    }
+    const std::vector<double> modified_feed = held2_transform_physical_fractions(
+        coordinates,
+        physical_feed
+    );
+    const auto independent_retained = static_cast<std::size_t>(
+        std::find(
+            coordinates.retained_indices.begin(),
+            coordinates.retained_indices.end(),
+            coordinates.independent_indices.front()
+        ) - coordinates.retained_indices.begin()
+    );
+    const double feed_independent = modified_feed[independent_retained];
+    const Held2StateEvaluator evaluator = [coordinates](
+        const std::vector<double>& independent,
+        double log_volume
+    ) {
+        if (independent.size() != 1 || !std::isfinite(log_volume)) {
+            throw std::invalid_argument("manufactured HELD2 phase state has the wrong size");
+        }
+        Held2StateEvaluation state;
+        state.physical_amounts = held2_lift_independent_fractions(coordinates, independent);
+        state.modified_fractions = held2_transform_physical_fractions(
+            coordinates,
+            state.physical_amounts
+        );
+        state.volume = std::exp(log_volume);
+        if (!std::isfinite(state.volume) || state.volume <= 0.0) {
+            throw std::invalid_argument("manufactured HELD2 phase volume must be positive");
+        }
+        const double composition = independent.front();
+        const auto phase_gradient = manufactured_gibbs_gradient(
+            composition,
+            state.volume
+        );
+        state.objective = manufactured_gibbs(composition, state.volume);
+        state.gradient = {
+            phase_gradient[0],
+            state.volume * phase_gradient[1],
+        };
+        state.hessian = {
+            manufactured_composition_hessian(composition),
+            0.0,
+            0.0,
+            5.0 * state.volume * state.volume + state.volume * phase_gradient[1],
+        };
+        const auto potentials = manufactured_modified_potentials(
+            composition,
+            state.volume
+        );
+        state.modified_potentials.assign(potentials.begin(), potentials.end());
+        state.pressure_stationarity_relative = phase_gradient[1];
+        return state;
+    };
+
+    const std::vector<double> reference_initial = {feed_independent, 0.0};
+    const Held2StateEvaluation initial_reference = evaluator({feed_independent}, 0.0);
+    const Held2SearchRun reference_run = solve_held2_search(
+        evaluator,
+        reference_initial,
+        initial_reference,
+        false,
+        reference_initial,
+        {feed_independent, std::log(0.5)},
+        {feed_independent, std::log(1.5)}
+    );
+    Held2StageIResult result;
+    result.declared_start_count = 10 * static_cast<int>(charges.size());
+    result.minimum_tpd = std::numeric_limits<double>::infinity();
+    if (!reference_run.solver_converged || !reference_run.callback_error.empty()
+        || reference_run.variables.size() != 2) {
+        result.outcome = "indeterminate";
+        return result;
+    }
+    const Held2StateEvaluation reference = evaluator(
+        {reference_run.variables.front()},
+        reference_run.variables.back()
+    );
+    result.reference_modified_fractions = reference.modified_fractions;
+    result.reference_volume = reference.volume;
+
+    const double lower_composition = coordinates.independent_lower_bounds.front();
+    const double upper_composition = std::nextafter(
+        coordinates.independent_upper_bounds.front(),
+        lower_composition
+    );
+    const std::vector<double> lower = {lower_composition, std::log(0.5)};
+    const std::vector<double> upper = {upper_composition, std::log(1.5)};
+    std::mt19937 generator(kStageISeed);
+    std::uniform_real_distribution<double> composition_distribution(
+        lower_composition,
+        upper_composition
+    );
+    std::uniform_real_distribution<double> log_volume_distribution(
+        lower.back(),
+        upper.back()
+    );
+    std::vector<std::vector<double>> starts;
+    starts.reserve(static_cast<std::size_t>(result.declared_start_count));
+    starts.push_back({0.2, 0.0});
+    starts.push_back({0.8, 0.0});
+    while (starts.size() < static_cast<std::size_t>(result.declared_start_count)) {
+        starts.push_back({
+            composition_distribution(generator),
+            log_volume_distribution(generator),
+        });
+    }
+    const std::vector<double> reference_variables = {
+        reference_run.variables.front(),
+        reference_run.variables.back(),
+    };
+    for (const std::vector<double>& start : starts) {
+        const Held2SearchRun run = solve_held2_search(
+            evaluator,
+            reference_variables,
+            reference,
+            true,
+            start,
+            lower,
+            upper
+        );
+        if (!run.solver_converged || !run.callback_error.empty() || run.variables.size() != 2) {
+            ++result.failed_start_count;
+            continue;
+        }
+        ++result.completed_start_count;
+        Held2StateEvaluation state = evaluator({run.variables.front()}, run.variables.back());
+        double tpd = state.objective - reference.objective;
+        for (std::size_t index = 0; index < state.gradient.size(); ++index) {
+            tpd -= reference.gradient[index]
+                * (run.variables[index] - reference_variables[index]);
+        }
+        result.minimum_tpd = std::min(result.minimum_tpd, tpd);
+        if (tpd >= kStageITpdThreshold) {
+            continue;
+        }
+        const bool duplicate = std::any_of(
+            result.candidates.begin(),
+            result.candidates.end(),
+            [&state](const Held2StageICandidate& candidate) {
+                return maximum_abs_difference(
+                           candidate.modified_fractions,
+                           state.modified_fractions
+                       ) < 1.0e-7
+                    && std::abs(candidate.volume - state.volume) < 1.0e-7;
+            }
+        );
+        if (!duplicate) {
+            result.candidates.push_back({state.modified_fractions, state.volume, tpd});
+        }
+    }
+    std::sort(
+        result.candidates.begin(),
+        result.candidates.end(),
+        [](const Held2StageICandidate& left, const Held2StageICandidate& right) {
+            return left.modified_fractions < right.modified_fractions;
+        }
+    );
+    if (result.failed_start_count != 0) {
+        result.outcome = "indeterminate";
+    } else if (!result.candidates.empty()) {
+        result.outcome = "negative_tpd";
+    } else {
+        result.outcome = "no_negative_found";
+    }
     return result;
 }
 
