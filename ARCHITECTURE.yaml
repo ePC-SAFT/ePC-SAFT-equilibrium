@@ -214,6 +214,17 @@ development_candidate:
     mechanically_stable_reference_roots: 2
     stage_i_start_accounting: complete
     electrolyte_lle_admitted: false
+  root_hardening_checkpoint:
+    implementation_commit: 8a7164869975c03291fcf3296b1228b4b4a0f5b4
+    implementation_tree: 744132063d8b26ae3ef7ba7eb3094226aec31fd6
+    retained_wheel_sha256: 41192aa4ab1821a0546ba100352dfd9254c67884d26511ea1504205647aa08d4
+    wheel_record_sha256: dba4daeaa74bf98783debc42c5c6d5b8f007841b7bf4566c47793b7052eac974
+    native_sha256: b486edcbc00d4fa0f52d712c4ac760edbda4e77dc633e4f613315f87fe91b919
+    focused_installed_test_result: 10 passed
+    review: APPROVE_WIP_CHECKPOINT
+    authority_effect: none
+  package_tests:
+    - tests/test_held2.py
   next_evidence_gate: source-complete-installed-two-liquid-stage-ii-iii-case
   next_gate_status: ready-waiting-provider-case
   globality_certificate: not_guaranteed
