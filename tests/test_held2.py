@@ -574,6 +574,54 @@ def test_public_tp_flash_does_not_call_private_python_held2_adapter() -> None:
     assert "_held2_adapter" not in source
 
 
+def test_public_tp_flash_preserves_stage_i_terminal_without_finite_tpd(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _figiel_brine_model()
+    payload = {
+        "outcome": "indeterminate",
+        "search_status": "stage_i_incomplete",
+        "solver_status": "failed",
+        "numerical_status": "failed",
+        "physical_status": "not_adjudicated",
+        "attempts": 30,
+        "major_iterations": 0,
+        "best_tpd": None,
+        "lower_bound": None,
+        "upper_bound": None,
+        "held_gap": None,
+        "material_balance_max_abs": None,
+        "pressure_stationarity_max_relative": None,
+        "kkt_stationarity_max_abs": None,
+        "chemical_potential_max_relative": None,
+        "confirmation_succeeded": False,
+        "confirmation_max_difference": None,
+        "search_profiles": ("perdomo-held2-stage-i-installed-v1",),
+        "globality_certificate": "not_guaranteed",
+        "failure_reason": "HELD2 Stage I did not complete",
+    }
+    monkeypatch.setattr(_equilibrium, "_solve_tp_flash", lambda *_args: payload)
+
+    with pytest.raises(epcsaft_equilibrium.FlashError) as incomplete:
+        epcsaft_equilibrium.tp_flash(
+            model,
+            TABLE3_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            TABLE3_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            TABLE3_FEED,
+        )
+
+    diagnostics = incomplete.value.diagnostics
+    assert diagnostics.outcome == "indeterminate"
+    assert diagnostics.search_status == "stage_i_incomplete"
+    assert diagnostics.failure_reason == "HELD2 Stage I did not complete"
+    assert diagnostics.attempts == 30
+    assert diagnostics.best_tpd is None
+    assert diagnostics.solver_status == "failed"
+    assert diagnostics.numerical_status == "failed"
+    assert diagnostics.physical_status == "not_adjudicated"
+    assert diagnostics.globality_certificate == "not_guaranteed"
+
+
 def _khudaida_model() -> epcsaft.EPCSAFT:
     parameters = epcsaft.ParameterBundle.from_catalog(
         "khudaida-2026-figure-2-electrolyte-lle", version=1

@@ -93,7 +93,7 @@ class HeldDiagnostics:
     physical_status: str
     attempts: int
     major_iterations: int
-    best_tpd: float
+    best_tpd: float | None
     lower_bound: float | None
     upper_bound: float | None
     held_gap: float | None
@@ -313,7 +313,7 @@ def _held_diagnostics(payload: Mapping[str, object]) -> HeldDiagnostics:
         physical_status=typed_statuses[2],
         attempts=int(cast(int, payload["attempts"])),
         major_iterations=int(cast(int, payload["major_iterations"])),
-        best_tpd=float(cast(float, payload["best_tpd"])),
+        best_tpd=_optional_float(payload, "best_tpd"),
         lower_bound=_optional_float(payload, "lower_bound"),
         upper_bound=_optional_float(payload, "upper_bound"),
         held_gap=_optional_float(payload, "held_gap"),
