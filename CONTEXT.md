@@ -23,15 +23,23 @@ Gross--Sadowski methane/ethane fingerprint
 and the audited May et al. (2015), Table 5 rectangle: 203.22--243.61 K,
 2.124--6.885 MPa, and methane feed 0.4661--0.66705.
 
-The sole public `tp_flash` operation runs the bounded Pereira HELD
-Stage-I/II/III controller and returns one or two phases without a caller-
-supplied phase count or phase guesses. Finite search cannot prove global
+The sole public `tp_flash` operation preserves the bounded neutral Pereira HELD
+path and dispatches qualifying installed strong-electrolyte Provider SDKs to
+the single Perdomo HELD2 Stage-I/II/III controller. Dispatch is determined by
+the native SDK capability table and exact Provider component order. Unsupported
+multicomponent non-electrolyte models fail before search. Neither path accepts a
+caller-supplied phase count or phase guesses. Finite search cannot prove global
 stability: every result retains
 `globality_certificate="not_guaranteed"`, and search exhaustion, unsupported
 trace or third-phase cases, provider failures, and indeterminate states fail
 closed. HELD diagnostics report solver, numerical, and physical evidence on
 independent `passed`, `failed`, or `not_adjudicated` axes. The accepted pure-
 saturation route and authority are unchanged.
+
+The Perdomo HELD2 public dispatch is non-production development evidence. It
+uses the existing `TpFlashResult`, `HeldDiagnostics`, and `FlashError` owners,
+has no separate compatibility route, and creates no authority, promotion, or
+predictive-admission claim.
 
 The retained scientific source is the Pereira Markdown in the permanent lab
 at commit `13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b`, blob
@@ -83,6 +91,8 @@ as non-production provenance; it is no longer the active implementation gate.
 `promotion_status: accepted`
 
 `local_candidate: neutral-held-v1`
+
+`active_development_candidate: perdomo-held2-installed-public-dispatch`
 
 `local_candidate_authority_effect: none`
 

@@ -551,6 +551,8 @@ def test_tp_flash_native_transport_accepts_prefix_and_rejects_malformed_tables()
             MAY_ROW_011_TEMPERATURE_K,
             MAY_ROW_011_PRESSURE_PA,
             (MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE, 1.0 - MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE),
+            BINARY_FINGERPRINT,
+            ("methane", "ethane"),
         )
         assert result["outcome"] == "one_phase"
 
@@ -608,6 +610,8 @@ def test_tp_flash_native_transport_accepts_prefix_and_rejects_malformed_tables()
                 MAY_ROW_011_TEMPERATURE_K,
                 MAY_ROW_011_PRESSURE_PA,
                 (0.5, 0.5),
+                BINARY_FINGERPRINT,
+                ("methane", "ethane"),
             )
 
 
@@ -909,6 +913,8 @@ def test_public_tp_flash_rejects_unknown_status_vocabulary(
                 MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
                 1.0 - MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
             ),
+            BINARY_FINGERPRINT,
+            ("methane", "ethane"),
         )
     )
     payload["solver_status"] = "unknown"
@@ -1235,6 +1241,8 @@ def test_held_controller_returns_failed_refinement_to_stage_ii_and_fails_closed(
         MAY_ROW_001_TEMPERATURE_K,
         MAY_ROW_001_PRESSURE_PA,
         (MAY_ROW_001_FEED_X_METHANE, 1.0 - MAY_ROW_001_FEED_X_METHANE),
+        BINARY_FINGERPRINT,
+        ("methane", "ethane"),
     )
 
     assert result["outcome"] == "scope_exceeded"
@@ -1272,6 +1280,8 @@ def test_held_controller_preserves_stage_i_one_phase_outcome(
             MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
             1.0 - MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
         ),
+        BINARY_FINGERPRINT,
+        ("methane", "ethane"),
     )
 
     assert result["outcome"] == "one_phase"

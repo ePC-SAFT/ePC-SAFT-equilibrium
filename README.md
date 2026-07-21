@@ -4,8 +4,9 @@
 `epcsaft` provider. The accepted first capability solves a pure-component
 saturation boundary for the provider-approved methane, ethane, or propane
 model under promotion receipt `promotion-0018-equilibrium-pure-saturation-v1`.
-The package also contains a non-authoritative local candidate for one bounded
-neutral methane/ethane HELD `T,P,z` calculation.
+The package also contains non-authoritative local candidates for bounded
+neutral methane/ethane HELD and strong-electrolyte Perdomo HELD2 `T,P,z`
+calculations.
 
 ```python
 import epcsaft
@@ -33,7 +34,7 @@ equality, positive distinct phase states, local mechanical stability, bounds,
 finite values, and the provider fingerprint. It carries no globality or phase
 discovery certificate.
 
-## Local neutral HELD candidate
+## Local HELD candidates
 
 ```python
 import epcsaft
@@ -71,6 +72,17 @@ The retained Pereira source is the permanent-lab Markdown at commit
 `dde7f02d4c93cce86804a8e6b62d37602990ac21`; it is provenance, not a build,
 test, validation, or runtime dependency.
 
+The same public `tp_flash` operation dispatches qualifying installed Provider
+electrolyte SDKs to the single Perdomo HELD2 Stage-I/II/III controller. The
+dispatch is based on Provider table capabilities and exact component metadata,
+not component names or a case fingerprint. Unsupported multicomponent
+non-electrolyte models fail before search. A complete finite Stage-I search
+with no negative TPD returns the accepted homogeneous reference; negative
+witnesses proceed through the existing candidate-set and direct-total-free-
+energy stages and fail closed unless every existing certificate passes. This
+path is non-production development evidence, makes no predictive-agreement
+claim, and also reports `globality_certificate="not_guaranteed"`.
+
 The earlier fixed-two-phase campaign remains `NON_ADMISSION` under the frozen
 May `3*u_c` composition contract: 12 of 17 rows passed, rows 002/009/010/011
 were solved model/data misses, and row 012 had no package-accepted local state.
@@ -88,8 +100,10 @@ authorized Perdomo HELD2 implementation is the active development path.
 
 The extension calls `epcsaft.native_sdk(model)` and retains one model-bound
 `epcsaft.native_sdk.v1` capsule while Ipopt evaluates the phase contexts. The
-HELD candidate consumes the reviewed mixture value/gradient/Hessian tail;
-the pure route continues to consume the accepted prefix. The extension
+neutral HELD candidate consumes the reviewed mixture value/gradient/Hessian
+tail. Perdomo HELD2 additionally consumes the installed electrolyte phase,
+molar-volume-domain, packing-derivative, source-domain, and component-metadata
+tails. The pure route continues to consume the accepted prefix. The extension
 compiles against the declaration header installed by the provider wheel. It
 does not link provider implementation symbols, compile provider sources, or
 import private provider modules.

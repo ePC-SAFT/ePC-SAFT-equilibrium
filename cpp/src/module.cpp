@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -976,7 +977,7 @@ py::dict held_stage_iii(
     return held_stage_iii_to_dict(solve);
 }
 
-py::dict solve_tp_flash(
+py::dict solve_neutral_tp_flash(
     const py::capsule& capsule,
     double temperature_k,
     double pressure_pa,
@@ -1995,6 +1996,21 @@ py::dict held2_installed_stage_i(
         std::log(molar_volume_bounds[0]),
         std::log(molar_volume_bounds[1]),
     };
+    if (stage == "controller" && !evaluation.reference_modified_fractions.empty()) {
+        const epcsaft_equilibrium::MixturePhaseEvaluation reference_phase =
+            provider.evaluate_electrolyte(
+                temperature_k,
+                physical_feed,
+                evaluation.reference_volume
+            );
+        result["reference_phase_value"] = reference_phase.value;
+        result["reference_pressure_pa"] = reference_phase.pressure_pa;
+        result["reference_chemical_potential_over_rt"] = std::vector<double>(
+            reference_phase.gradient.begin(),
+            reference_phase.gradient.begin()
+                + static_cast<std::ptrdiff_t>(physical_feed.size())
+        );
+    }
     if (stage == "controller" && evaluation.outcome == "negative_tpd") {
         std::vector<double> feed_independent;
         const std::vector<double> modified_feed =
@@ -2118,6 +2134,7 @@ py::dict held2_installed_stage_i(
             stage_iii_payload["physical_status"] = stage_iii.physical_status;
             stage_iii_payload["feedback"] = stage_iii.feedback;
             stage_iii_payload["failure_reason"] = stage_iii.failure_reason;
+            stage_iii_payload["objective"] = stage_iii.objective;
             stage_iii_payload["input_candidate_count"] =
                 stage_iii.input_candidate_count;
             stage_iii_payload["modified_balance_inf_norm"] =
@@ -2136,11 +2153,23 @@ py::dict held2_installed_stage_i(
                 stage_iii.kkt_stationarity_inf_norm;
             py::list phases;
             for (const auto& phase : stage_iii.phases) {
+                const epcsaft_equilibrium::MixturePhaseEvaluation provider_phase =
+                    provider.evaluate_electrolyte(
+                        temperature_k,
+                        phase.physical_fractions,
+                        phase.volume
+                    );
                 py::dict item;
                 item["phase_fraction"] = phase.phase_fraction;
                 item["modified_fractions"] = phase.modified_fractions;
                 item["physical_fractions"] = phase.physical_fractions;
                 item["volume"] = phase.volume;
+                item["pressure_pa"] = provider_phase.pressure_pa;
+                item["chemical_potential_over_rt"] = std::vector<double>(
+                    provider_phase.gradient.begin(),
+                    provider_phase.gradient.begin()
+                        + static_cast<std::ptrdiff_t>(phase.physical_fractions.size())
+                );
                 phases.append(std::move(item));
             }
             stage_iii_payload["phases"] = std::move(phases);
@@ -2148,6 +2177,277 @@ py::dict held2_installed_stage_i(
         }
     }
     return result;
+}
+
+py::dict held2_flash_phase_to_dict(
+    double phase_fraction,
+    const std::vector<double>& mole_fractions,
+    double molar_volume,
+    double pressure_pa,
+    const std::vector<double>& chemical_potentials
+) {
+    py::dict result;
+    result["amount_mol"] = phase_fraction;
+    result["mole_fractions"] = mole_fractions;
+    result["volume_m3"] = phase_fraction * molar_volume;
+    result["molar_density_mol_m3"] = 1.0 / molar_volume;
+    result["pressure_pa"] = pressure_pa;
+    result["chemical_potential_over_rt"] = chemical_potentials;
+    return result;
+}
+
+py::dict held2_controller_to_flash(
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& physical_feed,
+    const std::string& expected_fingerprint,
+    const py::dict& controller
+) {
+    const std::string stage_i_outcome = py::cast<std::string>(controller["outcome"]);
+    const int declared_starts = py::cast<int>(controller["declared_start_count"]);
+    const int attempted_starts = py::cast<int>(controller["attempted_start_count"]);
+    const int completed_starts = py::cast<int>(controller["completed_start_count"]);
+    const int failed_starts = py::cast<int>(controller["failed_start_count"]);
+    const bool volume_domain_complete =
+        py::cast<bool>(controller["volume_domain_search_complete"]);
+
+    py::dict result;
+    result["outcome"] = "indeterminate";
+    result["search_status"] = "stage_i_incomplete";
+    result["failure_reason"] = "HELD2 Stage I did not complete";
+    result["attempts"] = attempted_starts;
+    result["major_iterations"] = 0;
+    result["best_tpd"] = controller["minimum_tpd"];
+    result["lower_bound"] = py::none();
+    result["upper_bound"] = py::none();
+    result["held_gap"] = py::none();
+    result["material_balance_max_abs"] = py::none();
+    result["pressure_stationarity_max_relative"] = py::none();
+    result["kkt_stationarity_max_abs"] = py::none();
+    result["chemical_potential_max_relative"] = py::none();
+    result["confirmation_succeeded"] = false;
+    result["confirmation_max_difference"] = py::none();
+    py::list profiles;
+    profiles.append("perdomo-held2-stage-i-installed-v1");
+    result["search_profiles"] = profiles;
+    result["globality_certificate"] = "not_guaranteed";
+    result["solver_status"] = attempted_starts == 0
+        ? "not_adjudicated"
+        : failed_starts == 0 && completed_starts == attempted_starts
+        ? "passed"
+        : "failed";
+    result["numerical_status"] = "failed";
+    result["physical_status"] = "not_adjudicated";
+    result["temperature_k"] = temperature_k;
+    result["pressure_pa"] = pressure_pa;
+    result["overall_mole_fractions"] = physical_feed;
+    result["parameter_fingerprint"] = expected_fingerprint;
+
+    const bool complete_stage_i = declared_starts > 0
+        && attempted_starts == declared_starts
+        && completed_starts == declared_starts
+        && failed_starts == 0
+        && volume_domain_complete;
+    if (stage_i_outcome == "no_negative_found" && complete_stage_i) {
+        const double molar_volume = py::cast<double>(controller["reference_volume"]);
+        const double reference_phase_value =
+            py::cast<double>(controller["reference_phase_value"]);
+        const double reference_pressure_pa =
+            py::cast<double>(controller["reference_pressure_pa"]);
+        const std::vector<double> chemical_potentials =
+            py::cast<std::vector<double>>(
+                controller["reference_chemical_potential_over_rt"]
+            );
+        py::list phases;
+        phases.append(held2_flash_phase_to_dict(
+            1.0,
+            physical_feed,
+            molar_volume,
+            reference_pressure_pa,
+            chemical_potentials
+        ));
+        result["outcome"] = "one_phase";
+        result["search_status"] = "complete_no_negative_found";
+        result["failure_reason"] = "";
+        result["solver_status"] = "passed";
+        result["numerical_status"] = "passed";
+        result["physical_status"] = "passed";
+        result["pressure_stationarity_max_relative"] =
+            std::abs(reference_pressure_pa - pressure_pa) / pressure_pa;
+        result["phases"] = std::move(phases);
+        result["phase_fractions"] = std::array<double, 1>{1.0};
+        result["total_free_energy_over_rt"] =
+            reference_phase_value
+            + pressure_pa * molar_volume
+                / (kGasConstantJPerMolK * temperature_k);
+        return result;
+    }
+    if (stage_i_outcome != "negative_tpd") {
+        if (failed_starts == 0 && !volume_domain_complete) {
+            result["search_status"] = "volume_domain_incomplete";
+            result["failure_reason"] =
+                "HELD2 Provider volume-domain search was incomplete";
+        }
+        return result;
+    }
+
+    profiles.append("perdomo-held2-stage-ii-installed-v1");
+    const py::dict stage_ii = py::cast<py::dict>(controller["stage_ii"]);
+    const std::string stage_ii_outcome = py::cast<std::string>(stage_ii["outcome"]);
+    const int stage_ii_attempts =
+        py::cast<int>(stage_ii["lower_attempted_start_count"]);
+    const int stage_ii_failures = py::cast<int>(stage_ii["lower_failed_start_count"]);
+    result["attempts"] = attempted_starts + stage_ii_attempts;
+    result["major_iterations"] = stage_ii["major_iterations"];
+    result["search_status"] = stage_ii_outcome;
+    result["solver_status"] = stage_ii_failures == 0 ? "passed" : "failed";
+    result["numerical_status"] = "not_adjudicated";
+    result["failure_reason"] = stage_ii_outcome;
+    if (!controller.contains("stage_iii")) {
+        result["outcome"] = stage_ii_outcome == "resource_limit"
+                || stage_ii_outcome == "no_progress"
+            ? "search_exhausted"
+            : "indeterminate";
+        return result;
+    }
+
+    profiles.append("perdomo-held2-stage-iii-installed-v1");
+    const py::dict stage_iii = py::cast<py::dict>(controller["stage_iii"]);
+    const std::string solver_status =
+        py::cast<std::string>(stage_iii["solver_status"]);
+    const std::string numerical_status =
+        py::cast<std::string>(stage_iii["numerical_status"]);
+    const std::string physical_status =
+        py::cast<std::string>(stage_iii["physical_status"]);
+    result["solver_status"] = solver_status == "solve_succeeded"
+        ? "passed"
+        : solver_status == "not_run" ? "not_adjudicated" : "failed";
+    result["numerical_status"] = numerical_status == "converged"
+        ? "passed"
+        : numerical_status == "not_adjudicated" ? "not_adjudicated" : "failed";
+    result["physical_status"] = physical_status == "accepted"
+        ? "passed"
+        : physical_status == "rejected" ? "failed" : "not_adjudicated";
+    result["search_status"] = physical_status == "accepted"
+        ? "stage_iii_accepted"
+        : "stage_iii_rejected";
+    result["failure_reason"] = stage_iii["failure_reason"];
+    result["material_balance_max_abs"] = std::max(
+        py::cast<double>(stage_iii["modified_balance_inf_norm"]),
+        py::cast<double>(stage_iii["ordinary_balance_inf_norm"])
+    );
+    result["pressure_stationarity_max_relative"] =
+        stage_iii["pressure_stationarity_inf_norm"];
+    result["kkt_stationarity_max_abs"] = stage_iii["kkt_stationarity_inf_norm"];
+    result["chemical_potential_max_relative"] =
+        stage_iii["modified_potential_mixed_gap"];
+    if (solver_status != "solve_succeeded" || numerical_status != "converged"
+        || physical_status != "accepted") {
+        result["outcome"] = "indeterminate";
+        return result;
+    }
+
+    const py::list stage_iii_phases = py::cast<py::list>(stage_iii["phases"]);
+    py::list phases;
+    py::list phase_fractions;
+    for (const py::handle phase_handle : stage_iii_phases) {
+        const py::dict stage_iii_phase = py::cast<py::dict>(phase_handle);
+        const double phase_fraction =
+            py::cast<double>(stage_iii_phase["phase_fraction"]);
+        const std::vector<double> physical_fractions =
+            py::cast<std::vector<double>>(stage_iii_phase["physical_fractions"]);
+        const double molar_volume = py::cast<double>(stage_iii_phase["volume"]);
+        const double phase_pressure_pa =
+            py::cast<double>(stage_iii_phase["pressure_pa"]);
+        const std::vector<double> chemical_potentials =
+            py::cast<std::vector<double>>(
+                stage_iii_phase["chemical_potential_over_rt"]
+            );
+        phases.append(held2_flash_phase_to_dict(
+            phase_fraction,
+            physical_fractions,
+            molar_volume,
+            phase_pressure_pa,
+            chemical_potentials
+        ));
+        phase_fractions.append(phase_fraction);
+    }
+    result["outcome"] = "accepted";
+    result["failure_reason"] = "";
+    result["phases"] = std::move(phases);
+    result["phase_fractions"] = std::move(phase_fractions);
+    result["total_free_energy_over_rt"] = stage_iii["objective"];
+    return result;
+}
+
+py::dict solve_tp_flash(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& overall_mole_fractions,
+    const std::string& expected_fingerprint,
+    const std::vector<std::string>& expected_component_ids
+) {
+    if (!std::isfinite(temperature_k) || temperature_k <= 0.0
+        || !std::isfinite(pressure_pa) || pressure_pa <= 0.0
+        || overall_mole_fractions.empty()
+        || overall_mole_fractions.size() != expected_component_ids.size()
+        || !std::all_of(
+            overall_mole_fractions.begin(),
+            overall_mole_fractions.end(),
+            [](double value) { return std::isfinite(value) && value > 0.0; }
+        )
+        || std::abs(
+            std::accumulate(
+                overall_mole_fractions.begin(),
+                overall_mole_fractions.end(),
+                0.0
+            ) - 1.0
+        ) > 1.0e-12) {
+        throw py::value_error(
+            "tp_flash native inputs must be positive, finite, normalized, and model-sized"
+        );
+    }
+    if (overall_mole_fractions.size() == 2) {
+        if (expected_fingerprint != kFlashFingerprint) {
+            throw py::value_error(
+                "tp_flash neutral route requires the approved methane/ethane fingerprint"
+            );
+        }
+        return solve_neutral_tp_flash(
+            capsule,
+            temperature_k,
+            pressure_pa,
+            {overall_mole_fractions[0], overall_mole_fractions[1]}
+        );
+    }
+    const epcsaft_native_sdk_v1& sdk = checked_source_domain_sdk(capsule);
+    const Held2ProviderMetadata metadata = held2_provider_metadata(sdk);
+    if (overall_mole_fractions.size() != sdk.component_count) {
+        throw py::value_error(
+            "tp_flash composition length does not match the Provider electrolyte contract"
+        );
+    }
+    if (metadata.component_ids != expected_component_ids) {
+        throw py::value_error(
+            "tp_flash component order does not match the Provider electrolyte metadata"
+        );
+    }
+    const py::dict controller = held2_installed_stage_i(
+        capsule,
+        temperature_k,
+        pressure_pa,
+        overall_mole_fractions,
+        expected_fingerprint,
+        "controller"
+    );
+    return held2_controller_to_flash(
+        temperature_k,
+        pressure_pa,
+        overall_mole_fractions,
+        expected_fingerprint,
+        controller
+    );
 }
 
 py::dict held2_manufactured_stage_i(
@@ -2806,7 +3106,9 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("capsule"),
         py::arg("temperature_k"),
         py::arg("pressure_pa"),
-        py::arg("overall_mole_fractions")
+        py::arg("overall_mole_fractions"),
+        py::arg("expected_fingerprint"),
+        py::arg("expected_component_ids")
     );
     module.def(
         "evaluate_phase",

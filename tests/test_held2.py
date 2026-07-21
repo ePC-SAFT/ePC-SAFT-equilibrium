@@ -7,6 +7,7 @@ from collections.abc import Sequence
 import epcsaft
 import pytest
 
+import epcsaft_equilibrium
 from epcsaft_equilibrium import _equilibrium
 
 FORMULATION_ID = "perdomo-held2.modified-mole.manufactured.v1"
@@ -27,6 +28,13 @@ KHUDAIDA_FINGERPRINT = "sha256:5a59828d86bb29c919513484a26cedaa0f025463aaa7c149a
 KHUDAIDA_INDEPENDENT_LOWER = (1.0e-10, 1.0e-10, 2.0e-10)
 KHUDAIDA_INDEPENDENT_UPPER = (1.0, 1.0, 1.0)
 KHUDAIDA_COMPOSITION_SUM_UPPER = 1.0 - 1.0e-10
+TABLE3_TEMPERATURE_K = 298.15
+TABLE3_PRESSURE_PA = 2_508.0
+TABLE3_FEED = (
+    0.8321050353538130581,
+    0.0839474823230934710,
+    0.0839474823230934710,
+)
 
 
 class _Held2MixtureResult(ctypes.Structure):
@@ -115,6 +123,18 @@ def _native_sdk_table(capsule: object) -> _Held2NativeSdk:
     return _Held2NativeSdk.from_buffer_copy(
         ctypes.string_at(pointer, ctypes.sizeof(_Held2NativeSdk))
     )
+
+
+def _sdk_capsule(
+    table: _Held2NativeSdk,
+    *owners: object,
+) -> tuple[object, list[object]]:
+    name = ctypes.create_string_buffer(b"epcsaft.native_sdk.v1")
+    new_capsule = ctypes.pythonapi.PyCapsule_New
+    new_capsule.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p)
+    new_capsule.restype = ctypes.py_object
+    capsule = new_capsule(ctypes.addressof(table), name, None)
+    return capsule, [table, name, capsule, *owners]
 
 
 def _domain_spy_capsule(model: epcsaft.EPCSAFT) -> tuple[object, dict[str, int], list[object]]:
@@ -319,6 +339,239 @@ def _figiel_brine_model() -> epcsaft.EPCSAFT:
         "figiel-2025-reference-electrolytes", version=1
     ).select(("water", "sodium-cation", "chloride-anion"))
     return epcsaft.EPCSAFT(parameters)
+
+
+def test_public_tp_flash_dispatches_table3_electrolyte_to_held2() -> None:
+    model = _figiel_brine_model()
+
+    result = epcsaft_equilibrium.tp_flash(
+        model,
+        TABLE3_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+        TABLE3_PRESSURE_PA * epcsaft.unit_registry.pascal,
+        TABLE3_FEED,
+    )
+
+    assert isinstance(result, epcsaft_equilibrium.TpFlashResult)
+    assert result.parameter_fingerprint == model.parameter_fingerprint
+    assert result.overall_mole_fractions == pytest.approx(TABLE3_FEED)
+    assert result.phase_fractions == pytest.approx((1.0,))
+    assert len(result.phases) == 1
+    phase = result.phases[0]
+    assert phase.amount_mol == pytest.approx(1.0)
+    assert phase.mole_fractions == pytest.approx(TABLE3_FEED)
+    assert len(phase.chemical_potential_over_rt) == len(TABLE3_FEED)
+    assert phase.volume_m3 == pytest.approx(0.9849669199245724, rel=2.0e-12)
+    assert phase.pressure_pa == pytest.approx(TABLE3_PRESSURE_PA, rel=1.0e-8)
+    assert result.diagnostics.outcome == "one_phase"
+    assert result.diagnostics.search_status == "complete_no_negative_found"
+    assert result.diagnostics.attempts == 30
+    assert result.diagnostics.major_iterations == 0
+    assert result.diagnostics.best_tpd == pytest.approx(-1.6139519381498581e-12, abs=2.0e-14)
+    assert result.diagnostics.solver_status == "passed"
+    assert result.diagnostics.numerical_status == "passed"
+    assert result.diagnostics.physical_status == "passed"
+    assert result.diagnostics.globality_certificate == "not_guaranteed"
+
+
+def test_public_tp_flash_rejects_electrolyte_component_mismatch_before_native(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _figiel_brine_model()
+    monkeypatch.setattr(
+        epcsaft,
+        "native_sdk",
+        lambda _model: pytest.fail("component mismatch reached native dispatch"),
+    )
+
+    with pytest.raises(epcsaft_equilibrium.FlashError) as failed:
+        epcsaft_equilibrium.tp_flash(
+            model,
+            TABLE3_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            TABLE3_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            TABLE3_FEED[:-1],
+        )
+
+    assert failed.value.diagnostics.outcome == "invalid_input"
+    assert failed.value.diagnostics.search_status == "input_rejected"
+    assert failed.value.diagnostics.solver_status == "not_adjudicated"
+    assert failed.value.diagnostics.numerical_status == "not_adjudicated"
+    assert failed.value.diagnostics.physical_status == "not_adjudicated"
+
+
+def test_public_tp_flash_rejects_source_domain_before_provider_phase_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _figiel_brine_model()
+    table = _native_sdk_table(epcsaft.native_sdk(model))
+    capsule, calls, owners = _domain_spy_capsule(model)
+    assert owners
+    monkeypatch.setattr(epcsaft, "native_sdk", lambda _model: capsule)
+
+    with pytest.raises(epcsaft_equilibrium.FlashError) as failed:
+        epcsaft_equilibrium.tp_flash(
+            model,
+            math.nextafter(table.source_temperature_min_k, -math.inf)
+            * epcsaft.unit_registry.kelvin,
+            TABLE3_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            TABLE3_FEED,
+        )
+
+    assert failed.value.diagnostics.outcome == "error"
+    assert failed.value.diagnostics.search_status == "native_exception"
+    assert sum(calls.values()) == 0
+
+
+def test_public_tp_flash_rejects_provider_component_order_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _figiel_brine_model()
+    provider_capsule = epcsaft.native_sdk(model)
+    table = _native_sdk_table(provider_capsule)
+    swapped_ids = (ctypes.c_char_p * 3)(
+        b"water",
+        b"chloride-anion",
+        b"sodium-cation",
+    )
+    table.component_ids = swapped_ids
+    capsule, owners = _sdk_capsule(table, provider_capsule, swapped_ids, model)
+    assert owners
+    monkeypatch.setattr(epcsaft, "native_sdk", lambda _model: capsule)
+
+    with pytest.raises(epcsaft_equilibrium.FlashError) as failed:
+        epcsaft_equilibrium.tp_flash(
+            model,
+            TABLE3_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            TABLE3_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            TABLE3_FEED,
+        )
+
+    assert failed.value.diagnostics.outcome == "error"
+    assert failed.value.diagnostics.search_status == "native_exception"
+    assert "component order" in str(failed.value)
+
+
+def test_public_tp_flash_rejects_multicomponent_provider_without_electrolyte_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _figiel_brine_model()
+    provider_capsule = epcsaft.native_sdk(model)
+    table = _native_sdk_table(provider_capsule)
+    table.table_size = _Held2NativeSdk.evaluate_mixture_phase.offset + ctypes.sizeof(
+        ctypes.c_void_p
+    )
+    capsule, owners = _sdk_capsule(table, provider_capsule, model)
+    assert owners
+    monkeypatch.setattr(epcsaft, "native_sdk", lambda _model: capsule)
+
+    with pytest.raises(epcsaft_equilibrium.FlashError) as failed:
+        epcsaft_equilibrium.tp_flash(
+            model,
+            TABLE3_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            TABLE3_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            TABLE3_FEED,
+        )
+
+    assert failed.value.diagnostics.outcome == "error"
+    assert failed.value.diagnostics.search_status == "native_exception"
+    assert "electrolyte SDK tail" in str(failed.value)
+
+
+def test_public_tp_flash_maps_general_mp_accepted_and_error_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _figiel_brine_model()
+    fractions = (0.2, 0.3, 0.5)
+    phases = tuple(
+        {
+            "amount_mol": fraction,
+            "mole_fractions": composition,
+            "volume_m3": fraction * molar_volume,
+            "molar_density_mol_m3": 1.0 / molar_volume,
+            "pressure_pa": TABLE3_PRESSURE_PA,
+            "chemical_potential_over_rt": (1.0, 2.0, 3.0),
+        }
+        for fraction, composition, molar_volume in zip(
+            fractions,
+            ((0.9, 0.05, 0.05), (0.8, 0.1, 0.1), (0.7, 0.15, 0.15)),
+            (0.1, 0.01, 0.001),
+            strict=True,
+        )
+    )
+    payload = {
+        "outcome": "accepted",
+        "search_status": "stage_iii_accepted",
+        "failure_reason": "",
+        "attempts": 30,
+        "major_iterations": 4,
+        "best_tpd": -1.0e-3,
+        "lower_bound": -25.0,
+        "upper_bound": None,
+        "held_gap": None,
+        "material_balance_max_abs": 1.0e-12,
+        "pressure_stationarity_max_relative": 1.0e-10,
+        "kkt_stationarity_max_abs": 1.0e-10,
+        "chemical_potential_max_relative": 1.0e-10,
+        "confirmation_succeeded": False,
+        "confirmation_max_difference": None,
+        "search_profiles": (
+            "perdomo-held2-stage-i-installed-v1",
+            "perdomo-held2-stage-ii-installed-v1",
+            "perdomo-held2-stage-iii-installed-v1",
+        ),
+        "solver_status": "passed",
+        "numerical_status": "passed",
+        "physical_status": "passed",
+        "globality_certificate": "not_guaranteed",
+        "temperature_k": TABLE3_TEMPERATURE_K,
+        "pressure_pa": TABLE3_PRESSURE_PA,
+        "overall_mole_fractions": TABLE3_FEED,
+        "parameter_fingerprint": model.parameter_fingerprint,
+        "phases": phases,
+        "phase_fractions": fractions,
+        "total_free_energy_over_rt": -25.0,
+    }
+    monkeypatch.setattr(_equilibrium, "_solve_tp_flash", lambda *_args: payload)
+
+    result = epcsaft_equilibrium.tp_flash(
+        model,
+        TABLE3_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+        TABLE3_PRESSURE_PA * epcsaft.unit_registry.pascal,
+        TABLE3_FEED,
+    )
+
+    assert result.phase_fractions == pytest.approx(fractions)
+    assert len(result.phases) == 3
+    assert all(len(phase.mole_fractions) == 3 for phase in result.phases)
+    assert result.diagnostics.outcome == "accepted"
+    assert result.diagnostics.globality_certificate == "not_guaranteed"
+
+    payload |= {
+        "outcome": "search_exhausted",
+        "search_status": "resource_limit",
+        "solver_status": "failed",
+        "numerical_status": "not_adjudicated",
+        "physical_status": "not_adjudicated",
+        "failure_reason": "HELD2 Stage II resource limit",
+    }
+    with pytest.raises(epcsaft_equilibrium.FlashError) as failed:
+        epcsaft_equilibrium.tp_flash(
+            model,
+            TABLE3_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
+            TABLE3_PRESSURE_PA * epcsaft.unit_registry.pascal,
+            TABLE3_FEED,
+        )
+    assert failed.value.diagnostics.outcome == "search_exhausted"
+    assert failed.value.diagnostics.search_status == "resource_limit"
+    assert failed.value.diagnostics.solver_status == "failed"
+    assert failed.value.diagnostics.numerical_status == "not_adjudicated"
+    assert failed.value.diagnostics.physical_status == "not_adjudicated"
+
+
+def test_public_tp_flash_does_not_call_private_python_held2_adapter() -> None:
+    import inspect
+
+    source = inspect.getsource(epcsaft_equilibrium.tp_flash)
+    assert "_held2_adapter" not in source
 
 
 def _khudaida_model() -> epcsaft.EPCSAFT:

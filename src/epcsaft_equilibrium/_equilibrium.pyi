@@ -32,5 +32,7 @@ def _solve_tp_flash(
     capsule: object,
     temperature_k: float,
     pressure_pa: float,
-    overall_mole_fractions: tuple[float, float],
+    overall_mole_fractions: tuple[float, ...],
+    expected_fingerprint: str,
+    expected_component_ids: tuple[str, ...],
 ) -> dict[str, Any]: ...

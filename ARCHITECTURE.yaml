@@ -1,5 +1,5 @@
 version: 1
-status: accepted-pure-saturation-with-local-neutral-held-v1-candidate
+status: accepted-pure-saturation-with-local-held-development-candidates
 
 authority:
   governance_doctrine_revision: 2
@@ -138,6 +138,22 @@ local_candidate:
     runtime_implementation_authorized: false
     runtime_public_or_resource_delta: none
 
+development_candidate:
+  name: perdomo-held2-installed-public-dispatch
+  implementation_status: non-production-wip
+  authority_effect: none
+  public_operation: tp_flash
+  result_owner: TpFlashResult
+  diagnostics_owner: HeldDiagnostics
+  dispatch_basis: installed-provider-capability-table-and-component-metadata
+  formulation: >-
+    Perdomo modified-mole Stage I, complete-cut Stage II, and general candidate-
+    set direct-total-free-energy Stage III over the installed electrolyte phase,
+    volume-domain, packing-derivative, and source-domain Provider contracts.
+  globality_certificate: not_guaranteed
+  unsupported_multicomponent_non_electrolyte_behavior: structured-FlashError-before-search
+  promotion_status: not-requested
+
 provider_pins:
   accepted_pure_prefix:
     commit: 02a03a440cf53f3b1d4304556a19a54c79c70179
@@ -171,6 +187,7 @@ owners:
   capsule_abi_validation: cpp/src/module.cpp checked_sdk()
   pure_saturation_formulation_and_ipopt: cpp/src/saturation.cpp
   held_controller_and_local_acceptance: cpp/src/held.cpp and cpp/src/held_stage_i.cpp through held_stage_iii.cpp
+  held2_controller_and_local_acceptance: cpp/src/held2.cpp and cpp/src/held2_stage_iii.cpp
   input_validation_and_typed_results: src/epcsaft_equilibrium/_api.py
   pure_scientific_anchors: data/reference/pure_saturation_anchors.csv
   flash_predictive_validation: ePC-SAFT-validation
@@ -252,10 +269,10 @@ evidence:
 
 excluded:
   - guaranteed deterministic global optimization or a global-stability certificate
-  - arbitrary component counts, more than two phases, and trace-bound refinement
+  - unsupported Provider capability tails and trace-bound refinement
   - density closure and density-root derivatives
   - third derivatives for neutral HELD
-  - association, electrolyte, ionic, and reactive equilibrium
+  - electrolyte models outside the installed Perdomo HELD2 contract and reactive equilibrium
   - bubble-pressure and dew-pressure routes
   - critical completion and continuation
   - generic route registries, solver selectors, and fallback solvers

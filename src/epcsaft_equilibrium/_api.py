@@ -110,11 +110,11 @@ class HeldDiagnostics:
 
 @dataclass(frozen=True)
 class TpFlashResult:
-    """One- or two-phase result from the bounded neutral HELD controller."""
+    """Accepted phase result from the bounded installed HELD controller."""
 
     temperature_k: float
     pressure_pa: float
-    overall_mole_fractions: tuple[float, float]
+    overall_mole_fractions: tuple[float, ...]
     phases: tuple[PhaseState, ...]
     phase_fractions: tuple[float, ...]
     total_free_energy_over_rt: float
@@ -273,20 +273,20 @@ def _tp_flash_quantity(quantity: object, units: str, name: str) -> float:
     return value
 
 
-def _tp_flash_feed(overall_mole_fractions: Sequence[float]) -> tuple[float, float]:
+def _tp_flash_feed(overall_mole_fractions: Sequence[float]) -> tuple[float, ...]:
     if isinstance(overall_mole_fractions, (str, bytes)):
         raise TypeError("overall mole fractions must be a numeric sequence")
     try:
         values = tuple(float(value) for value in overall_mole_fractions)
     except (TypeError, ValueError) as error:
         raise TypeError("overall mole fractions must be a numeric sequence") from error
-    if len(values) != 2:
-        raise ValueError("tp_flash requires exactly two components")
+    if not values:
+        raise ValueError("tp_flash requires at least one component")
     if not all(math.isfinite(value) and value > 0.0 for value in values):
         raise ValueError("overall mole fractions must be positive and finite")
     if not math.isclose(sum(values), 1.0, rel_tol=0.0, abs_tol=1.0e-12):
         raise ValueError("overall mole fractions must sum to one within 1e-12")
-    return (values[0], values[1])
+    return values
 
 
 def _optional_float(payload: Mapping[str, object], name: str) -> float | None:
@@ -362,7 +362,7 @@ def tp_flash(
     pressure: Quantity[Any],
     overall_mole_fractions: Sequence[float],
 ) -> TpFlashResult:
-    """Run the bounded neutral methane/ethane HELD controller."""
+    """Run the bounded installed neutral or strong-electrolyte HELD controller."""
 
     try:
         if not isinstance(model, epcsaft.EPCSAFT):
@@ -370,14 +370,22 @@ def tp_flash(
         temperature_k = _tp_flash_quantity(temperature, "kelvin", "temperature")
         pressure_pa = _tp_flash_quantity(pressure, "pascal", "pressure")
         feed = _tp_flash_feed(overall_mole_fractions)
-        if model.parameter_fingerprint != _FLASH_FINGERPRINT:
-            raise ValueError("tp_flash requires the approved methane/ethane fingerprint")
-        if not _FLASH_TEMPERATURE_DOMAIN_K[0] <= temperature_k <= _FLASH_TEMPERATURE_DOMAIN_K[1]:
-            raise ValueError("temperature is outside the audited May 2015 source domain")
-        if not _FLASH_PRESSURE_DOMAIN_PA[0] <= pressure_pa <= _FLASH_PRESSURE_DOMAIN_PA[1]:
-            raise ValueError("pressure is outside the audited May 2015 source domain")
-        if not _FLASH_METHANE_FEED_DOMAIN[0] <= feed[0] <= _FLASH_METHANE_FEED_DOMAIN[1]:
-            raise ValueError("composition is outside the audited May 2015 source domain")
+        component_ids = tuple(str(component_id) for component_id in model.component_ids)
+        if len(component_ids) != len(feed):
+            raise ValueError("overall composition length does not match the Provider model")
+        if len(feed) == 2:
+            if model.parameter_fingerprint != _FLASH_FINGERPRINT:
+                raise ValueError("tp_flash requires the approved methane/ethane fingerprint")
+            if (
+                not _FLASH_TEMPERATURE_DOMAIN_K[0]
+                <= temperature_k
+                <= _FLASH_TEMPERATURE_DOMAIN_K[1]
+            ):
+                raise ValueError("temperature is outside the audited May 2015 source domain")
+            if not _FLASH_PRESSURE_DOMAIN_PA[0] <= pressure_pa <= _FLASH_PRESSURE_DOMAIN_PA[1]:
+                raise ValueError("pressure is outside the audited May 2015 source domain")
+            if not _FLASH_METHANE_FEED_DOMAIN[0] <= feed[0] <= _FLASH_METHANE_FEED_DOMAIN[1]:
+                raise ValueError("composition is outside the audited May 2015 source domain")
     except (TypeError, ValueError) as error:
         diagnostics = _failed_held_diagnostics("invalid_input", "input_rejected", str(error))
         raise FlashError(str(error), diagnostics) from error
@@ -386,7 +394,14 @@ def tp_flash(
         capsule = epcsaft.native_sdk(model)
         native = cast(
             Mapping[str, object],
-            _equilibrium._solve_tp_flash(capsule, temperature_k, pressure_pa, feed),
+            _equilibrium._solve_tp_flash(
+                capsule,
+                temperature_k,
+                pressure_pa,
+                feed,
+                model.parameter_fingerprint,
+                component_ids,
+            ),
         )
     except (RuntimeError, TypeError, ValueError) as error:
         diagnostics = _failed_held_diagnostics("error", "native_exception", str(error))
@@ -399,19 +414,16 @@ def tp_flash(
         if diagnostics.outcome not in {"one_phase", "accepted"}:
             reason = diagnostics.failure_reason or "HELD search did not return an accepted result"
             raise FlashError(reason, diagnostics)
-        overall = cast(
-            tuple[float, float],
-            _vector(native["overall_mole_fractions"], 2, "overall composition"),
-        )
+        overall = _vector(native["overall_mole_fractions"], len(feed), "overall composition")
         phase_payloads = cast(Sequence[Mapping[str, object]], native["phases"])
         phases = tuple(_phase(payload) for payload in phase_payloads)
         phase_fractions = _float_tuple(native["phase_fractions"])
-        expected_phase_count = 1 if diagnostics.outcome == "one_phase" else 2
-        if len(phases) != expected_phase_count or len(phase_fractions) != expected_phase_count:
+        minimum_phase_count = 1 if diagnostics.outcome == "one_phase" else 2
+        if len(phases) < minimum_phase_count or len(phase_fractions) != len(phases):
             raise ValueError("native HELD phase count does not match its outcome")
         if not math.isclose(sum(phase_fractions), 1.0, rel_tol=0.0, abs_tol=1.0e-10):
             raise ValueError("native HELD phase fractions do not sum to one")
-        if str(native["parameter_fingerprint"]) != _FLASH_FINGERPRINT:
+        if str(native["parameter_fingerprint"]) != model.parameter_fingerprint:
             raise ValueError("native HELD result has the wrong provider fingerprint")
         return TpFlashResult(
             temperature_k=float(cast(float, native["temperature_k"])),
