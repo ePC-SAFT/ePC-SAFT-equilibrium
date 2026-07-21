@@ -22,6 +22,11 @@ constexpr double kCertificateTolerance = 1.0e-8;
 // Shared with the existing Stage-III projected-KKT certificate.
 constexpr double kStageIIKktTolerance = 1.0e-7;
 constexpr double kStageITpdThreshold = -1.0e-8;
+constexpr double kStageIIStep6EpsilonB = 1.0e-8;
+constexpr double kStageIIStep6EpsilonLambda = 1.0e-8;
+constexpr double kStageIIStep6EpsilonEta = 1.0e-3;
+constexpr double kStageIIStep6EpsilonX = 1.0e-3;
+constexpr double kStageIIStep6QStationarityTolerance = 1.0e-8;
 constexpr int kStageIIpoptIterations = 300;
 constexpr unsigned int kStageISeed = 2025;
 
@@ -1639,6 +1644,26 @@ Held2StageIResult solve_held2_manufactured_stage_i(
     );
 }
 
+namespace {
+
+struct Held2StageIIStep6Cut {
+    Held2StateEvaluation state;
+    std::vector<double> independent_modified_fractions;
+    std::vector<double> fixed_volume_composition_gradient;
+    double phase_coordinate = 0.0;
+};
+
+[[nodiscard]] std::vector<Held2StageIICandidate>
+select_held2_stage_ii_candidates(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& feed_independent_modified_fractions,
+    double upper_bound,
+    const std::vector<double>& multipliers,
+    const std::vector<Held2StageIIStep6Cut>& cuts
+);
+
+}  // namespace
+
 Held2StageIIResult solve_held2_manufactured_stage_ii(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed
@@ -1838,10 +1863,164 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
     return result;
 }
 
+namespace {
+
+std::vector<Held2StageIICandidate> select_held2_stage_ii_candidates(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& feed_independent_modified_fractions,
+    double upper_bound,
+    const std::vector<double>& multipliers,
+    const std::vector<Held2StageIIStep6Cut>& cuts
+) {
+    const std::size_t dimension = coordinates.independent_indices.size();
+    if (!std::isfinite(upper_bound)
+        || feed_independent_modified_fractions.size() != dimension
+        || multipliers.size() != dimension
+        || coordinates.independent_lower_bounds.size() != dimension) {
+        throw std::invalid_argument("HELD2 Stage II Step 6 evidence is incomplete");
+    }
+    require_finite_vector(
+        feed_independent_modified_fractions,
+        "HELD2 Stage II Step 6 feed"
+    );
+    require_finite_vector(multipliers, "HELD2 Stage II Step 6 multipliers");
+
+    const std::size_t component_count_to_check = std::min(
+        dimension,
+        coordinates.charges.size() - 2
+    );
+    std::vector<Held2StageIICandidate> result;
+    std::vector<std::size_t> selected_cut_indices;
+    for (std::size_t cut_index = 0; cut_index < cuts.size(); ++cut_index) {
+        const Held2StageIIStep6Cut& cut = cuts[cut_index];
+        if (cut.independent_modified_fractions.size() != dimension
+            || cut.fixed_volume_composition_gradient.size() != dimension
+            || cut.state.gradient.size() != dimension + 1
+            || cut.state.modified_fractions.size()
+                != coordinates.retained_indices.size()
+            || !cut.state.has_packing_evaluation
+            || !std::isfinite(cut.state.objective)
+            || !std::isfinite(cut.state.volume)
+            || !std::isfinite(cut.state.packing.value)) {
+            throw std::invalid_argument(
+                "HELD2 Stage II Step 6 cut evidence is incomplete"
+            );
+        }
+        require_finite_vector(
+            cut.independent_modified_fractions,
+            "HELD2 Stage II Step 6 modified fractions"
+        );
+        require_finite_vector(
+            cut.fixed_volume_composition_gradient,
+            "HELD2 Stage II Step 6 fixed-volume gradient"
+        );
+        require_finite_vector(cut.state.gradient, "HELD2 Stage II Step 6 q gradient");
+
+        double lower_value = cut.state.objective;
+        for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+            lower_value += multipliers[coordinate]
+                * (feed_independent_modified_fractions[coordinate]
+                   - cut.independent_modified_fractions[coordinate]);
+        }
+        const double gap = upper_bound - lower_value;
+        if (std::abs(gap) > kStageIIStep6EpsilonB
+            || std::abs(cut.state.gradient.back())
+                > kStageIIStep6QStationarityTolerance) {
+            continue;
+        }
+
+        std::vector<std::size_t> checked_component_indices;
+        bool fixed_volume_stationary = true;
+        for (std::size_t coordinate = 0;
+             coordinate < dimension
+             && checked_component_indices.size() < component_count_to_check;
+             ++coordinate) {
+            if (cut.independent_modified_fractions[coordinate]
+                <= coordinates.independent_lower_bounds[coordinate]) {
+                continue;
+            }
+            checked_component_indices.push_back(coordinate);
+            if (std::abs(
+                    cut.fixed_volume_composition_gradient[coordinate]
+                    - multipliers[coordinate]
+                ) > kStageIIStep6EpsilonLambda * std::abs(multipliers[coordinate])) {
+                fixed_volume_stationary = false;
+                break;
+            }
+        }
+        if (!fixed_volume_stationary) {
+            continue;
+        }
+
+        const bool distinct = std::all_of(
+            selected_cut_indices.begin(),
+            selected_cut_indices.end(),
+            [&cuts, &cut](std::size_t selected_index) {
+                const Held2StageIIStep6Cut& selected = cuts[selected_index];
+                return std::abs(cut.state.packing.value - selected.state.packing.value)
+                        >= kStageIIStep6EpsilonEta
+                    || maximum_abs_difference(
+                           cut.independent_modified_fractions,
+                           selected.independent_modified_fractions
+                       ) >= kStageIIStep6EpsilonX;
+            }
+        );
+        if (!distinct) {
+            continue;
+        }
+        selected_cut_indices.push_back(cut_index);
+        result.push_back({
+            cut.state.modified_fractions,
+            cut.independent_modified_fractions,
+            cut.state.volume,
+            cut.phase_coordinate,
+            gap,
+        });
+    }
+    return result;
+}
+
+}  // namespace
+
+std::vector<Held2StageIICandidate> evaluate_held2_stage_ii_step6_test_adapter(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& feed_independent_modified_fractions,
+    double upper_bound,
+    const std::vector<double>& multipliers,
+    const std::vector<Held2StateEvaluation>& states,
+    const std::vector<std::vector<double>>& independent_modified_fractions,
+    const std::vector<std::vector<double>>& fixed_volume_composition_gradients,
+    const std::vector<double>& phase_coordinates
+) {
+    if (states.size() != independent_modified_fractions.size()
+        || states.size() != fixed_volume_composition_gradients.size()
+        || states.size() != phase_coordinates.size()) {
+        throw std::invalid_argument("HELD2 Stage II Step 6 test evidence is incomplete");
+    }
+    std::vector<Held2StageIIStep6Cut> cuts;
+    cuts.reserve(states.size());
+    for (std::size_t index = 0; index < states.size(); ++index) {
+        cuts.push_back({
+            states[index],
+            independent_modified_fractions[index],
+            fixed_volume_composition_gradients[index],
+            phase_coordinates[index],
+        });
+    }
+    return select_held2_stage_ii_candidates(
+        coordinates,
+        feed_independent_modified_fractions,
+        upper_bound,
+        multipliers,
+        cuts
+    );
+}
+
 Held2StageIIResult solve_held2_stage_ii(
     const Held2Coordinates& coordinates,
     const std::vector<double>& physical_feed,
-    const Held2StateEvaluator& evaluator,
+    const Held2StateEvaluator& search_evaluator,
+    const Held2StateEvaluator& fixed_volume_evaluator,
     const Held2StateEvaluation& reference,
     const std::vector<Held2StageICandidate>& stage_i_candidates
 ) {
@@ -1870,13 +2049,42 @@ Held2StageIIResult solve_held2_stage_ii(
     if (dimension == 0 || reference.packing.value <= 0.0) {
         throw std::invalid_argument("HELD2 Stage II reference evidence is incomplete");
     }
-    struct Cut {
-        Held2StateEvaluation state;
-        std::vector<double> independent;
-        double phase_coordinate = 0.0;
+    const auto make_cut = [
+        &fixed_volume_evaluator,
+        dimension
+    ](
+        Held2StateEvaluation state,
+        std::vector<double> independent,
+        double phase_coordinate
+    ) {
+        if (!(state.volume > 0.0) || !std::isfinite(state.volume)) {
+            throw std::invalid_argument(
+                "HELD2 Stage II cut has an invalid phase volume"
+            );
+        }
+        const Held2StateEvaluation fixed_volume_state = fixed_volume_evaluator(
+            independent,
+            std::log(state.volume)
+        );
+        if (fixed_volume_state.gradient.size() < dimension) {
+            throw std::invalid_argument(
+                "HELD2 Stage II fixed-volume gradient is incomplete"
+            );
+        }
+        std::vector<double> fixed_volume_composition_gradient(
+            fixed_volume_state.gradient.begin(),
+            fixed_volume_state.gradient.begin()
+                + static_cast<std::ptrdiff_t>(dimension)
+        );
+        return Held2StageIIStep6Cut{
+            std::move(state),
+            std::move(independent),
+            std::move(fixed_volume_composition_gradient),
+            phase_coordinate,
+        };
     };
-    std::vector<Cut> cuts;
-    cuts.push_back({reference, feed, std::log(reference.packing.value)});
+    std::vector<Held2StageIIStep6Cut> cuts;
+    cuts.push_back(make_cut(reference, feed, std::log(reference.packing.value)));
     for (const Held2StageICandidate& candidate : stage_i_candidates) {
         std::vector<double> independent;
         for (std::size_t position : retained_positions) {
@@ -1886,7 +2094,11 @@ Held2StageIIResult solve_held2_stage_ii(
             continue;
         }
         const double coordinate = std::log(candidate.packing_fraction);
-        cuts.push_back({evaluator(independent, coordinate), independent, coordinate});
+        cuts.push_back(make_cut(
+            search_evaluator(independent, coordinate),
+            independent,
+            coordinate
+        ));
     }
     const double composition_sum_upper = 1.0 - kHeld2ModifiedLowerScale
         * coordinates.modified_factors[static_cast<std::size_t>(
@@ -1914,8 +2126,11 @@ Held2StageIIResult solve_held2_stage_ii(
                 coordinates.independent_lower_bounds[coordinate]
             )
         );
-        cuts.push_back({evaluator(point, cuts.front().phase_coordinate), point,
-                        cuts.front().phase_coordinate});
+        cuts.push_back(make_cut(
+            search_evaluator(point, cuts.front().phase_coordinate),
+            point,
+            cuts.front().phase_coordinate
+        ));
     }
     Held2StageIIResult result;
     result.lower_starts_per_iteration = 10 * static_cast<int>(coordinates.charges.size());
@@ -1946,7 +2161,9 @@ Held2StageIIResult solve_held2_stage_ii(
             }
             rhs[pivot] /= diagonal;
             for (std::size_t row = 0; row < size; ++row) {
-                if (row == pivot) continue;
+                if (row == pivot) {
+                    continue;
+                }
                 const double factor = matrix[row][pivot];
                 for (std::size_t column = pivot; column < size; ++column) {
                     matrix[row][column] -= factor * matrix[pivot][column];
@@ -1968,29 +2185,37 @@ Held2StageIIResult solve_held2_stage_ii(
                 );
                 std::vector<double> rhs(dimension + 1, 0.0);
                 for (std::size_t row = 0; row < selected.size(); ++row) {
-                    const Cut& cut = cuts[selected[row]];
+                    const Held2StageIIStep6Cut& cut = cuts[selected[row]];
                     for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
                         matrix[row][coordinate] = -(
-                            feed[coordinate] - cut.independent[coordinate]
+                            feed[coordinate]
+                            - cut.independent_modified_fractions[coordinate]
                         );
                     }
                     matrix[row][dimension] = 1.0;
                     rhs[row] = cut.state.objective;
                 }
                 const std::vector<double> solution = solve_dense(matrix, rhs);
-                if (solution.empty()) return;
+                if (solution.empty()) {
+                    return;
+                }
                 const double envelope = solution.back();
-                for (const Cut& cut : cuts) {
+                for (const Held2StageIIStep6Cut& cut : cuts) {
                     double line = cut.state.objective;
                     for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
                         line += solution[coordinate]
-                            * (feed[coordinate] - cut.independent[coordinate]);
+                            * (feed[coordinate]
+                               - cut.independent_modified_fractions[coordinate]);
                     }
-                    if (envelope > line + stage_ii_tolerance) return;
+                    if (envelope > line + stage_ii_tolerance) {
+                        return;
+                    }
                 }
                 if (envelope > upper_bound) {
                     upper_bound = envelope;
-                    std::copy(solution.begin(), solution.end() - 1, multiplier.begin());
+                    std::copy(
+                        solution.begin(), solution.end() - 1, multiplier.begin()
+                    );
                 }
                 return;
             }
@@ -2021,8 +2246,8 @@ Held2StageIIResult solve_held2_stage_ii(
         lower.push_back(std::log(kHeld2PackingFractionMinimum));
         upper.push_back(std::log(kHeld2PackingFractionMaximum));
         std::vector<std::vector<double>> starts;
-        for (const Cut& cut : cuts) {
-            std::vector<double> start = cut.independent;
+        for (const Held2StageIIStep6Cut& cut : cuts) {
+            std::vector<double> start = cut.independent_modified_fractions;
             start.push_back(cut.phase_coordinate);
             starts.push_back(std::move(start));
         }
@@ -2051,13 +2276,16 @@ Held2StageIIResult solve_held2_stage_ii(
             starts.push_back(std::move(start));
         }
         double best_certified_value = std::numeric_limits<double>::infinity();
-        Cut best;
+        Held2StageIIStep6Cut best;
         int certified_start_count = 0;
         for (std::size_t start_index = 0; start_index < starts.size(); ++start_index) {
             const std::vector<double>& start = starts[start_index];
             ++result.lower_attempted_start_count;
             const Held2SearchRun run = solve_held2_search(
-                evaluator, lower_reference_variables, lower_reference, true,
+                search_evaluator,
+                lower_reference_variables,
+                lower_reference,
+                true,
                 start, lower, upper, composition_sum_upper
             );
             Held2StageIIAttempt attempt;
@@ -2076,7 +2304,7 @@ Held2StageIIResult solve_held2_stage_ii(
             if (run.variables.size() == dimension + 1) {
                 try {
                     independent.assign(run.variables.begin(), run.variables.end() - 1);
-                    state = evaluator(independent, run.variables.back());
+                    state = search_evaluator(independent, run.variables.back());
                     attempt.provider_terminal_valid = true;
                     attempt.lower_value = state.objective;
                     for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
@@ -2188,7 +2416,12 @@ Held2StageIIResult solve_held2_stage_ii(
             ++result.lower_completed_start_count;
             if (attempt.lower_value < best_certified_value) {
                 best_certified_value = attempt.lower_value;
-                best = {std::move(state), std::move(independent), run.variables.back()};
+                best = {
+                    std::move(state),
+                    std::move(independent),
+                    {},
+                    run.variables.back(),
+                };
             }
         }
         ++result.major_iterations;
@@ -2209,17 +2442,45 @@ Held2StageIIResult solve_held2_stage_ii(
             result.search_completeness = "partial";
         }
         result.final_lower_search_complete = decision.lower_bound_certified;
-        const bool duplicate = std::any_of(cuts.begin(), cuts.end(), [&best](const Cut& cut) {
-            return maximum_abs_difference(cut.state.modified_fractions, best.state.modified_fractions) < 1.0e-7
-                && std::abs(cut.state.volume - best.state.volume) < 1.0e-7;
-        });
+        if (decision.decision == "indeterminate") {
+            result.outcome = "indeterminate";
+            result.cut_count = static_cast<int>(cuts.size());
+            return result;
+        }
+        best = make_cut(
+            std::move(best.state),
+            std::move(best.independent_modified_fractions),
+            best.phase_coordinate
+        );
+        const bool duplicate = std::any_of(
+            cuts.begin(),
+            cuts.end(),
+            [&best](const Held2StageIIStep6Cut& cut) {
+                return maximum_abs_difference(
+                           cut.state.modified_fractions,
+                           best.state.modified_fractions
+                       ) < 1.0e-7
+                    && std::abs(cut.state.volume - best.state.volume) < 1.0e-7;
+            }
+        );
+        const auto select_current_candidate_set = [&]() {
+            result.candidates = select_held2_stage_ii_candidates(
+                coordinates, feed, upper_bound, multiplier, cuts
+            );
+            if (result.candidates.size() <= 1) {
+                return false;
+            }
+            result.outcome = "candidate_set";
+            result.cut_count = static_cast<int>(cuts.size());
+            return true;
+        };
         if (decision.decision == "add_improving_cut") {
             if (duplicate) {
                 result.outcome = "indeterminate";
                 result.cut_count = static_cast<int>(cuts.size());
                 return result;
             }
-            cuts.push_back(best);
+            cuts.push_back(std::move(best));
             ++result.certified_improving_cut_count;
             if (decision.lower_bound_certified) {
                 result.bound_history.push_back({
@@ -2229,12 +2490,10 @@ Held2StageIIResult solve_held2_stage_ii(
                     static_cast<int>(cuts.size() - 1),
                 });
             }
+            if (select_current_candidate_set()) {
+                return result;
+            }
             continue;
-        }
-        if (decision.decision == "indeterminate") {
-            result.outcome = "indeterminate";
-            result.cut_count = static_cast<int>(cuts.size());
-            return result;
         }
         result.bound_history.push_back({
             best_certified_value,
@@ -2242,34 +2501,10 @@ Held2StageIIResult solve_held2_stage_ii(
             multiplier.empty() ? 0.0 : multiplier.front(),
             static_cast<int>(cuts.size()),
         });
-        if (!duplicate) cuts.push_back(best);
-        result.candidates.clear();
-        for (const Cut& cut : cuts) {
-            double value = cut.state.objective;
-            for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-                value += multiplier[coordinate]
-                    * (feed[coordinate] - cut.independent[coordinate]);
-            }
-            const double gap = upper_bound - value;
-            bool stationary = std::abs(cut.state.gradient.back()) <= stage_ii_tolerance;
-            for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-                stationary = stationary
-                    && std::abs(cut.state.gradient[coordinate] - multiplier[coordinate])
-                        <= stage_ii_tolerance;
-            }
-            if (std::abs(gap) <= stage_ii_tolerance && stationary) {
-                result.candidates.push_back({
-                    cut.state.modified_fractions,
-                    cut.independent,
-                    cut.state.volume,
-                    cut.phase_coordinate,
-                    gap,
-                });
-            }
+        if (!duplicate) {
+            cuts.push_back(std::move(best));
         }
-        if (result.candidates.size() > 1) {
-            result.outcome = "candidate_set";
-            result.cut_count = static_cast<int>(cuts.size());
+        if (select_current_candidate_set()) {
             return result;
         }
         if (duplicate) {

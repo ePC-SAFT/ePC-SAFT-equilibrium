@@ -210,6 +210,18 @@ struct Held2StageIILowerDecision {
     int declared_start_count
 );
 
+[[nodiscard]] std::vector<Held2StageIICandidate>
+evaluate_held2_stage_ii_step6_test_adapter(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& feed_independent_modified_fractions,
+    double upper_bound,
+    const std::vector<double>& multipliers,
+    const std::vector<Held2StateEvaluation>& states,
+    const std::vector<std::vector<double>>& independent_modified_fractions,
+    const std::vector<std::vector<double>>& fixed_volume_composition_gradients,
+    const std::vector<double>& phase_coordinates
+);
+
 struct Held2StageIIINlpEvaluation {
     double objective = 0.0;
     std::vector<double> objective_gradient;
@@ -299,7 +311,8 @@ struct Held2StageIIIResult {
 [[nodiscard]] Held2StageIIResult solve_held2_stage_ii(
     const Held2Coordinates& coordinates,
     const std::vector<double>& physical_feed,
-    const Held2StateEvaluator& evaluator,
+    const Held2StateEvaluator& search_evaluator,
+    const Held2StateEvaluator& fixed_volume_evaluator,
     const Held2StateEvaluation& reference,
     const std::vector<Held2StageICandidate>& stage_i_candidates
 );

@@ -25,6 +25,62 @@ KHUDAIDA_CHARGES = (0.0, 0.0, 0.0, 1.0, -1.0)
 KHUDAIDA_FINGERPRINT = "sha256:5a59828d86bb29c919513484a26cedaa0f025463aaa7c149ae3d1fbd0eda97ae"
 
 
+def _held2_step6(
+    feed: tuple[float, float, float],
+    upper_bound: float,
+    multiplier: tuple[float, float, float],
+    cuts: tuple[
+        tuple[
+            tuple[float, float, float],
+            float,
+            float,
+            float,
+            tuple[float, float, float, float],
+            tuple[float, float, float],
+        ],
+        ...,
+    ],
+) -> dict[str, object]:
+    return _equilibrium._held2_adapter(
+        KHUDAIDA_CHARGES,
+        feed,
+        upper_bound,
+        multiplier,
+        cuts,
+        "stage_ii_step6",
+    )
+
+
+def _held2_step6_cut(
+    feed: tuple[float, float, float],
+    multiplier: tuple[float, float, float],
+    independent: tuple[float, float, float],
+    packing_fraction: float,
+    *,
+    q_gradient: tuple[float, float, float, float] | None = None,
+    fixed_volume_gradient: tuple[float, float, float] | None = None,
+    volume: float = 1.0e-4,
+) -> tuple[
+    tuple[float, float, float],
+    float,
+    float,
+    float,
+    tuple[float, float, float, float],
+    tuple[float, float, float],
+]:
+    objective = -sum(
+        value * (feed[index] - independent[index]) for index, value in enumerate(multiplier)
+    )
+    return (
+        independent,
+        packing_fraction,
+        volume,
+        objective,
+        q_gradient or (*multiplier, 0.0),
+        fixed_volume_gradient or multiplier,
+    )
+
+
 def _figiel_brine_model() -> epcsaft.EPCSAFT:
     parameters = epcsaft.ParameterBundle.from_catalog(
         "figiel-2025-reference-electrolytes", version=1
@@ -717,6 +773,136 @@ def test_held2_stage_ii_final_gap_requires_complete_lower_search() -> None:
         "search_completeness": "complete",
         "lower_bound_certified": True,
     }
+
+
+def test_held2_stage_ii_step6_can_select_multiple_phases_immediately_after_insertion() -> None:
+    feed = (0.4, 0.1, 0.04)
+    multiplier = (2.0, -3.0, 4.0)
+    cuts = tuple(
+        _held2_step6_cut(feed, multiplier, independent, packing)
+        for independent, packing in (
+            ((0.2, 0.1, 0.05), 0.2),
+            ((0.4, 0.2, 0.10), 0.4),
+            ((0.6, 0.05, 0.02), 0.6),
+            (feed, 0.5),
+        )
+    )
+
+    result = _held2_step6(
+        feed,
+        0.0,
+        multiplier,
+        cuts,
+    )
+
+    assert result["candidate_count"] == 4
+    for actual, cut in zip(result["independent_modified_fractions"], cuts, strict=True):
+        assert actual == pytest.approx(cut[0])
+
+
+def test_held2_stage_ii_step6_uses_fixed_volume_gradient() -> None:
+    feed = (0.4, 0.1, 0.04)
+    multiplier = (2.0, -3.0, 4.0)
+    cut = _held2_step6_cut(
+        feed,
+        multiplier,
+        (0.3, 0.2, 0.05),
+        0.3,
+        q_gradient=(12.0, -13.0, 14.0, 0.0),
+    )
+
+    result = _held2_step6(feed, 0.0, multiplier, (cut,))
+
+    assert result["candidate_count"] == 1
+
+
+def test_held2_stage_ii_step6_applies_relative_scaling_and_excludes_lower_bound() -> None:
+    feed = (0.4, 0.1, 0.04)
+    multiplier = (1.0e8, 2.0, 3.0)
+    cut = _held2_step6_cut(
+        feed,
+        multiplier,
+        (0.3, 1.0e-10, 0.05),
+        0.3,
+        fixed_volume_gradient=(1.0e8 + 0.5, 100.0, 3.0 + 2.0e-8),
+    )
+
+    result = _held2_step6(feed, 0.0, multiplier, (cut,))
+
+    assert result["candidate_count"] == 1
+
+
+def test_held2_stage_ii_step6_clusters_only_eta_and_composition_duplicates() -> None:
+    feed = (0.4, 0.1, 0.04)
+    multiplier = (2.0, -3.0, 4.0)
+    cuts = tuple(
+        _held2_step6_cut(feed, multiplier, independent, packing)
+        for independent, packing in (
+            ((0.3, 0.1, 0.05), 0.3),
+            ((0.3006, 0.1006, 0.0506), 0.3004),
+            ((0.31, 0.1002, 0.0494), 0.3004),
+        )
+    )
+
+    result = _held2_step6(feed, 0.0, multiplier, cuts)
+
+    assert result["candidate_count"] == 2
+    for actual, cut in zip(
+        result["independent_modified_fractions"], (cuts[0], cuts[2]), strict=True
+    ):
+        assert actual == pytest.approx(cut[0])
+
+
+def test_held2_stage_ii_step6_keeps_exact_c1_c29_replay_ineligible() -> None:
+    feed = (0.6462224836985831, 0.04995832720498113, 0.03892729322939648)
+    multiplier = (1.357695519654953, -0.196864482419187, -141.8379142414196)
+    model = _khudaida_model()
+    capsule = epcsaft.native_sdk(model)
+    retained = (
+        (
+            (0.91049726787718377, 3.0460884822603739e-05, 0.088504042098029034),
+            -0.7857111519928206,
+            1.747197390420499e-05,
+        ),
+        (
+            (0.4406535569650898, 0.08882925535454135, 0.0004486805424638745),
+            -0.8436444167759523,
+            5.613949558296684e-05,
+        ),
+    )
+    cuts = []
+    for independent, q, volume in retained:
+        fixed_volume = _equilibrium._held2_adapter(
+            capsule,
+            293.15,
+            100_000.0,
+            independent,
+            math.log(volume),
+            KHUDAIDA_FINGERPRINT,
+        )
+        q_chart = _equilibrium._held2_adapter(
+            capsule,
+            293.15,
+            100_000.0,
+            independent,
+            q,
+            KHUDAIDA_FINGERPRINT,
+            "log_packing_phase",
+        )
+        cuts.append(
+            (
+                independent,
+                q_chart["packing_fraction"],
+                q_chart["volume"],
+                q_chart["objective"],
+                tuple(q_chart["gradient"]),
+                tuple(fixed_volume["gradient"][:3]),
+            )
+        )
+
+    result = _held2_step6(feed, -6.114583161912342, multiplier, tuple(cuts))
+
+    assert result["candidate_count"] == 0
 
 
 def test_held2_general_mp_stage_iii_exact_lagrangian_hessian() -> None:

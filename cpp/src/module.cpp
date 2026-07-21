@@ -1865,6 +1865,7 @@ py::dict held2_installed_stage_i(
                 coordinates,
                 physical_feed,
                 search_evaluator,
+                evaluator,
                 reference,
                 evaluation.candidates
             );
@@ -2063,6 +2064,86 @@ py::dict held2_stage_ii_precedence(
     result["decision"] = decision.decision;
     result["search_completeness"] = decision.search_completeness;
     result["lower_bound_certified"] = decision.lower_bound_certified;
+    return result;
+}
+
+py::dict held2_stage_ii_step6(
+    const std::vector<double>& charges,
+    const std::vector<double>& feed_independent_modified_fractions,
+    double upper_bound,
+    const std::vector<double>& multipliers,
+    const py::sequence& raw_cuts,
+    const std::string& stage
+) {
+    if (stage != "stage_ii_step6") {
+        throw py::value_error("unsupported HELD2 Stage II Step 6 request");
+    }
+    const epcsaft_equilibrium::Held2Coordinates coordinates =
+        epcsaft_equilibrium::make_held2_coordinates(charges);
+    std::vector<epcsaft_equilibrium::Held2StateEvaluation> states;
+    std::vector<std::vector<double>> independent_modified_fractions;
+    std::vector<std::vector<double>> fixed_volume_composition_gradients;
+    std::vector<double> phase_coordinates;
+    states.reserve(raw_cuts.size());
+    independent_modified_fractions.reserve(raw_cuts.size());
+    fixed_volume_composition_gradients.reserve(raw_cuts.size());
+    phase_coordinates.reserve(raw_cuts.size());
+    for (const py::handle raw : raw_cuts) {
+        const py::sequence cut = py::reinterpret_borrow<py::sequence>(raw);
+        if (cut.size() != 6) {
+            throw py::value_error("HELD2 Stage II Step 6 cut must contain six fields");
+        }
+        const std::vector<double> independent =
+            cut[0].cast<std::vector<double>>();
+        const double packing_fraction = cut[1].cast<double>();
+        if (!(packing_fraction > 0.0) || !std::isfinite(packing_fraction)) {
+            throw py::value_error("HELD2 Stage II Step 6 packing fraction is invalid");
+        }
+        epcsaft_equilibrium::Held2StateEvaluation state;
+        state.physical_amounts =
+            epcsaft_equilibrium::held2_lift_independent_fractions(
+                coordinates,
+                independent
+            );
+        state.modified_fractions =
+            epcsaft_equilibrium::held2_transform_physical_fractions(
+                coordinates,
+                state.physical_amounts
+            );
+        state.volume = cut[2].cast<double>();
+        state.objective = cut[3].cast<double>();
+        state.gradient = cut[4].cast<std::vector<double>>();
+        state.has_packing_evaluation = true;
+        state.packing.value = packing_fraction;
+        states.push_back(std::move(state));
+        independent_modified_fractions.push_back(independent);
+        fixed_volume_composition_gradients.push_back(
+            cut[5].cast<std::vector<double>>()
+        );
+        phase_coordinates.push_back(std::log(packing_fraction));
+    }
+    const std::vector<epcsaft_equilibrium::Held2StageIICandidate> candidates =
+        epcsaft_equilibrium::evaluate_held2_stage_ii_step6_test_adapter(
+            coordinates,
+            feed_independent_modified_fractions,
+            upper_bound,
+            multipliers,
+            states,
+            independent_modified_fractions,
+            fixed_volume_composition_gradients,
+            phase_coordinates
+        );
+    std::vector<std::vector<double>> independent_candidates;
+    independent_candidates.reserve(candidates.size());
+    for (const auto& candidate : candidates) {
+        independent_candidates.push_back(
+            candidate.independent_modified_fractions
+        );
+    }
+    py::dict result;
+    result["candidate_count"] = candidates.size();
+    result["independent_modified_fractions"] =
+        std::move(independent_candidates);
     return result;
 }
 
@@ -2502,6 +2583,16 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("best_certified_value"),
         py::arg("certified_start_count"),
         py::arg("declared_start_count"),
+        py::arg("stage")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_stage_ii_step6,
+        py::arg("charges"),
+        py::arg("feed_independent_modified_fractions"),
+        py::arg("upper_bound"),
+        py::arg("multipliers"),
+        py::arg("cuts"),
         py::arg("stage")
     );
     module.def(
