@@ -45,10 +45,11 @@ closed. HELD diagnostics report solver, numerical, and physical evidence on
 independent `passed`, `failed`, or `not_adjudicated` axes. The accepted pure-
 saturation route and authority are unchanged.
 
-The Perdomo HELD2 public dispatch is non-production development evidence. It
-uses the existing `TpFlashResult`, `HeldDiagnostics`, and `FlashError` owners,
-has no separate compatibility route, and creates no authority, promotion, or
-predictive-admission claim.
+The archived Perdomo HELD2 public-dispatch subject is non-production
+development evidence. It used the existing `TpFlashResult`, `HeldDiagnostics`,
+and `FlashError` owners, had no separate compatibility route, and created no
+authority, promotion, or predictive-admission claim. Current `main` retains
+the private manufactured HELD2 foundation but not that installed public route.
 
 The retained scientific sources are the Pereira and Perdomo Markdown files in
 the permanent lab at commit
@@ -59,18 +60,19 @@ the permanent lab at commit
 Those sources are provenance only; the clean package has no lab, migration,
 sibling-source, or provider-implementation dependency.
 
-The installed Perdomo Table 3 public-route evidence retains three detected
-homogeneous pressure roots, two mechanically stable roots, complete Stage-I
-start accounting, and the selected lowest-objective reference. Its
+The archived installed Perdomo Table 3 public-route evidence retains three
+detected homogeneous pressure roots, two mechanically stable roots, complete
+Stage-I start accounting, and the selected lowest-objective reference. Its
 `root_completeness="not_proven"` status is independent of solver, numerical,
 physical, and `globality_certificate="not_guaranteed"` status. The accepted
 one-phase result is cross-EOS source-topology-disagreement evidence, not an
 electrolyte-LLE or Perdomo numerical-reproduction admission.
 
-D-026 selects one source-complete installed ePC-SAFT two-liquid case as the
-next public Stage-I/II/III gate. Equilibrium is ready for that selected case
-and waits for the exact Provider artifact and Migration dispatch. No speculative
-case constants, route, tolerance, resource, or runtime correction is active.
+D-026 identified one source-complete installed ePC-SAFT two-liquid case as the
+next public Stage-I/II/III evidence gate. After archival of the experimental
+runtime, implementation waits for a new bounded strategy assignment and exact
+Provider artifact. No speculative case constants, route, tolerance, resource,
+or runtime correction is active.
 
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD

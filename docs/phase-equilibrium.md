@@ -18,7 +18,7 @@ replace a formulation owner.
 | --- | --- | --- |
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
-| Strong-electrolyte Perdomo HELD2 | [Perdomo HELD2](designs/2026-07-21-perdomo-held2.md) | Non-production development candidate; public installed dispatch exists, but electrolyte LLE is not admitted |
+| Strong-electrolyte Perdomo HELD2 | [Perdomo HELD2](designs/2026-07-21-perdomo-held2.md) | Current `main` retains the private manufactured Stage-I/II/III foundation; the installed public-dispatch subject is archived non-production evidence, and electrolyte LLE is not admitted |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Reactive or coupled phase-chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
@@ -33,11 +33,11 @@ The package exports two equilibrium operations:
 
 - `saturation` owns the accepted, bounded, pure-component local saturation
   boundary.
-- `tp_flash` is the sole mixture flash surface. It dispatches the reviewed
-  neutral binary fingerprint to the neutral HELD controller and qualifying
-  installed strong-electrolyte Provider capability tables to the Perdomo HELD2
-  controller. Unsupported multicomponent non-electrolyte models fail before
-  search.
+- `tp_flash` is the sole mixture flash surface. Current `main` dispatches the
+  reviewed neutral binary fingerprint to the neutral HELD controller. The
+  archived non-production HELD2 subject also dispatched qualifying installed
+  strong-electrolyte Provider capability tables, but that experimental runtime
+  is not part of current `main`.
 
 `tp_flash` does not accept a phase count, caller seeds, solver settings,
 backend selection, or a case-specific mode. Its public result owners are
@@ -103,7 +103,7 @@ Every mixture result keeps the following questions independent:
 5. **Search completeness:** Did every declared finite start or major iteration
    needed for the terminal claim complete?
 6. **Root completeness:** Which homogeneous pressure roots were detected, and
-   was completeness established? Current HELD2 evidence reports
+   was completeness established? Archived installed HELD2 evidence reports
    `root_completeness="not_proven"`.
 7. **Predictive status:** Is there an accepted physical output that can be
    compared with a source-bound external case?

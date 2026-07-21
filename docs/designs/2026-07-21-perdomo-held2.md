@@ -1,28 +1,35 @@
 # Perdomo HELD2 Strong-Electrolyte Phase Equilibrium
 
-Status: canonical design for a non-production development candidate
+Status: canonical design with archived non-production development evidence
 
 Authority effect: none
 
 ## Status and authority
 
 This document is the package-local scientific and numerical owner for the
-implemented Perdomo HELD2 strong-electrolyte controller. Organization doctrine
-revision 3 and [the package authority map](../phase-equilibrium.md) govern its
-ownership and claim boundary.
+Perdomo HELD2 strong-electrolyte formulation. Current `main` retains its private
+manufactured Stage-I/II/III foundation. The later installed public-dispatch and
+reference-hardening runtime is archived at
+`archive/held2-pre-strategy-2026-07-21` as non-production evidence.
+Organization doctrine revision 3 and
+[the package authority map](../phase-equilibrium.md) govern ownership and the
+claim boundary.
 
-The controller is exposed through the existing public `tp_flash` operation for
-qualifying installed Provider capability tables. Public exposure is not
-capability admission. The only accepted Equilibrium capability remains the
-receipt-bound pure-component saturation slice.
+The archived subject exposed the controller through the existing public
+`tp_flash` operation for qualifying installed Provider capability tables.
+Current `main` does not expose that electrolyte dispatch. Neither the archived
+public exposure nor this canonical design is capability admission. The only
+accepted Equilibrium capability remains the receipt-bound pure-component
+saturation slice.
 
 ## Scope and nonclaims
 
-The implemented formulation covers fixed-temperature, fixed-pressure,
-nonreactive fluid-phase equilibrium for mixtures containing strong, fully
-dissociated electrolytes. A qualifying topology has at least one molecular
-species and at least two charged species and is supported by a complete
-installed Provider phase/domain/derivative contract.
+The formulation covers fixed-temperature, fixed-pressure, nonreactive
+fluid-phase equilibrium for mixtures containing strong, fully dissociated
+electrolytes. The archived WIP exercised this scope against installed Provider
+contracts. A qualifying topology has at least one molecular species and at
+least two charged species and is supported by a complete installed Provider
+phase/domain/derivative contract.
 
 The formulation does not cover:
 
@@ -35,9 +42,10 @@ The formulation does not cover:
 - a fallback solver or numerical production derivatives; or
 - deterministic global optimization or a global-stability certificate.
 
-The public owners remain `tp_flash`, `TpFlashResult`, `HeldDiagnostics`, and
-`FlashError`. The controller uses the existing native module, target,
-`ProviderContext`, Ipopt adapter, and HELD2 result/diagnostic owner.
+Any resumed public implementation must reuse `tp_flash`, `TpFlashResult`,
+`HeldDiagnostics`, and `FlashError`. It must also reuse the existing native
+module, target, `ProviderContext`, Ipopt adapter, and HELD2
+result/diagnostic owner.
 
 ## Scientific sources and notation
 
@@ -369,11 +377,11 @@ small phase amount alone does not authorize KKT-inactive retirement, and this
 design does not claim unimplemented retirement semantics.
 
 The source requires bound complementarity and logarithmic refinement for
-trace-bound components. The current runtime detects that condition and fails
-closed with `complementarity_refinement_required`; it does not yet implement
-the final logarithmic trace refinement. Trace components are not passed to
-Ipopt near `1e-300` and must not be accepted through an unconditional interior
-modified-potential equality.
+trace-bound components. The archived WIP runtime detected that condition and
+failed closed with `complementarity_refinement_required`; it does not yet
+implement the final logarithmic trace refinement. Trace components are not
+passed to Ipopt near `1e-300` and must not be accepted through an unconditional
+interior modified-potential equality.
 
 ## Certification and status axes
 
@@ -413,9 +421,9 @@ available on the solver, numerical, and physical axes. Missing evidence must
 not be represented by a fake zero, false, or failure. A public `FlashError`
 preserves the native terminal diagnostics.
 
-## Current evidence and next gate
+## Archived evidence and future gate
 
-The installed public Perdomo Table 3 NaCl/water tracer is accepted as a
+The archived installed public Perdomo Table 3 NaCl/water tracer is accepted as a
 homogeneous one-phase package result. Its reference search retains three
 detected pressure roots, two mechanically stable roots, the selected
 lowest-objective root, complete Stage-I start accounting, and
@@ -424,9 +432,10 @@ Perdomo published SAFT-gamma-Mie outputs while the installed run uses ePC-SAFT.
 The resulting source-topology disagreement is evidence, not an electrolyte-LLE
 admission or a Perdomo numerical reproduction.
 
-D-026 selects one source-complete, installed, public, genuinely two-liquid
-ePC-SAFT case as the next critical gate. The existing generic controller must,
-without a chemistry-specific branch or retuning:
+D-026 identified one source-complete, installed, public, genuinely two-liquid
+ePC-SAFT case as the next critical gate. After the WIP cleanup and strategy
+revision, a new bounded assignment must rebind that gate. Any resumed generic
+controller must, without a chemistry-specific branch or retuning:
 
 1. establish Stage-I instability;
 2. form eligible Stage-II candidates with truthful search accounting;

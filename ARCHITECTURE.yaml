@@ -148,10 +148,15 @@ local_candidate:
     runtime_public_or_resource_delta: none
 
 development_candidate:
-  name: perdomo-held2-installed-public-dispatch
-  implementation_status: non-production-wip
+  name: perdomo-held2
+  implementation_status: current-main-private-manufactured-foundation
   authority_effect: none
-  public_operation: tp_flash
+  current_public_electrolyte_dispatch: false
+  archived_installed_wip:
+    tag: archive/held2-pre-strategy-2026-07-21
+    commit: bb118bec4e6abdec417417e25a9b56d03491de4b
+    public_operation: tp_flash
+    status: archived-non-production-evidence
   result_owner: TpFlashResult
   diagnostics_owner: HeldDiagnostics
   dispatch_basis: installed-provider-capability-table-and-component-metadata
@@ -208,6 +213,8 @@ development_candidate:
     - predictive
     - globality
   installed_table3_evidence:
+    subject_status: archived-non-production-wip
+    archive_tag: archive/held2-pre-strategy-2026-07-21
     interpretation: cross-EOS-source-topology-disagreement
     outcome: accepted-one-phase
     detected_reference_roots: 3
@@ -226,9 +233,9 @@ development_candidate:
   package_tests:
     - tests/test_held2.py
   next_evidence_gate: source-complete-installed-two-liquid-stage-ii-iii-case
-  next_gate_status: ready-waiting-provider-case
+  next_gate_status: unassigned-pending-strategy-revision-and-provider-case
   globality_certificate: not_guaranteed
-  unsupported_multicomponent_non_electrolyte_behavior: structured-FlashError-before-search
+  target_unsupported_multicomponent_non_electrolyte_behavior: structured-FlashError-before-search
   promotion_status: not-requested
 
 provider_pins:
