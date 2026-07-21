@@ -6,9 +6,16 @@ saturation slice recorded by migration receipt
 local fixed-temperature methane, ethane, or propane saturation boundary over a
 compatible installed provider artifact.
 
-`governance_doctrine_revision: 2`
+`governance_doctrine_revision: 3`
 
 Canonical local doctrine: `../ePC-SAFT-organization/GOVERNANCE.md`.
+
+Equilibrium owns both its package evidence and execution of assigned
+installed-artifact campaigns in the sibling Validation repository. The task
+remains based here; Validation remains the durable black-box evidence home and
+has no resident worker. Migration serializes exact campaign subjects and
+dispatches a separate reviewer only when required. This execution model does
+not change scientific admission or runtime authority.
 
 The lab copy is non-authoritative provenance and research for this accepted
 slice. The receipt does not imply phase discovery, global stability, mixture
