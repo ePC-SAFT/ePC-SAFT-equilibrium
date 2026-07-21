@@ -343,6 +343,14 @@ def _figiel_brine_model() -> epcsaft.EPCSAFT:
 
 def test_public_tp_flash_dispatches_table3_electrolyte_to_held2() -> None:
     model = _figiel_brine_model()
+    stage_i = _equilibrium._held2_adapter(
+        epcsaft.native_sdk(model),
+        TABLE3_TEMPERATURE_K,
+        TABLE3_PRESSURE_PA,
+        TABLE3_FEED,
+        model.parameter_fingerprint,
+        "stage_i",
+    )
 
     result = epcsaft_equilibrium.tp_flash(
         model,
@@ -351,6 +359,10 @@ def test_public_tp_flash_dispatches_table3_electrolyte_to_held2() -> None:
         TABLE3_FEED,
     )
 
+    assert stage_i["reference_root_count"] == 3
+    assert stage_i["reference_stable_root_count"] == 2
+    assert stage_i["reference_volume"] == pytest.approx(0.9849669199245724, rel=2.0e-12)
+    assert stage_i["root_completeness"] == "not_proven"
     assert isinstance(result, epcsaft_equilibrium.TpFlashResult)
     assert result.parameter_fingerprint == model.parameter_fingerprint
     assert result.overall_mole_fractions == pytest.approx(TABLE3_FEED)
@@ -364,6 +376,7 @@ def test_public_tp_flash_dispatches_table3_electrolyte_to_held2() -> None:
     assert phase.pressure_pa == pytest.approx(TABLE3_PRESSURE_PA, rel=1.0e-8)
     assert result.diagnostics.outcome == "one_phase"
     assert result.diagnostics.search_status == "complete_no_negative_found"
+    assert result.diagnostics.root_completeness == "not_proven"
     assert result.diagnostics.attempts == 30
     assert result.diagnostics.major_iterations == 0
     assert result.diagnostics.best_tpd == pytest.approx(-1.6139519381498581e-12, abs=2.0e-14)
@@ -500,6 +513,7 @@ def test_public_tp_flash_maps_general_mp_accepted_and_error_payloads(
     payload = {
         "outcome": "accepted",
         "search_status": "stage_iii_accepted",
+        "root_completeness": "not_proven",
         "failure_reason": "",
         "attempts": 30,
         "major_iterations": 4,
@@ -581,6 +595,7 @@ def test_public_tp_flash_preserves_stage_i_terminal_without_finite_tpd(
     payload = {
         "outcome": "indeterminate",
         "search_status": "stage_i_incomplete",
+        "root_completeness": "not_proven",
         "solver_status": "failed",
         "numerical_status": "failed",
         "physical_status": "not_adjudicated",
@@ -613,6 +628,7 @@ def test_public_tp_flash_preserves_stage_i_terminal_without_finite_tpd(
     diagnostics = incomplete.value.diagnostics
     assert diagnostics.outcome == "indeterminate"
     assert diagnostics.search_status == "stage_i_incomplete"
+    assert diagnostics.root_completeness == "not_proven"
     assert diagnostics.failure_reason == "HELD2 Stage I did not complete"
     assert diagnostics.attempts == 30
     assert diagnostics.best_tpd is None
@@ -1051,6 +1067,18 @@ def test_held2_installed_electrolyte_sdk_phase_block_has_exact_reduced_derivativ
     assert result["physical_amounts"] == pytest.approx([0.98, 0.01, 0.01], abs=1.0e-15)
     assert result["parameter_fingerprint"] == model.parameter_fingerprint
     assert result["globality_certificate"] == "not_guaranteed"
+    volume_step = 2.0e-5
+    pressure_lower = evaluate((center[0], center[1] - volume_step))
+    pressure_upper = evaluate((center[0], center[1] + volume_step))
+    pressure_derivative = (
+        pressure_upper["pressure_stationarity_relative"]
+        - pressure_lower["pressure_stationarity_relative"]
+    ) / (2.0 * volume_step)
+    assert pressure_derivative == pytest.approx(
+        result["pressure_stationarity_derivative_log_volume"],
+        rel=2.0e-8,
+        abs=2.0e-10,
+    )
     objective_directional = (upper["objective"] - lower["objective"]) / (2.0 * step)
     assert objective_directional == pytest.approx(
         sum(value * delta for value, delta in zip(result["gradient"], direction, strict=True)),
@@ -1349,6 +1377,7 @@ def test_held2_installed_stage_i_uses_provider_volume_domain_for_khudaida_midpoi
     assert result["reference_refinement_failure_count"] == 0
     assert result["reference_root_count"] == 3
     assert result["reference_stable_root_count"] == 2
+    assert result["root_completeness"] == "not_proven"
     assert [root["mechanically_stable"] for root in result["reference_roots"]] == [
         True,
         False,
@@ -1433,11 +1462,51 @@ def test_held2_manufactured_stage_i_finds_negative_tpd_with_declared_multistart(
     assert result["volume_domain_search_complete"] is True
     assert result["reference_modified_fractions"] == pytest.approx([0.5, 0.5])
     assert result["reference_volume"] == pytest.approx(1.0, abs=2.0e-9)
+    assert result["reference_root_count"] == 1
+    assert result["reference_stable_root_count"] == 1
+    assert result["root_completeness"] == "not_proven"
     assert result["minimum_tpd"] < -1.0e-8
     assert sorted(
         candidate["modified_fractions"][1] for candidate in result["candidates"]
     ) == pytest.approx([0.2, 0.8], abs=2.0e-7)
     assert all(candidate["tpd"] < -1.0e-8 for candidate in result["candidates"])
+
+
+def test_held2_reference_search_detects_tangential_root_and_fails_closed() -> None:
+    result = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "reference_tangential")
+
+    assert result["outcome"] == "indeterminate"
+    assert result["root_completeness"] == "not_proven"
+    assert result["reference_stationary_point_count"] == 1
+    assert result["reference_tangential_root_count"] == 1
+    assert result["reference_root_count"] == 1
+    assert result["reference_marginal_root_count"] == 1
+    assert result["reference_failure_reason"] == "reference_root_marginal"
+
+
+@pytest.mark.parametrize(
+    ("scenario", "reason", "count_name"),
+    [
+        ("reference_marginal", "reference_root_marginal", "reference_marginal_root_count"),
+        (
+            "reference_domain_boundary",
+            "reference_root_at_domain_boundary",
+            "reference_boundary_root_count",
+        ),
+        ("reference_objective_tie", "reference_objective_tie", "reference_objective_tie_count"),
+    ],
+)
+def test_held2_reference_search_rejects_ambiguous_reference_selection(
+    scenario: str,
+    reason: str,
+    count_name: str,
+) -> None:
+    result = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, scenario)
+
+    assert result["outcome"] == "indeterminate"
+    assert result["root_completeness"] == "not_proven"
+    assert result[count_name] >= 1
+    assert result["reference_failure_reason"] == reason
 
 
 def test_held2_stage_i_requires_complete_search_before_no_negative_found() -> None:

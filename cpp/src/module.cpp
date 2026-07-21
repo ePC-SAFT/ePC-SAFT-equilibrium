@@ -1036,6 +1036,7 @@ py::dict solve_neutral_tp_flash(
     py::dict result;
     result["outcome"] = solve.outcome;
     result["search_status"] = solve.search_status;
+    result["root_completeness"] = "not_applicable";
     result["failure_reason"] = solve.failure_reason;
     result["stage_i_outcome"] = solve.stage_i.outcome;
     result["stage_i_search_status"] = solve.stage_i.search_status;
@@ -1559,6 +1560,8 @@ py::dict held2_phase_block_evidence(
     result["modified_potentials"] = evaluation.modified_potentials;
     result["pressure_stationarity_relative"] =
         evaluation.pressure_stationarity_relative;
+    result["pressure_stationarity_derivative_log_volume"] =
+        evaluation.pressure_stationarity_derivative_log_volume;
     return result;
 }
 
@@ -1631,6 +1634,8 @@ py::dict held2_installed_phase_block(
     result["modified_potentials"] = evaluation.modified_potentials;
     result["pressure_stationarity_relative"] =
         evaluation.pressure_stationarity_relative;
+    result["pressure_stationarity_derivative_log_volume"] =
+        evaluation.pressure_stationarity_derivative_log_volume;
     result["provider_pressure_pa"] = provider_phase.pressure_pa;
     result["pressure_over_rt"] = pressure_over_rt;
     result["parameter_fingerprint"] = provider_phase.parameter_fingerprint;
@@ -1757,6 +1762,8 @@ py::dict held2_stage_i_to_dict(
     result["profile"] = profile;
     result["outcome"] = evaluation.outcome;
     result["globality_certificate"] = "not_guaranteed";
+    result["root_completeness"] = evaluation.root_completeness;
+    result["reference_failure_reason"] = evaluation.reference_failure_reason;
     result["reference_scan_interval_count"] =
         evaluation.reference_scan_interval_count;
     result["reference_scan_point_count"] =
@@ -1764,6 +1771,16 @@ py::dict held2_stage_i_to_dict(
     result["reference_root_count"] = evaluation.reference_root_count;
     result["reference_stable_root_count"] =
         evaluation.reference_stable_root_count;
+    result["reference_stationary_point_count"] =
+        evaluation.reference_stationary_point_count;
+    result["reference_tangential_root_count"] =
+        evaluation.reference_tangential_root_count;
+    result["reference_marginal_root_count"] =
+        evaluation.reference_marginal_root_count;
+    result["reference_boundary_root_count"] =
+        evaluation.reference_boundary_root_count;
+    result["reference_objective_tie_count"] =
+        evaluation.reference_objective_tie_count;
     result["reference_evaluation_failure_count"] =
         evaluation.reference_evaluation_failure_count;
     result["reference_refinement_failure_count"] =
@@ -2214,7 +2231,11 @@ py::dict held2_controller_to_flash(
     py::dict result;
     result["outcome"] = "indeterminate";
     result["search_status"] = "stage_i_incomplete";
-    result["failure_reason"] = "HELD2 Stage I did not complete";
+    result["failure_reason"] = controller["reference_failure_reason"];
+    if (py::cast<std::string>(result["failure_reason"]).empty()) {
+        result["failure_reason"] = "HELD2 Stage I did not complete";
+    }
+    result["root_completeness"] = controller["root_completeness"];
     result["attempts"] = attempted_starts;
     result["major_iterations"] = 0;
     result["best_tpd"] = controller["minimum_tpd"];
@@ -2492,13 +2513,17 @@ py::dict held2_manufactured_stage_i(
         result["candidates"] = std::move(candidates);
         return result;
     }
-    if (stage != "stage_i") {
+    if (stage != "stage_i" && stage != "reference_tangential"
+        && stage != "reference_marginal"
+        && stage != "reference_domain_boundary"
+        && stage != "reference_objective_tie") {
         throw py::value_error("unsupported manufactured HELD2 stage request");
     }
     const epcsaft_equilibrium::Held2StageIResult evaluation =
         epcsaft_equilibrium::solve_held2_manufactured_stage_i(
             charges,
-            physical_feed
+            physical_feed,
+            stage
         );
     return held2_stage_i_to_dict(
         evaluation,

@@ -89,6 +89,7 @@ struct Held2StateEvaluation {
     std::vector<double> hessian;
     std::vector<double> modified_potentials;
     double pressure_stationarity_relative = 0.0;
+    double pressure_stationarity_derivative_log_volume = 0.0;
     double log_volume_gradient = 0.0;
     bool has_packing_evaluation = false;
     Held2PackingEvaluation packing;
@@ -126,10 +127,17 @@ struct Held2ReferenceRoot {
 
 struct Held2StageIResult {
     std::string outcome;
+    std::string root_completeness = "not_proven";
+    std::string reference_failure_reason;
     int reference_scan_interval_count = 0;
     int reference_scan_point_count = 0;
     int reference_root_count = 0;
     int reference_stable_root_count = 0;
+    int reference_stationary_point_count = 0;
+    int reference_tangential_root_count = 0;
+    int reference_marginal_root_count = 0;
+    int reference_boundary_root_count = 0;
+    int reference_objective_tie_count = 0;
     int reference_evaluation_failure_count = 0;
     int reference_refinement_failure_count = 0;
     int declared_start_count = 0;
@@ -322,7 +330,8 @@ struct Held2StageIIIResult {
 
 [[nodiscard]] Held2StageIResult solve_held2_manufactured_stage_i(
     const std::vector<double>& charges,
-    const std::vector<double>& physical_feed
+    const std::vector<double>& physical_feed,
+    const std::string& reference_scenario = "stage_i"
 );
 
 [[nodiscard]] Held2StageIResult solve_held2_stage_i(

@@ -632,6 +632,7 @@ def test_public_tp_flash_returns_the_retained_real_one_phase_state() -> None:
     assert math.isfinite(result.total_free_energy_over_rt)
     assert isinstance(result.diagnostics, epcsaft_equilibrium.HeldDiagnostics)
     assert result.diagnostics.outcome == "one_phase"
+    assert result.diagnostics.root_completeness == "not_applicable"
     assert result.diagnostics.major_iterations == 0
     assert result.diagnostics.attempts >= 22
     assert result.diagnostics.best_tpd >= TPD_NEGATIVE_THRESHOLD
@@ -672,6 +673,7 @@ def test_public_tp_flash_maps_one_reviewed_two_phase_payload(
         lambda *_args: {
             "outcome": "accepted",
             "search_status": "stage_iii_accepted",
+            "root_completeness": "not_applicable",
             "failure_reason": "",
             "attempts": 29,
             "major_iterations": 3,

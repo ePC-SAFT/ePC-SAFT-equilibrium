@@ -88,6 +88,7 @@ class HeldDiagnostics:
 
     outcome: str
     search_status: str
+    root_completeness: str
     solver_status: str
     numerical_status: str
     physical_status: str
@@ -296,6 +297,9 @@ def _optional_float(payload: Mapping[str, object], name: str) -> float | None:
 
 def _held_diagnostics(payload: Mapping[str, object]) -> HeldDiagnostics:
     profiles = cast(Sequence[object], payload["search_profiles"])
+    root_completeness = payload["root_completeness"]
+    if root_completeness not in {"not_proven", "not_applicable", "not_adjudicated"}:
+        raise ValueError("native HELD payload has an invalid root-completeness status")
     statuses = tuple(
         payload[name] for name in ("solver_status", "numerical_status", "physical_status")
     )
@@ -308,6 +312,7 @@ def _held_diagnostics(payload: Mapping[str, object]) -> HeldDiagnostics:
     return HeldDiagnostics(
         outcome=str(payload["outcome"]),
         search_status=str(payload["search_status"]),
+        root_completeness=root_completeness,
         solver_status=typed_statuses[0],
         numerical_status=typed_statuses[1],
         physical_status=typed_statuses[2],
@@ -335,6 +340,7 @@ def _failed_held_diagnostics(outcome: str, search_status: str, reason: str) -> H
     return HeldDiagnostics(
         outcome=outcome,
         search_status=search_status,
+        root_completeness="not_adjudicated",
         solver_status="not_adjudicated",
         numerical_status="not_adjudicated",
         physical_status="not_adjudicated",

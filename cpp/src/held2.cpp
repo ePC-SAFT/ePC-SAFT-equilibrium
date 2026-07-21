@@ -141,6 +141,7 @@ Held2StateEvaluation evaluate_manufactured_state_impl(
     const auto potentials = manufactured_modified_potentials(composition, state.volume);
     state.modified_potentials.assign(potentials.begin(), potentials.end());
     state.pressure_stationarity_relative = phase_gradient[1];
+    state.pressure_stationarity_derivative_log_volume = 5.0 * state.volume;
     return state;
 }
 
@@ -1892,6 +1893,9 @@ Held2StateEvaluation evaluate_held2_phase_block(
     result.pressure_stationarity_relative =
         (block.pressure_pa - target_pressure_pa) / target_pressure_pa;
     result.log_volume_gradient = result.gradient.back();
+    result.pressure_stationarity_derivative_log_volume =
+        (result.log_volume_gradient - result.hessian.back())
+        / (pressure_over_rt * result.volume);
     return result;
 }
 
@@ -2164,100 +2168,357 @@ Held2StageIResult solve_held2_stage_i(
         || result.reference_scan_point_count
             != result.reference_scan_interval_count + 1) {
         result.outcome = "indeterminate";
+        result.reference_failure_reason = "reference_scan_incomplete";
         return result;
     }
 
-    Held2StateEvaluation reference;
-    std::vector<double> reference_variables;
-    double reference_objective = std::numeric_limits<double>::infinity();
-    for (std::size_t interval = 0; interval + 1 < reference_scan.size(); ++interval) {
-        double left_log_volume = reference_scan[interval].first;
-        Held2StateEvaluation left_state = reference_scan[interval].second;
-        double right_log_volume = reference_scan[interval + 1].first;
-        Held2StateEvaluation right_state = reference_scan[interval + 1].second;
-        double left_residual = left_state.pressure_stationarity_relative;
-        double right_residual = right_state.pressure_stationarity_relative;
-        if (left_residual * right_residual > 0.0) {
-            continue;
-        }
-
-        double root_log_volume = 0.0;
-        Held2StateEvaluation root_state;
-        bool refined = false;
-        if (std::abs(left_residual) <= kCertificateTolerance) {
+    const auto brackets_zero = [](double left, double right) {
+        return (left <= 0.0 && right >= 0.0)
+            || (left >= 0.0 && right <= 0.0);
+    };
+    const auto refine_bracket = [
+        &log_volume_evaluator,
+        &feed_independent,
+        &result,
+        &brackets_zero
+    ](
+        double left_log_volume,
+        Held2StateEvaluation left_state,
+        double right_log_volume,
+        Held2StateEvaluation right_state,
+        const auto& residual,
+        double tolerance,
+        bool continue_after_certificate,
+        bool allow_representable_bracket,
+        double& root_log_volume,
+        Held2StateEvaluation& root_state,
+        Held2StateEvaluation& classification_state
+    ) {
+        double left_residual = residual(left_state);
+        double right_residual = residual(right_state);
+        bool certified = false;
+        if (std::abs(left_residual) <= tolerance) {
             root_log_volume = left_log_volume;
-            root_state = std::move(left_state);
-            refined = true;
-        } else if (std::abs(right_residual) <= kCertificateTolerance) {
-            root_log_volume = right_log_volume;
-            root_state = std::move(right_state);
-            refined = true;
-        } else {
-            for (int iteration = 0; iteration < 100; ++iteration) {
-                root_log_volume = 0.5 * (left_log_volume + right_log_volume);
-                try {
-                    root_state = log_volume_evaluator(feed_independent, root_log_volume);
-                } catch (const std::exception&) {
-                    ++result.reference_evaluation_failure_count;
-                    break;
-                }
-                const double root_residual =
-                    root_state.pressure_stationarity_relative;
-                if (std::abs(root_residual) <= kCertificateTolerance) {
-                    refined = true;
-                    break;
-                }
-                if (left_residual * root_residual <= 0.0) {
-                    right_log_volume = root_log_volume;
-                    right_residual = root_residual;
-                } else {
-                    left_log_volume = root_log_volume;
-                    left_residual = root_residual;
-                }
+            root_state = left_state;
+            certified = true;
+            if (!continue_after_certificate) {
+                classification_state = root_state;
+                return true;
             }
         }
-        if (!refined) {
-            ++result.reference_refinement_failure_count;
-            continue;
+        if (!certified && std::abs(right_residual) <= tolerance) {
+            root_log_volume = right_log_volume;
+            root_state = right_state;
+            certified = true;
+            if (!continue_after_certificate) {
+                classification_state = root_state;
+                return true;
+            }
         }
-        const bool duplicate = std::any_of(
-            result.reference_roots.begin(),
-            result.reference_roots.end(),
-            [root_log_volume](const Held2ReferenceRoot& root) {
-                return std::abs(root.log_volume - root_log_volume) < 1.0e-8;
+        if (!brackets_zero(left_residual, right_residual)) {
+            return false;
+        }
+        for (int iteration = 0; iteration < 100; ++iteration) {
+            if (right_log_volume - left_log_volume <= kCoordinateTolerance) {
+                if (std::abs(left_residual) <= std::abs(right_residual)) {
+                    classification_state = left_state;
+                } else {
+                    classification_state = right_state;
+                }
+                if (certified) {
+                    return true;
+                }
+                if (allow_representable_bracket) {
+                    root_log_volume = std::abs(left_residual)
+                            <= std::abs(right_residual)
+                        ? left_log_volume
+                        : right_log_volume;
+                    root_state = classification_state;
+                    return true;
+                }
+            }
+            const double trial_log_volume = 0.5 * (
+                left_log_volume + right_log_volume
+            );
+            if (!(trial_log_volume > left_log_volume)
+                || !(trial_log_volume < right_log_volume)) {
+                if (std::abs(left_residual) <= std::abs(right_residual)) {
+                    classification_state = left_state;
+                } else {
+                    classification_state = right_state;
+                }
+                if (certified) {
+                    return true;
+                }
+                if (allow_representable_bracket) {
+                    root_log_volume = std::abs(left_residual)
+                            <= std::abs(right_residual)
+                        ? left_log_volume
+                        : right_log_volume;
+                    root_state = classification_state;
+                    return true;
+                }
+                ++result.reference_refinement_failure_count;
+                return false;
+            }
+            Held2StateEvaluation trial_state;
+            try {
+                trial_state = log_volume_evaluator(
+                    feed_independent, trial_log_volume
+                );
+            } catch (const std::exception&) {
+                ++result.reference_evaluation_failure_count;
+                return false;
+            }
+            const double root_residual = residual(trial_state);
+            if (!certified && std::abs(root_residual) <= tolerance) {
+                root_log_volume = trial_log_volume;
+                root_state = trial_state;
+                certified = true;
+                if (!continue_after_certificate) {
+                    classification_state = root_state;
+                    return true;
+                }
+            }
+            if (brackets_zero(left_residual, root_residual)) {
+                right_log_volume = trial_log_volume;
+                right_residual = root_residual;
+                right_state = std::move(trial_state);
+            } else {
+                left_log_volume = trial_log_volume;
+                left_residual = root_residual;
+                left_state = std::move(trial_state);
+            }
+        }
+        ++result.reference_refinement_failure_count;
+        return false;
+    };
+    struct ReferenceCandidate {
+        double log_volume = 0.0;
+        Held2StateEvaluation state;
+        Held2StateEvaluation classification_state;
+        bool domain_boundary = false;
+    };
+    std::vector<ReferenceCandidate> reference_candidates;
+    const auto add_reference_candidate = [
+        &reference_candidates,
+        reference_log_lower,
+        reference_log_upper
+    ](
+        double log_volume,
+        Held2StateEvaluation state,
+        Held2StateEvaluation classification_state
+    ) {
+        const bool domain_boundary = log_volume <= reference_log_lower
+            || log_volume >= reference_log_upper;
+        const auto duplicate = std::find_if(
+            reference_candidates.begin(),
+            reference_candidates.end(),
+            [log_volume](const ReferenceCandidate& candidate) {
+                return std::abs(candidate.log_volume - log_volume) < 1.0e-8;
             }
         );
-        if (duplicate) {
-            continue;
+        if (duplicate != reference_candidates.end()) {
+            duplicate->domain_boundary = duplicate->domain_boundary
+                || domain_boundary;
+            return;
         }
-        const double curvature = root_state.hessian.back();
-        if (!std::isfinite(curvature) || curvature == 0.0) {
+        reference_candidates.push_back({
+            log_volume,
+            std::move(state),
+            std::move(classification_state),
+            domain_boundary,
+        });
+    };
+    std::vector<double> stationary_points;
+    for (std::size_t interval = 0; interval + 1 < reference_scan.size(); ++interval) {
+        const double left_log_volume = reference_scan[interval].first;
+        const Held2StateEvaluation& left_state = reference_scan[interval].second;
+        const double right_log_volume = reference_scan[interval + 1].first;
+        const Held2StateEvaluation& right_state = reference_scan[interval + 1].second;
+        const auto pressure_residual = [](const Held2StateEvaluation& state) {
+            return state.pressure_stationarity_relative;
+        };
+        if (brackets_zero(
+                pressure_residual(left_state), pressure_residual(right_state)
+            )) {
+            double root_log_volume = 0.0;
+            Held2StateEvaluation root_state;
+            Held2StateEvaluation classification_state;
+            if (refine_bracket(
+                    left_log_volume,
+                    left_state,
+                    right_log_volume,
+                    right_state,
+                    pressure_residual,
+                    kCertificateTolerance,
+                    true,
+                    false,
+                    root_log_volume,
+                    root_state,
+                    classification_state
+                )) {
+                add_reference_candidate(
+                    root_log_volume,
+                    std::move(root_state),
+                    std::move(classification_state)
+                );
+            }
+        }
+
+        const auto pressure_derivative = [](const Held2StateEvaluation& state) {
+            return state.pressure_stationarity_derivative_log_volume;
+        };
+        const double left_derivative = pressure_derivative(left_state);
+        const double right_derivative = pressure_derivative(right_state);
+        if (!std::isfinite(left_derivative) || !std::isfinite(right_derivative)) {
             ++result.reference_refinement_failure_count;
+            result.reference_failure_reason =
+                "reference_stationary_derivative_incomplete";
             continue;
         }
-        const bool mechanically_stable = curvature > 0.0;
+        if (brackets_zero(left_derivative, right_derivative)) {
+            double stationary_log_volume = 0.0;
+            Held2StateEvaluation stationary_state;
+            Held2StateEvaluation classification_state;
+            if (!refine_bracket(
+                    left_log_volume,
+                    left_state,
+                    right_log_volume,
+                    right_state,
+                    pressure_derivative,
+                    kCoordinateTolerance,
+                    false,
+                    true,
+                    stationary_log_volume,
+                    stationary_state,
+                    classification_state
+                )) {
+                if (result.reference_failure_reason.empty()) {
+                    result.reference_failure_reason =
+                        "reference_stationary_refinement_incomplete";
+                }
+                continue;
+            }
+            const bool duplicate_stationary = std::any_of(
+                stationary_points.begin(),
+                stationary_points.end(),
+                [stationary_log_volume](double retained) {
+                    return std::abs(retained - stationary_log_volume) < 1.0e-8;
+                }
+            );
+            if (!duplicate_stationary) {
+                stationary_points.push_back(stationary_log_volume);
+                ++result.reference_stationary_point_count;
+                if (std::abs(stationary_state.pressure_stationarity_relative)
+                    <= kCertificateTolerance) {
+                    ++result.reference_tangential_root_count;
+                    add_reference_candidate(
+                        stationary_log_volume,
+                        std::move(stationary_state),
+                        std::move(classification_state)
+                    );
+                }
+            }
+        }
+    }
+    std::sort(
+        reference_candidates.begin(),
+        reference_candidates.end(),
+        [](const ReferenceCandidate& left, const ReferenceCandidate& right) {
+            return left.log_volume < right.log_volume;
+        }
+    );
+    std::vector<std::size_t> stable_candidates;
+    for (std::size_t index = 0; index < reference_candidates.size(); ++index) {
+        const ReferenceCandidate& candidate = reference_candidates[index];
+        const double curvature = candidate.classification_state.hessian.back();
+        const bool marginal = !std::isfinite(curvature)
+            || std::abs(curvature) <= kCertificateTolerance;
+        const bool mechanically_stable = !marginal && curvature > 0.0;
+        if (candidate.domain_boundary) {
+            ++result.reference_boundary_root_count;
+        }
+        if (marginal) {
+            ++result.reference_marginal_root_count;
+        }
         result.reference_roots.push_back({
-            root_log_volume,
-            root_state.volume,
-            root_state.objective,
-            root_state.pressure_stationarity_relative,
+            std::log(candidate.classification_state.volume),
+            candidate.classification_state.volume,
+            candidate.classification_state.objective,
+            candidate.classification_state.pressure_stationarity_relative,
             curvature,
             mechanically_stable,
         });
-        if (!mechanically_stable) {
-            continue;
-        }
-        ++result.reference_stable_root_count;
-        if (root_state.objective < reference_objective) {
-            reference_objective = root_state.objective;
-            reference = std::move(root_state);
-            reference_variables = feed_independent;
-            reference_variables.push_back(root_log_volume);
+        if (mechanically_stable) {
+            stable_candidates.push_back(index);
+            ++result.reference_stable_root_count;
         }
     }
     result.reference_root_count = static_cast<int>(result.reference_roots.size());
+    Held2StateEvaluation reference;
+    std::vector<double> reference_variables;
+    if (!stable_candidates.empty()) {
+        double lowest_objective = std::numeric_limits<double>::infinity();
+        for (std::size_t index : stable_candidates) {
+            lowest_objective = std::min(
+                lowest_objective,
+                reference_candidates[index].classification_state.objective
+            );
+        }
+        std::vector<std::size_t> lowest_candidates;
+        for (std::size_t index : stable_candidates) {
+            if (std::abs(
+                    reference_candidates[index].classification_state.objective
+                        - lowest_objective
+                ) <= kCertificateTolerance) {
+                lowest_candidates.push_back(index);
+            }
+        }
+        if (lowest_candidates.empty()) {
+            result.reference_failure_reason = "reference_objective_incomplete";
+        } else if (lowest_candidates.size() > 1) {
+            result.reference_objective_tie_count = static_cast<int>(
+                lowest_candidates.size() - 1
+            );
+        } else {
+            const ReferenceCandidate& selected =
+                reference_candidates[lowest_candidates.front()];
+            reference = selected.state;
+            reference_variables = feed_independent;
+            reference_variables.push_back(selected.log_volume);
+        }
+    }
+    if (result.reference_failure_reason.empty()
+        && (result.reference_evaluation_failure_count != 0
+            || result.reference_refinement_failure_count != 0)) {
+        result.reference_failure_reason = "reference_root_refinement_incomplete";
+    }
+    if (result.reference_failure_reason.empty()
+        && result.reference_boundary_root_count != 0) {
+        result.reference_failure_reason = "reference_root_at_domain_boundary";
+    }
+    if (result.reference_failure_reason.empty()
+        && result.reference_marginal_root_count != 0) {
+        result.reference_failure_reason = "reference_root_marginal";
+    }
+    if (result.reference_failure_reason.empty()
+        && result.reference_objective_tie_count != 0) {
+        result.reference_failure_reason = "reference_objective_tie";
+    }
+    if (result.reference_failure_reason.empty()
+        && result.reference_root_count == 0) {
+        result.reference_failure_reason = "reference_root_not_found";
+    }
+    if (result.reference_failure_reason.empty()
+        && result.reference_stable_root_count == 0) {
+        result.reference_failure_reason = "reference_stable_root_not_found";
+    }
     if (result.reference_evaluation_failure_count != 0
         || result.reference_refinement_failure_count != 0
+        || result.reference_boundary_root_count != 0
+        || result.reference_marginal_root_count != 0
+        || result.reference_objective_tie_count != 0
         || result.reference_root_count == 0
         || result.reference_stable_root_count == 0
         || reference_variables.empty()) {
@@ -2551,7 +2812,8 @@ Held2StageIResult solve_held2_stage_i(
 
 Held2StageIResult solve_held2_manufactured_stage_i(
     const std::vector<double>& charges,
-    const std::vector<double>& physical_feed
+    const std::vector<double>& physical_feed,
+    const std::string& reference_scenario
 ) {
     const Held2Coordinates coordinates = make_held2_coordinates(charges);
     if (coordinates.independent_indices.size() != 1) {
@@ -2559,27 +2821,96 @@ Held2StageIResult solve_held2_manufactured_stage_i(
             "manufactured HELD2 Stage I requires one independent modified composition"
         );
     }
-    const Held2StateEvaluator evaluator = [coordinates](
-        const std::vector<double>& independent,
-        double log_volume
-    ) {
-        return evaluate_manufactured_state_impl(
+    std::array<double, 2> volume_bounds{0.5, 1.5};
+    Held2StateEvaluator evaluator;
+    if (reference_scenario == "stage_i") {
+        evaluator = [coordinates](
+            const std::vector<double>& independent,
+            double log_volume
+        ) {
+            return evaluate_manufactured_state_impl(
+                coordinates,
+                independent,
+                log_volume
+            );
+        };
+    } else {
+        if (reference_scenario != "reference_tangential"
+            && reference_scenario != "reference_marginal"
+            && reference_scenario != "reference_domain_boundary"
+            && reference_scenario != "reference_objective_tie") {
+            throw std::invalid_argument(
+                "unsupported manufactured HELD2 reference scenario"
+            );
+        }
+        volume_bounds = {std::exp(-1.0), std::exp(1.0)};
+        const auto strict_bounds = strict_interior_log_bounds(volume_bounds);
+        const double boundary_root = strict_bounds[0];
+        evaluator = [
             coordinates,
-            independent,
-            log_volume
-        );
-    };
-    const Held2VolumeBoundsEvaluator volume_bounds_evaluator = [](
+            reference_scenario,
+            boundary_root
+        ](
+            const std::vector<double>& independent,
+            double log_volume
+        ) {
+            Held2StateEvaluation state;
+            state.physical_amounts = held2_lift_independent_fractions(
+                coordinates, independent
+            );
+            state.modified_fractions = held2_transform_physical_fractions(
+                coordinates, state.physical_amounts
+            );
+            state.volume = std::exp(log_volume);
+            double gradient = 0.0;
+            double curvature = 0.0;
+            if (reference_scenario == "reference_tangential") {
+                const double delta = log_volume - 0.137;
+                state.objective = delta * delta * delta / 3.0;
+                gradient = delta * delta;
+                curvature = 2.0 * delta;
+            } else if (reference_scenario == "reference_marginal") {
+                const double delta = log_volume - 0.137;
+                constexpr double marginal_curvature = 0.5e-8;
+                state.objective = 0.5 * marginal_curvature * delta * delta
+                    + 0.25 * std::pow(delta, 4);
+                gradient = marginal_curvature * delta
+                    + delta * delta * delta;
+                curvature = marginal_curvature + 3.0 * delta * delta;
+            } else if (reference_scenario == "reference_domain_boundary") {
+                const double delta = log_volume - boundary_root;
+                state.objective = 0.5 * delta * delta;
+                gradient = delta;
+                curvature = 1.0;
+            } else {
+                constexpr double root = 0.4;
+                const double difference = log_volume * log_volume - root * root;
+                state.objective = difference * difference;
+                gradient = 4.0 * log_volume * difference;
+                curvature = 12.0 * log_volume * log_volume - 4.0 * root * root;
+            }
+            state.gradient = {0.0, gradient};
+            state.hessian = {1.0, 0.0, 0.0, curvature};
+            state.modified_potentials.assign(
+                coordinates.retained_indices.size(), 0.0
+            );
+            state.pressure_stationarity_relative = gradient;
+            state.pressure_stationarity_derivative_log_volume = curvature;
+            state.log_volume_gradient = gradient;
+            return state;
+        };
+    }
+    const Held2VolumeBoundsEvaluator volume_bounds_evaluator = [volume_bounds](
         const std::vector<double>&
     ) {
-        return std::array<double, 2>{0.5, 1.5};
+        return volume_bounds;
     };
     return solve_held2_stage_i(
         coordinates,
         physical_feed,
         evaluator,
         evaluator,
-        {0.5, 1.5},
+        volume_bounds,
         volume_bounds_evaluator,
         false,
         true,
