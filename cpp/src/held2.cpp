@@ -173,6 +173,48 @@ struct Held2SearchRun {
     std::vector<double> coordinate_jacobian;
 };
 
+using Held2SearchDomainPredicate = std::function<bool(
+    const std::vector<double>&,
+    double
+)>;
+
+std::array<double, 2> strict_interior_log_bounds(
+    const std::array<double, 2>& raw_bounds
+) {
+    if (!std::isfinite(raw_bounds[0]) || !std::isfinite(raw_bounds[1])
+        || raw_bounds[0] <= 0.0 || raw_bounds[1] <= raw_bounds[0]) {
+        throw std::invalid_argument(
+            "HELD2 physical bounds must be finite, positive, and ordered"
+        );
+    }
+
+    double lower = std::log(raw_bounds[0]);
+    double upper = std::log(raw_bounds[1]);
+    while (!(std::exp(lower) > raw_bounds[0])) {
+        const double next = std::nextafter(
+            lower, std::numeric_limits<double>::infinity()
+        );
+        if (!(next > lower) || !(next < upper)) {
+            throw std::invalid_argument(
+                "HELD2 physical bounds have no representable logarithmic interior"
+            );
+        }
+        lower = next;
+    }
+    while (!(std::exp(upper) < raw_bounds[1])) {
+        const double next = std::nextafter(
+            upper, -std::numeric_limits<double>::infinity()
+        );
+        if (!(next < upper) || !(next > lower)) {
+            throw std::invalid_argument(
+                "HELD2 physical bounds have no representable logarithmic interior"
+            );
+        }
+        upper = next;
+    }
+    return {lower, upper};
+}
+
 struct Held2StageIISimplexChart {
     std::vector<double> physical_coordinates;
     std::vector<double> chart_coordinates;
@@ -211,7 +253,10 @@ public:
         std::vector<double> initial,
         std::vector<double> lower,
         std::vector<double> upper,
-        double composition_sum_upper
+        double composition_sum_upper,
+        std::vector<double> source_domain_coefficients,
+        double source_domain_upper,
+        Held2SearchDomainPredicate trial_domain_predicate
     )
         : evaluator_(std::move(evaluator)),
           reference_variables_(std::move(reference_variables)),
@@ -220,7 +265,10 @@ public:
           initial_(std::move(initial)),
           lower_(std::move(lower)),
           upper_(std::move(upper)),
-          composition_sum_upper_(composition_sum_upper) {}
+          composition_sum_upper_(composition_sum_upper),
+          source_domain_coefficients_(std::move(source_domain_coefficients)),
+          source_domain_upper_(source_domain_upper),
+          trial_domain_predicate_(std::move(trial_domain_predicate)) {}
 
     bool get_nlp_info(
         Ipopt::Index& n,
@@ -232,6 +280,13 @@ public:
         n = static_cast<Ipopt::Index>(initial_.size());
         m = constraint_count();
         nnz_jac_g = has_composition_constraint() ? n - 1 : 0;
+        if (has_source_domain_constraint()) {
+            nnz_jac_g += static_cast<Ipopt::Index>(std::count_if(
+                source_domain_coefficients_.begin(),
+                source_domain_coefficients_.end(),
+                [](double value) { return value != 0.0; }
+            ));
+        }
         nnz_h_lag = n * (n + 1) / 2;
         index_style = TNLP::C_STYLE;
         return true;
@@ -253,6 +308,10 @@ public:
         if (has_composition_constraint()) {
             g_l[composition_constraint_row()] = -2.0e19;
             g_u[composition_constraint_row()] = composition_sum_upper_;
+        }
+        if (has_source_domain_constraint()) {
+            g_l[source_domain_constraint_row()] = -2.0e19;
+            g_u[source_domain_constraint_row()] = source_domain_upper_;
         }
         return true;
     }
@@ -282,6 +341,9 @@ public:
         bool,
         Ipopt::Number& objective
     ) override {
+        if (!evaluation_domain_valid(n, x)) {
+            return false;
+        }
         try {
             objective = evaluate(n, x).objective;
             return true;
@@ -297,6 +359,9 @@ public:
         bool,
         Ipopt::Number* gradient
     ) override {
+        if (!evaluation_domain_valid(n, x)) {
+            return false;
+        }
         try {
             const Held2StateEvaluation evaluation = evaluate(n, x);
             std::copy(evaluation.gradient.begin(), evaluation.gradient.end(), gradient);
@@ -321,6 +386,14 @@ public:
             constraints[composition_constraint_row()] =
                 std::accumulate(x, x + n - 1, 0.0);
         }
+        if (has_source_domain_constraint()) {
+            constraints[source_domain_constraint_row()] = 0.0;
+            for (Ipopt::Index index = 0; index < n - 1; ++index) {
+                constraints[source_domain_constraint_row()] +=
+                    source_domain_coefficients_[static_cast<std::size_t>(index)]
+                    * x[index];
+            }
+        }
         return true;
     }
 
@@ -334,7 +407,14 @@ public:
         Ipopt::Index* columns,
         Ipopt::Number* values
     ) override {
-        const Ipopt::Index expected_nonzeros = has_composition_constraint() ? n - 1 : 0;
+        Ipopt::Index expected_nonzeros = has_composition_constraint() ? n - 1 : 0;
+        if (has_source_domain_constraint()) {
+            expected_nonzeros += static_cast<Ipopt::Index>(std::count_if(
+                source_domain_coefficients_.begin(),
+                source_domain_coefficients_.end(),
+                [](double value) { return value != 0.0; }
+            ));
+        }
         if (m != constraint_count() || nonzero_count != expected_nonzeros) {
             return false;
         }
@@ -346,6 +426,22 @@ public:
                     columns[position] = index;
                 } else {
                     values[position] = 1.0;
+                }
+                ++position;
+            }
+        }
+        if (has_source_domain_constraint()) {
+            for (Ipopt::Index index = 0; index < n - 1; ++index) {
+                const double coefficient =
+                    source_domain_coefficients_[static_cast<std::size_t>(index)];
+                if (coefficient == 0.0) {
+                    continue;
+                }
+                if (values == nullptr) {
+                    rows[position] = source_domain_constraint_row();
+                    columns[position] = index;
+                } else {
+                    values[position] = coefficient;
                 }
                 ++position;
             }
@@ -379,6 +475,9 @@ public:
                 }
             }
             return true;
+        }
+        if (!evaluation_domain_valid(n, x)) {
+            return false;
         }
         try {
             const Held2StateEvaluation evaluation = evaluate(n, x);
@@ -460,7 +559,9 @@ public:
 
 private:
     [[nodiscard]] Ipopt::Index constraint_count() const {
-        return static_cast<Ipopt::Index>(has_composition_constraint());
+        return static_cast<Ipopt::Index>(
+            has_composition_constraint() + has_source_domain_constraint()
+        );
     }
 
     [[nodiscard]] bool has_composition_constraint() const {
@@ -469,6 +570,52 @@ private:
 
     [[nodiscard]] Ipopt::Index composition_constraint_row() const {
         return 0;
+    }
+
+    [[nodiscard]] bool has_source_domain_constraint() const {
+        return std::isfinite(source_domain_upper_);
+    }
+
+    [[nodiscard]] Ipopt::Index source_domain_constraint_row() const {
+        return static_cast<Ipopt::Index>(has_composition_constraint());
+    }
+
+    [[nodiscard]] bool source_domain_valid(
+        Ipopt::Index n,
+        const Ipopt::Number* x
+    ) const {
+        if (!has_source_domain_constraint()) {
+            return true;
+        }
+        if (source_domain_coefficients_.size()
+            != static_cast<std::size_t>(n - 1)) {
+            return false;
+        }
+        double total = 0.0;
+        for (Ipopt::Index index = 0; index < n - 1; ++index) {
+            total += source_domain_coefficients_[static_cast<std::size_t>(index)]
+                * x[index];
+        }
+        return std::isfinite(total) && total <= source_domain_upper_;
+    }
+
+    [[nodiscard]] bool evaluation_domain_valid(
+        Ipopt::Index n,
+        const Ipopt::Number* x
+    ) {
+        if (!source_domain_valid(n, x)) {
+            return false;
+        }
+        if (!trial_domain_predicate_) {
+            return true;
+        }
+        try {
+            const std::vector<double> independent(x, x + n - 1);
+            return trial_domain_predicate_(independent, x[n - 1]);
+        } catch (const std::exception& error) {
+            callback_error_ = error.what();
+            return false;
+        }
     }
 
     [[nodiscard]] Held2StateEvaluation evaluate(
@@ -500,6 +647,9 @@ private:
     std::vector<double> lower_;
     std::vector<double> upper_;
     double composition_sum_upper_ = std::numeric_limits<double>::infinity();
+    std::vector<double> source_domain_coefficients_;
+    double source_domain_upper_ = std::numeric_limits<double>::infinity();
+    Held2SearchDomainPredicate trial_domain_predicate_;
     bool solver_converged_ = false;
     std::string callback_error_;
     std::vector<double> variables_;
@@ -518,7 +668,10 @@ Held2SearchRun solve_held2_search(
     const std::vector<double>& initial,
     const std::vector<double>& lower,
     const std::vector<double>& upper,
-    double composition_sum_upper = std::numeric_limits<double>::infinity()
+    double composition_sum_upper = std::numeric_limits<double>::infinity(),
+    const std::vector<double>& source_domain_coefficients = {},
+    double source_domain_upper = std::numeric_limits<double>::infinity(),
+    const Held2SearchDomainPredicate& trial_domain_predicate = {}
 ) {
     Ipopt::SmartPtr<Held2SearchTnlp> problem = new Held2SearchTnlp(
         evaluator,
@@ -528,7 +681,10 @@ Held2SearchRun solve_held2_search(
         initial,
         lower,
         upper,
-        composition_sum_upper
+        composition_sum_upper,
+        source_domain_coefficients,
+        source_domain_upper,
+        trial_domain_predicate
     );
     Ipopt::SmartPtr<Ipopt::IpoptApplication> application = IpoptApplicationFactory();
     configure_held2_ipopt(application);
@@ -1643,6 +1799,29 @@ std::vector<double> held2_lift_independent_fractions(
     return held2_lift_modified_fractions(coordinates, modified_fractions);
 }
 
+double held2_stage_i_total_ion_mole_fraction(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent_modified_fractions
+) {
+    if (independent_modified_fractions.size()
+        != coordinates.independent_indices.size()) {
+        throw std::invalid_argument(
+            "independent modified composition size does not match the HELD2 chart"
+        );
+    }
+    require_finite_vector(
+        independent_modified_fractions,
+        "independent modified fractions"
+    );
+    double total = 0.0;
+    for (std::size_t index = 0; index < independent_modified_fractions.size(); ++index) {
+        if (coordinates.charges[coordinates.independent_indices[index]] != 0.0) {
+            total += independent_modified_fractions[index];
+        }
+    }
+    return total;
+}
+
 std::vector<double> held2_transform_modified_potentials(
     const Held2Coordinates& coordinates,
     const std::vector<double>& chemical_potentials
@@ -1751,8 +1930,11 @@ Held2StateEvaluation evaluate_held2_log_packing_state(
         || molar_volume_bounds[1] <= molar_volume_bounds[0]) {
         throw std::invalid_argument("HELD2 log-packing coordinate is outside its domain");
     }
-    double left = std::log(molar_volume_bounds[0]);
-    double right = std::log(molar_volume_bounds[1]);
+    const auto strict_log_volume_bounds = strict_interior_log_bounds(
+        molar_volume_bounds
+    );
+    double left = strict_log_volume_bounds[0];
+    double right = strict_log_volume_bounds[1];
     Held2StateEvaluation left_state = log_volume_evaluator(
         independent_modified_fractions, left
     );
@@ -1897,13 +2079,22 @@ Held2StageIResult solve_held2_stage_i(
     const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
     bool search_uses_log_packing,
     bool volume_domain_search_complete,
-    int solve_start_limit
+    int solve_start_limit,
+    double total_ion_mole_fraction_max
 ) {
     if (!std::isfinite(molar_volume_bounds[0]) || !std::isfinite(molar_volume_bounds[1])
         || molar_volume_bounds[0] <= 0.0
         || molar_volume_bounds[1] <= molar_volume_bounds[0]) {
         throw std::invalid_argument(
             "HELD2 Stage I molar-volume bounds must be finite, positive, and ordered"
+        );
+    }
+    if (!std::isnan(total_ion_mole_fraction_max)
+        && (!std::isfinite(total_ion_mole_fraction_max)
+            || total_ion_mole_fraction_max < 0.0
+            || total_ion_mole_fraction_max > 1.0)) {
+        throw std::invalid_argument(
+            "HELD2 Stage I total-ion source bound must be NaN or in [0, 1]"
         );
     }
     const std::vector<double> modified_feed = held2_transform_physical_fractions(
@@ -1922,14 +2113,30 @@ Held2StageIResult solve_held2_stage_i(
         );
         feed_independent.push_back(modified_feed[retained]);
     }
+    if (std::isfinite(total_ion_mole_fraction_max)
+        && held2_stage_i_total_ion_mole_fraction(coordinates, feed_independent)
+            > total_ion_mole_fraction_max) {
+        throw std::invalid_argument(
+            "HELD2 feed ion mole fraction exceeds the Provider source domain"
+        );
+    }
+    std::vector<double> source_domain_coefficients(feed_independent.size(), 0.0);
+    for (std::size_t index = 0; index < feed_independent.size(); ++index) {
+        if (coordinates.charges[coordinates.independent_indices[index]] != 0.0) {
+            source_domain_coefficients[index] = 1.0;
+        }
+    }
 
     Held2StageIResult result;
     result.volume_domain_search_complete = volume_domain_search_complete;
     result.declared_start_count = 10 * static_cast<int>(coordinates.charges.size());
     result.reference_scan_interval_count = result.declared_start_count;
     result.minimum_tpd = std::numeric_limits<double>::infinity();
-    const double reference_log_lower = std::log(molar_volume_bounds[0]);
-    const double reference_log_upper = std::log(molar_volume_bounds[1]);
+    const auto strict_log_volume_bounds = strict_interior_log_bounds(
+        molar_volume_bounds
+    );
+    const double reference_log_lower = strict_log_volume_bounds[0];
+    const double reference_log_upper = strict_log_volume_bounds[1];
     const double reference_log_span = reference_log_upper - reference_log_lower;
     std::vector<std::pair<double, Held2StateEvaluation>> reference_scan;
     reference_scan.reserve(
@@ -1938,7 +2145,11 @@ Held2StageIResult solve_held2_stage_i(
     for (int point = 0; point <= result.reference_scan_interval_count; ++point) {
         const double fraction = static_cast<double>(point)
             / static_cast<double>(result.reference_scan_interval_count);
-        const double log_volume = reference_log_lower + fraction * reference_log_span;
+        const double log_volume = point == 0
+            ? reference_log_lower
+            : point == result.reference_scan_interval_count
+            ? reference_log_upper
+            : reference_log_lower + fraction * reference_log_span;
         try {
             reference_scan.emplace_back(
                 log_volume,
@@ -2077,15 +2288,19 @@ Held2StageIResult solve_held2_stage_i(
     for (std::size_t index = 0; index < upper.size(); ++index) {
         upper[index] = std::nextafter(upper[index], lower[index]);
     }
+    const auto strict_log_packing_bounds = strict_interior_log_bounds({
+        kHeld2PackingFractionMinimum,
+        kHeld2PackingFractionMaximum,
+    });
     lower.push_back(
         search_uses_log_packing
-            ? std::log(kHeld2PackingFractionMinimum)
-            : std::log(molar_volume_bounds[0])
+            ? strict_log_packing_bounds[0]
+            : strict_log_volume_bounds[0]
     );
     upper.push_back(
         search_uses_log_packing
-            ? std::log(kHeld2PackingFractionMaximum)
-            : std::log(molar_volume_bounds[1])
+            ? strict_log_packing_bounds[1]
+            : strict_log_volume_bounds[1]
     );
     std::mt19937 generator(kStageISeed);
     const auto dependent_retained = static_cast<std::size_t>(
@@ -2102,8 +2317,14 @@ Held2StageIResult solve_held2_stage_i(
     starts.reserve(static_cast<std::size_t>(result.declared_start_count));
     if (feed_independent.size() == 1 && molar_volume_bounds[0] <= 1.0
         && molar_volume_bounds[1] >= 1.0) {
-        starts.push_back({0.2, 0.0});
-        starts.push_back({0.8, 0.0});
+        for (double composition : {0.2, 0.8}) {
+            const std::vector<double> fixed{composition};
+            if (!std::isfinite(total_ion_mole_fraction_max)
+                || held2_stage_i_total_ion_mole_fraction(coordinates, fixed)
+                    < total_ion_mole_fraction_max) {
+                starts.push_back({composition, 0.0});
+            }
+        }
     }
     int rejected_draws = 0;
     while (starts.size() < static_cast<std::size_t>(result.declared_start_count)) {
@@ -2122,6 +2343,15 @@ Held2StageIResult solve_held2_stage_i(
             result.outcome = "indeterminate";
             return result;
         }
+        if (std::isfinite(total_ion_mole_fraction_max)
+            && !(held2_stage_i_total_ion_mole_fraction(coordinates, start)
+                < total_ion_mole_fraction_max)) {
+            if (++rejected_draws < 10000) {
+                continue;
+            }
+            result.outcome = "indeterminate";
+            return result;
+        }
         std::array<double, 2> start_volume_bounds = molar_volume_bounds;
         if (volume_bounds_evaluator) {
             try {
@@ -2136,9 +2366,11 @@ Held2StageIResult solve_held2_stage_i(
                 return result;
             }
         }
+        const auto start_log_volume_bounds = strict_interior_log_bounds(
+            start_volume_bounds
+        );
         std::uniform_real_distribution<double> log_volume_distribution(
-            std::log(start_volume_bounds[0]),
-            std::log(start_volume_bounds[1])
+            start_log_volume_bounds[0], start_log_volume_bounds[1]
         );
         const double start_log_volume = log_volume_distribution(generator);
         if (search_uses_log_packing) {
@@ -2163,6 +2395,24 @@ Held2StageIResult solve_held2_stage_i(
         }
         starts.push_back(std::move(start));
     }
+    result.planned_starts = starts;
+    Held2SearchDomainPredicate trial_domain_predicate;
+    if (!search_uses_log_packing) {
+        trial_domain_predicate = [
+            coordinates,
+            molar_volume_bounds,
+            volume_bounds_evaluator
+        ](const std::vector<double>& independent, double log_volume) {
+            std::array<double, 2> bounds = molar_volume_bounds;
+            if (volume_bounds_evaluator) {
+                bounds = volume_bounds_evaluator(
+                    held2_lift_independent_fractions(coordinates, independent)
+                );
+            }
+            const double volume = std::exp(log_volume);
+            return std::isfinite(volume) && volume > bounds[0] && volume < bounds[1];
+        };
+    }
     const std::size_t attempted_limit = solve_start_limit > 0
         ? std::min(starts.size(), static_cast<std::size_t>(solve_start_limit))
         : starts.size();
@@ -2177,7 +2427,10 @@ Held2StageIResult solve_held2_stage_i(
             start,
             lower,
             upper,
-            composition_sum_upper
+            composition_sum_upper,
+            source_domain_coefficients,
+            total_ion_mole_fraction_max,
+            trial_domain_predicate
         );
         if (!run.solver_converged || !run.callback_error.empty()
             || run.variables.size() != feed_independent.size() + 1) {
@@ -2330,7 +2583,8 @@ Held2StageIResult solve_held2_manufactured_stage_i(
         volume_bounds_evaluator,
         false,
         true,
-        -1
+        -1,
+        std::numeric_limits<double>::quiet_NaN()
     );
 }
 

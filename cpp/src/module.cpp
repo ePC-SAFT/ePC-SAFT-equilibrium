@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -36,6 +37,9 @@ constexpr std::size_t kMolarVolumeSdkTableSize =
 constexpr std::size_t kPackingSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_packing_fraction)
     + sizeof(epcsaft_evaluate_packing_fraction_v1);
+constexpr std::size_t kSourceDomainSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, total_ion_mole_fraction_max)
+    + sizeof(double);
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
 
 struct Held2ProviderMetadata {
@@ -121,6 +125,56 @@ const epcsaft_native_sdk_v1& checked_packing_sdk(const py::capsule& capsule) {
     return sdk;
 }
 
+const epcsaft_native_sdk_v1& checked_source_domain_sdk(const py::capsule& capsule) {
+    const epcsaft_native_sdk_v1& sdk = checked_packing_sdk(capsule);
+    if (sdk.table_size < kSourceDomainSdkTableSize) {
+        throw py::value_error("provider capsule is missing the source-domain metadata");
+    }
+    if (!std::isfinite(sdk.source_temperature_min_k)
+        || !std::isfinite(sdk.source_temperature_max_k)
+        || sdk.source_temperature_min_k <= 0.0
+        || sdk.source_temperature_max_k < sdk.source_temperature_min_k) {
+        throw py::value_error("provider source temperature domain is invalid");
+    }
+    if (!std::isnan(sdk.total_ion_mole_fraction_max)
+        && (!std::isfinite(sdk.total_ion_mole_fraction_max)
+            || sdk.total_ion_mole_fraction_max < 0.0
+            || sdk.total_ion_mole_fraction_max > 1.0)) {
+        throw py::value_error("provider total-ion source domain is invalid");
+    }
+    return sdk;
+}
+
+double total_ion_mole_fraction(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_fractions
+) {
+    if (charges.size() != physical_fractions.size()) {
+        throw std::invalid_argument("HELD2 source-domain component count changed");
+    }
+    double result = 0.0;
+    for (std::size_t index = 0; index < charges.size(); ++index) {
+        if (charges[index] != 0.0) {
+            result += physical_fractions[index];
+        }
+    }
+    return result;
+}
+
+void require_held2_source_composition(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_fractions,
+    double total_ion_mole_fraction_max
+) {
+    if (std::isfinite(total_ion_mole_fraction_max)
+        && total_ion_mole_fraction(charges, physical_fractions)
+            > total_ion_mole_fraction_max) {
+        throw std::invalid_argument(
+            "HELD2 ion mole fraction exceeds the Provider source domain"
+        );
+    }
+}
+
 Held2ProviderMetadata held2_provider_metadata(const epcsaft_native_sdk_v1& sdk) {
     Held2ProviderMetadata result;
     result.charges.reserve(sdk.component_count);
@@ -139,6 +193,7 @@ Held2ProviderMetadata held2_provider_metadata(const epcsaft_native_sdk_v1& sdk) 
 py::dict sdk_info(const py::capsule& capsule) {
     const epcsaft_native_sdk_v1& sdk = checked_sdk(capsule);
     const bool has_mixture_tail = sdk.table_size >= kMixtureSdkTableSize;
+    const bool has_source_domain_tail = sdk.table_size >= kSourceDomainSdkTableSize;
     py::dict result;
     result["capsule_name"] = EPCSAFT_NATIVE_SDK_V1_CAPSULE_NAME;
     result["abi_version"] = sdk.abi_version;
@@ -151,6 +206,19 @@ py::dict sdk_info(const py::capsule& capsule) {
     result["mixture_result_size"] = has_mixture_tail ? sdk.mixture_result_size : 0;
     result["has_evaluate_mixture_phase"] =
         has_mixture_tail && sdk.evaluate_mixture_phase != nullptr;
+    result["source_domain_prefix_size"] = kSourceDomainSdkTableSize;
+    if (has_source_domain_tail) {
+        result["source_temperature_min_k"] = sdk.source_temperature_min_k;
+        result["source_temperature_max_k"] = sdk.source_temperature_max_k;
+        result["total_ion_mole_fraction_max"] =
+            std::isnan(sdk.total_ion_mole_fraction_max)
+            ? py::none()
+            : py::cast(sdk.total_ion_mole_fraction_max);
+    } else {
+        result["source_temperature_min_k"] = py::none();
+        result["source_temperature_max_k"] = py::none();
+        result["total_ion_mole_fraction_max"] = py::none();
+    }
     return result;
 }
 
@@ -1710,6 +1778,7 @@ py::dict held2_stage_i_to_dict(
         evaluation.candidate_domain_evaluation_failure_count;
     result["candidate_domain_rejection_count"] =
         evaluation.candidate_domain_rejection_count;
+    result["planned_starts"] = evaluation.planned_starts;
     result["volume_domain_search_complete"] =
         evaluation.volume_domain_search_complete;
     if (evaluation.failed_start_index < 0) {
@@ -1772,7 +1841,11 @@ py::dict held2_installed_stage_i(
         || temperature_k <= 0.0 || pressure_pa <= 0.0) {
         throw py::value_error("HELD2 temperature and pressure must be finite and positive");
     }
-    const epcsaft_native_sdk_v1& sdk = checked_packing_sdk(capsule);
+    const epcsaft_native_sdk_v1& sdk = checked_source_domain_sdk(capsule);
+    if (temperature_k < sdk.source_temperature_min_k
+        || temperature_k > sdk.source_temperature_max_k) {
+        throw py::value_error("HELD2 temperature is outside the Provider source domain");
+    }
     Held2ProviderMetadata metadata = held2_provider_metadata(sdk);
     const epcsaft_equilibrium::Held2Coordinates coordinates =
         epcsaft_equilibrium::make_held2_coordinates(metadata.charges);
@@ -1780,6 +1853,11 @@ py::dict held2_installed_stage_i(
         coordinates,
         physical_feed
     ));
+    require_held2_source_composition(
+        coordinates.charges,
+        physical_feed,
+        sdk.total_ion_mole_fraction_max
+    );
     const epcsaft_equilibrium::ProviderContext provider(sdk, expected_fingerprint);
     const std::array<double, 2> molar_volume_bounds =
         provider.evaluate_molar_volume_bounds(
@@ -1791,7 +1869,14 @@ py::dict held2_installed_stage_i(
     const double pressure_over_rt =
         pressure_pa / (kGasConstantJPerMolK * temperature_k);
     const epcsaft_equilibrium::Held2StateEvaluator evaluator =
-        [&provider, coordinates, temperature_k, pressure_pa, pressure_over_rt](
+        [
+            &provider,
+            coordinates,
+            temperature_k,
+            pressure_pa,
+            pressure_over_rt,
+            total_ion_mole_fraction_max = sdk.total_ion_mole_fraction_max
+        ](
             const std::vector<double>& independent_modified_fractions,
             double log_volume
         ) {
@@ -1800,6 +1885,11 @@ py::dict held2_installed_stage_i(
                     coordinates,
                     independent_modified_fractions
                 );
+            require_held2_source_composition(
+                coordinates.charges,
+                physical_amounts,
+                total_ion_mole_fraction_max
+            );
             const epcsaft_equilibrium::MixturePhaseEvaluation phase =
                 provider.evaluate_electrolyte(
                     temperature_k,
@@ -1838,7 +1928,17 @@ py::dict held2_installed_stage_i(
             return state;
         };
     const epcsaft_equilibrium::Held2VolumeBoundsEvaluator volume_bounds_evaluator =
-        [&provider, temperature_k](const std::vector<double>& physical_amounts) {
+        [
+            &provider,
+            coordinates,
+            temperature_k,
+            total_ion_mole_fraction_max = sdk.total_ion_mole_fraction_max
+        ](const std::vector<double>& physical_amounts) {
+            require_held2_source_composition(
+                coordinates.charges,
+                physical_amounts,
+                total_ion_mole_fraction_max
+            );
             return provider.evaluate_molar_volume_bounds(
                 temperature_k,
                 physical_amounts,
@@ -1875,7 +1975,8 @@ py::dict held2_installed_stage_i(
             volume_bounds_evaluator,
             q_discriminator,
             true,
-            q_discriminator ? 1 : -1
+            q_discriminator ? 1 : -1,
+            sdk.total_ion_mole_fraction_max
         );
     }
     py::dict result = held2_stage_i_to_dict(

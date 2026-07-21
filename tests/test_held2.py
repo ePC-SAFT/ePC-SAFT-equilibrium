@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import math
 from collections.abc import Sequence
 
@@ -26,6 +27,235 @@ KHUDAIDA_FINGERPRINT = "sha256:5a59828d86bb29c919513484a26cedaa0f025463aaa7c149a
 KHUDAIDA_INDEPENDENT_LOWER = (1.0e-10, 1.0e-10, 2.0e-10)
 KHUDAIDA_INDEPENDENT_UPPER = (1.0, 1.0, 1.0)
 KHUDAIDA_COMPOSITION_SUM_UPPER = 1.0 - 1.0e-10
+
+
+class _Held2MixtureResult(ctypes.Structure):
+    _fields_ = (
+        ("struct_size", ctypes.c_uint32),
+        ("status", ctypes.c_int32),
+        ("coordinate_count", ctypes.c_size_t),
+        ("gradient_capacity", ctypes.c_size_t),
+        ("hessian_capacity", ctypes.c_size_t),
+        ("gradient", ctypes.POINTER(ctypes.c_double)),
+        ("hessian", ctypes.POINTER(ctypes.c_double)),
+        ("helmholtz_over_rt_reference_amount", ctypes.c_double),
+        ("pressure_pa", ctypes.c_double),
+        ("parameter_fingerprint", ctypes.c_char * 72),
+        ("error", ctypes.c_char * 160),
+    )
+
+
+class _Held2NativeSdk(ctypes.Structure):
+    _fields_ = (
+        ("abi_version", ctypes.c_uint32),
+        ("table_size", ctypes.c_size_t),
+        ("result_size", ctypes.c_size_t),
+        ("model_context", ctypes.c_void_p),
+        ("evaluate_pure_phase", ctypes.c_void_p),
+        ("parameterized_result_size", ctypes.c_size_t),
+        ("evaluate_pure_phase_parameters", ctypes.c_void_p),
+        ("component_count", ctypes.c_size_t),
+        ("mixture_result_size", ctypes.c_size_t),
+        ("evaluate_mixture_phase", ctypes.c_void_p),
+        ("evaluate_mixture_phase_kij", ctypes.c_void_p),
+        ("component_ids", ctypes.POINTER(ctypes.c_char_p)),
+        ("component_charges", ctypes.POINTER(ctypes.c_int32)),
+        ("evaluate_electrolyte_phase", ctypes.c_void_p),
+        ("evaluate_molar_volume_bounds", ctypes.c_void_p),
+        ("evaluate_packing_fraction", ctypes.c_void_p),
+        ("source_temperature_min_k", ctypes.c_double),
+        ("source_temperature_max_k", ctypes.c_double),
+        ("total_ion_mole_fraction_max", ctypes.c_double),
+    )
+
+
+_ELECTROLYTE_CALLBACK = ctypes.CFUNCTYPE(
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_double,
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.c_size_t,
+    ctypes.c_double,
+    ctypes.POINTER(_Held2MixtureResult),
+)
+_VOLUME_BOUNDS_CALLBACK = ctypes.CFUNCTYPE(
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_char_p,
+    ctypes.c_double,
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.c_size_t,
+    ctypes.c_double,
+    ctypes.c_double,
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.c_size_t,
+)
+_PACKING_CALLBACK = ctypes.CFUNCTYPE(
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_char_p,
+    ctypes.c_double,
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.c_size_t,
+    ctypes.c_double,
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.c_size_t,
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.c_size_t,
+)
+
+
+def _native_sdk_table(capsule: object) -> _Held2NativeSdk:
+    get_pointer = ctypes.pythonapi.PyCapsule_GetPointer
+    get_pointer.argtypes = (ctypes.py_object, ctypes.c_char_p)
+    get_pointer.restype = ctypes.c_void_p
+    pointer = get_pointer(capsule, b"epcsaft.native_sdk.v1")
+    assert pointer
+    return _Held2NativeSdk.from_buffer_copy(
+        ctypes.string_at(pointer, ctypes.sizeof(_Held2NativeSdk))
+    )
+
+
+def _domain_spy_capsule(model: epcsaft.EPCSAFT) -> tuple[object, dict[str, int], list[object]]:
+    provider_capsule = epcsaft.native_sdk(model)
+    table = _native_sdk_table(provider_capsule)
+    charges = tuple(table.component_charges[index] for index in range(table.component_count))
+    cap = table.total_ion_mole_fraction_max
+    calls = {
+        "electrolyte": 0,
+        "volume_bounds": 0,
+        "packing": 0,
+        "outside": 0,
+        "outside_volume": 0,
+        "at_or_below_volume_lower": 0,
+        "at_or_above_volume_upper": 0,
+    }
+
+    def record_domain(amounts: ctypes.POINTER(ctypes.c_double), count: int) -> None:
+        values = tuple(amounts[index] for index in range(count))
+        total = sum(values)
+        charged = sum(value for value, charge in zip(values, charges, strict=True) if charge)
+        if math.isfinite(cap) and charged / total > cap:
+            calls["outside"] += 1
+
+    original_electrolyte = _ELECTROLYTE_CALLBACK(table.evaluate_electrolyte_phase)
+    original_volume_bounds = _VOLUME_BOUNDS_CALLBACK(table.evaluate_molar_volume_bounds)
+    original_packing = _PACKING_CALLBACK(table.evaluate_packing_fraction)
+
+    def record_volume_domain(
+        context: int,
+        fingerprint: bytes,
+        temperature: float,
+        amounts: ctypes.POINTER(ctypes.c_double),
+        count: int,
+        volume: float,
+    ) -> None:
+        bounds = (ctypes.c_double * 2)()
+        status = original_volume_bounds(
+            context,
+            fingerprint,
+            temperature,
+            amounts,
+            count,
+            1.0e-6,
+            0.74,
+            bounds,
+            2,
+        )
+        if status == 0:
+            below = volume <= bounds[0]
+            above = volume >= bounds[1]
+            calls["at_or_below_volume_lower"] += int(below)
+            calls["at_or_above_volume_upper"] += int(above)
+            calls["outside_volume"] += int(below or above)
+
+    @_ELECTROLYTE_CALLBACK
+    def electrolyte(
+        context: int, temperature: float, amounts: object, count: int, volume: float, result: object
+    ) -> int:
+        calls["electrolyte"] += 1
+        record_domain(amounts, count)
+        record_volume_domain(
+            context,
+            model.parameter_fingerprint.encode(),
+            temperature,
+            amounts,
+            count,
+            volume,
+        )
+        return original_electrolyte(context, temperature, amounts, count, volume, result)
+
+    @_VOLUME_BOUNDS_CALLBACK
+    def volume_bounds(
+        context: int,
+        fingerprint: bytes,
+        temperature: float,
+        amounts: object,
+        count: int,
+        eta_min: float,
+        eta_max: float,
+        bounds: object,
+        bound_count: int,
+    ) -> int:
+        calls["volume_bounds"] += 1
+        record_domain(amounts, count)
+        return original_volume_bounds(
+            context, fingerprint, temperature, amounts, count, eta_min, eta_max, bounds, bound_count
+        )
+
+    @_PACKING_CALLBACK
+    def packing(
+        context: int,
+        fingerprint: bytes,
+        temperature: float,
+        amounts: object,
+        count: int,
+        volume: float,
+        value: object,
+        gradient: object,
+        gradient_count: int,
+        hessian: object,
+        hessian_count: int,
+    ) -> int:
+        calls["packing"] += 1
+        record_domain(amounts, count)
+        record_volume_domain(context, fingerprint, temperature, amounts, count, volume)
+        return original_packing(
+            context,
+            fingerprint,
+            temperature,
+            amounts,
+            count,
+            volume,
+            value,
+            gradient,
+            gradient_count,
+            hessian,
+            hessian_count,
+        )
+
+    table.evaluate_electrolyte_phase = ctypes.cast(electrolyte, ctypes.c_void_p).value
+    table.evaluate_molar_volume_bounds = ctypes.cast(volume_bounds, ctypes.c_void_p).value
+    table.evaluate_packing_fraction = ctypes.cast(packing, ctypes.c_void_p).value
+    name = ctypes.create_string_buffer(b"epcsaft.native_sdk.v1")
+    new_capsule = ctypes.pythonapi.PyCapsule_New
+    new_capsule.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p)
+    new_capsule.restype = ctypes.py_object
+    capsule = new_capsule(ctypes.addressof(table), name, None)
+    owners: list[object] = [
+        model,
+        provider_capsule,
+        table,
+        name,
+        original_electrolyte,
+        original_volume_bounds,
+        original_packing,
+        electrolyte,
+        volume_bounds,
+        packing,
+    ]
+    return capsule, calls, owners
 
 
 def _held2_step6(
@@ -663,6 +893,130 @@ def test_held2_installed_stage_i_log_packing_discriminator_remains_fail_closed()
     assert result["search_completeness"] == "incomplete"
 
 
+def test_held2_provider_source_domain_metadata_is_prefix_bound() -> None:
+    figiel = _figiel_brine_model()
+    khudaida = _khudaida_model()
+
+    figiel_info = _equilibrium.sdk_info(epcsaft.native_sdk(figiel))
+    khudaida_info = _equilibrium.sdk_info(epcsaft.native_sdk(khudaida))
+
+    assert figiel_info["source_domain_prefix_size"] == ctypes.sizeof(_Held2NativeSdk)
+    assert figiel_info["table_size"] >= figiel_info["source_domain_prefix_size"]
+    assert figiel_info["source_temperature_min_k"] == figiel_info["source_temperature_max_k"]
+    assert math.isfinite(figiel_info["total_ion_mole_fraction_max"])
+    assert khudaida_info["table_size"] >= khudaida_info["source_domain_prefix_size"]
+    assert khudaida_info["source_temperature_min_k"] == khudaida_info["source_temperature_max_k"]
+    assert khudaida_info["total_ion_mole_fraction_max"] is None
+
+
+def test_held2_stage_i_rejects_source_temperature_and_feed_before_provider() -> None:
+    model = _figiel_brine_model()
+    table = _native_sdk_table(epcsaft.native_sdk(model))
+    cap = table.total_ion_mole_fraction_max
+    interior_ion_fraction = 0.5 * cap
+    interior_feed = (
+        1.0 - interior_ion_fraction,
+        0.5 * interior_ion_fraction,
+        0.5 * interior_ion_fraction,
+    )
+    capsule, calls, owners = _domain_spy_capsule(model)
+    assert owners
+
+    with pytest.raises(ValueError, match="temperature is outside the Provider source domain"):
+        _equilibrium._held2_adapter(
+            capsule,
+            math.nextafter(table.source_temperature_min_k, -math.inf),
+            2_508.0,
+            interior_feed,
+            model.parameter_fingerprint,
+            "stage_i",
+        )
+    assert sum(calls.values()) == 0
+
+    outside = math.nextafter(cap, math.inf)
+    outside_feed = (1.0 - outside, 0.5 * outside, 0.5 * outside)
+    with pytest.raises(ValueError, match="ion mole fraction exceeds the Provider source domain"):
+        _equilibrium._held2_adapter(
+            capsule,
+            table.source_temperature_min_k,
+            2_508.0,
+            outside_feed,
+            model.parameter_fingerprint,
+            "stage_i",
+        )
+    assert sum(calls.values()) == 0
+
+
+@pytest.mark.parametrize("direction", (0.0, -math.inf))
+def test_held2_stage_i_keeps_ion_boundary_trials_inside_provider_volume_domain(
+    direction: float,
+) -> None:
+    model = _figiel_brine_model()
+    table = _native_sdk_table(epcsaft.native_sdk(model))
+    ion_fraction = (
+        table.total_ion_mole_fraction_max
+        if direction == 0.0
+        else math.nextafter(table.total_ion_mole_fraction_max, direction)
+    )
+    feed = (1.0 - ion_fraction, 0.5 * ion_fraction, 0.5 * ion_fraction)
+    capsule, calls, owners = _domain_spy_capsule(model)
+    assert owners
+
+    result = _equilibrium._held2_adapter(
+        capsule,
+        table.source_temperature_min_k,
+        2_508.0,
+        feed,
+        model.parameter_fingerprint,
+        "stage_i_start_0",
+    )
+
+    assert result["attempted_start_count"] == 1
+    assert calls["electrolyte"] > 0
+    assert calls["volume_bounds"] > 0
+    assert calls["packing"] > 0
+    assert calls["outside"] == 0
+    assert calls["outside_volume"] == 0
+    assert calls["at_or_below_volume_lower"] == 0
+    assert calls["at_or_above_volume_upper"] == 0
+
+
+def test_held2_stage_i_maps_all_declared_starts_deterministically_inside_source_domain() -> None:
+    planned_profiles: list[list[list[float]]] = []
+    for _ in range(2):
+        model = _figiel_brine_model()
+        table = _native_sdk_table(epcsaft.native_sdk(model))
+        ion_fraction = 0.5 * table.total_ion_mole_fraction_max
+        feed = (1.0 - ion_fraction, 0.5 * ion_fraction, 0.5 * ion_fraction)
+        capsule, calls, owners = _domain_spy_capsule(model)
+        assert owners
+
+        result = _equilibrium._held2_adapter(
+            capsule,
+            table.source_temperature_min_k,
+            2_508.0,
+            feed,
+            model.parameter_fingerprint,
+            "stage_i",
+        )
+
+        assert result["declared_start_count"] == 30
+        assert result["attempted_start_count"] == 30
+        assert calls["outside"] == 0
+        assert calls["outside_volume"] == 0
+        assert calls["at_or_below_volume_lower"] == 0
+        assert calls["at_or_above_volume_upper"] == 0
+        assert result["completed_start_count"] == 30
+        assert result["failed_start_count"] == 0
+        assert len(result["planned_starts"]) == 30
+        assert all(
+            start[0] <= table.total_ion_mole_fraction_max for start in result["planned_starts"]
+        )
+        planned_profiles.append(result["planned_starts"])
+
+    assert planned_profiles[0] == planned_profiles[1]
+
+
 def test_held2_installed_stage_i_uses_provider_volume_domain_for_khudaida_midpoint() -> None:
     model = _khudaida_model()
     physical_feed = tuple(amount / sum(KHUDAIDA_AMOUNTS) for amount in KHUDAIDA_AMOUNTS)
@@ -707,25 +1061,16 @@ def test_held2_installed_stage_i_uses_provider_volume_domain_for_khudaida_midpoi
         [31.411491224899734, -0.5642708323753126, 0.8463122865798167],
         rel=2.0e-8,
     )
-    # Immutable 27fb907/Provider-2cd055a control; the Stage-II chart must not alter it.
-    assert result["completed_start_count"] == 48
-    assert result["failed_start_count"] == 2
+    # The source-domain guard removes the two former Provider-domain escapes without
+    # changing the retained negative witness or the Khudaida scientific outcome.
+    assert result["completed_start_count"] == 50
+    assert result["failed_start_count"] == 0
     assert result["completed_start_count"] + result["failed_start_count"] == 50
-    assert result["search_completeness"] == "incomplete"
-    assert result["failed_start_index"] == 18
-    assert result["failed_start_solver_status"] == 0
-    assert result["failed_start_solver_converged"] is True
-    assert result["failed_start_reason"] == (
-        "provider mixture phase evaluation failed: association solve left physical domain"
-    )
-    assert result["failed_start_initial"] == pytest.approx(
-        [
-            0.09236887232016976,
-            0.28123087292432036,
-            0.4673809073217849,
-            -9.864813050661876,
-        ]
-    )
+    assert result["search_completeness"] == "complete"
+    assert result["failed_start_index"] is None
+    assert result["failed_start_solver_status"] is None
+    assert result["failed_start_solver_converged"] is None
+    assert result["failed_start_reason"] is None
     assert result["outcome"] == "negative_tpd"
     assert result["volume_domain_search_complete"] is True
     assert result["candidate_domain_evaluation_failure_count"] == 0

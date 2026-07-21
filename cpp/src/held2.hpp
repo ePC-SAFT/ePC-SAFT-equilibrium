@@ -47,6 +47,11 @@ struct Held2StateEvaluation;
     const std::vector<double>& independent_modified_fractions
 );
 
+[[nodiscard]] double held2_stage_i_total_ion_mole_fraction(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent_modified_fractions
+);
+
 [[nodiscard]] std::vector<double> held2_transform_modified_potentials(
     const Held2Coordinates& coordinates,
     const std::vector<double>& chemical_potentials
@@ -144,6 +149,7 @@ struct Held2StageIResult {
     double minimum_tpd = 0.0;
     std::vector<Held2ReferenceRoot> reference_roots;
     std::vector<Held2StageICandidate> candidates;
+    std::vector<std::vector<double>> planned_starts;
 };
 
 struct Held2StageIIBound {
@@ -328,7 +334,8 @@ struct Held2StageIIIResult {
     const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
     bool search_uses_log_packing,
     bool volume_domain_search_complete,
-    int solve_start_limit
+    int solve_start_limit,
+    double total_ion_mole_fraction_max
 );
 
 [[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii(
