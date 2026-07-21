@@ -21,6 +21,7 @@ KHUDAIDA_COMPONENT_IDS = (
     "chloride-anion",
 )
 KHUDAIDA_AMOUNTS = (0.65905, 0.05095, 0.27015, 0.01985, 0.01985)
+KHUDAIDA_CHARGES = (0.0, 0.0, 0.0, 1.0, -1.0)
 KHUDAIDA_FINGERPRINT = "sha256:5a59828d86bb29c919513484a26cedaa0f025463aaa7c149ae3d1fbd0eda97ae"
 
 
@@ -396,10 +397,130 @@ def test_held2_installed_electrolyte_sdk_phase_block_has_exact_reduced_derivativ
             result["hessian"][2 * row + column] * direction[column] for column in range(2)
         )
         assert gradient_directional == pytest.approx(hessian_directional, rel=1.0e-8, abs=1.0e-10)
+    packing_directional = (upper["packing_fraction"] - lower["packing_fraction"]) / (2.0 * step)
+    assert packing_directional == pytest.approx(
+        sum(
+            value * delta
+            for value, delta in zip(result["packing_gradient"], direction, strict=True)
+        ),
+        rel=1.0e-9,
+        abs=1.0e-11,
+    )
+    for row in range(2):
+        packing_gradient_directional = (
+            upper["packing_gradient"][row] - lower["packing_gradient"][row]
+        ) / (2.0 * step)
+        packing_hessian_directional = sum(
+            result["packing_hessian"][2 * row + column] * direction[column] for column in range(2)
+        )
+        assert packing_gradient_directional == pytest.approx(
+            packing_hessian_directional, rel=1.0e-8, abs=1.0e-11
+        )
+    assert tuple(result["packing_hessian"]) == pytest.approx(
+        tuple(
+            result["packing_hessian"][2 * column + row] for row in range(2) for column in range(2)
+        ),
+        abs=2.0e-14,
+    )
+    assert 1.0e-6 <= result["packing_fraction"] <= 0.74
     assert result["pressure_over_rt"] == pytest.approx(
         pressure_pa / (GAS_CONSTANT_J_PER_MOL_K * temperature_k), rel=2.0e-15
     )
     assert math.isfinite(result["provider_pressure_pa"])
+
+
+def test_held2_installed_log_packing_coordinate_round_trips_and_has_exact_derivatives() -> None:
+    model = _khudaida_model()
+    capsule = epcsaft.native_sdk(model)
+    temperature_k = 293.15
+    pressure_pa = 100_000.0
+    states = (
+        (
+            (0.6462224836985831, 0.04995832720498113, 0.03892729322939648),
+            math.log(3.909560419950043e-05),
+        ),
+        (
+            (0.48317652139878337, 0.06575359819988703, 0.012557176718000043),
+            math.log(5.2811607028165594e-05),
+        ),
+        (
+            (0.49974816254115306, 0.34140273164275964, 0.10555255266393769),
+            -2.0847367866112805,
+        ),
+    )
+    direction = (0.011, -0.008, 0.006, 0.017)
+    step = 2.0e-4
+
+    for independent, log_volume in states:
+        physical = _equilibrium._held2_adapter(
+            capsule,
+            temperature_k,
+            pressure_pa,
+            independent,
+            log_volume,
+            KHUDAIDA_FINGERPRINT,
+        )
+        center = (*independent, math.log(physical["packing_fraction"]))
+
+        def evaluate(values: tuple[float, ...]) -> dict[str, object]:
+            return _equilibrium._held2_adapter(
+                capsule,
+                temperature_k,
+                pressure_pa,
+                values[:-1],
+                values[-1],
+                KHUDAIDA_FINGERPRINT,
+                "log_packing_phase",
+            )
+
+        lower = evaluate(
+            tuple(value - step * delta for value, delta in zip(center, direction, strict=True))
+        )
+        result = evaluate(center)
+        upper = evaluate(
+            tuple(value + step * delta for value, delta in zip(center, direction, strict=True))
+        )
+
+        assert result["log_volume"] == pytest.approx(log_volume, abs=2.0e-11)
+        assert result["log_packing_residual"] == pytest.approx(0.0, abs=2.0e-13)
+        assert math.log(result["packing_fraction"]) == pytest.approx(center[-1], abs=2.0e-13)
+        objective_directional = (upper["objective"] - lower["objective"]) / (2.0 * step)
+        assert objective_directional == pytest.approx(
+            sum(value * delta for value, delta in zip(result["gradient"], direction, strict=True)),
+            rel=2.0e-8,
+            abs=2.0e-9,
+        )
+        for row in range(4):
+            gradient_directional = (upper["gradient"][row] - lower["gradient"][row]) / (2.0 * step)
+            hessian_directional = sum(
+                result["hessian"][4 * row + column] * direction[column] for column in range(4)
+            )
+            assert gradient_directional == pytest.approx(
+                hessian_directional, rel=3.0e-8, abs=3.0e-9
+            )
+        assert tuple(result["hessian"]) == pytest.approx(
+            tuple(result["hessian"][4 * column + row] for row in range(4) for column in range(4)),
+            abs=3.0e-13,
+        )
+
+
+def test_held2_installed_log_packing_coordinate_completes_former_failed_start_zero() -> None:
+    model = _khudaida_model()
+    physical_feed = tuple(amount / sum(KHUDAIDA_AMOUNTS) for amount in KHUDAIDA_AMOUNTS)
+
+    result = _equilibrium._held2_adapter(
+        epcsaft.native_sdk(model),
+        293.15,
+        100_000.0,
+        physical_feed,
+        KHUDAIDA_FINGERPRINT,
+        "stage_i_start_0",
+    )
+
+    assert result["attempted_start_count"] == 1
+    assert result["completed_start_count"] == 1
+    assert result["failed_start_count"] == 0
+    assert result["failed_start_index"] is None
 
 
 def test_held2_installed_stage_i_uses_provider_volume_domain_for_khudaida_midpoint() -> None:
@@ -446,27 +567,26 @@ def test_held2_installed_stage_i_uses_provider_volume_domain_for_khudaida_midpoi
         [31.411491224899734, -0.5642708323753126, 0.8463122865798167],
         rel=2.0e-8,
     )
-    assert result["completed_start_count"] == 49
-    assert result["failed_start_count"] == 1
+    assert result["completed_start_count"] == 11
+    assert result["failed_start_count"] == 39
     assert result["completed_start_count"] + result["failed_start_count"] == 50
-    assert result["failed_start_index"] == 18
-    assert result["failed_start_solver_status"] == 0
-    assert result["failed_start_solver_converged"] is True
-    assert result["failed_start_reason"] == (
-        "provider mixture phase evaluation failed: association solve left physical domain"
-    )
+    assert result["search_completeness"] == "incomplete"
+    assert result["failed_start_index"] == 0
+    assert result["failed_start_solver_status"] == 3
+    assert result["failed_start_solver_converged"] is False
+    assert result["failed_start_reason"] == "TPD solve did not return a complete accepted state"
     assert result["failed_start_initial"] == pytest.approx(
         [
-            0.09236887232016976,
-            0.28123087292432036,
-            0.4673809073217849,
-            -9.77813271535615,
+            0.49974816254115306,
+            0.34140273164275964,
+            0.10555255266393769,
+            -2.0847367866112805,
         ]
     )
     assert result["outcome"] == "negative_tpd"
-    assert result["volume_domain_search_complete"] is False
+    assert result["volume_domain_search_complete"] is True
     assert result["candidate_domain_evaluation_failure_count"] == 0
-    assert result["candidate_domain_rejection_count"] == 2
+    assert result["candidate_domain_rejection_count"] == 0
     assert result["reference_volume"] == pytest.approx(3.909560419950043e-05, rel=2.0e-8)
     assert result["minimum_tpd"] == pytest.approx(-0.14499309134029337, abs=2.0e-13)
     assert [candidate["tpd"] for candidate in result["candidates"]] == pytest.approx(
@@ -477,6 +597,7 @@ def test_held2_installed_stage_i_uses_provider_volume_domain_for_khudaida_midpoi
     )
     phase_evidence = []
     for candidate in result["candidates"]:
+        assert 1.0e-6 <= candidate["packing_fraction"] <= 0.74
         modified = candidate["modified_fractions"]
         phase = _equilibrium._held2_adapter(
             epcsaft.native_sdk(model),
@@ -562,6 +683,42 @@ def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
     assert all(abs(candidate["lower_gap"]) <= 1.0e-8 for candidate in result["candidates"])
 
 
+def test_held2_stage_ii_certified_improving_cut_advances_with_partial_search() -> None:
+    result = _equilibrium._held2_adapter(
+        -6.0097420675620405,
+        -6.5902644733135745,
+        34,
+        50,
+        "stage_ii_precedence",
+    )
+
+    assert result == {
+        "decision": "add_improving_cut",
+        "search_completeness": "partial",
+        "lower_bound_certified": False,
+    }
+
+
+def test_held2_stage_ii_partial_search_without_improving_cut_is_indeterminate() -> None:
+    result = _equilibrium._held2_adapter(-6.0, -5.99, 34, 50, "stage_ii_precedence")
+
+    assert result == {
+        "decision": "indeterminate",
+        "search_completeness": "partial",
+        "lower_bound_certified": False,
+    }
+
+
+def test_held2_stage_ii_final_gap_requires_complete_lower_search() -> None:
+    result = _equilibrium._held2_adapter(-6.0, -6.0, 50, 50, "stage_ii_precedence")
+
+    assert result == {
+        "decision": "evaluate_final_gap",
+        "search_completeness": "complete",
+        "lower_bound_certified": True,
+    }
+
+
 def test_held2_general_mp_stage_iii_exact_lagrangian_hessian() -> None:
     candidates = ((0.2, 1.0), (0.20000002, 1.0), (0.8, 1.0))
     center = (0.25, 0.2, 1.0, 0.25, 0.21, 1.0, 0.5, 0.795, 1.0)
@@ -614,6 +771,115 @@ def test_held2_general_mp_stage_iii_exact_lagrangian_hessian() -> None:
         ),
         abs=2.0e-14,
     )
+
+
+def test_held2_general_mp_stage_iii_simplex_schema_and_multiplier_mapping() -> None:
+    feed = tuple(value / sum(KHUDAIDA_AMOUNTS) for value in KHUDAIDA_AMOUNTS)
+    candidates = (
+        (0.6588026822616131, 1.108849693428444e-5, 0.34115777594234437, -0.8047587326883016),
+        (0.9104972678771838, 3.046088482260374e-5, 0.08850404209802903, -0.7857111519928206),
+        (0.9784651953324194, 0.01956780416816369, 2.420187102135475e-5, -0.7872645327604558),
+    )
+    fraction = 1.0 / len(candidates)
+    variables = tuple(value for candidate in candidates for value in (fraction, *candidate))
+    equality_multipliers = (0.3, -0.2, 0.4, -0.1)
+    zero_simplex = (*equality_multipliers, 0.0, 0.0, 0.0)
+    simplex_multipliers = (1.1, -0.7, 0.4)
+
+    baseline = _equilibrium._held2_adapter(
+        KHUDAIDA_CHARGES,
+        feed,
+        candidates,
+        variables,
+        zero_simplex,
+        "stage_iii_general_schema",
+    )
+    result = _equilibrium._held2_adapter(
+        KHUDAIDA_CHARGES,
+        feed,
+        candidates,
+        variables,
+        (*equality_multipliers, *simplex_multipliers),
+        "stage_iii_general_schema",
+    )
+
+    assert result["variable_count"] == 15
+    assert result["constraint_count"] == 7
+    assert result["jacobian_nonzero_count"] == 30
+    assert result["constraint_lower_bounds"] == [0.0] * 4 + [-2.0e19] * 3
+    assert result["constraint_upper_bounds"] == pytest.approx(
+        [0.0] * 4 + [1.0 - 1.0e-10] * 3,
+        abs=0.0,
+    )
+    assert result["constraints"][-3:] == pytest.approx(
+        [sum(candidate[:-1]) for candidate in candidates],
+        abs=2.0e-15,
+    )
+
+    expected_rows = [0, 0, 0]
+    expected_columns = [0, 5, 10]
+    expected_values = [1.0, 1.0, 1.0]
+    for coordinate in range(3):
+        for phase, candidate in enumerate(candidates):
+            offset = 5 * phase
+            expected_rows.extend((coordinate + 1, coordinate + 1))
+            expected_columns.extend((offset, offset + coordinate + 1))
+            expected_values.extend((candidate[coordinate], fraction))
+    for phase in range(3):
+        for coordinate in range(3):
+            expected_rows.append(4 + phase)
+            expected_columns.append(5 * phase + coordinate + 1)
+            expected_values.append(1.0)
+    assert result["jacobian_rows"] == expected_rows
+    assert result["jacobian_columns"] == expected_columns
+    assert result["jacobian_values"] == pytest.approx(expected_values, abs=0.0)
+
+    gradient_difference = tuple(
+        value - base
+        for value, base in zip(
+            result["lagrangian_gradient"],
+            baseline["lagrangian_gradient"],
+            strict=True,
+        )
+    )
+    expected_difference = [0.0] * len(variables)
+    for phase, multiplier in enumerate(simplex_multipliers):
+        for coordinate in range(3):
+            expected_difference[5 * phase + coordinate + 1] = multiplier
+    assert gradient_difference == pytest.approx(expected_difference, abs=2.0e-15)
+    assert result["lagrangian_hessian"] == pytest.approx(baseline["lagrangian_hessian"], abs=0.0)
+
+
+def test_held2_general_mp_stage_iii_rejects_invalid_trial_before_provider() -> None:
+    feed = tuple(value / sum(KHUDAIDA_AMOUNTS) for value in KHUDAIDA_AMOUNTS)
+    candidates = (
+        (0.6588026822616131, 1.108849693428444e-5, 0.34115777594234437, -0.8047587326883016),
+        (0.9104972678771838, 3.046088482260374e-5, 0.08850404209802903, -0.7857111519928206),
+    )
+    invalid_trial = (
+        0.5,
+        0.6583790364854278,
+        0.0010010884969342845,
+        0.3407281048600504,
+        -0.8053132473085454,
+        0.5,
+        *candidates[1],
+    )
+
+    result = _equilibrium._held2_adapter(
+        KHUDAIDA_CHARGES,
+        feed,
+        candidates,
+        invalid_trial,
+        (0.0,) * 6,
+        "stage_iii_invalid_trial",
+    )
+
+    assert result["objective_accepted"] is False
+    assert result["scientific_evaluator_call_count"] == 0
+    assert result["recoverable_domain_rejection_count"] == 1
+    assert result["last_domain_rejection"]
+    assert result["fatal_callback_error"] == ""
 
 
 def test_held2_general_mp_stage_iii_refines_then_merges_duplicate_phases() -> None:

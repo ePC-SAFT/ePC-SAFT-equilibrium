@@ -4,12 +4,16 @@
 #include <cstddef>
 #include <functional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace epcsaft_equilibrium {
 
 inline constexpr const char* kHeld2ManufacturedFormulationId =
     "perdomo-held2.modified-mole.manufactured.v1";
+inline constexpr double kHeld2PackingFractionMinimum = 1.0e-6;
+inline constexpr double kHeld2PackingFractionMaximum = 0.74;
+inline constexpr double kHeld2ModifiedLowerScale = 1.0e-10;
 
 struct Held2Coordinates {
     std::vector<double> charges;
@@ -65,6 +69,12 @@ struct Held2PhysicalPhaseBlock {
     double pressure_pa = 0.0;
 };
 
+struct Held2PackingEvaluation {
+    double value = 0.0;
+    std::vector<double> gradient;
+    std::vector<double> hessian;
+};
+
 struct Held2StateEvaluation {
     std::vector<double> modified_fractions;
     std::vector<double> physical_amounts;
@@ -74,6 +84,9 @@ struct Held2StateEvaluation {
     std::vector<double> hessian;
     std::vector<double> modified_potentials;
     double pressure_stationarity_relative = 0.0;
+    double log_volume_gradient = 0.0;
+    bool has_packing_evaluation = false;
+    Held2PackingEvaluation packing;
 };
 
 using Held2StateEvaluator = std::function<Held2StateEvaluation(
@@ -92,6 +105,7 @@ struct Held2StageICandidate {
     std::array<double, 2> molar_volume_bounds{};
     double pressure_stationarity_relative = 0.0;
     double volume_gradient = 0.0;
+    double packing_fraction = 0.0;
     bool lower_volume_bound_active = false;
     bool upper_volume_bound_active = false;
 };
@@ -114,6 +128,7 @@ struct Held2StageIResult {
     int reference_evaluation_failure_count = 0;
     int reference_refinement_failure_count = 0;
     int declared_start_count = 0;
+    int attempted_start_count = 0;
     int completed_start_count = 0;
     int failed_start_count = 0;
     int candidate_domain_evaluation_failure_count = 0;
@@ -140,18 +155,60 @@ struct Held2StageIIBound {
 
 struct Held2StageIICandidate {
     std::vector<double> modified_fractions;
+    std::vector<double> independent_modified_fractions;
     double volume = 0.0;
+    double phase_coordinate = 0.0;
     double lower_gap = 0.0;
+};
+
+struct Held2StageIIAttempt {
+    int start_index = -1;
+    int solver_status = 999;
+    int iterations = -1;
+    bool solver_converged = false;
+    bool numerical_certified = false;
+    bool provider_terminal_valid = false;
+    bool improving = false;
+    std::string callback_error;
+    double lower_value = 0.0;
+    double projected_kkt_inf_norm = 0.0;
+    double constraint_violation = 0.0;
+    double complementarity = 0.0;
+    double final_step_norm = 0.0;
 };
 
 struct Held2StageIIResult {
     std::string outcome;
     int major_iterations = 0;
     int lower_starts_per_iteration = 0;
+    int lower_attempted_start_count = 0;
+    int lower_completed_start_count = 0;
+    int lower_failed_start_count = 0;
+    int first_failed_lower_start_index = -1;
+    int first_failed_lower_solver_status = 999;
+    std::string first_failed_lower_reason;
+    std::vector<double> first_failed_lower_initial;
+    int certified_improving_cut_count = 0;
+    std::string search_completeness = "not_run";
+    bool final_lower_search_complete = false;
     int cut_count = 0;
     std::vector<Held2StageIIBound> bound_history;
+    std::vector<Held2StageIIAttempt> attempt_log;
     std::vector<Held2StageIICandidate> candidates;
 };
+
+struct Held2StageIILowerDecision {
+    std::string decision;
+    std::string search_completeness;
+    bool lower_bound_certified = false;
+};
+
+[[nodiscard]] Held2StageIILowerDecision decide_held2_stage_ii_lower(
+    double upper_bound,
+    double best_certified_value,
+    int certified_start_count,
+    int declared_start_count
+);
 
 struct Held2StageIIINlpEvaluation {
     double objective = 0.0;
@@ -201,6 +258,22 @@ struct Held2StageIIIResult {
     const Held2PhysicalPhaseBlock& block
 );
 
+[[nodiscard]] Held2PackingEvaluation evaluate_held2_packing_block(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent_modified_fractions,
+    double log_volume,
+    double packing_fraction,
+    const std::vector<double>& gradient,
+    const std::vector<double>& hessian
+);
+
+[[nodiscard]] Held2StateEvaluation evaluate_held2_log_packing_state(
+    const Held2StateEvaluator& log_volume_evaluator,
+    const std::vector<double>& independent_modified_fractions,
+    double log_packing_fraction,
+    const std::array<double, 2>& molar_volume_bounds
+);
+
 [[nodiscard]] Held2StageIResult solve_held2_manufactured_stage_i(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed
@@ -209,15 +282,26 @@ struct Held2StageIIIResult {
 [[nodiscard]] Held2StageIResult solve_held2_stage_i(
     const Held2Coordinates& coordinates,
     const std::vector<double>& physical_feed,
-    const Held2StateEvaluator& evaluator,
+    const Held2StateEvaluator& log_volume_evaluator,
+    const Held2StateEvaluator& search_evaluator,
     const std::array<double, 2>& molar_volume_bounds,
     const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
-    bool volume_domain_search_complete
+    bool search_uses_log_packing,
+    bool volume_domain_search_complete,
+    int solve_start_limit
 );
 
 [[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed
+);
+
+[[nodiscard]] Held2StageIIResult solve_held2_stage_ii(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const Held2StateEvaluator& evaluator,
+    const Held2StateEvaluation& reference,
+    const std::vector<Held2StageICandidate>& stage_i_candidates
 );
 
 [[nodiscard]] Held2StageIIINlpEvaluation evaluate_held2_manufactured_stage_iii_nlp(
@@ -226,6 +310,49 @@ struct Held2StageIIIResult {
     const std::vector<std::array<double, 2>>& candidates,
     const std::vector<double>& variables,
     const std::vector<double>& equality_multipliers
+);
+
+[[nodiscard]] Held2StageIIINlpEvaluation evaluate_held2_stage_iii_nlp(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const Held2StateEvaluator& evaluator,
+    std::size_t phase_count,
+    const std::vector<double>& variables,
+    const std::vector<double>& equality_multipliers
+);
+
+[[nodiscard]] std::tuple<
+    int,
+    int,
+    int,
+    std::vector<double>,
+    std::vector<double>,
+    std::vector<int>,
+    std::vector<int>,
+    std::vector<double>> inspect_held2_stage_iii_tnlp(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const std::vector<Held2StageIICandidate>& candidates,
+    const std::array<double, 2>& phase_coordinate_bounds,
+    const std::vector<double>& variables
+);
+
+[[nodiscard]] std::tuple<bool, int, std::string, std::string>
+probe_held2_stage_iii_objective_trial(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const std::vector<Held2StageIICandidate>& candidates,
+    const Held2StateEvaluator& evaluator,
+    const std::array<double, 2>& phase_coordinate_bounds,
+    const std::vector<double>& variables
+);
+
+[[nodiscard]] Held2StageIIIResult solve_held2_stage_iii(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const std::vector<Held2StageIICandidate>& candidates,
+    const Held2StateEvaluator& evaluator,
+    const std::array<double, 2>& phase_coordinate_bounds
 );
 
 [[nodiscard]] Held2StageIIIResult solve_held2_manufactured_stage_iii(

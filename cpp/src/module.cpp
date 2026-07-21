@@ -33,9 +33,10 @@ constexpr std::size_t kElectrolyteSdkTableSize =
 constexpr std::size_t kMolarVolumeSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_molar_volume_bounds)
     + sizeof(epcsaft_evaluate_molar_volume_bounds_v1);
+constexpr std::size_t kPackingSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, evaluate_packing_fraction)
+    + sizeof(epcsaft_evaluate_packing_fraction_v1);
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
-constexpr double kHeld2PackingFractionMinimum = 1.0e-6;
-constexpr double kHeld2PackingFractionMaximum = 0.74;
 
 struct Held2ProviderMetadata {
     std::vector<double> charges;
@@ -107,6 +108,15 @@ const epcsaft_native_sdk_v1& checked_molar_volume_sdk(const py::capsule& capsule
     if (sdk.table_size < kMolarVolumeSdkTableSize
         || sdk.evaluate_molar_volume_bounds == nullptr) {
         throw py::value_error("provider capsule is missing the molar-volume domain contract");
+    }
+    return sdk;
+}
+
+const epcsaft_native_sdk_v1& checked_packing_sdk(const py::capsule& capsule) {
+    const epcsaft_native_sdk_v1& sdk = checked_molar_volume_sdk(capsule);
+    if (sdk.table_size < kPackingSdkTableSize
+        || sdk.evaluate_packing_fraction == nullptr) {
+        throw py::value_error("provider capsule is missing the packing-fraction contract");
     }
     return sdk;
 }
@@ -1437,7 +1447,7 @@ py::dict held2_installed_phase_block(
         || temperature_k <= 0.0 || pressure_pa <= 0.0) {
         throw py::value_error("HELD2 temperature and pressure must be finite and positive");
     }
-    const epcsaft_native_sdk_v1& sdk = checked_electrolyte_sdk(capsule);
+    const epcsaft_native_sdk_v1& sdk = checked_packing_sdk(capsule);
     Held2ProviderMetadata metadata = held2_provider_metadata(sdk);
     const epcsaft_equilibrium::Held2Coordinates coordinates =
         epcsaft_equilibrium::make_held2_coordinates(metadata.charges);
@@ -1453,6 +1463,8 @@ py::dict held2_installed_phase_block(
     const epcsaft_equilibrium::ProviderContext provider(sdk, expected_fingerprint);
     const epcsaft_equilibrium::MixturePhaseEvaluation provider_phase =
         provider.evaluate_electrolyte(temperature_k, physical_amounts, volume_m3);
+    const epcsaft_equilibrium::PackingFractionEvaluation provider_packing =
+        provider.evaluate_packing_fraction(temperature_k, physical_amounts, volume_m3);
     epcsaft_equilibrium::Held2PhysicalPhaseBlock block;
     block.helmholtz_over_rt = provider_phase.value;
     block.gradient = provider_phase.gradient;
@@ -1468,6 +1480,15 @@ py::dict held2_installed_phase_block(
             pressure_pa,
             block
         );
+    const epcsaft_equilibrium::Held2PackingEvaluation packing =
+        epcsaft_equilibrium::evaluate_held2_packing_block(
+            coordinates,
+            independent_modified_fractions,
+            log_volume,
+            provider_packing.value,
+            provider_packing.gradient,
+            provider_packing.hessian
+        );
     py::dict result;
     result["component_ids"] = std::move(metadata.component_ids);
     result["charges"] = std::move(metadata.charges);
@@ -1477,12 +1498,108 @@ py::dict held2_installed_phase_block(
     result["objective"] = evaluation.objective;
     result["gradient"] = evaluation.gradient;
     result["hessian"] = evaluation.hessian;
+    result["packing_fraction"] = packing.value;
+    result["packing_gradient"] = packing.gradient;
+    result["packing_hessian"] = packing.hessian;
     result["modified_potentials"] = evaluation.modified_potentials;
     result["pressure_stationarity_relative"] =
         evaluation.pressure_stationarity_relative;
     result["provider_pressure_pa"] = provider_phase.pressure_pa;
     result["pressure_over_rt"] = pressure_over_rt;
     result["parameter_fingerprint"] = provider_phase.parameter_fingerprint;
+    result["globality_certificate"] = "not_guaranteed";
+    return result;
+}
+
+py::dict held2_installed_log_packing_phase(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& independent_modified_fractions,
+    double log_packing_fraction,
+    const std::string& expected_fingerprint,
+    const std::string& stage
+) {
+    if (stage != "log_packing_phase") {
+        throw py::value_error("unsupported installed HELD2 coordinate request");
+    }
+    const epcsaft_native_sdk_v1& sdk = checked_packing_sdk(capsule);
+    const Held2ProviderMetadata metadata = held2_provider_metadata(sdk);
+    const epcsaft_equilibrium::Held2Coordinates coordinates =
+        epcsaft_equilibrium::make_held2_coordinates(metadata.charges);
+    const epcsaft_equilibrium::ProviderContext provider(sdk, expected_fingerprint);
+    const double pressure_over_rt = pressure_pa / (kGasConstantJPerMolK * temperature_k);
+    const epcsaft_equilibrium::Held2StateEvaluator log_volume_evaluator =
+        [&provider, coordinates, temperature_k, pressure_pa, pressure_over_rt](
+            const std::vector<double>& independent,
+            double log_volume
+        ) {
+            const std::vector<double> physical_amounts =
+                epcsaft_equilibrium::held2_lift_independent_fractions(
+                    coordinates, independent
+                );
+            const double volume = std::exp(log_volume);
+            const epcsaft_equilibrium::MixturePhaseEvaluation phase =
+                provider.evaluate_electrolyte(temperature_k, physical_amounts, volume);
+            epcsaft_equilibrium::Held2PhysicalPhaseBlock block;
+            block.helmholtz_over_rt = phase.value;
+            block.gradient = phase.gradient;
+            block.hessian = phase.hessian;
+            block.pressure_pa = phase.pressure_pa;
+            epcsaft_equilibrium::Held2StateEvaluation state =
+                epcsaft_equilibrium::evaluate_held2_phase_block(
+                    coordinates,
+                    independent,
+                    log_volume,
+                    pressure_over_rt,
+                    pressure_pa,
+                    block
+                );
+            const epcsaft_equilibrium::PackingFractionEvaluation packing =
+                provider.evaluate_packing_fraction(
+                    temperature_k, physical_amounts, volume
+                );
+            state.packing = epcsaft_equilibrium::evaluate_held2_packing_block(
+                coordinates,
+                independent,
+                log_volume,
+                packing.value,
+                packing.gradient,
+                packing.hessian
+            );
+            state.has_packing_evaluation = true;
+            return state;
+        };
+    const std::vector<double> physical_amounts =
+        epcsaft_equilibrium::held2_lift_independent_fractions(
+            coordinates, independent_modified_fractions
+        );
+    const std::array<double, 2> volume_bounds = provider.evaluate_molar_volume_bounds(
+        temperature_k,
+        physical_amounts,
+        epcsaft_equilibrium::kHeld2PackingFractionMinimum,
+        epcsaft_equilibrium::kHeld2PackingFractionMaximum
+    );
+    const epcsaft_equilibrium::Held2StateEvaluation evaluation =
+        epcsaft_equilibrium::evaluate_held2_log_packing_state(
+            log_volume_evaluator,
+            independent_modified_fractions,
+            log_packing_fraction,
+            volume_bounds
+        );
+    py::dict result;
+    result["objective"] = evaluation.objective;
+    result["gradient"] = evaluation.gradient;
+    result["hessian"] = evaluation.hessian;
+    result["volume"] = evaluation.volume;
+    result["log_volume"] = std::log(evaluation.volume);
+    result["packing_fraction"] = evaluation.packing.value;
+    result["log_packing_residual"] =
+        std::log(evaluation.packing.value) - log_packing_fraction;
+    result["pressure_stationarity_relative"] =
+        evaluation.pressure_stationarity_relative;
+    result["modified_fractions"] = evaluation.modified_fractions;
+    result["physical_amounts"] = evaluation.physical_amounts;
     result["globality_certificate"] = "not_guaranteed";
     return result;
 }
@@ -1502,6 +1619,7 @@ py::dict held2_stage_i_to_dict(
         item["pressure_stationarity_relative"] =
             candidate.pressure_stationarity_relative;
         item["volume_gradient"] = candidate.volume_gradient;
+        item["packing_fraction"] = candidate.packing_fraction;
         item["lower_volume_bound_active"] =
             candidate.lower_volume_bound_active;
         item["upper_volume_bound_active"] =
@@ -1524,8 +1642,12 @@ py::dict held2_stage_i_to_dict(
     result["reference_refinement_failure_count"] =
         evaluation.reference_refinement_failure_count;
     result["declared_start_count"] = evaluation.declared_start_count;
+    result["attempted_start_count"] = evaluation.attempted_start_count;
     result["completed_start_count"] = evaluation.completed_start_count;
     result["failed_start_count"] = evaluation.failed_start_count;
+    result["search_completeness"] = evaluation.failed_start_count == 0
+        ? "complete"
+        : "incomplete";
     result["candidate_domain_evaluation_failure_count"] =
         evaluation.candidate_domain_evaluation_failure_count;
     result["candidate_domain_rejection_count"] =
@@ -1584,14 +1706,15 @@ py::dict held2_installed_stage_i(
     const std::string& expected_fingerprint,
     const std::string& stage
 ) {
-    if (stage != "stage_i") {
+    if (stage != "stage_i" && stage != "stage_i_start_0"
+        && stage != "controller") {
         throw py::value_error("unsupported installed HELD2 stage request");
     }
     if (!std::isfinite(temperature_k) || !std::isfinite(pressure_pa)
         || temperature_k <= 0.0 || pressure_pa <= 0.0) {
         throw py::value_error("HELD2 temperature and pressure must be finite and positive");
     }
-    const epcsaft_native_sdk_v1& sdk = checked_molar_volume_sdk(capsule);
+    const epcsaft_native_sdk_v1& sdk = checked_packing_sdk(capsule);
     Held2ProviderMetadata metadata = held2_provider_metadata(sdk);
     const epcsaft_equilibrium::Held2Coordinates coordinates =
         epcsaft_equilibrium::make_held2_coordinates(metadata.charges);
@@ -1604,8 +1727,8 @@ py::dict held2_installed_stage_i(
         provider.evaluate_molar_volume_bounds(
             temperature_k,
             physical_feed,
-            kHeld2PackingFractionMinimum,
-            kHeld2PackingFractionMaximum
+            epcsaft_equilibrium::kHeld2PackingFractionMinimum,
+            epcsaft_equilibrium::kHeld2PackingFractionMaximum
         );
     const double pressure_over_rt =
         pressure_pa / (kGasConstantJPerMolK * temperature_k);
@@ -1630,7 +1753,8 @@ py::dict held2_installed_stage_i(
             block.gradient = phase.gradient;
             block.hessian = phase.hessian;
             block.pressure_pa = phase.pressure_pa;
-            return epcsaft_equilibrium::evaluate_held2_phase_block(
+            epcsaft_equilibrium::Held2StateEvaluation state =
+                epcsaft_equilibrium::evaluate_held2_phase_block(
                 coordinates,
                 independent_modified_fractions,
                 log_volume,
@@ -1638,26 +1762,62 @@ py::dict held2_installed_stage_i(
                 pressure_pa,
                 block
             );
+            const epcsaft_equilibrium::PackingFractionEvaluation provider_packing =
+                provider.evaluate_packing_fraction(
+                    temperature_k,
+                    physical_amounts,
+                    std::exp(log_volume)
+                );
+            state.packing = epcsaft_equilibrium::evaluate_held2_packing_block(
+                coordinates,
+                independent_modified_fractions,
+                log_volume,
+                provider_packing.value,
+                provider_packing.gradient,
+                provider_packing.hessian
+            );
+            state.has_packing_evaluation = true;
+            return state;
         };
     const epcsaft_equilibrium::Held2VolumeBoundsEvaluator volume_bounds_evaluator =
         [&provider, temperature_k](const std::vector<double>& physical_amounts) {
             return provider.evaluate_molar_volume_bounds(
                 temperature_k,
                 physical_amounts,
-                kHeld2PackingFractionMinimum,
-                kHeld2PackingFractionMaximum
+                epcsaft_equilibrium::kHeld2PackingFractionMinimum,
+                epcsaft_equilibrium::kHeld2PackingFractionMaximum
+            );
+        };
+    const epcsaft_equilibrium::Held2StateEvaluator search_evaluator =
+        [&evaluator, &volume_bounds_evaluator, coordinates](
+            const std::vector<double>& independent_modified_fractions,
+            double log_packing_fraction
+        ) {
+            const std::vector<double> physical_amounts =
+                epcsaft_equilibrium::held2_lift_independent_fractions(
+                    coordinates, independent_modified_fractions
+                );
+            return epcsaft_equilibrium::evaluate_held2_log_packing_state(
+                evaluator,
+                independent_modified_fractions,
+                log_packing_fraction,
+                volume_bounds_evaluator(physical_amounts)
             );
         };
     epcsaft_equilibrium::Held2StageIResult evaluation;
     {
         py::gil_scoped_release release;
+        const bool q_discriminator = stage == "stage_i_start_0";
         evaluation = epcsaft_equilibrium::solve_held2_stage_i(
             coordinates,
             physical_feed,
             evaluator,
+            q_discriminator ? search_evaluator : evaluator,
             molar_volume_bounds,
             volume_bounds_evaluator,
-            false
+            q_discriminator,
+            true,
+            q_discriminator ? 1 : -1
         );
     }
     py::dict result = held2_stage_i_to_dict(
@@ -1668,14 +1828,162 @@ py::dict held2_installed_stage_i(
     result["charges"] = std::move(metadata.charges);
     result["parameter_fingerprint"] = expected_fingerprint;
     result["packing_fraction_bounds"] = std::array<double, 2>{
-        kHeld2PackingFractionMinimum,
-        kHeld2PackingFractionMaximum,
+        epcsaft_equilibrium::kHeld2PackingFractionMinimum,
+        epcsaft_equilibrium::kHeld2PackingFractionMaximum,
     };
     result["molar_volume_bounds"] = molar_volume_bounds;
     result["log_molar_volume_bounds"] = std::array<double, 2>{
         std::log(molar_volume_bounds[0]),
         std::log(molar_volume_bounds[1]),
     };
+    if (stage == "controller" && evaluation.outcome == "negative_tpd") {
+        std::vector<double> feed_independent;
+        const std::vector<double> modified_feed =
+            epcsaft_equilibrium::held2_transform_physical_fractions(
+                coordinates, physical_feed
+            );
+        for (std::size_t component : coordinates.independent_indices) {
+            const auto retained = std::find(
+                coordinates.retained_indices.begin(),
+                coordinates.retained_indices.end(),
+                component
+            );
+            feed_independent.push_back(modified_feed[static_cast<std::size_t>(
+                retained - coordinates.retained_indices.begin()
+            )]);
+        }
+        epcsaft_equilibrium::Held2StateEvaluation reference = evaluator(
+            feed_independent, std::log(evaluation.reference_volume)
+        );
+        reference = search_evaluator(
+            feed_independent, std::log(reference.packing.value)
+        );
+        epcsaft_equilibrium::Held2StageIIResult stage_ii;
+        {
+            py::gil_scoped_release release;
+            stage_ii = epcsaft_equilibrium::solve_held2_stage_ii(
+                coordinates,
+                physical_feed,
+                search_evaluator,
+                reference,
+                evaluation.candidates
+            );
+        }
+        py::dict stage_ii_payload;
+        stage_ii_payload["outcome"] = stage_ii.outcome;
+        stage_ii_payload["major_iterations"] = stage_ii.major_iterations;
+        stage_ii_payload["lower_starts_per_iteration"] =
+            stage_ii.lower_starts_per_iteration;
+        stage_ii_payload["lower_attempted_start_count"] =
+            stage_ii.lower_attempted_start_count;
+        stage_ii_payload["lower_completed_start_count"] =
+            stage_ii.lower_completed_start_count;
+        stage_ii_payload["lower_failed_start_count"] =
+            stage_ii.lower_failed_start_count;
+        stage_ii_payload["certified_improving_cut_count"] =
+            stage_ii.certified_improving_cut_count;
+        stage_ii_payload["search_completeness"] =
+            stage_ii.search_completeness;
+        stage_ii_payload["final_lower_search_complete"] =
+            stage_ii.final_lower_search_complete;
+        if (stage_ii.first_failed_lower_start_index < 0) {
+            stage_ii_payload["first_failed_lower_start_index"] = py::none();
+            stage_ii_payload["first_failed_lower_solver_status"] = py::none();
+            stage_ii_payload["first_failed_lower_reason"] = py::none();
+            stage_ii_payload["first_failed_lower_initial"] = py::none();
+        } else {
+            stage_ii_payload["first_failed_lower_start_index"] =
+                stage_ii.first_failed_lower_start_index;
+            stage_ii_payload["first_failed_lower_solver_status"] =
+                stage_ii.first_failed_lower_solver_status;
+            stage_ii_payload["first_failed_lower_reason"] =
+                stage_ii.first_failed_lower_reason;
+            stage_ii_payload["first_failed_lower_initial"] =
+                stage_ii.first_failed_lower_initial;
+        }
+        stage_ii_payload["cut_count"] = stage_ii.cut_count;
+        py::list bound_history;
+        for (const auto& bound : stage_ii.bound_history) {
+            py::dict item;
+            item["lower_bound"] = bound.lower_bound;
+            item["upper_bound"] = bound.upper_bound;
+            item["multiplier"] = bound.multiplier;
+            item["cut_count"] = bound.cut_count;
+            bound_history.append(std::move(item));
+        }
+        stage_ii_payload["bound_history"] = std::move(bound_history);
+        py::list attempt_log;
+        for (const auto& attempt : stage_ii.attempt_log) {
+            py::dict item;
+            item["start_index"] = attempt.start_index;
+            item["solver_status"] = attempt.solver_status;
+            item["iterations"] = attempt.iterations;
+            item["solver_converged"] = attempt.solver_converged;
+            item["numerical_certified"] = attempt.numerical_certified;
+            item["provider_terminal_valid"] = attempt.provider_terminal_valid;
+            item["improving"] = attempt.improving;
+            item["callback_error"] = attempt.callback_error;
+            item["lower_value"] = attempt.lower_value;
+            item["projected_kkt_inf_norm"] =
+                attempt.projected_kkt_inf_norm;
+            item["constraint_violation"] = attempt.constraint_violation;
+            item["complementarity"] = attempt.complementarity;
+            item["final_step_norm"] = attempt.final_step_norm;
+            attempt_log.append(std::move(item));
+        }
+        stage_ii_payload["attempt_log"] = std::move(attempt_log);
+        stage_ii_payload["candidate_count"] = stage_ii.candidates.size();
+        result["stage_ii"] = std::move(stage_ii_payload);
+        if (stage_ii.outcome == "candidate_set") {
+            epcsaft_equilibrium::Held2StageIIIResult stage_iii;
+            {
+                py::gil_scoped_release release;
+                stage_iii = epcsaft_equilibrium::solve_held2_stage_iii(
+                    coordinates,
+                    physical_feed,
+                    stage_ii.candidates,
+                    search_evaluator,
+                    {
+                        std::log(epcsaft_equilibrium::kHeld2PackingFractionMinimum),
+                        std::log(epcsaft_equilibrium::kHeld2PackingFractionMaximum),
+                    }
+                );
+            }
+            py::dict stage_iii_payload;
+            stage_iii_payload["solver_status"] = stage_iii.solver_status;
+            stage_iii_payload["numerical_status"] = stage_iii.numerical_status;
+            stage_iii_payload["physical_status"] = stage_iii.physical_status;
+            stage_iii_payload["feedback"] = stage_iii.feedback;
+            stage_iii_payload["failure_reason"] = stage_iii.failure_reason;
+            stage_iii_payload["input_candidate_count"] =
+                stage_iii.input_candidate_count;
+            stage_iii_payload["modified_balance_inf_norm"] =
+                stage_iii.modified_balance_inf_norm;
+            stage_iii_payload["ordinary_balance_inf_norm"] =
+                stage_iii.ordinary_balance_inf_norm;
+            stage_iii_payload["phase_charge_inf_norm"] =
+                stage_iii.phase_charge_inf_norm;
+            stage_iii_payload["pressure_stationarity_inf_norm"] =
+                stage_iii.pressure_stationarity_inf_norm;
+            stage_iii_payload["modified_potential_mixed_gap"] =
+                stage_iii.modified_potential_mixed_gap;
+            stage_iii_payload["minimum_phase_distance"] =
+                stage_iii.minimum_phase_distance;
+            stage_iii_payload["kkt_stationarity_inf_norm"] =
+                stage_iii.kkt_stationarity_inf_norm;
+            py::list phases;
+            for (const auto& phase : stage_iii.phases) {
+                py::dict item;
+                item["phase_fraction"] = phase.phase_fraction;
+                item["modified_fractions"] = phase.modified_fractions;
+                item["physical_fractions"] = phase.physical_fractions;
+                item["volume"] = phase.volume;
+                phases.append(std::move(item));
+            }
+            stage_iii_payload["phases"] = std::move(phases);
+            result["stage_iii"] = std::move(stage_iii_payload);
+        }
+    }
     return result;
 }
 
@@ -1735,6 +2043,29 @@ py::dict held2_manufactured_stage_i(
     );
 }
 
+py::dict held2_stage_ii_precedence(
+    double upper_bound,
+    double best_certified_value,
+    int certified_start_count,
+    int declared_start_count,
+    const std::string& stage
+) {
+    if (stage != "stage_ii_precedence") {
+        throw py::value_error("unsupported HELD2 Stage II precedence request");
+    }
+    const auto decision = epcsaft_equilibrium::decide_held2_stage_ii_lower(
+        upper_bound,
+        best_certified_value,
+        certified_start_count,
+        declared_start_count
+    );
+    py::dict result;
+    result["decision"] = decision.decision;
+    result["search_completeness"] = decision.search_completeness;
+    result["lower_bound_certified"] = decision.lower_bound_certified;
+    return result;
+}
+
 py::dict held2_manufactured_stage_iii_derivatives(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed,
@@ -1755,6 +2086,128 @@ py::dict held2_manufactured_stage_iii_derivatives(
             equality_multipliers
         );
     py::dict result;
+    result["objective"] = evaluation.objective;
+    result["objective_gradient"] = evaluation.objective_gradient;
+    result["constraints"] = evaluation.constraints;
+    result["constraint_jacobian"] = evaluation.constraint_jacobian;
+    result["lagrangian_gradient"] = evaluation.lagrangian_gradient;
+    result["lagrangian_hessian"] = evaluation.lagrangian_hessian;
+    return result;
+}
+
+py::dict held2_general_stage_iii_test_seam(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed,
+    const std::vector<std::vector<double>>& raw_candidates,
+    const std::vector<double>& variables,
+    const std::vector<double>& multipliers,
+    const std::string& stage
+) {
+    if (stage != "stage_iii_general_schema"
+        && stage != "stage_iii_invalid_trial") {
+        throw py::value_error("unsupported general HELD2 Stage III test request");
+    }
+    const epcsaft_equilibrium::Held2Coordinates coordinates =
+        epcsaft_equilibrium::make_held2_coordinates(charges);
+    const std::size_t dimension = coordinates.independent_indices.size();
+    std::vector<epcsaft_equilibrium::Held2StageIICandidate> candidates;
+    candidates.reserve(raw_candidates.size());
+    for (const std::vector<double>& raw : raw_candidates) {
+        if (raw.size() != dimension + 1) {
+            throw py::value_error("general HELD2 Stage III candidate dimension changed");
+        }
+        epcsaft_equilibrium::Held2StageIICandidate candidate;
+        candidate.independent_modified_fractions.assign(raw.begin(), raw.end() - 1);
+        candidate.phase_coordinate = raw.back();
+        candidates.push_back(std::move(candidate));
+    }
+    int scientific_evaluator_call_count = 0;
+    const epcsaft_equilibrium::Held2StateEvaluator evaluator =
+        [&scientific_evaluator_call_count, coordinates](
+            const std::vector<double>& independent,
+            double phase_coordinate
+        ) {
+            ++scientific_evaluator_call_count;
+            const std::vector<double> physical =
+                epcsaft_equilibrium::held2_lift_independent_fractions(
+                    coordinates, independent
+                );
+            epcsaft_equilibrium::Held2StateEvaluation result;
+            result.physical_amounts = physical;
+            result.modified_fractions =
+                epcsaft_equilibrium::held2_transform_physical_fractions(
+                    coordinates, physical
+                );
+            result.volume = std::exp(phase_coordinate);
+            result.gradient.reserve(independent.size() + 1);
+            result.objective = 0.5 * phase_coordinate * phase_coordinate;
+            for (double value : independent) {
+                result.objective += 0.5 * value * value;
+                result.gradient.push_back(value);
+            }
+            result.gradient.push_back(phase_coordinate);
+            const std::size_t state_dimension = independent.size() + 1;
+            result.hessian.assign(state_dimension * state_dimension, 0.0);
+            for (std::size_t index = 0; index < state_dimension; ++index) {
+                result.hessian[index * state_dimension + index] = 1.0;
+            }
+            result.modified_potentials.assign(
+                coordinates.retained_indices.size(), 0.0
+            );
+            return result;
+        };
+    const std::array<double, 2> phase_coordinate_bounds{
+        std::log(epcsaft_equilibrium::kHeld2PackingFractionMinimum),
+        std::log(epcsaft_equilibrium::kHeld2PackingFractionMaximum),
+    };
+    py::dict result;
+    if (stage == "stage_iii_invalid_trial") {
+        const auto [accepted, domain_rejections, last_domain_rejection,
+                    fatal_callback_error] =
+            epcsaft_equilibrium::probe_held2_stage_iii_objective_trial(
+                coordinates,
+                physical_feed,
+                candidates,
+                evaluator,
+                phase_coordinate_bounds,
+                variables
+            );
+        result["objective_accepted"] = accepted;
+        result["scientific_evaluator_call_count"] =
+            scientific_evaluator_call_count;
+        result["recoverable_domain_rejection_count"] = domain_rejections;
+        result["last_domain_rejection"] = last_domain_rejection;
+        result["fatal_callback_error"] = fatal_callback_error;
+        return result;
+    }
+
+    const auto [variable_count, constraint_count, jacobian_nonzero_count,
+                constraint_lower_bounds, constraint_upper_bounds,
+                jacobian_rows, jacobian_columns, jacobian_values] =
+        epcsaft_equilibrium::inspect_held2_stage_iii_tnlp(
+            coordinates,
+            physical_feed,
+            candidates,
+            phase_coordinate_bounds,
+            variables
+        );
+    const epcsaft_equilibrium::Held2StageIIINlpEvaluation evaluation =
+        epcsaft_equilibrium::evaluate_held2_stage_iii_nlp(
+            coordinates,
+            physical_feed,
+            evaluator,
+            candidates.size(),
+            variables,
+            multipliers
+        );
+    result["variable_count"] = variable_count;
+    result["constraint_count"] = constraint_count;
+    result["jacobian_nonzero_count"] = jacobian_nonzero_count;
+    result["constraint_lower_bounds"] = constraint_lower_bounds;
+    result["constraint_upper_bounds"] = constraint_upper_bounds;
+    result["jacobian_rows"] = jacobian_rows;
+    result["jacobian_columns"] = jacobian_columns;
+    result["jacobian_values"] = jacobian_values;
     result["objective"] = evaluation.objective;
     result["objective_gradient"] = evaluation.objective_gradient;
     result["constraints"] = evaluation.constraints;
@@ -2016,6 +2469,17 @@ PYBIND11_MODULE(_equilibrium, module) {
     );
     module.def(
         "_held2_adapter",
+        &held2_installed_log_packing_phase,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("independent_modified_fractions"),
+        py::arg("log_packing_fraction"),
+        py::arg("expected_fingerprint"),
+        py::arg("stage")
+    );
+    module.def(
+        "_held2_adapter",
         &held2_installed_stage_i,
         py::arg("capsule"),
         py::arg("temperature_k"),
@@ -2029,6 +2493,15 @@ PYBIND11_MODULE(_equilibrium, module) {
         &held2_manufactured_stage_i,
         py::arg("charges"),
         py::arg("physical_feed"),
+        py::arg("stage")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_stage_ii_precedence,
+        py::arg("upper_bound"),
+        py::arg("best_certified_value"),
+        py::arg("certified_start_count"),
+        py::arg("declared_start_count"),
         py::arg("stage")
     );
     module.def(
@@ -2047,6 +2520,16 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("candidates"),
         py::arg("variables"),
         py::arg("equality_multipliers"),
+        py::arg("stage")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_general_stage_iii_test_seam,
+        py::arg("charges"),
+        py::arg("physical_feed"),
+        py::arg("candidates"),
+        py::arg("variables"),
+        py::arg("multipliers"),
         py::arg("stage")
     );
     module.def(

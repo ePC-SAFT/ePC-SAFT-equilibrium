@@ -232,6 +232,60 @@ std::array<double, 2> ProviderContext::evaluate_molar_volume_bounds(
     return bounds;
 }
 
+PackingFractionEvaluation ProviderContext::evaluate_packing_fraction(
+    double temperature_k,
+    const std::vector<double>& amounts_mol,
+    double volume_m3
+) const {
+    if (sdk_.evaluate_packing_fraction == nullptr
+        || amounts_mol.size() != sdk_.component_count) {
+        throw std::invalid_argument("provider capsule is missing the packing-fraction contract");
+    }
+    require_finite(temperature_k, "temperature");
+    require_finite(volume_m3, "volume");
+    if (temperature_k <= 0.0 || volume_m3 <= 0.0
+        || !std::all_of(amounts_mol.begin(), amounts_mol.end(), [](double value) {
+            return std::isfinite(value) && value >= 0.0;
+        })) {
+        throw std::invalid_argument(
+            "packing-fraction state must be finite, nonnegative, and positive-volume"
+        );
+    }
+    const std::size_t coordinate_count = amounts_mol.size() + 1;
+    PackingFractionEvaluation result;
+    result.gradient.assign(coordinate_count, 0.0);
+    result.hessian.assign(coordinate_count * coordinate_count, 0.0);
+    const int status = sdk_.evaluate_packing_fraction(
+        sdk_.model_context,
+        fingerprint_.c_str(),
+        temperature_k,
+        amounts_mol.data(),
+        amounts_mol.size(),
+        volume_m3,
+        &result.value,
+        result.gradient.data(),
+        result.gradient.size(),
+        result.hessian.data(),
+        result.hessian.size()
+    );
+    if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
+        throw std::domain_error(
+            "provider packing-fraction evaluation failed with status "
+            + std::to_string(status)
+        );
+    }
+    require_finite(result.value, "provider packing fraction");
+    if (!std::all_of(result.gradient.begin(), result.gradient.end(), [](double value) {
+            return std::isfinite(value);
+        })
+        || !std::all_of(result.hessian.begin(), result.hessian.end(), [](double value) {
+            return std::isfinite(value);
+        })) {
+        throw std::invalid_argument("provider packing-fraction tensors must be finite");
+    }
+    return result;
+}
+
 const std::string& ProviderContext::fingerprint() const {
     return fingerprint_;
 }
