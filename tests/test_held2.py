@@ -112,6 +112,68 @@ def _held2_simplex_chart(values: tuple[float, float, float], stage: str) -> dict
     )
 
 
+def _held2_chart_bound_duals(
+    lower: tuple[float, float, float],
+    upper: tuple[float, float, float],
+    composition_sum_upper: float,
+    variables: tuple[float, float, float, float],
+    physical_bound_contribution: tuple[float, float, float, float],
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    inverse = _equilibrium._held2_adapter(
+        lower,
+        upper,
+        composition_sum_upper,
+        variables[:-1],
+        (),
+        (),
+        (),
+        (0.0, 1.0),
+        "stage_ii_simplex_inverse",
+    )
+    jacobian = tuple(inverse["jacobian"])
+    dimension = len(lower)
+    chart_contribution = (
+        *(
+            sum(
+                jacobian[row * dimension + column] * physical_bound_contribution[row]
+                for row in range(dimension)
+            )
+            for column in range(dimension)
+        ),
+        physical_bound_contribution[-1],
+    )
+    return (
+        tuple(max(0.0, -value) for value in chart_contribution),
+        tuple(max(0.0, value) for value in chart_contribution),
+    )
+
+
+def _held2_dual_pullback_kkt(
+    variables: tuple[float, float, float, float],
+    physical_gradient: tuple[float, float, float, float],
+    master_multiplier: tuple[float, float, float],
+    chart_lower_multipliers: tuple[float, ...],
+    chart_upper_multipliers: tuple[float, ...],
+    *,
+    lower: tuple[float, float, float] = KHUDAIDA_INDEPENDENT_LOWER,
+    upper: tuple[float, float, float] = KHUDAIDA_INDEPENDENT_UPPER,
+    composition_sum_upper: float = KHUDAIDA_COMPOSITION_SUM_UPPER,
+) -> dict[str, object]:
+    return _equilibrium._held2_adapter(
+        lower,
+        upper,
+        composition_sum_upper,
+        variables,
+        physical_gradient,
+        (),
+        master_multiplier,
+        (math.log(1.0e-6), math.log(0.74)),
+        "stage_ii_physical_kkt",
+        chart_lower_multipliers,
+        chart_upper_multipliers,
+    )
+
+
 def _manufactured_helmholtz(composition: float, molar_volume: float) -> float:
     shifted = composition - 0.5
     inner_squared = 0.15**2
@@ -954,98 +1016,155 @@ def test_held2_stage_ii_simplex_chart_fails_closed_for_nonredundant_upper_bound(
 
 
 @pytest.mark.parametrize(
-    "variables,gradient",
+    "variables,bound_contribution",
     (
-        ((0.2, 0.3, 0.1, -0.8), (1.0, 2.0, 3.0, 0.0)),
-        ((1.0e-10, 0.3, 0.1, -0.8), (3.0, 2.0, 3.0, 0.0)),
-        ((0.2, 0.3, 0.4999999999, -0.8), (-3.0, -2.0, -1.0, 0.0)),
+        ((0.2, 0.3, 0.1, -0.8), (0.0, 0.0, 0.0, 0.0)),
+        ((5.1e-9, 0.3, 0.1, -0.8), (-1.0, 0.0, 0.0, 0.0)),
+        ((0.2, 0.3, 0.4999999949, -0.8), (0.75, 0.75, 0.75, 0.0)),
     ),
 )
-def test_held2_stage_ii_physical_kkt_covers_interior_lower_and_simplex_faces(
+def test_held2_stage_ii_dual_pullback_certifies_interior_lower_and_simplex_faces(
     variables: tuple[float, float, float, float],
-    gradient: tuple[float, float, float, float],
+    bound_contribution: tuple[float, float, float, float],
 ) -> None:
-    result = _equilibrium._held2_adapter(
+    master_multiplier = (1.0, 2.0, 3.0)
+    physical_gradient = (
+        *(master_multiplier[index] - bound_contribution[index] for index in range(3)),
+        -bound_contribution[-1],
+    )
+    chart_lower, chart_upper = _held2_chart_bound_duals(
         KHUDAIDA_INDEPENDENT_LOWER,
         KHUDAIDA_INDEPENDENT_UPPER,
         KHUDAIDA_COMPOSITION_SUM_UPPER,
         variables,
-        gradient,
-        (),
-        (1.0, 2.0, 3.0),
-        (math.log(1.0e-6), math.log(0.74)),
-        "stage_ii_physical_kkt",
+        bound_contribution,
     )
 
-    assert result["stationarity_inf_norm"] == pytest.approx(0.0, abs=2.0e-15)
-    assert result["complementarity"] == pytest.approx(0.0, abs=2.0e-15)
+    result = _held2_dual_pullback_kkt(
+        variables,
+        physical_gradient,
+        master_multiplier,
+        chart_lower,
+        chart_upper,
+    )
+
+    assert result["dual_signs_valid"] is True
+    assert result["stationarity_inf_norm"] == pytest.approx(0.0, abs=2.0e-14)
+    assert result["complementarity"] <= 1.0e-8
+    assert result["reconstruction_inf_norm"] <= 1.0e-12
 
 
-def test_held2_stage_ii_physical_kkt_rejects_inconsistent_or_nonfinite_evidence() -> None:
-    inconsistent = _equilibrium._held2_adapter(
+@pytest.mark.parametrize("permutation", ((0, 1, 2), (2, 0, 1), (1, 2, 0)))
+def test_held2_stage_ii_dual_pullback_obeys_exact_chain_rule_under_permutation(
+    permutation: tuple[int, int, int],
+) -> None:
+    base_lower = (1.0e-10, 2.0e-10, 3.0e-10)
+    base_variables = (2.1e-9, 2.2e-9, 2.3e-9, -0.8)
+    base_master = (1.25, -0.5, 2.75)
+    base_contribution = (-0.6, -0.2, -0.4, 0.0)
+    lower = tuple(base_lower[index] for index in permutation)
+    variables = (*(base_variables[index] for index in permutation), base_variables[-1])
+    master = tuple(base_master[index] for index in permutation)
+    contribution = (*(base_contribution[index] for index in permutation), 0.0)
+    physical_gradient = (*(master[index] - contribution[index] for index in range(3)), 0.0)
+    chart_lower, chart_upper = _held2_chart_bound_duals(
+        lower,
+        KHUDAIDA_INDEPENDENT_UPPER,
+        KHUDAIDA_COMPOSITION_SUM_UPPER,
+        variables,
+        contribution,
+    )
+
+    result = _held2_dual_pullback_kkt(
+        variables,
+        physical_gradient,
+        master,
+        chart_lower,
+        chart_upper,
+        lower=lower,
+    )
+
+    assert result["stationarity_inf_norm"] == pytest.approx(0.0, abs=2.0e-14)
+    assert result["reconstruction_inf_norm"] <= 1.0e-12
+
+
+def test_held2_stage_ii_dual_pullback_rejects_wrong_sign_and_excessive_complementarity() -> None:
+    variables = (2.01e-8, 0.3, 0.1, -0.8)
+    master = (1.0, 2.0, 3.0)
+    contribution = (-1.0, 0.0, 0.0, 0.0)
+    gradient = (2.0, 2.0, 3.0, 0.0)
+    chart_lower, chart_upper = _held2_chart_bound_duals(
         KHUDAIDA_INDEPENDENT_LOWER,
         KHUDAIDA_INDEPENDENT_UPPER,
         KHUDAIDA_COMPOSITION_SUM_UPPER,
-        (0.2, 0.3, 0.4999999999, -0.8),
-        (0.0, 0.0, 0.0, 0.0),
-        (),
-        (1.0, 2.0, 3.0),
-        (math.log(1.0e-6), math.log(0.74)),
-        "stage_ii_physical_kkt",
+        variables,
+        contribution,
     )
-    assert inconsistent["stationarity_inf_norm"] >= 1.0
+    excessive = _held2_dual_pullback_kkt(
+        variables,
+        gradient,
+        master,
+        chart_lower,
+        chart_upper,
+    )
+    assert excessive["complementarity"] > 1.0e-8
 
+    wrong_sign_lower = list(chart_lower)
+    nonzero = next(index for index, value in enumerate(wrong_sign_lower) if value > 0.0)
+    wrong_sign_lower[nonzero] *= -1.0
+    wrong_sign = _held2_dual_pullback_kkt(
+        variables,
+        gradient,
+        master,
+        tuple(wrong_sign_lower),
+        chart_upper,
+    )
+    assert wrong_sign["dual_signs_valid"] is False
+    assert math.isinf(wrong_sign["stationarity_inf_norm"])
+
+
+def test_held2_stage_ii_dual_pullback_rejects_reconstruction_or_stationarity_failure() -> None:
+    variables = (0.2, 0.3, 0.1, -0.8)
+    master = (1.0, 2.0, 3.0)
+    zero_duals = (0.0, 0.0, 0.0, 0.0)
+    stationarity_failure = _held2_dual_pullback_kkt(
+        variables,
+        (1.0 + 1.01e-7, 2.0, 3.0, 0.0),
+        master,
+        zero_duals,
+        zero_duals,
+    )
+    assert stationarity_failure["stationarity_inf_norm"] > 1.0e-7
+
+    reconstruction_failure = _held2_dual_pullback_kkt(
+        variables,
+        (1.0, 2.0, 3.0, 0.0),
+        master,
+        zero_duals,
+        (1.0e16, 0.0, 1.0e16, 0.0),
+    )
+    assert reconstruction_failure["reconstruction_inf_norm"] > 1.0e-12
+
+
+def test_held2_stage_ii_dual_pullback_rejects_nonfinite_or_out_of_domain_evidence() -> None:
+    zero_duals = (0.0, 0.0, 0.0, 0.0)
     with pytest.raises(ValueError, match="must be finite"):
-        _equilibrium._held2_adapter(
-            KHUDAIDA_INDEPENDENT_LOWER,
-            KHUDAIDA_INDEPENDENT_UPPER,
-            KHUDAIDA_COMPOSITION_SUM_UPPER,
+        _held2_dual_pullback_kkt(
             (0.2, 0.3, 0.1, -0.8),
             (math.nan, 2.0, 3.0, 0.0),
-            (),
             (1.0, 2.0, 3.0),
-            (math.log(1.0e-6), math.log(0.74)),
-            "stage_ii_physical_kkt",
+            zero_duals,
+            zero_duals,
         )
 
-    with pytest.raises(ValueError, match="outside its physical domain"):
-        _equilibrium._held2_adapter(
-            KHUDAIDA_INDEPENDENT_LOWER,
-            KHUDAIDA_INDEPENDENT_UPPER,
-            KHUDAIDA_COMPOSITION_SUM_UPPER,
+    with pytest.raises(ValueError, match=r"outside (its physical domain|the feasible simplex)"):
+        _held2_dual_pullback_kkt(
             (0.6, 0.3, 0.2, -0.8),
             (1.0, 2.0, 3.0, 0.0),
-            (),
             (1.0, 2.0, 3.0),
-            (math.log(1.0e-6), math.log(0.74)),
-            "stage_ii_physical_kkt",
+            zero_duals,
+            zero_duals,
         )
-
-
-@pytest.mark.parametrize(
-    "variables,gradient",
-    (
-        ((0.2, 0.3, 0.4999999949, -0.8), (0.0, 1.0, 2.0, 0.0)),
-        ((5.1e-9, 0.3, 0.1, -0.8), (2.0, 2.0, 3.0, 0.0)),
-    ),
-)
-def test_held2_stage_ii_physical_kkt_does_not_change_topology_at_residual_tolerance(
-    variables: tuple[float, float, float, float],
-    gradient: tuple[float, float, float, float],
-) -> None:
-    result = _equilibrium._held2_adapter(
-        KHUDAIDA_INDEPENDENT_LOWER,
-        KHUDAIDA_INDEPENDENT_UPPER,
-        KHUDAIDA_COMPOSITION_SUM_UPPER,
-        variables,
-        gradient,
-        (),
-        (1.0, 2.0, 3.0),
-        (math.log(1.0e-6), math.log(0.74)),
-        "stage_ii_physical_kkt",
-    )
-
-    assert result["stationarity_inf_norm"] >= 1.0
 
 
 def test_held2_stage_ii_step6_selector_admits_multiple_distinct_cuts() -> None:

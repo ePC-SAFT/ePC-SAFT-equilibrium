@@ -1404,7 +1404,9 @@ py::dict held2_stage_ii_simplex_test_adapter(
     const std::vector<double>& physical_hessian,
     const std::vector<double>& master_multiplier,
     const std::array<double, 2>& phase_bounds,
-    const std::string& stage
+    const std::string& stage,
+    const std::vector<double>& chart_lower_bound_multipliers,
+    const std::vector<double>& chart_upper_bound_multipliers
 ) {
     if (stage != "stage_ii_simplex_forward"
         && stage != "stage_ii_simplex_inverse"
@@ -1420,7 +1422,8 @@ py::dict held2_stage_ii_simplex_test_adapter(
         chart_values.pop_back();
     }
     const auto [physical, chart, jacobian, component_hessians, gradient, hessian,
-                stationarity, complementarity, singular] =
+                stationarity, complementarity, reconstruction,
+                dual_signs_valid, singular] =
         epcsaft_equilibrium::evaluate_held2_stage_ii_simplex_test_adapter(
             independent_lower_bounds,
             independent_upper_bounds,
@@ -1431,7 +1434,9 @@ py::dict held2_stage_ii_simplex_test_adapter(
             master_multiplier,
             phase_bounds,
             stage == "stage_ii_simplex_inverse",
-            stage == "stage_ii_physical_kkt"
+            stage == "stage_ii_physical_kkt",
+            chart_lower_bound_multipliers,
+            chart_upper_bound_multipliers
         );
     py::dict result;
     result["physical"] = physical;
@@ -1442,6 +1447,8 @@ py::dict held2_stage_ii_simplex_test_adapter(
     result["hessian"] = hessian;
     result["stationarity_inf_norm"] = stationarity;
     result["complementarity"] = complementarity;
+    result["reconstruction_inf_norm"] = reconstruction;
+    result["dual_signs_valid"] = dual_signs_valid;
     result["singular"] = singular;
     return result;
 }
@@ -1980,6 +1987,9 @@ py::dict held2_installed_stage_i(
                 attempt.projected_kkt_inf_norm;
             item["constraint_violation"] = attempt.constraint_violation;
             item["complementarity"] = attempt.complementarity;
+            item["dual_reconstruction_inf_norm"] =
+                attempt.dual_reconstruction_inf_norm;
+            item["dual_signs_valid"] = attempt.dual_signs_valid;
             item["final_step_norm"] = attempt.final_step_norm;
             attempt_log.append(std::move(item));
         }
@@ -2638,7 +2648,9 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("physical_hessian"),
         py::arg("master_multiplier"),
         py::arg("phase_bounds"),
-        py::arg("stage")
+        py::arg("stage"),
+        py::arg("chart_lower_bound_multipliers") = std::vector<double>{},
+        py::arg("chart_upper_bound_multipliers") = std::vector<double>{}
     );
     module.def(
         "_held2_adapter",

@@ -174,6 +174,8 @@ struct Held2StageIIAttempt {
     double projected_kkt_inf_norm = 0.0;
     double constraint_violation = 0.0;
     double complementarity = 0.0;
+    double dual_reconstruction_inf_norm = 0.0;
+    bool dual_signs_valid = false;
     double final_step_norm = 0.0;
 };
 
@@ -212,6 +214,8 @@ struct Held2StageIILowerDecision {
     std::vector<double>,
     double,
     double,
+    double,
+    bool,
     bool> evaluate_held2_stage_ii_simplex_test_adapter(
     const std::vector<double>& independent_lower_bounds,
     const std::vector<double>& independent_upper_bounds,
@@ -222,7 +226,9 @@ struct Held2StageIILowerDecision {
     const std::vector<double>& master_multiplier,
     const std::array<double, 2>& phase_bounds,
     bool inverse,
-    bool physical_kkt
+    bool physical_kkt,
+    const std::vector<double>& chart_lower_bound_multipliers,
+    const std::vector<double>& chart_upper_bound_multipliers
 );
 
 [[nodiscard]] Held2StageIILowerDecision decide_held2_stage_ii_lower(
