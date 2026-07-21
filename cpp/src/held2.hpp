@@ -203,6 +203,28 @@ struct Held2StageIILowerDecision {
     bool lower_bound_certified = false;
 };
 
+[[nodiscard]] std::tuple<
+    std::vector<double>,
+    std::vector<double>,
+    std::vector<double>,
+    std::vector<double>,
+    std::vector<double>,
+    std::vector<double>,
+    double,
+    double,
+    bool> evaluate_held2_stage_ii_simplex_test_adapter(
+    const std::vector<double>& independent_lower_bounds,
+    const std::vector<double>& independent_upper_bounds,
+    double composition_sum_upper,
+    const std::vector<double>& values,
+    const std::vector<double>& physical_gradient,
+    const std::vector<double>& physical_hessian,
+    const std::vector<double>& master_multiplier,
+    const std::array<double, 2>& phase_bounds,
+    bool inverse,
+    bool physical_kkt
+);
+
 [[nodiscard]] Held2StageIILowerDecision decide_held2_stage_ii_lower(
     double upper_bound,
     double best_certified_value,

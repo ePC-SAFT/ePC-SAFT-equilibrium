@@ -23,6 +23,9 @@ KHUDAIDA_COMPONENT_IDS = (
 KHUDAIDA_AMOUNTS = (0.65905, 0.05095, 0.27015, 0.01985, 0.01985)
 KHUDAIDA_CHARGES = (0.0, 0.0, 0.0, 1.0, -1.0)
 KHUDAIDA_FINGERPRINT = "sha256:5a59828d86bb29c919513484a26cedaa0f025463aaa7c149ae3d1fbd0eda97ae"
+KHUDAIDA_INDEPENDENT_LOWER = (1.0e-10, 1.0e-10, 2.0e-10)
+KHUDAIDA_INDEPENDENT_UPPER = (1.0, 1.0, 1.0)
+KHUDAIDA_COMPOSITION_SUM_UPPER = 1.0 - 1.0e-10
 
 
 def _held2_step6(
@@ -93,6 +96,20 @@ def _khudaida_model() -> epcsaft.EPCSAFT:
         "khudaida-2026-figure-2-electrolyte-lle", version=1
     ).select(KHUDAIDA_COMPONENT_IDS)
     return epcsaft.EPCSAFT(parameters)
+
+
+def _held2_simplex_chart(values: tuple[float, float, float], stage: str) -> dict[str, object]:
+    return _equilibrium._held2_adapter(
+        KHUDAIDA_INDEPENDENT_LOWER,
+        KHUDAIDA_INDEPENDENT_UPPER,
+        KHUDAIDA_COMPOSITION_SUM_UPPER,
+        values,
+        (),
+        (),
+        (),
+        (0.0, 1.0),
+        stage,
+    )
 
 
 def _manufactured_helmholtz(composition: float, molar_volume: float) -> float:
@@ -560,7 +577,7 @@ def test_held2_installed_log_packing_coordinate_round_trips_and_has_exact_deriva
         )
 
 
-def test_held2_installed_log_packing_coordinate_completes_former_failed_start_zero() -> None:
+def test_held2_installed_stage_i_log_packing_discriminator_remains_fail_closed() -> None:
     model = _khudaida_model()
     physical_feed = tuple(amount / sum(KHUDAIDA_AMOUNTS) for amount in KHUDAIDA_AMOUNTS)
 
@@ -573,10 +590,15 @@ def test_held2_installed_log_packing_coordinate_completes_former_failed_start_ze
         "stage_i_start_0",
     )
 
+    assert result["outcome"] == "indeterminate"
     assert result["attempted_start_count"] == 1
-    assert result["completed_start_count"] == 1
-    assert result["failed_start_count"] == 0
-    assert result["failed_start_index"] is None
+    assert result["completed_start_count"] == 0
+    assert result["failed_start_count"] == 1
+    assert result["failed_start_index"] == 0
+    assert result["failed_start_solver_status"] == 3
+    assert result["failed_start_solver_converged"] is False
+    assert result["failed_start_reason"] == "TPD solve did not return a complete accepted state"
+    assert result["search_completeness"] == "incomplete"
 
 
 def test_held2_installed_stage_i_uses_provider_volume_domain_for_khudaida_midpoint() -> None:
@@ -623,26 +645,29 @@ def test_held2_installed_stage_i_uses_provider_volume_domain_for_khudaida_midpoi
         [31.411491224899734, -0.5642708323753126, 0.8463122865798167],
         rel=2.0e-8,
     )
-    assert result["completed_start_count"] == 11
-    assert result["failed_start_count"] == 39
+    # Immutable 27fb907/Provider-2cd055a control; the Stage-II chart must not alter it.
+    assert result["completed_start_count"] == 48
+    assert result["failed_start_count"] == 2
     assert result["completed_start_count"] + result["failed_start_count"] == 50
     assert result["search_completeness"] == "incomplete"
-    assert result["failed_start_index"] == 0
-    assert result["failed_start_solver_status"] == 3
-    assert result["failed_start_solver_converged"] is False
-    assert result["failed_start_reason"] == "TPD solve did not return a complete accepted state"
+    assert result["failed_start_index"] == 18
+    assert result["failed_start_solver_status"] == 0
+    assert result["failed_start_solver_converged"] is True
+    assert result["failed_start_reason"] == (
+        "provider mixture phase evaluation failed: association solve left physical domain"
+    )
     assert result["failed_start_initial"] == pytest.approx(
         [
-            0.49974816254115306,
-            0.34140273164275964,
-            0.10555255266393769,
-            -2.0847367866112805,
+            0.09236887232016976,
+            0.28123087292432036,
+            0.4673809073217849,
+            -9.864813050661876,
         ]
     )
     assert result["outcome"] == "negative_tpd"
     assert result["volume_domain_search_complete"] is True
     assert result["candidate_domain_evaluation_failure_count"] == 0
-    assert result["candidate_domain_rejection_count"] == 0
+    assert result["candidate_domain_rejection_count"] == 2
     assert result["reference_volume"] == pytest.approx(3.909560419950043e-05, rel=2.0e-8)
     assert result["minimum_tpd"] == pytest.approx(-0.14499309134029337, abs=2.0e-13)
     assert [candidate["tpd"] for candidate in result["candidates"]] == pytest.approx(
@@ -775,7 +800,255 @@ def test_held2_stage_ii_final_gap_requires_complete_lower_search() -> None:
     }
 
 
-def test_held2_stage_ii_step6_can_select_multiple_phases_immediately_after_insertion() -> None:
+def test_held2_stage_ii_simplex_chart_round_trips_profile_sized_points_and_preserves_domain() -> (
+    None
+):
+    profile_sized_chart_points = tuple(
+        (
+            (17 * index % 97 + 0.5) / 98.0,
+            (31 * index % 89 + 0.5) / 90.0,
+            (43 * index % 83 + 0.5) / 84.0,
+        )
+        for index in range(50)
+    )
+    adversarial_chart_points = (
+        (0.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+        (1.0, 0.0, 0.0),
+        (math.nextafter(1.0, 0.0), math.nextafter(1.0, 0.0), 1.0),
+    )
+
+    for chart in (*profile_sized_chart_points, *adversarial_chart_points):
+        forward = _held2_simplex_chart(chart, "stage_ii_simplex_forward")
+        physical = tuple(forward["physical"])
+        assert all(
+            value >= lower
+            for value, lower in zip(physical, KHUDAIDA_INDEPENDENT_LOWER, strict=True)
+        )
+        assert sum(physical) <= KHUDAIDA_COMPOSITION_SUM_UPPER
+        if not forward["singular"]:
+            inverse = _held2_simplex_chart(physical, "stage_ii_simplex_inverse")
+            assert inverse["chart"] == pytest.approx(chart, abs=2.0e-14)
+            assert inverse["physical"] == pytest.approx(physical, abs=2.0e-15)
+
+    assert _held2_simplex_chart((1.0, 0.0, 0.0), "stage_ii_simplex_forward")["singular"]
+
+    active_lower = _held2_simplex_chart((0.0, 0.4, 0.3), "stage_ii_simplex_forward")
+    active_lower_jacobian = active_lower["jacobian"]
+    assert active_lower["physical"][0] == KHUDAIDA_INDEPENDENT_LOWER[0]
+    assert active_lower["physical"][1] - KHUDAIDA_INDEPENDENT_LOWER[1] == pytest.approx(
+        active_lower_jacobian[4] * 0.4,
+        abs=2.0e-16,
+    )
+    active_simplex = _held2_simplex_chart((0.2, 0.4, 1.0), "stage_ii_simplex_forward")
+    active_simplex_jacobian = active_simplex["jacobian"]
+    assert KHUDAIDA_COMPOSITION_SUM_UPPER - sum(active_simplex["physical"]) == pytest.approx(
+        active_simplex_jacobian[-1] * (1.0 - 1.0),
+        abs=2.0e-16,
+    )
+
+
+@pytest.mark.parametrize(
+    "independent,log_packing",
+    (
+        ((0.6462224836985831, 0.04995832720498113, 0.03892729322939648), -0.828757),
+        ((0.48317652138888467, 0.06575359820030886, 0.012557176717123258), -0.840619),
+        ((0.4406535569650898, 0.08882925535454135, 0.0004486805424638745), -0.8436444167759523),
+    ),
+)
+def test_held2_stage_ii_simplex_chart_exact_provider_gradient_and_hvp(
+    independent: tuple[float, float, float], log_packing: float
+) -> None:
+    model = _khudaida_model()
+    capsule = epcsaft.native_sdk(model)
+    chart = tuple(_held2_simplex_chart(independent, "stage_ii_simplex_inverse")["chart"])
+    center = (*chart, log_packing)
+    direction = (0.013, -0.017, 0.011, -0.019)
+    master_multiplier = (1.3, -0.7, 2.1)
+
+    def evaluate(values: tuple[float, ...]) -> dict[str, object]:
+        mapped = _held2_simplex_chart(
+            tuple(values[:-1]),
+            "stage_ii_simplex_forward",
+        )
+        physical = _equilibrium._held2_adapter(
+            capsule,
+            293.15,
+            100_000.0,
+            tuple(mapped["physical"]),
+            values[-1],
+            KHUDAIDA_FINGERPRINT,
+            "log_packing_phase",
+        )
+        lower_gradient = tuple(
+            value - master_multiplier[index] if index < 3 else value
+            for index, value in enumerate(physical["gradient"])
+        )
+        transformed = _equilibrium._held2_adapter(
+            KHUDAIDA_INDEPENDENT_LOWER,
+            KHUDAIDA_INDEPENDENT_UPPER,
+            KHUDAIDA_COMPOSITION_SUM_UPPER,
+            values,
+            lower_gradient,
+            tuple(physical["hessian"]),
+            (),
+            (0.0, 1.0),
+            "stage_ii_simplex_chain",
+        )
+        return {
+            "physical": mapped["physical"],
+            "objective": physical["objective"]
+            - sum(
+                value * mapped["physical"][index] for index, value in enumerate(master_multiplier)
+            ),
+            "packing_fraction": physical["packing_fraction"],
+            "gradient": transformed["gradient"],
+            "hessian": transformed["hessian"],
+        }
+
+    step = 3.0e-6
+    lower = evaluate(
+        tuple(value - step * delta for value, delta in zip(center, direction, strict=True))
+    )
+    result = evaluate(center)
+    upper = evaluate(
+        tuple(value + step * delta for value, delta in zip(center, direction, strict=True))
+    )
+
+    assert result["physical"] == pytest.approx(independent, abs=3.0e-15)
+    assert result["packing_fraction"] == pytest.approx(math.exp(log_packing), rel=2.0e-12)
+    objective_directional = (upper["objective"] - lower["objective"]) / (2.0 * step)
+    assert objective_directional == pytest.approx(
+        sum(value * delta for value, delta in zip(result["gradient"], direction, strict=True)),
+        rel=3.0e-8,
+        abs=3.0e-9,
+    )
+    size = len(center)
+    for row in range(size):
+        numerical = (upper["gradient"][row] - lower["gradient"][row]) / (2.0 * step)
+        analytic = sum(
+            result["hessian"][size * row + column] * direction[column] for column in range(size)
+        )
+        assert numerical == pytest.approx(analytic, rel=8.0e-8, abs=5.0e-9)
+    assert tuple(result["hessian"]) == pytest.approx(
+        tuple(
+            result["hessian"][size * column + row] for row in range(size) for column in range(size)
+        ),
+        abs=2.0e-14,
+    )
+
+
+def test_held2_stage_ii_simplex_chart_fails_closed_for_nonredundant_upper_bound() -> None:
+    with pytest.raises(ValueError, match="requires redundant independent upper bounds"):
+        _equilibrium._held2_adapter(
+            (1.5e-10, 2.0e-10, 0.5e-10),
+            (1.0, 1.0, 1.0 / 3.0),
+            1.0 - 1.0e-10,
+            (0.2, 0.3, 0.4),
+            (),
+            (),
+            (),
+            (0.0, 1.0),
+            "stage_ii_simplex_forward",
+        )
+
+
+@pytest.mark.parametrize(
+    "variables,gradient",
+    (
+        ((0.2, 0.3, 0.1, -0.8), (1.0, 2.0, 3.0, 0.0)),
+        ((1.0e-10, 0.3, 0.1, -0.8), (3.0, 2.0, 3.0, 0.0)),
+        ((0.2, 0.3, 0.4999999999, -0.8), (-3.0, -2.0, -1.0, 0.0)),
+    ),
+)
+def test_held2_stage_ii_physical_kkt_covers_interior_lower_and_simplex_faces(
+    variables: tuple[float, float, float, float],
+    gradient: tuple[float, float, float, float],
+) -> None:
+    result = _equilibrium._held2_adapter(
+        KHUDAIDA_INDEPENDENT_LOWER,
+        KHUDAIDA_INDEPENDENT_UPPER,
+        KHUDAIDA_COMPOSITION_SUM_UPPER,
+        variables,
+        gradient,
+        (),
+        (1.0, 2.0, 3.0),
+        (math.log(1.0e-6), math.log(0.74)),
+        "stage_ii_physical_kkt",
+    )
+
+    assert result["stationarity_inf_norm"] == pytest.approx(0.0, abs=2.0e-15)
+    assert result["complementarity"] == pytest.approx(0.0, abs=2.0e-15)
+
+
+def test_held2_stage_ii_physical_kkt_rejects_inconsistent_or_nonfinite_evidence() -> None:
+    inconsistent = _equilibrium._held2_adapter(
+        KHUDAIDA_INDEPENDENT_LOWER,
+        KHUDAIDA_INDEPENDENT_UPPER,
+        KHUDAIDA_COMPOSITION_SUM_UPPER,
+        (0.2, 0.3, 0.4999999999, -0.8),
+        (0.0, 0.0, 0.0, 0.0),
+        (),
+        (1.0, 2.0, 3.0),
+        (math.log(1.0e-6), math.log(0.74)),
+        "stage_ii_physical_kkt",
+    )
+    assert inconsistent["stationarity_inf_norm"] >= 1.0
+
+    with pytest.raises(ValueError, match="must be finite"):
+        _equilibrium._held2_adapter(
+            KHUDAIDA_INDEPENDENT_LOWER,
+            KHUDAIDA_INDEPENDENT_UPPER,
+            KHUDAIDA_COMPOSITION_SUM_UPPER,
+            (0.2, 0.3, 0.1, -0.8),
+            (math.nan, 2.0, 3.0, 0.0),
+            (),
+            (1.0, 2.0, 3.0),
+            (math.log(1.0e-6), math.log(0.74)),
+            "stage_ii_physical_kkt",
+        )
+
+    with pytest.raises(ValueError, match="outside its physical domain"):
+        _equilibrium._held2_adapter(
+            KHUDAIDA_INDEPENDENT_LOWER,
+            KHUDAIDA_INDEPENDENT_UPPER,
+            KHUDAIDA_COMPOSITION_SUM_UPPER,
+            (0.6, 0.3, 0.2, -0.8),
+            (1.0, 2.0, 3.0, 0.0),
+            (),
+            (1.0, 2.0, 3.0),
+            (math.log(1.0e-6), math.log(0.74)),
+            "stage_ii_physical_kkt",
+        )
+
+
+@pytest.mark.parametrize(
+    "variables,gradient",
+    (
+        ((0.2, 0.3, 0.4999999949, -0.8), (0.0, 1.0, 2.0, 0.0)),
+        ((5.1e-9, 0.3, 0.1, -0.8), (2.0, 2.0, 3.0, 0.0)),
+    ),
+)
+def test_held2_stage_ii_physical_kkt_does_not_change_topology_at_residual_tolerance(
+    variables: tuple[float, float, float, float],
+    gradient: tuple[float, float, float, float],
+) -> None:
+    result = _equilibrium._held2_adapter(
+        KHUDAIDA_INDEPENDENT_LOWER,
+        KHUDAIDA_INDEPENDENT_UPPER,
+        KHUDAIDA_COMPOSITION_SUM_UPPER,
+        variables,
+        gradient,
+        (),
+        (1.0, 2.0, 3.0),
+        (math.log(1.0e-6), math.log(0.74)),
+        "stage_ii_physical_kkt",
+    )
+
+    assert result["stationarity_inf_norm"] >= 1.0
+
+
+def test_held2_stage_ii_step6_selector_admits_multiple_distinct_cuts() -> None:
     feed = (0.4, 0.1, 0.04)
     multiplier = (2.0, -3.0, 4.0)
     cuts = tuple(

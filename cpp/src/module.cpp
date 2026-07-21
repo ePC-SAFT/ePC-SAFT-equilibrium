@@ -1395,6 +1395,57 @@ py::dict held2_coordinate_evidence(
     return result;
 }
 
+py::dict held2_stage_ii_simplex_test_adapter(
+    const std::vector<double>& independent_lower_bounds,
+    const std::vector<double>& independent_upper_bounds,
+    double composition_sum_upper,
+    const std::vector<double>& values,
+    const std::vector<double>& physical_gradient,
+    const std::vector<double>& physical_hessian,
+    const std::vector<double>& master_multiplier,
+    const std::array<double, 2>& phase_bounds,
+    const std::string& stage
+) {
+    if (stage != "stage_ii_simplex_forward"
+        && stage != "stage_ii_simplex_inverse"
+        && stage != "stage_ii_simplex_chain"
+        && stage != "stage_ii_physical_kkt") {
+        throw py::value_error("unsupported HELD2 Stage II simplex chart request");
+    }
+    std::vector<double> chart_values = values;
+    if (stage == "stage_ii_simplex_chain") {
+        if (values.size() < 2) {
+            throw py::value_error("HELD2 Stage II simplex chain is incomplete");
+        }
+        chart_values.pop_back();
+    }
+    const auto [physical, chart, jacobian, component_hessians, gradient, hessian,
+                stationarity, complementarity, singular] =
+        epcsaft_equilibrium::evaluate_held2_stage_ii_simplex_test_adapter(
+            independent_lower_bounds,
+            independent_upper_bounds,
+            composition_sum_upper,
+            chart_values,
+            physical_gradient,
+            physical_hessian,
+            master_multiplier,
+            phase_bounds,
+            stage == "stage_ii_simplex_inverse",
+            stage == "stage_ii_physical_kkt"
+        );
+    py::dict result;
+    result["physical"] = physical;
+    result["chart"] = chart;
+    result["jacobian"] = jacobian;
+    result["component_hessians"] = component_hessians;
+    result["gradient"] = gradient;
+    result["hessian"] = hessian;
+    result["stationarity_inf_norm"] = stationarity;
+    result["complementarity"] = complementarity;
+    result["singular"] = singular;
+    return result;
+}
+
 py::dict held2_phase_block_evidence(
     const std::vector<double>& charges,
     const std::vector<double>& independent_modified_fractions,
@@ -2574,6 +2625,19 @@ PYBIND11_MODULE(_equilibrium, module) {
         &held2_manufactured_stage_i,
         py::arg("charges"),
         py::arg("physical_feed"),
+        py::arg("stage")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_stage_ii_simplex_test_adapter,
+        py::arg("independent_lower_bounds"),
+        py::arg("independent_upper_bounds"),
+        py::arg("composition_sum_upper"),
+        py::arg("values"),
+        py::arg("physical_gradient"),
+        py::arg("physical_hessian"),
+        py::arg("master_multiplier"),
+        py::arg("phase_bounds"),
         py::arg("stage")
     );
     module.def(
