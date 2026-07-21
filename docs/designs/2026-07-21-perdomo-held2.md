@@ -368,9 +368,12 @@ phases may be merged only through the current evidence-backed lifecycle. A
 small phase amount alone does not authorize KKT-inactive retirement, and this
 design does not claim unimplemented retirement semantics.
 
-Trace-bound components use bound complementarity and logarithmic refinement.
-They are not passed to Ipopt near `1e-300` and are not required to satisfy an
-interior modified-potential equality unconditionally.
+The source requires bound complementarity and logarithmic refinement for
+trace-bound components. The current runtime detects that condition and fails
+closed with `complementarity_refinement_required`; it does not yet implement
+the final logarithmic trace refinement. Trace components are not passed to
+Ipopt near `1e-300` and must not be accepted through an unconditional interior
+modified-potential equality.
 
 ## Certification and status axes
 

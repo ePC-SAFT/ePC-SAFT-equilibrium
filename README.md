@@ -71,6 +71,31 @@ The retained Pereira source is the permanent-lab Markdown at commit
 `dde7f02d4c93cce86804a8e6b62d37602990ac21`; it is provenance, not a build,
 test, validation, or runtime dependency.
 
+The same public `tp_flash` operation dispatches qualifying installed Provider
+electrolyte SDKs to the single Perdomo HELD2 Stage-I/II/III controller. The
+dispatch is based on Provider table capabilities and exact component metadata,
+not component names or a case fingerprint. Unsupported multicomponent
+non-electrolyte models fail before search. A complete finite Stage-I search
+with no negative TPD returns the accepted homogeneous reference; negative
+witnesses proceed through the existing candidate-set and direct-total-free-
+energy stages and fail closed unless every existing certificate passes. This
+path is non-production development evidence, makes no predictive-agreement
+claim, and also reports `globality_certificate="not_guaranteed"`.
+
+The homogeneous reference search reports detected pressure-root accounting
+separately as `root_completeness`. Current installed evidence reports
+`root_completeness="not_proven"`: detecting and refining the retained roots is
+not proof that every root exists in the finite domain. Root completeness is
+independent of solver, numerical, physical, search-completeness, predictive,
+and globality status.
+
+The installed public Perdomo Table 3 evidence returns one accepted homogeneous
+phase and a cross-EOS source-topology disagreement. It does not admit
+electrolyte LLE or reproduce Perdomo's SAFT-gamma-Mie numerical endpoints. The
+next gate is one source-complete installed ePC-SAFT case that reaches and passes
+Stage II and Stage III with two distinct liquids; it waits for the exact
+Provider artifact and Migration dispatch.
+
 The earlier fixed-two-phase campaign remains `NON_ADMISSION` under the frozen
 May `3*u_c` composition contract: 12 of 17 rows passed, rows 002/009/010/011
 were solved model/data misses, and row 012 had no package-accepted local state.
@@ -121,9 +146,11 @@ pytest -q
 python scripts/validate_saturation.py
 ```
 
-The design and equations are recorded in
-`docs/designs/2026-07-17-pure-saturation-slice.md` and
-`docs/designs/2026-07-17-neutral-held-v1.md`. Migration receipt
+The canonical documentation map is `docs/phase-equilibrium.md`. Detailed
+formulation owners are
+`docs/designs/2026-07-17-pure-saturation-slice.md`,
+`docs/designs/2026-07-17-neutral-held-v1.md`, and
+`docs/designs/2026-07-21-perdomo-held2.md`. Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
 solve is not a phase-discovery or global-stability proof. The local HELD

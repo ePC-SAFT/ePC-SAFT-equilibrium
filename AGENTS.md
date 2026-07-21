@@ -13,6 +13,10 @@ This repository is limited to equilibrium routes, phase discovery, local
 NLPs, Ipopt, certification, and equilibrium results. It consumes a compatible
 installed provider and does not own provider internals or Ceres.
 
+Canonical package-local formulation ownership and capability boundaries are
+indexed in `docs/phase-equilibrium.md`. Historical permanent-lab M4 documents
+are scientific and migration provenance, not current package authority.
+
 ## Agent home and Validation work
 
 - The Equilibrium agent remains rooted in this repository and is the sole owner
