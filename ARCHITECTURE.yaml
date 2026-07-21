@@ -2,12 +2,21 @@ version: 1
 status: accepted-pure-saturation-with-local-held-development-candidates
 
 authority:
-  governance_doctrine_revision: 2
+  governance_doctrine_revision: 3
   runtime_source_of_truth: true
+  runtime_source_of_truth_scope: package-implementation-not-capability-admission
+  accepted_capability_authority: receipt-bound
   production_owner: ePC-SAFT/ePC-SAFT-equilibrium
   effective_receipt: promotion-0018-equilibrium-pure-saturation-v1
   promotion_status: accepted
   local_candidate_authority_effect: none
+
+documentation:
+  phase_equilibrium_authority: docs/phase-equilibrium.md
+  pure_saturation_design: docs/designs/2026-07-17-pure-saturation-slice.md
+  neutral_held_design: docs/designs/2026-07-17-neutral-held-v1.md
+  perdomo_held2_design: docs/designs/2026-07-21-perdomo-held2.md
+  historical_lab_m4_role: scientific-and-migration-provenance
 
 accepted_capability:
   name: pure-component-saturation-v1
@@ -150,6 +159,63 @@ development_candidate:
     Perdomo modified-mole Stage I, complete-cut Stage II, and general candidate-
     set direct-total-free-energy Stage III over the installed electrolyte phase,
     volume-domain, packing-derivative, and source-domain Provider contracts.
+  source:
+    repository: tannerpolley/ePC-SAFT-lab
+    retained_commit: 13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b
+    blob: 5d6b6322a5c9d8c964f7ef08ed79831f243a2698
+    sha256: 522cba2efb44c6404b3b8b75eefb90c50a84cc4110333f30aa1f0eb1a21380d5
+    path: >-
+      docs/papers/md/Equilibrium/Perdomo et al. - 2025 - Phase stability
+      criteria and fluid-phase equilibria in strong-electrolyte systems.md
+    runtime_dependency: false
+  provider_contract:
+    dispatch: installed-capability-table-and-exact-component-metadata
+    coordinates: component-amounts-then-volume
+    derivative_order: 2
+    required_phase_payload: [value, gradient, hessian]
+    required_packing_payload: [value, gradient, hessian]
+    required_domain_metadata:
+      - finite temperature bounds
+      - optional finite total-ion-fraction bound
+      - composition-specific molar-volume bounds
+      - packing-fraction bounds
+    copied_provider_equations: false
+  coordinate_contract:
+    physical: [component_amounts, volume]
+    stage_i: [independent_modified_fractions, log_volume]
+    stage_ii: [feasible_simplex_chart, log_packing_fraction]
+    stage_iii: [phase_fractions, per_phase_feasible_simplex_chart, per_phase_log_packing_fraction]
+    eliminated_charged_species: largest-absolute-charge
+    dependent_retained_species: molecular
+    exact_chain_rule: true
+  reference_selection:
+    fixed_feed_pressure_root_search: deterministic
+    stationary_and_tangential_root_search: required
+    selected_root: mechanically-stable-lowest-reduced-A-plus-PV
+    fail_closed:
+      - incomplete root evaluation or refinement
+      - mechanically marginal root
+      - Provider-domain-boundary root
+      - tied lowest reference objective
+    root_completeness: not_proven
+  diagnostic_axes:
+    - artifact_and_input
+    - solver
+    - numerical
+    - physical
+    - search_completeness
+    - root_completeness
+    - predictive
+    - globality
+  installed_table3_evidence:
+    interpretation: cross-EOS-source-topology-disagreement
+    outcome: accepted-one-phase
+    detected_reference_roots: 3
+    mechanically_stable_reference_roots: 2
+    stage_i_start_accounting: complete
+    electrolyte_lle_admitted: false
+  next_evidence_gate: source-complete-installed-two-liquid-stage-ii-iii-case
+  next_gate_status: ready-waiting-provider-case
   globality_certificate: not_guaranteed
   unsupported_multicomponent_non_electrolyte_behavior: structured-FlashError-before-search
   promotion_status: not-requested

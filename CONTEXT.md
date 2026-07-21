@@ -6,9 +6,14 @@ saturation slice recorded by migration receipt
 local fixed-temperature methane, ethane, or propane saturation boundary over a
 compatible installed provider artifact.
 
-`governance_doctrine_revision: 2`
+`governance_doctrine_revision: 3`
 
 Canonical local doctrine: `../ePC-SAFT-organization/GOVERNANCE.md`.
+
+Canonical package-local phase-equilibrium documentation is indexed in
+`docs/phase-equilibrium.md`. The detailed current Perdomo formulation owner is
+`docs/designs/2026-07-21-perdomo-held2.md`; the accepted pure-saturation and
+frozen neutral-HELD designs retain their existing ownership.
 
 The lab copy is non-authoritative provenance and research for this accepted
 slice. The receipt does not imply phase discovery, global stability, mixture
@@ -41,11 +46,27 @@ uses the existing `TpFlashResult`, `HeldDiagnostics`, and `FlashError` owners,
 has no separate compatibility route, and creates no authority, promotion, or
 predictive-admission claim.
 
-The retained scientific source is the Pereira Markdown in the permanent lab
-at commit `13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b`, blob
-`dde7f02d4c93cce86804a8e6b62d37602990ac21`. The source is provenance only;
-the clean package has no lab, migration, sibling-source, or provider-
-implementation dependency.
+The retained scientific sources are the Pereira and Perdomo Markdown files in
+the permanent lab at commit
+`13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b`. Their Git blobs are respectively
+`dde7f02d4c93cce86804a8e6b62d37602990ac21` and
+`5d6b6322a5c9d8c964f7ef08ed79831f243a2698`; the Perdomo Markdown SHA-256 is
+`522cba2efb44c6404b3b8b75eefb90c50a84cc4110333f30aa1f0eb1a21380d5`.
+Those sources are provenance only; the clean package has no lab, migration,
+sibling-source, or provider-implementation dependency.
+
+The installed Perdomo Table 3 public-route evidence retains three detected
+homogeneous pressure roots, two mechanically stable roots, complete Stage-I
+start accounting, and the selected lowest-objective reference. Its
+`root_completeness="not_proven"` status is independent of solver, numerical,
+physical, and `globality_certificate="not_guaranteed"` status. The accepted
+one-phase result is cross-EOS source-topology-disagreement evidence, not an
+electrolyte-LLE or Perdomo numerical-reproduction admission.
+
+D-026 selects one source-complete installed ePC-SAFT two-liquid case as the
+next public Stage-I/II/III gate. Equilibrium is ready for that selected case
+and waits for the exact Provider artifact and Migration dispatch. No speculative
+case constants, route, tolerance, resource, or runtime correction is active.
 
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD
@@ -85,6 +106,10 @@ unchanged. The user-authorized Perdomo HELD2 pivot defers this neutral redesign
 as non-production provenance; it is no longer the active implementation gate.
 
 `runtime_source_of_truth: true`
+
+Here `runtime_source_of_truth` means the clean package is the sole
+implementation owner. Accepted capability authority remains receipt-bound;
+candidate source and a public route do not accept their own promotion.
 
 `accepted_capability: pure-component-saturation-v1`
 
