@@ -1,5 +1,6 @@
 #include "chemical_equilibrium.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
@@ -100,10 +101,53 @@ py::dict compile_system(const py::dict& spec) {
     return result;
 }
 
+py::dict amount_chart_evidence(
+    const std::vector<int>& charges,
+    const std::vector<double>& coordinates,
+    double trace_floor
+) {
+    if (!std::isfinite(trace_floor) || trace_floor <= 0.0) {
+        throw py::value_error("trace floor must be finite and positive");
+    }
+    const AmountChart chart = make_amount_chart(charges);
+    const AmountChartEvaluation evaluation = evaluate_amount_chart(chart, coordinates);
+    py::dict result;
+    result["amounts"] = evaluation.amounts;
+    result["coordinate_count"] = chart.coordinate_count();
+    result["jacobian"] = evaluation.jacobian;
+    result["amount_hessians"] = evaluation.amount_hessians;
+    result["minimum_amount"] = evaluation.minimum_amount;
+    result["charge_residual"] = evaluation.charge_residual;
+    result["trace_status"] = evaluation.minimum_amount <= trace_floor
+        ? "at_or_below_floor"
+        : "interior";
+    return result;
+}
+
+std::vector<double> amount_chart_inverse(
+    const std::vector<int>& charges,
+    const std::vector<double>& amounts
+) {
+    return invert_amount_chart(make_amount_chart(charges), amounts);
+}
+
 }  // namespace
 
 void bind_chemical_equilibrium(py::module_& module) {
     module.def("_chemical_compile_system", &compile_system, py::arg("spec"));
+    module.def(
+        "_chemical_amount_chart",
+        &amount_chart_evidence,
+        py::arg("charges"),
+        py::arg("coordinates"),
+        py::arg("trace_floor")
+    );
+    module.def(
+        "_chemical_amount_chart_inverse",
+        &amount_chart_inverse,
+        py::arg("charges"),
+        py::arg("amounts")
+    );
 }
 
 }  // namespace epcsaft_equilibrium

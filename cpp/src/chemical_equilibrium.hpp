@@ -61,8 +61,38 @@ struct CompiledReactionSystem {
     double charge_reaction_inf_norm = 0.0;
 };
 
+struct AmountChart {
+    std::vector<int> charges;
+    std::vector<std::size_t> cation_indices;
+    std::vector<std::size_t> anion_indices;
+    std::vector<std::size_t> neutral_indices;
+
+    [[nodiscard]] std::size_t coordinate_count() const;
+    [[nodiscard]] bool ionic() const;
+};
+
+struct AmountChartEvaluation {
+    std::vector<double> amounts;
+    std::vector<double> jacobian;
+    std::vector<double> amount_hessians;
+    double minimum_amount = 0.0;
+    double charge_residual = 0.0;
+};
+
 [[nodiscard]] CompiledReactionSystem compile_reaction_system(
     const ReactionSystemInput& input
+);
+
+[[nodiscard]] AmountChart make_amount_chart(const std::vector<int>& charges);
+
+[[nodiscard]] AmountChartEvaluation evaluate_amount_chart(
+    const AmountChart& chart,
+    const std::vector<double>& coordinates
+);
+
+[[nodiscard]] std::vector<double> invert_amount_chart(
+    const AmountChart& chart,
+    const std::vector<double>& amounts
 );
 
 }  // namespace epcsaft_equilibrium
