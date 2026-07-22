@@ -30,6 +30,9 @@ constexpr std::size_t kMixtureSdkTableSize =
 constexpr std::size_t kElectrolyteSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_electrolyte_phase)
     + sizeof(epcsaft_evaluate_mixture_phase_v1);
+constexpr std::size_t kMolarVolumeSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, evaluate_molar_volume_bounds)
+    + sizeof(epcsaft_evaluate_molar_volume_bounds_v1);
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
 
 const epcsaft_native_sdk_v1& checked_sdk(const py::capsule& capsule) {
@@ -87,6 +90,19 @@ const epcsaft_native_sdk_v1& checked_electrolyte_sdk(const py::capsule& capsule)
     if (sdk.mixture_result_size != sizeof(epcsaft_mixture_phase_block_result_v1)) {
         throw py::value_error(
             "provider capsule mixture result size does not match the v1 contract"
+        );
+    }
+    return sdk;
+}
+
+const epcsaft_native_sdk_v1& checked_molar_volume_sdk(
+    const py::capsule& capsule
+) {
+    const epcsaft_native_sdk_v1& sdk = checked_electrolyte_sdk(capsule);
+    if (sdk.table_size < kMolarVolumeSdkTableSize
+        || sdk.evaluate_molar_volume_bounds == nullptr) {
+        throw py::value_error(
+            "provider capsule is missing the molar-volume domain contract"
         );
     }
     return sdk;
@@ -1364,6 +1380,8 @@ py::dict held2_state_evaluation_to_dict(
     result["modified_potentials"] = evaluation.modified_potentials;
     result["pressure_stationarity_relative"] =
         evaluation.pressure_stationarity_relative;
+    result["pressure_stationarity_derivative_log_volume"] =
+        evaluation.pressure_stationarity_derivative_log_volume;
     return result;
 }
 
@@ -1485,6 +1503,8 @@ py::dict held2_installed_phase_block(
     result["modified_potentials"] = evaluation.modified_potentials;
     result["pressure_stationarity_relative"] =
         evaluation.pressure_stationarity_relative;
+    result["pressure_stationarity_derivative_log_volume"] =
+        evaluation.pressure_stationarity_derivative_log_volume;
     result["provider_pressure_pa"] = provider_phase.pressure_pa;
     result["pressure_over_rt"] = pressure_over_rt;
     result["parameter_fingerprint"] = provider_phase.parameter_fingerprint;
@@ -1621,6 +1641,185 @@ py::dict held2_manufactured_stage_i(
     result["reference_volume"] = evaluation.reference_volume;
     result["minimum_tpd"] = evaluation.minimum_tpd;
     result["candidates"] = std::move(candidates);
+    return result;
+}
+
+py::dict held2_pressure_envelope_to_dict(
+    const epcsaft_equilibrium::Held2PressureEnvelopeResult& evaluation
+) {
+    py::list points;
+    for (const epcsaft_equilibrium::Held2PressureScanPoint& point :
+         evaluation.scan_points) {
+        py::dict item;
+        item["log_volume"] = point.log_volume;
+        item["volume"] = point.volume;
+        item["pressure_residual"] = point.pressure_residual;
+        item["pressure_derivative_log_volume"] =
+            point.pressure_derivative_log_volume;
+        item["objective"] = point.objective;
+        item["valid"] = point.valid;
+        item["failure"] = point.failure;
+        points.append(std::move(item));
+    }
+    py::list intervals;
+    for (const epcsaft_equilibrium::Held2PressureScanInterval& interval :
+         evaluation.intervals) {
+        py::dict item;
+        item["lower_log_volume"] = interval.lower_log_volume;
+        item["upper_log_volume"] = interval.upper_log_volume;
+        item["depth"] = interval.depth;
+        item["status"] = interval.status;
+        intervals.append(std::move(item));
+    }
+    py::list roots;
+    for (const epcsaft_equilibrium::Held2PressureRoot& root : evaluation.roots) {
+        py::dict item;
+        item["log_volume"] = root.log_volume;
+        item["volume"] = root.volume;
+        item["objective"] = root.objective;
+        item["pressure_residual"] = root.pressure_residual;
+        item["pressure_derivative_log_volume"] =
+            root.pressure_derivative_log_volume;
+        item["objective_curvature_log_volume"] =
+            root.objective_curvature_log_volume;
+        item["mechanical_class"] = root.mechanical_class;
+        item["origin"] = root.origin;
+        item["boundary"] = root.boundary;
+        roots.append(std::move(item));
+    }
+    py::dict result;
+    result["outcome"] = evaluation.outcome;
+    result["failure_reason"] = evaluation.failure_reason;
+    result["root_completeness"] = evaluation.root_completeness;
+    result["selection_scope"] = evaluation.selection_scope;
+    result["selected_root_index"] = evaluation.selected_root_index;
+    result["evaluation_failure_count"] = evaluation.evaluation_failure_count;
+    result["refinement_failure_count"] = evaluation.refinement_failure_count;
+    result["stationary_point_count"] = evaluation.stationary_point_count;
+    result["tangential_root_count"] = evaluation.tangential_root_count;
+    result["marginal_root_count"] = evaluation.marginal_root_count;
+    result["boundary_root_count"] = evaluation.boundary_root_count;
+    result["objective_tie_count"] = evaluation.objective_tie_count;
+    result["deduplicated_root_count"] = evaluation.deduplicated_root_count;
+    result["scan_points"] = std::move(points);
+    result["intervals"] = std::move(intervals);
+    result["roots"] = std::move(roots);
+    result["globality_certificate"] = "not_guaranteed";
+    return result;
+}
+
+py::dict held2_manufactured_pressure_envelope(
+    const std::string& topology,
+    double composition,
+    int initial_interval_count
+) {
+    return held2_pressure_envelope_to_dict(
+        epcsaft_equilibrium::evaluate_held2_manufactured_pressure_envelope(
+            topology,
+            composition,
+            initial_interval_count
+        )
+    );
+}
+
+py::dict held2_installed_pressure_envelope(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& independent_modified_fractions,
+    const std::string& expected_fingerprint,
+    int initial_interval_count
+) {
+    if (!std::isfinite(temperature_k) || !std::isfinite(pressure_pa)
+        || temperature_k <= 0.0 || pressure_pa <= 0.0) {
+        throw py::value_error(
+            "HELD2 temperature and pressure must be finite and positive"
+        );
+    }
+    const epcsaft_native_sdk_v1& sdk = checked_molar_volume_sdk(capsule);
+    std::vector<double> charges;
+    std::vector<std::string> component_ids;
+    charges.reserve(sdk.component_count);
+    component_ids.reserve(sdk.component_count);
+    for (std::size_t component = 0; component < sdk.component_count; ++component) {
+        if (sdk.component_ids[component] == nullptr
+            || sdk.component_ids[component][0] == '\0') {
+            throw py::value_error(
+                "provider electrolyte component ID must not be empty"
+            );
+        }
+        charges.push_back(static_cast<double>(sdk.component_charges[component]));
+        component_ids.emplace_back(sdk.component_ids[component]);
+    }
+    const epcsaft_equilibrium::Held2Coordinates coordinates =
+        epcsaft_equilibrium::make_held2_coordinates(charges);
+    const std::vector<double> physical_amounts =
+        epcsaft_equilibrium::held2_lift_independent_fractions(
+            coordinates,
+            independent_modified_fractions
+        );
+    const epcsaft_equilibrium::ProviderContext provider(
+        sdk,
+        expected_fingerprint
+    );
+    const std::array<double, 2> molar_volume_bounds =
+        provider.evaluate_molar_volume_bounds(
+            temperature_k,
+            physical_amounts,
+            epcsaft_equilibrium::kHeld2PackingFractionMinimum,
+            epcsaft_equilibrium::kHeld2PackingFractionMaximum
+        );
+    const double pressure_over_rt = pressure_pa
+        / (kGasConstantJPerMolK * temperature_k);
+    const epcsaft_equilibrium::Held2StateEvaluator evaluator = [
+        &provider,
+        coordinates,
+        temperature_k,
+        pressure_pa,
+        pressure_over_rt
+    ](
+        const std::vector<double>& independent,
+        double log_volume
+    ) {
+        const std::vector<double> amounts =
+            epcsaft_equilibrium::held2_lift_independent_fractions(
+                coordinates,
+                independent
+            );
+        const double volume = std::exp(log_volume);
+        const epcsaft_equilibrium::MixturePhaseEvaluation provider_phase =
+            provider.evaluate_electrolyte(
+                temperature_k,
+                amounts,
+                volume
+            );
+        epcsaft_equilibrium::Held2PhysicalPhaseBlock block;
+        block.helmholtz_over_rt = provider_phase.value;
+        block.gradient = provider_phase.gradient;
+        block.hessian = provider_phase.hessian;
+        block.pressure_pa = provider_phase.pressure_pa;
+        return epcsaft_equilibrium::evaluate_held2_phase_block(
+            coordinates,
+            independent,
+            log_volume,
+            pressure_over_rt,
+            pressure_pa,
+            block
+        );
+    };
+    py::dict result = held2_pressure_envelope_to_dict(
+        epcsaft_equilibrium::evaluate_held2_pressure_envelope(
+            independent_modified_fractions,
+            molar_volume_bounds,
+            evaluator,
+            initial_interval_count,
+            8
+        )
+    );
+    result["component_ids"] = std::move(component_ids);
+    result["charges"] = std::move(charges);
+    result["molar_volume_bounds"] = molar_volume_bounds;
+    result["parameter_fingerprint"] = expected_fingerprint;
     return result;
 }
 
@@ -1918,6 +2117,23 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("charges"),
         py::arg("physical_feed"),
         py::arg("stage")
+    );
+    module.def(
+        "_held2_pressure_envelope",
+        &held2_manufactured_pressure_envelope,
+        py::arg("topology"),
+        py::arg("composition"),
+        py::arg("initial_interval_count")
+    );
+    module.def(
+        "_held2_pressure_envelope",
+        &held2_installed_pressure_envelope,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("independent_modified_fractions"),
+        py::arg("expected_fingerprint"),
+        py::arg("initial_interval_count")
     );
     module.def(
         "_held2_adapter",

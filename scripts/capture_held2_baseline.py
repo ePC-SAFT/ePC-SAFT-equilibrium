@@ -109,6 +109,11 @@ def _provider_phase_evidence() -> tuple[dict[str, Any], str, dict[str, str]]:
 
 def _runtime_evidence() -> dict[str, Any]:
     provider_phase, parameter_fingerprint, provider_failure = _provider_phase_evidence()
+    provider_phase = {
+        key: value
+        for key, value in provider_phase.items()
+        if key != "pressure_stationarity_derivative_log_volume"
+    }
     direct = _equilibrium._held2_adapter(
         CHARGES,
         PHYSICAL_FEED,

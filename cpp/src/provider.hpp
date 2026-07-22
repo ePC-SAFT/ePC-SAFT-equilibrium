@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,13 @@ public:
         double temperature_k,
         const std::vector<double>& amounts_mol,
         double volume_m3
+    ) const;
+
+    [[nodiscard]] std::array<double, 2> evaluate_molar_volume_bounds(
+        double temperature_k,
+        const std::vector<double>& mole_fractions,
+        double packing_fraction_min,
+        double packing_fraction_max
     ) const;
 
     [[nodiscard]] const std::string& fingerprint() const;
