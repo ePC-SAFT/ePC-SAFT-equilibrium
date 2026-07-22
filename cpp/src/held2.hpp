@@ -112,12 +112,48 @@ struct Held2StageIICandidate {
     double lower_gap = 0.0;
 };
 
+struct Held2StageIIAttempt {
+    int attempt_id = 0;
+    int major_iteration = 0;
+    int start_index = 0;
+    std::string start_source;
+    std::vector<double> internal_start;
+    std::vector<double> physical_start_modified_fractions;
+    double physical_start_volume = 0.0;
+    std::string solver_status = "not_run";
+    bool solver_converged = false;
+    std::string provider_status = "manufactured_oracle";
+    std::string callback_error;
+    std::vector<double> internal_terminal;
+    std::vector<double> terminal_modified_fractions;
+    double terminal_volume = 0.0;
+    double objective = 0.0;
+    double lower_value = 0.0;
+    double pressure_residual = 0.0;
+    std::vector<double> lower_bound_multipliers;
+    std::vector<double> upper_bound_multipliers;
+    double chart_jacobian_condition = 1.0;
+    double dual_pullback_inf_norm = 0.0;
+    double chart_kkt_inf_norm = 0.0;
+    double physical_kkt_inf_norm = 0.0;
+    double complementarity_inf_norm = 0.0;
+    bool pressure_passed = false;
+    bool physical_kkt_passed = false;
+    bool cut_eligible = false;
+    bool step6_eligible = false;
+    int basin_id = -1;
+    double same_major_upper_bound = 0.0;
+    double same_major_multiplier = 0.0;
+};
+
 struct Held2StageIIResult {
     std::string outcome;
+    std::string historical_dual_pullback_fixture_status = "not_assigned";
     int major_iterations = 0;
     int lower_starts_per_iteration = 0;
     int cut_count = 0;
     std::vector<Held2StageIIBound> bound_history;
+    std::vector<Held2StageIIAttempt> attempt_trace;
     std::vector<Held2StageIICandidate> candidates;
 };
 
