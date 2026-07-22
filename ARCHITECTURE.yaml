@@ -16,6 +16,7 @@ documentation:
   pure_saturation_design: docs/designs/2026-07-17-pure-saturation-slice.md
   neutral_held_design: docs/designs/2026-07-17-neutral-held-v1.md
   perdomo_held2_design: docs/designs/2026-07-21-perdomo-held2.md
+  perdomo_held2_solver_strategy: docs/plans/2026-07-21-perdomo-held2-solver-strategy.md
   historical_lab_m4_role: scientific-and-migration-provenance
 
 accepted_capability:
@@ -150,6 +151,7 @@ local_candidate:
 development_candidate:
   name: perdomo-held2
   implementation_status: current-main-private-manufactured-foundation
+  solver_strategy_status: canonized-unimplemented
   authority_effect: none
   current_public_electrolyte_dispatch: false
   archived_installed_wip:
@@ -164,6 +166,22 @@ development_candidate:
     Perdomo modified-mole Stage I, complete-cut Stage II, and general candidate-
     set direct-total-free-energy Stage III over the installed electrolyte phase,
     volume-domain, packing-derivative, and source-domain Provider contracts.
+  canonical_implementation_plan: docs/plans/2026-07-21-perdomo-held2-solver-strategy.md
+  target_solver_strategy:
+    homogeneous_reference: deterministic-pressure-root-enumeration
+    stage_i: direct-l-pressure-certified-tpd-envelope
+    stage_ii_upper: highs-lp
+    stage_ii_global_exploration: continuation-sobol-stall-triggered-direct-l
+    stage_ii_local_refinement: ipopt-exact-hessian
+    stage_iii: ipopt-exact-hessian
+    scientific_acceptance: independent-equilibrium-certificates
+    slsqp_default: false
+    finite_search_globality: not-guaranteed
+  planned_internal_dependencies:
+    - NLopt for Stage-I and stall-triggered Stage-II DIRECT-L exploration
+    - HiGHS for the Stage-II Problem-(64) linear program
+    - Ipopt retained for Stage-II local refinement and Stage III
+  implementation_authorized: false
   source:
     repository: tannerpolley/ePC-SAFT-lab
     retained_commit: 13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b
@@ -233,7 +251,7 @@ development_candidate:
   package_tests:
     - tests/test_held2.py
   next_evidence_gate: source-complete-installed-two-liquid-stage-ii-iii-case
-  next_gate_status: unassigned-pending-strategy-revision-and-provider-case
+  next_gate_status: strategy-canonized-unimplemented-pending-bounded-assignment-and-corrected-provider-case
   globality_certificate: not_guaranteed
   target_unsupported_multicomponent_non_electrolyte_behavior: structured-FlashError-before-search
   promotion_status: not-requested
@@ -271,6 +289,11 @@ owners:
   capsule_abi_validation: cpp/src/module.cpp checked_sdk()
   pure_saturation_formulation_and_ipopt: cpp/src/saturation.cpp
   held_controller_and_local_acceptance: cpp/src/held.cpp and cpp/src/held_stage_i.cpp through held_stage_iii.cpp
+  held2_private_manufactured_foundation: cpp/src/held2.cpp and cpp/src/held2_stage_iii.cpp
+  held2_target_solver_ownership: >-
+    deterministic pressure roots; NLopt DIRECT-L Stage I and Stage-II
+    exploration; HiGHS Stage-II upper LP; Ipopt Stage-II local refinement and
+    Stage III; Equilibrium independent certificates
   input_validation_and_typed_results: src/epcsaft_equilibrium/_api.py
   pure_scientific_anchors: data/reference/pure_saturation_anchors.csv
   flash_predictive_validation: ePC-SAFT-validation

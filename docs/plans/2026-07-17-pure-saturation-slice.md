@@ -1,5 +1,7 @@
 # Pure-Component Saturation Slice Implementation Plan
 
+Status: executed and accepted under `promotion-0018-equilibrium-pure-saturation-v1`; retained as implementation provenance
+
 > **For agentic workers:** REQUIRED SUB-SKILL: use
 > `superpowers:test-driven-development` for discrete contracts and the
 > scientific-computing verification ladder for numerical claims.
@@ -15,6 +17,35 @@ owner.
 
 **Tech stack:** Python 3.13, scikit-build-core, CMake, pybind11, C++17, Ipopt,
 pytest, Ruff, mypy, and the pinned provider wheel.
+
+## Outcome Proof
+
+**Intent:** Preserve the executable contract that created the accepted pure-component saturation capability without broadening it.
+**Current Behavior:** `saturation` solves one local methane, ethane, or propane fixed-temperature boundary through the installed Provider and Ipopt.
+**Expected Outcome:** The accepted operation, certificate, installed-artifact evidence, and receipt remain reproducible for their exact admitted inputs.
+**Target Output:** One `SaturationResult` or typed `SaturationError` with separate solver, numerical, and physical evidence.
+**Owner:** The Equilibrium package owns the saturation formulation and result; the installed Provider owns Helmholtz values and derivatives.
+**Interface:** Public `saturation(model, temperature)` plus private native capsule and NLP evaluation seams.
+**Cutover:** Completed by the implementation and promotion receipt identified in this repository.
+**Replaced Path:** No predecessor equilibrium route was retained or redirected by this first capability slice.
+**Evidence:** Focused tests, derivative checks, three scientific anchors, isolated-wheel inspection, and the accepted promotion receipt.
+**Acceptance Proof:** The exact installed artifacts pass the receipt-bound pressure, potential, stability, domain, and confirmation certificates for all admitted components.
+**Stop Criteria:** Stop on Provider mismatch, failed local certificate, source-domain violation, changed authority, or any request to widen the admitted scope.
+**Avoid:** Do not add mixture equilibrium, phase discovery, globality claims, Provider equations, compatibility APIs, or release work.
+**Risk:** Re-running this historical plan against a different Provider or silently widening its component/domain table would invalidate the accepted evidence.
+
+## Implementation Boundaries
+
+**Files To Create:** The executed slice created `pyproject.toml`, `CMakeLists.txt`, the native saturation owner, public API files, tests, anchors, validation script, architecture record, and candidate receipt.
+**Files To Modify:** Only the package API, native module, saturation owner, tests, README, context, and architecture metadata named by the tasks.
+**Files To Avoid:** Provider source, sibling repositories, unrelated equilibrium routes, release metadata, and user-owned IDE files.
+**Source Of Truth:** The pure-saturation design, installed Provider SDK contract, retained source anchors, and `promotion-0018-equilibrium-pure-saturation-v1`.
+**Read Path:** Public Provider header and capsule, retained anchor data, package design, and receipt-bound artifact records.
+**Write Path:** Equilibrium source, tests, documentation, architecture metadata, and receipt locations explicitly named by this plan.
+**Integration Points:** `epcsaft.native_sdk.v1`, the pybind11 extension, Ipopt, Python result conversion, and installed-wheel verification.
+**Migration Or Cutover:** The accepted receipt completed cutover for only the named pure-component local boundary.
+**Replaced Path Handling:** No displaced route exists; negative-space checks must continue to prevent duplicate Provider or saturation owners.
+**Acceptance Proof Gate:** Reproduce the receipt-bound installed-artifact tests and scientific anchors without changing fingerprints, tolerances, or domains.
 
 ## Global constraints
 
@@ -54,6 +85,10 @@ py::dict evaluate_nlp(
 );
 ```
 
+**Use Cases:**
+
+- Establish one visible package/capsule seam while proving no duplicate Provider owner enters the wheel.
+
 - [ ] Write a failing package test that imports the extension and asks for the
   capsule ABI, table size, result size, model context, and evaluation entry.
 - [ ] Run the focused test and confirm that the extension is missing.
@@ -90,6 +125,10 @@ NlpEvaluation evaluate_saturation_nlp(
     const std::array<double, 3>& multipliers
 );
 ```
+
+**Use Cases:**
+
+- Produce derivative evidence that the exact local formulation, rather than a numerical surrogate, satisfies the acceptance basis.
 
 - [ ] Write a failing parameterized derivative test at representative and
   boundary-near methane, ethane, and propane states.
@@ -154,6 +193,10 @@ def saturation(
     """Solve and certify one local pure-component saturation boundary."""
 ```
 
+**Use Cases:**
+
+- Return a typed result whose visible solver, numerical, and physical fields prevent Ipopt success from acting as acceptance proof.
+
 - [ ] Write failing tests for input units, approved fingerprints, source
   domains, unsupported models, and topology collapse.
 - [ ] Write a failing representative ethane solve test that requires separate
@@ -176,6 +219,10 @@ def saturation(
 - Create `scripts/validate_saturation.py` for the three-row scientific check.
 - Extend `tests/test_saturation.py` with one parameterized compact anchor test.
 
+**Use Cases:**
+
+- Verify the installed artifact against retained scientific evidence and detect copied or duplicate Provider implementation content.
+
 - [ ] Freeze methane, ethane, and propane expected rows from retained lab
   evidence before running the new implementation.
 - [ ] Run the source-installed extension test against the pinned provider
@@ -196,6 +243,10 @@ def saturation(
 - Create `ARCHITECTURE.yaml`.
 - Create a candidate promotion receipt under `receipts/` after the
   implementation commit exists.
+
+**Use Cases:**
+
+- Complete the receipt-bound migration and leave capability acceptance visible without implying a broader cutover.
 
 - [ ] Record the public exports, native target, dependencies, admitted
   fingerprints and domains, derivative order, local certificate, artifact
