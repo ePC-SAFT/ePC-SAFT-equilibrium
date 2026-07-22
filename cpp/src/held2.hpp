@@ -8,6 +8,8 @@
 
 namespace epcsaft_equilibrium {
 
+class Held2ProgressObserver;
+
 inline constexpr const char* kHeld2ManufacturedFormulationId =
     "perdomo-held2.modified-mole.manufactured.v1";
 inline constexpr double kHeld2PackingFractionMinimum = 1.0e-6;
@@ -413,7 +415,8 @@ struct Held2StageIIIResult {
     const Held2StateEvaluation& reference,
     const std::vector<Held2StageICandidate>& stage_i_candidates,
     int major_iteration_cap,
-    int local_attempt_cap_per_major
+    int local_attempt_cap_per_major,
+    Held2ProgressObserver* observer = nullptr
 );
 
 [[nodiscard]] Held2StageIIINlpEvaluation evaluate_held2_manufactured_stage_iii_nlp(
@@ -444,7 +447,8 @@ struct Held2StageIIIResult {
     const std::vector<double>& physical_feed,
     const std::vector<Held2StageIICandidate>& candidates,
     const Held2StateEvaluator& evaluator,
-    const std::vector<std::array<double, 2>>& phase_coordinate_bounds
+    const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
+    Held2ProgressObserver* observer = nullptr
 );
 
 struct Held2Certificate {

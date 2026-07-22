@@ -254,7 +254,7 @@ development_candidate:
   integrated_candidate_checkpoint:
     status: retained-private-installed-candidate
     fixture: data/reference/perdomo_held2_candidate_v1.json
-    capture_script: scripts/capture_held2_candidate.py
+    capture_script_status: removed-with-active-tracer-replacement
     implementation_commit: 40d01d32dbcda67caa5eafc71b04abe74b80f016
     implementation_tree: 2dfec318226194fb556a33c50ce01b501915122b
     equilibrium_wheel_sha256: 606686b766162a4366b2274113a954329ba1496a9b4a27f819b5e2c030979188
@@ -270,6 +270,7 @@ development_candidate:
   package_tests:
     - tests/test_held2.py
     - tests/test_held2_candidate.py
+    - tests/test_perdomo_held2_trace.py
   next_evidence_gate: source-complete-installed-two-liquid-stage-ii-iii-case
   next_gate_status: integrated-candidate-fails-closed-in-stage-ii-pending-separate-two-liquid-assignment
   globality_certificate: not_guaranteed
@@ -312,7 +313,8 @@ owners:
   held2_private_development_implementation: >-
     cpp/src/held2.cpp, cpp/src/held2_stage_i_direct.cpp,
     cpp/src/held2_stage_ii_upper.cpp, cpp/src/held2_stage_ii_basin.cpp, and
-    cpp/src/held2_stage_iii.cpp, and cpp/src/held2_stage_iii_generic.cpp
+    cpp/src/held2_stage_iii.cpp, cpp/src/held2_stage_iii_generic.cpp,
+    cpp/src/held2_progress.cpp, and cpp/src/held2_progress.hpp
   held2_solver_ownership: >-
     deterministic pressure roots; NLopt DIRECT-L Stage I and Stage-II
     exploration; HiGHS Stage-II upper LP; Ipopt Stage-II local refinement and

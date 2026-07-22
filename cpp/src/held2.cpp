@@ -1,4 +1,5 @@
 #include "held2.hpp"
+#include "held2_progress.hpp"
 #include "held2_stage_ii_basin.hpp"
 #include "held2_stage_ii_upper.hpp"
 #include "held2_tolerances.hpp"
@@ -307,7 +308,11 @@ public:
         bool use_tpd,
         std::vector<double> initial,
         std::vector<double> lower,
-        std::vector<double> upper
+        std::vector<double> upper,
+        Held2ProgressObserver* observer,
+        std::string progress_stage,
+        int progress_major,
+        int progress_attempt
     )
         : objective_(
               std::move(evaluator),
@@ -317,7 +322,11 @@ public:
           ),
           initial_(std::move(initial)),
           lower_(std::move(lower)),
-          upper_(std::move(upper)) {}
+          upper_(std::move(upper)),
+          observer_(observer),
+          progress_stage_(std::move(progress_stage)),
+          progress_major_(progress_major),
+          progress_attempt_(progress_attempt) {}
 
     bool get_nlp_info(
         Ipopt::Index& n,
@@ -472,19 +481,34 @@ public:
 
     bool intermediate_callback(
         Ipopt::AlgorithmMode,
-        Ipopt::Index,
+        Ipopt::Index iteration,
+        Ipopt::Number objective,
+        Ipopt::Number primal_residual,
+        Ipopt::Number dual_residual,
+        Ipopt::Number barrier,
+        Ipopt::Number step_norm,
         Ipopt::Number,
-        Ipopt::Number,
-        Ipopt::Number,
-        Ipopt::Number,
-        Ipopt::Number,
-        Ipopt::Number,
-        Ipopt::Number,
-        Ipopt::Number,
-        Ipopt::Index,
+        Ipopt::Number dual_step,
+        Ipopt::Number primal_step,
+        Ipopt::Index line_search_steps,
         const Ipopt::IpoptData* ip_data,
         Ipopt::IpoptCalculatedQuantities*
     ) override {
+        Held2ProgressEvent progress;
+        progress.kind = Held2ProgressKind::LocalIteration;
+        progress.stage = progress_stage_;
+        progress.iteration = static_cast<int>(iteration);
+        progress.major_iteration = progress_major_;
+        progress.attempt = progress_attempt_;
+        progress.objective = objective;
+        progress.primal_residual = primal_residual;
+        progress.dual_residual = dual_residual;
+        progress.complementarity = barrier;
+        progress.step_norm = step_norm;
+        progress.dual_step = dual_step;
+        progress.primal_step = primal_step;
+        progress.line_search_steps = static_cast<int>(line_search_steps);
+        observe_held2(observer_, progress);
         if (ip_data != nullptr && Ipopt::IsValid(ip_data->curr())
             && Ipopt::IsValid(ip_data->curr()->x())) {
             const auto* dense = dynamic_cast<const Ipopt::DenseVector*>(
@@ -600,6 +624,10 @@ private:
     std::vector<double> lower_bound_multipliers_;
     std::vector<double> upper_bound_multipliers_;
     std::vector<Held2StageIILocalEvaluation> evaluation_trace_;
+    Held2ProgressObserver* observer_ = nullptr;
+    std::string progress_stage_;
+    int progress_major_ = -1;
+    int progress_attempt_ = -1;
 };
 
 Held2SearchRun solve_held2_search(
@@ -609,7 +637,11 @@ Held2SearchRun solve_held2_search(
     bool use_tpd,
     const std::vector<double>& initial,
     const std::vector<double>& lower,
-    const std::vector<double>& upper
+    const std::vector<double>& upper,
+    Held2ProgressObserver* observer = nullptr,
+    const std::string& progress_stage = {},
+    int progress_major = -1,
+    int progress_attempt = -1
 ) {
     Ipopt::SmartPtr<Held2SearchTnlp> problem = new Held2SearchTnlp(
         evaluator,
@@ -618,7 +650,11 @@ Held2SearchRun solve_held2_search(
         use_tpd,
         initial,
         lower,
-        upper
+        upper,
+        observer,
+        progress_stage,
+        progress_major,
+        progress_attempt
     );
     Ipopt::SmartPtr<Ipopt::IpoptApplication> application = IpoptApplicationFactory();
     configure_held2_ipopt(application);
@@ -801,7 +837,10 @@ Held2SearchRun solve_stage_ii_local(
     const std::vector<double>& initial,
     const std::vector<double>& physical_lower,
     const std::vector<double>& physical_upper,
-    double composition_sum_upper
+    double composition_sum_upper,
+    Held2ProgressObserver* observer = nullptr,
+    int major_iteration = -1,
+    int attempt_index = -1
 ) {
     const std::size_t dimension = feed.size();
     Held2SearchRun invalid;
@@ -877,7 +916,11 @@ Held2SearchRun solve_stage_ii_local(
         false,
         chart_initial,
         chart_lower,
-        chart_upper
+        chart_upper,
+        observer,
+        "STAGE II LOCAL IPOPT",
+        major_iteration,
+        attempt_index
     );
     for (Held2StageIILocalEvaluation& evaluation : run.evaluation_trace) {
         if (evaluation.raw_variables.size() != dimension + 1) {
@@ -2899,7 +2942,8 @@ Held2StageIIResult solve_held2_stage_ii(
     const Held2StateEvaluation& reference,
     const std::vector<Held2StageICandidate>& stage_i_candidates,
     int major_iteration_cap,
-    int local_attempt_cap_per_major
+    int local_attempt_cap_per_major,
+    Held2ProgressObserver* observer
 ) {
     if (major_iteration_cap <= 0 || local_attempt_cap_per_major <= 0) {
         throw std::invalid_argument(
@@ -3082,6 +3126,18 @@ Held2StageIIResult solve_held2_stage_ii(
         });
         const Held2StageIIUpperResult upper_solve =
             solve_held2_stage_ii_upper_highs(upper_problem);
+        Held2ProgressEvent upper_progress;
+        upper_progress.kind = Held2ProgressKind::StageIIUpper;
+        upper_progress.major_iteration = major;
+        upper_progress.upper_bound = upper_solve.upper_bound;
+        upper_progress.primal_residual = upper_solve.primal_residual_inf;
+        upper_progress.dual_residual = upper_solve.dual_residual_inf;
+        upper_progress.complementarity = upper_solve.complementarity_inf;
+        upper_progress.count = static_cast<int>(
+            upper_solve.active_cut_ids.size()
+        );
+        upper_progress.status = upper_solve.outcome;
+        observe_held2(observer, upper_progress);
         if (upper_solve.outcome != "optimal"
             || upper_solve.multipliers.size() != dimension
             || !upper_solve.primal_feasible || !upper_solve.dual_feasible) {
@@ -3252,7 +3308,10 @@ Held2StageIIResult solve_held2_stage_ii(
                     attempt.internal_start,
                     lower,
                     upper,
-                    composition_sum_upper
+                    composition_sum_upper,
+                    observer,
+                    major,
+                    attempt.attempt_id
                 );
                 attempt.solver_status = run.solver_status;
                 attempt.solver_converged = run.solver_converged;
@@ -3357,6 +3416,18 @@ Held2StageIIResult solve_held2_stage_ii(
                            kkt.reconstruction_scale
                        ).passed;
                 attempt.cut_eligible = attempt.physical_kkt_passed;
+                Held2ProgressEvent certificate_progress;
+                certificate_progress.kind = Held2ProgressKind::Certificate;
+                certificate_progress.stage = "STAGE II LOCAL KKT";
+                certificate_progress.major_iteration = major;
+                certificate_progress.attempt = attempt.attempt_id;
+                certificate_progress.status = attempt.physical_kkt_passed
+                    ? "kkt_passed"
+                    : "kkt_failed";
+                certificate_progress.primal_residual = kkt.primal_inf_norm;
+                certificate_progress.dual_residual = kkt.stationarity_inf_norm;
+                certificate_progress.complementarity = kkt.complementarity;
+                observe_held2(observer, certificate_progress);
                 const double gap = upper_bound - value;
                 attempt.step6_gap = gap;
                 bool fixed_volume_stationary = true;
@@ -3390,6 +3461,21 @@ Held2StageIIResult solve_held2_stage_ii(
                 attempt.step6_eligible = attempt.cut_eligible
                     && audit_held2_tolerance(kHeld2Step6Gap, gap).passed
                     && fixed_volume_stationary;
+                Held2ProgressEvent step6_progress;
+                step6_progress.kind = Held2ProgressKind::Certificate;
+                step6_progress.stage = "STAGE II STEP 6";
+                step6_progress.major_iteration = major;
+                step6_progress.attempt = attempt.attempt_id;
+                step6_progress.status = attempt.step6_eligible
+                    ? "eligible"
+                    : "ineligible";
+                step6_progress.reason = attempt.step6_eligible
+                    ? "same_major_gap_and_fixed_volume_gradient"
+                    : "step6_gate_failed";
+                step6_progress.primal_residual = gap;
+                step6_progress.dual_residual =
+                    attempt.fixed_volume_gradient_inf_norm;
+                observe_held2(observer, step6_progress);
                 const auto basin = std::find_if(
                     traced_basins.begin(),
                     traced_basins.end(),
@@ -3444,6 +3530,10 @@ Held2StageIIResult solve_held2_stage_ii(
         }
         result.bound_history.back().lower_bound = lower_bound;
         result.bound_history.back().lower_bound_available = true;
+        upper_progress.lower_bound = lower_bound;
+        upper_progress.gap = upper_bound - lower_bound;
+        upper_progress.status = "lower_bound_certified";
+        observe_held2(observer, upper_progress);
         const bool duplicate_cut = std::any_of(
             cuts.begin(),
             cuts.end(),

@@ -1,4 +1,5 @@
 #include "held2.hpp"
+#include "held2_progress.hpp"
 #include "held2_tolerances.hpp"
 
 #include <algorithm>
@@ -401,14 +402,18 @@ public:
         Held2StateEvaluator evaluator,
         std::vector<Held2StageIICandidate> candidates,
         std::vector<std::array<double, 2>> phase_coordinate_bounds,
-        std::vector<double> initial
+        std::vector<double> initial,
+        Held2ProgressObserver* observer,
+        int solve_index
     )
         : coordinates_(std::move(coordinates)),
           feed_(std::move(feed)),
           evaluator_(std::move(evaluator)),
           candidates_(std::move(candidates)),
           phase_coordinate_bounds_(phase_coordinate_bounds),
-          initial_(std::move(initial)) {}
+          initial_(std::move(initial)),
+          observer_(observer),
+          solve_index_(solve_index) {}
 
     bool get_nlp_info(Ipopt::Index& n, Ipopt::Index& m, Ipopt::Index& nnz_jac_g,
                       Ipopt::Index& nnz_h_lag, IndexStyleEnum& index_style) override {
@@ -566,6 +571,38 @@ public:
         } catch (const std::exception& error) { callback_error_ = error.what(); return false; }
     }
 
+    bool intermediate_callback(
+        Ipopt::AlgorithmMode,
+        Ipopt::Index iteration,
+        Ipopt::Number objective,
+        Ipopt::Number primal_residual,
+        Ipopt::Number dual_residual,
+        Ipopt::Number barrier,
+        Ipopt::Number step_norm,
+        Ipopt::Number,
+        Ipopt::Number dual_step,
+        Ipopt::Number primal_step,
+        Ipopt::Index line_search_steps,
+        const Ipopt::IpoptData*,
+        Ipopt::IpoptCalculatedQuantities*
+    ) override {
+        Held2ProgressEvent progress;
+        progress.kind = Held2ProgressKind::LocalIteration;
+        progress.stage = "STAGE III IPOPT";
+        progress.iteration = static_cast<int>(iteration);
+        progress.attempt = solve_index_;
+        progress.objective = objective;
+        progress.primal_residual = primal_residual;
+        progress.dual_residual = dual_residual;
+        progress.complementarity = barrier;
+        progress.step_norm = step_norm;
+        progress.dual_step = dual_step;
+        progress.primal_step = primal_step;
+        progress.line_search_steps = static_cast<int>(line_search_steps);
+        observe_held2(observer_, progress);
+        return true;
+    }
+
     void finalize_solution(Ipopt::SolverReturn status, Ipopt::Index n,
                            const Ipopt::Number* x, const Ipopt::Number* z_l,
                            const Ipopt::Number* z_u, Ipopt::Index m,
@@ -640,6 +677,8 @@ private:
     int recoverable_domain_rejection_count_ = 0;
     std::string last_domain_rejection_;
     std::vector<double> variables_, multipliers_, lower_, upper_;
+    Held2ProgressObserver* observer_ = nullptr;
+    int solve_index_ = -1;
 };
 
 StageIIIRun run_general_stage_iii(
@@ -648,9 +687,20 @@ StageIIIRun run_general_stage_iii(
     const Held2StateEvaluator& evaluator,
     const std::vector<Held2StageIICandidate>& candidates,
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
-    const std::vector<double>& initial
+    const std::vector<double>& initial,
+    Held2ProgressObserver* observer,
+    int solve_index
 ) {
-    auto* raw = new Held2GeneralStageIIITnlp(coordinates, feed, evaluator, candidates, phase_coordinate_bounds, initial);
+    auto* raw = new Held2GeneralStageIIITnlp(
+        coordinates,
+        feed,
+        evaluator,
+        candidates,
+        phase_coordinate_bounds,
+        initial,
+        observer,
+        solve_index
+    );
     Ipopt::SmartPtr<Ipopt::TNLP> problem = raw;
     Ipopt::SmartPtr<Ipopt::IpoptApplication> application = IpoptApplicationFactory();
     application->Options()->SetStringValue("option_file_name", "");
@@ -698,7 +748,8 @@ Held2StageIIIResult solve_held2_stage_iii(
     const std::vector<double>& physical_feed,
     const std::vector<Held2StageIICandidate>& candidates,
     const Held2StateEvaluator& evaluator,
-    const std::vector<std::array<double, 2>>& phase_coordinate_bounds
+    const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
+    Held2ProgressObserver* observer
 ) {
     Held2StageIIIResult result;
     result.input_candidate_count = static_cast<int>(candidates.size());
@@ -753,7 +804,9 @@ Held2StageIIIResult solve_held2_stage_iii(
             evaluator,
             active_candidates,
             active_bounds,
-            initial
+            initial,
+            observer,
+            result.stage_iii_solve_count + 1
         );
         ++result.stage_iii_solve_count;
         result.solver_status = run.solver_status;
@@ -910,6 +963,15 @@ Held2StageIIIResult solve_held2_stage_iii(
             return result;
         }
         result.numerical_status = "converged";
+        Held2ProgressEvent numerical_progress;
+        numerical_progress.kind = Held2ProgressKind::Certificate;
+        numerical_progress.stage = "STAGE III NUMERICAL";
+        numerical_progress.status = "passed";
+        numerical_progress.primal_residual = constraint_violation;
+        numerical_progress.dual_residual = result.kkt_stationarity_inf_norm;
+        numerical_progress.complementarity =
+            result.bound_complementarity_inf_norm;
+        observe_held2(observer, numerical_progress);
 
         bool active_set_changed = false;
         for (std::size_t phase = 0; phase < active_candidates.size(); ++phase) {
@@ -1231,10 +1293,34 @@ Held2StageIIIResult solve_held2_stage_iii(
     if (!physical) {
         result.physical_status = "rejected";
         result.failure_reason = "stage_iii_physical_certificate_failed";
+        Held2ProgressEvent physical_progress;
+        physical_progress.kind = Held2ProgressKind::Certificate;
+        physical_progress.stage = "STAGE III PHYSICAL";
+        physical_progress.status = "failed";
+        physical_progress.reason = result.failure_reason;
+        physical_progress.primal_residual = std::max(
+            result.modified_balance_inf_norm,
+            result.ordinary_balance_inf_norm
+        );
+        physical_progress.dual_residual = result.modified_potential_mixed_gap;
+        physical_progress.complementarity =
+            result.bound_complementarity_inf_norm;
+        observe_held2(observer, physical_progress);
         return result;
     }
     result.physical_status = "accepted";
     result.feedback = "none";
+    Held2ProgressEvent physical_progress;
+    physical_progress.kind = Held2ProgressKind::Certificate;
+    physical_progress.stage = "STAGE III PHYSICAL";
+    physical_progress.status = "passed";
+    physical_progress.primal_residual = std::max(
+        result.modified_balance_inf_norm,
+        result.ordinary_balance_inf_norm
+    );
+    physical_progress.dual_residual = result.modified_potential_mixed_gap;
+    physical_progress.complementarity = result.bound_complementarity_inf_norm;
+    observe_held2(observer, physical_progress);
     return result;
 }
 }  // namespace epcsaft_equilibrium

@@ -23,6 +23,7 @@ struct DirectContext {
     const Held2StageIReducedEvaluator* evaluator = nullptr;
     Held2StageIDirectResult* result = nullptr;
     nlopt::opt* optimizer = nullptr;
+    Held2ProgressObserver* observer = nullptr;
     bool stop_requested = false;
 };
 
@@ -47,7 +48,30 @@ double direct_objective(
     context.result->evaluations.push_back(std::move(evaluation));
     const Held2StageIReducedEvaluation& retained =
         context.result->evaluations.back();
+    Held2ProgressEvent progress;
+    progress.kind = Held2ProgressKind::StageIEvaluation;
+    progress.iteration = evaluation_index + 1;
+    progress.objective = retained.tpd;
+    progress.status = retained.certified ? "certified" : "failed";
+    progress.reason = retained.failure_reason;
+    if (retained.pressure_envelope.selected_root_index >= 0) {
+        const Held2PressureRoot& selected = retained.pressure_envelope.roots[
+            static_cast<std::size_t>(
+                retained.pressure_envelope.selected_root_index
+            )
+        ];
+        progress.volume = selected.volume;
+        progress.pressure_residual = selected.pressure_residual;
+    }
+    observe_held2(context.observer, progress);
     if (!retained.certified || !std::isfinite(retained.tpd)) {
+        Held2ProgressEvent failure;
+        failure.kind = Held2ProgressKind::Failure;
+        failure.stage = "STAGE I";
+        failure.reason = retained.failure_reason.empty()
+            ? "required_envelope_evaluation_failed"
+            : retained.failure_reason;
+        observe_held2(context.observer, failure);
         ++context.result->failed_evaluation_count;
         context.result->termination_reason =
             "required_envelope_evaluation_failed";
@@ -118,7 +142,8 @@ Held2StageIDirectResult solve_held2_stage_i_direct(
     std::size_t composition_dimension,
     int evaluation_budget,
     double negative_tpd_threshold,
-    const Held2StageIReducedEvaluator& evaluator
+    const Held2StageIReducedEvaluator& evaluator,
+    Held2ProgressObserver* observer
 ) {
     if (composition_dimension == 0 || evaluation_budget < 1
         || !std::isfinite(negative_tpd_threshold)
@@ -129,7 +154,7 @@ Held2StageIDirectResult solve_held2_stage_i_direct(
     result.declared_evaluation_budget = evaluation_budget;
     result.solver_version = nlopt_version_string();
     nlopt::opt optimizer(nlopt::GN_DIRECT_L, composition_dimension);
-    DirectContext context{&evaluator, &result, &optimizer, false};
+    DirectContext context{&evaluator, &result, &optimizer, observer, false};
     optimizer.set_lower_bounds(std::vector<double>(composition_dimension, 0.0));
     optimizer.set_upper_bounds(std::vector<double>(composition_dimension, 1.0));
     optimizer.set_maxeval(evaluation_budget);

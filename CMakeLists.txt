@@ -72,6 +72,7 @@ pybind11_add_module(
   cpp/src/held_stage_ii.cpp
   cpp/src/held_stage_iii.cpp
   cpp/src/held2.cpp
+  cpp/src/held2_progress.cpp
   cpp/src/held2_stage_i_direct.cpp
   cpp/src/held2_stage_ii_basin.cpp
   cpp/src/held2_stage_ii_upper.cpp

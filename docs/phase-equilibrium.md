@@ -88,6 +88,39 @@ ordered trial/accepted-iterate and upper-LP evidence, and reaches successful
 local Ipopt termination for that exact start. It still has no certified
 installed Stage-II candidate set or physical Stage-III result.
 
+### HELD2 live progress diagnostic
+
+The private installed controller accepts an internal, nullable progress
+observer. It receives already-computed reference roots, DIRECT-L evaluations,
+HiGHS bounds, Ipopt iteration metrics, certificate results, stage skips, and
+the final controller status. The default path supplies no observer and remains
+silent. Observer failures are swallowed and cannot change solver decisions,
+structured results, tolerances, budgets, or the
+`globality_certificate="not_guaranteed"` label.
+
+The smallest source-bound workflow is Perdomo et al. (2025), Table 3,
+NaCl-water at 298.15 K, 2508 Pa, and 5.6 mol NaCl per kg water. In the installed
+explicit-species ordering `(water, sodium-cation, chloride-anion)`, its frozen
+normalized feed is:
+
+```text
+(0.8321050353538131, 0.08394748232309347, 0.08394748232309347)
+```
+
+Run its real controller with live, flushing terminal output using:
+
+```bash
+pytest -s tests/test_perdomo_held2_trace.py::test_perdomo_table3_nacl_workflow --held2-live
+```
+
+Without `--held2-live`, the same test is quiet and asserts the same structured
+result. Current ePC-SAFT/Provider evidence selects the lowest of two stable
+reference roots, then fails closed at the first Stage-I trial composition
+because the Provider cannot construct that trial's molar-volume domain. Stage
+II and Stage III are reported as skipped with the exact causal reason. This is
+a workflow diagnostic, not a reproduction of Perdomo's SAFT-gamma-Mie endpoint
+and not an admitted electrolyte-LLE result.
+
 ## Shared package contract
 
 The installed `epcsaft` Provider owns resolved thermodynamic input, component
