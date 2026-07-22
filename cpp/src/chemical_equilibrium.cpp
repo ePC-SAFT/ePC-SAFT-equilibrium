@@ -886,6 +886,12 @@ SourceStandardStateResult transform_source_standard_state(
                     work[component * basis_count + column]
                 );
             }
+            for (std::size_t previous = 0; previous < column; ++previous) {
+                std::swap(
+                    r[previous * basis_count + selected],
+                    r[previous * basis_count + column]
+                );
+            }
             std::swap(permutation[selected], permutation[column]);
         }
         double norm = 0.0;
@@ -927,6 +933,11 @@ SourceStandardStateResult transform_source_standard_state(
             for (std::size_t component = 0; component < coordinate_count; ++component) {
                 projected[basis] += q[component * basis_count + basis] * values[component];
             }
+            if (!std::isfinite(projected[basis])) {
+                throw std::invalid_argument(
+                    "standard-state transformation produced non-finite coefficients"
+                );
+            }
         }
         std::vector<double> coefficients(basis_count, 0.0);
         for (std::size_t reverse = basis_count; reverse > 0; --reverse) {
@@ -936,6 +947,11 @@ SourceStandardStateResult transform_source_standard_state(
                 value -= r[row * basis_count + column] * coefficients[column];
             }
             coefficients[row] = value / r[row * basis_count + row];
+            if (!std::isfinite(value) || !std::isfinite(coefficients[row])) {
+                throw std::invalid_argument(
+                    "standard-state transformation produced non-finite coefficients"
+                );
+            }
         }
         std::vector<double> result(basis_count, 0.0);
         for (std::size_t basis = 0; basis < basis_count; ++basis) {
@@ -964,11 +980,21 @@ SourceStandardStateResult transform_source_standard_state(
         double contraction_offset = 0.0;
         for (std::size_t component = 0; component < reaction_matrix.columns; ++component) {
             scale_offset += nu[component] * log_activity_scale_factors[component];
+            if (!std::isfinite(scale_offset)) {
+                throw std::invalid_argument(
+                    "standard-state transformation produced a non-finite scale offset"
+                );
+            }
         }
         for (std::size_t basis = 0; basis < basis_count; ++basis) {
             result.reaction_to_neutral_basis(reaction, basis) = coefficients[basis];
             contraction_offset += coefficients[basis]
                 * reference.log_fugacity_contractions[basis];
+            if (!std::isfinite(contraction_offset)) {
+                throw std::invalid_argument(
+                    "standard-state transformation produced a non-finite reference offset"
+                );
+            }
         }
         double reaction_scale = 0.0;
         double reconstruction_scale = 0.0;
@@ -977,14 +1003,30 @@ SourceStandardStateResult transform_source_standard_state(
             for (std::size_t basis = 0; basis < basis_count; ++basis) {
                 reconstructed += coefficients[basis] * neutral_basis(basis, component);
             }
+            if (!std::isfinite(reconstructed)) {
+                throw std::invalid_argument(
+                    "standard-state transformation produced a non-finite reconstruction"
+                );
+            }
             reaction_scale = std::max(reaction_scale, std::abs(nu[component]));
             reconstruction_scale = std::max(reconstruction_scale, std::abs(reconstructed));
-            residual = std::max(residual, std::abs(reconstructed - nu[component]));
+            const double component_residual = std::abs(reconstructed - nu[component]);
+            if (!std::isfinite(component_residual)) {
+                throw std::invalid_argument(
+                    "standard-state transformation produced a non-finite residual"
+                );
+            }
+            residual = std::max(residual, component_residual);
         }
         const double representation_tolerance = kResidualMultiplier
             * std::numeric_limits<double>::epsilon()
             * std::max({reaction_scale, reconstruction_scale, std::numeric_limits<double>::min()})
             * static_cast<double>(std::max<std::size_t>(1, reaction_matrix.columns));
+        if (!std::isfinite(residual) || !std::isfinite(representation_tolerance)) {
+            throw std::invalid_argument(
+                "standard-state transformation produced a non-finite residual bound"
+            );
+        }
         if (residual > representation_tolerance) {
             throw std::invalid_argument(
                 "source reaction is outside the Provider neutral-reference span"
@@ -993,9 +1035,15 @@ SourceStandardStateResult transform_source_standard_state(
         result.representation_residual_inf_norm = std::max(
             result.representation_residual_inf_norm, residual
         );
-        result.standard_offsets[reaction] = scale_offset + contraction_offset;
-        result.ln_k_provider_basis[reaction] = source_ln_k[reaction]
-            + result.standard_offsets[reaction];
+        const double standard_offset = scale_offset + contraction_offset;
+        const double transformed_ln_k = source_ln_k[reaction] + standard_offset;
+        if (!std::isfinite(standard_offset) || !std::isfinite(transformed_ln_k)) {
+            throw std::invalid_argument(
+                "standard-state transformation produced a non-finite result"
+            );
+        }
+        result.standard_offsets[reaction] = standard_offset;
+        result.ln_k_provider_basis[reaction] = transformed_ln_k;
     }
     result.derivative_availability = reference.derivative_availability;
     result.basis_id = reference.basis_id;

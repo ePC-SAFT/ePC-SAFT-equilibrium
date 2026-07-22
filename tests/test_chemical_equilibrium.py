@@ -863,6 +863,55 @@ def test_generic_standard_state_transform_is_basis_and_species_order_invariant()
         transformed["ln_k_provider_basis"]
     )
 
+    # This basis is deliberately non-orthogonal.  Its largest row is last, and
+    # the second QR pivot occurs only after a nonzero first-row projection.
+    # It therefore exercises the prior-R bookkeeping required by column pivoting.
+    nonorthogonal_basis = copy.deepcopy(source)
+    nonorthogonal_basis["reference"] = copy.deepcopy(reference)
+    nonorthogonal_basis["reference"]["neutral_basis"] = [
+        [1.0, -1.0, -1.0, 0.0, 0.0],
+        [9.0, 9.0, 9.0, 1.0, 1.0],
+        [10.0, 10.0, 10.0, 1.0, 1.0],
+    ]
+    nonorthogonal_basis["reference"]["log_fugacity_contractions"] = [
+        contractions[0] - contractions[1],
+        9.0 * contractions[0] + 9.0 * contractions[1] + contractions[2],
+        10.0 * contractions[0] + 10.0 * contractions[1] + contractions[2],
+    ]
+    nonorthogonal_transformed = _equilibrium._chemical_transform_source_standard_state(
+        nonorthogonal_basis
+    )
+    assert nonorthogonal_transformed["standard_offsets"] == pytest.approx(
+        transformed["standard_offsets"], abs=2.0e-12
+    )
+    assert nonorthogonal_transformed["ln_k_provider_basis"] == pytest.approx(
+        transformed["ln_k_provider_basis"], abs=2.0e-12
+    )
+
+    # A component-reference gauge delta can be moved between the source
+    # activity scales and Provider neutral contractions.  Since nu = alpha B,
+    # nu.(s + delta) + alpha.(c - B delta) = nu.s + alpha.c.
+    gauge = [0.7, -0.4, 0.2, 0.9, -0.3]
+    gauged = copy.deepcopy(source)
+    gauged["reference"] = copy.deepcopy(reference)
+    gauged["log_activity_scale_factors"] = [
+        value + shift
+        for value, shift in zip(source["log_activity_scale_factors"], gauge, strict=True)
+    ]
+    gauged["reference"]["log_fugacity_contractions"] = [
+        contraction - sum(row[i] * gauge[i] for i in range(len(gauge)))
+        for row, contraction in zip(
+            reference["neutral_basis"], contractions, strict=True
+        )
+    ]
+    gauged_transformed = _equilibrium._chemical_transform_source_standard_state(gauged)
+    assert gauged_transformed["standard_offsets"] == pytest.approx(
+        transformed["standard_offsets"]
+    )
+    assert gauged_transformed["ln_k_provider_basis"] == pytest.approx(
+        transformed["ln_k_provider_basis"]
+    )
+
     small_basis = copy.deepcopy(source)
     small_basis["reference"] = copy.deepcopy(reference)
     small_basis["reference"]["neutral_basis"] = [
@@ -964,6 +1013,15 @@ def test_generic_standard_state_transform_rejects_unsupported_records() -> None:
             },
         ),
         ("nonfinite scale", {"log_activity_scale_factors": [math.nan, 0.0, 0.0]}),
+        (
+            "finite input overflow",
+            {
+                "reference": {
+                    **reference,
+                    "log_fugacity_contractions": [1.0e308, 1.0e308, 1.0e308],
+                }
+            },
+        ),
         ("derivative claim", {"reference": {**reference, "derivative_availability": 1}}),
     )
     for _claim, mutation in mutations:
