@@ -13,7 +13,9 @@ reference-hardening runtime is archived at
 `archive/held2-pre-strategy-2026-07-21` as non-production evidence.
 Organization doctrine revision 3 and
 [the package authority map](../phase-equilibrium.md) govern ownership and the
-claim boundary.
+claim boundary. The canonical future numerical decomposition and guarded
+execution order are in the
+[HELD2 solver-strategy implementation plan](../plans/2026-07-21-perdomo-held2-solver-strategy.md).
 
 The archived subject exposed the controller through the existing public
 `tp_flash` operation for qualifying installed Provider capability tables.
@@ -39,19 +41,31 @@ The formulation does not cover:
 - caller-supplied phase counts, phase guesses, seeds, or solver settings;
 - a chemistry-named or case-specific controller branch;
 - copied Provider equations or parameter fitting;
-- a fallback solver or numerical production derivatives; or
+- a caller-selectable or silent fallback solver, or numerical production
+  derivatives; or
 - deterministic global optimization or a global-stability certificate.
 
 Any resumed public implementation must reuse `tp_flash`, `TpFlashResult`,
 `HeldDiagnostics`, and `FlashError`. It must also reuse the existing native
-module, target, `ProviderContext`, Ipopt adapter, and HELD2
-result/diagnostic owner.
+module, target, `ProviderContext`, HELD2 result/diagnostic owner, and the
+Stage-II/III Ipopt adapters where the solver-strategy plan assigns Ipopt.
+NLopt and HiGHS are approved future internal dependencies only for their named
+stage responsibilities; they are not current-main dependencies or public
+solver choices.
 
 ## Scientific sources and notation
 
 Perdomo et al. (2025), Sections 2.2, 3.2, 3.5, and 4, including Algorithm 1
-and Problems (64)--(67), is the primary HELD2 source. Pereira et al. (2012),
+and Problems (63)--(67), is the primary HELD2 source. Pereira et al. (2012),
 Sections 3.1--3.3, is the source for the parent three-stage HELD structure.
+
+Perdomo reports an in-house tunnelling method for Stage I, NAG E04UCA for the
+nonconvex lower Problem (65), and NAG E04MFA for the upper Problem (64). The
+paper fixes the thermodynamic problems and controller logic, not those library
+identities. The package strategy deliberately maps the same responsibilities
+to DIRECT-L, exact-Hessian Ipopt, and HiGHS respectively. This implementation
+choice must not be described as a verbatim reproduction of Perdomo's numerical
+software.
 
 The permanent-lab paper Markdown and `docs/latex/equilibrium_formulations.tex`
 are retained provenance. The lab M4 Perdomo doctrine is a concise scientific
@@ -179,10 +193,12 @@ Hessian_y(f)  = J^T Hessian_w(f) J
 where `J = partial w / partial y`. These are coordinate transformations of the
 single Provider tensor owner, not alternate thermodynamic derivatives.
 
-The controller uses three related charts:
+The controller uses related charts at different numerical layers:
 
-- Stage-I physical modified compositions plus `log(V)`;
-- Stage-II feasible-simplex coordinates plus `q = log(eta)`; and
+- the Stage-I and Stage-II discovery layers use bounded independent modified
+  compositions, while the nested pressure-root service searches `log(V)`;
+- Stage-II local refinement uses feasible-simplex coordinates plus
+  `q = log(eta)`; and
 - Stage-III phase fractions, per-phase modified compositions, and per-phase
   `q`, with extensive material bookkeeping.
 
@@ -236,10 +252,21 @@ the modified tangent-plane distance in modified composition and volume. The
 reference state has zero TPD by construction. Trial states must satisfy the
 Provider source, composition, charge, packing, and volume domains.
 
-The search uses the declared deterministic finite multistart, seed, Ipopt
-iteration cap, and tolerances. Start generation maps every declared start into
-the feasible Provider source domain; starts are not skipped or replaced with
-case constants.
+The archived WIP used a declared deterministic finite Ipopt multistart in
+modified composition and volume. That remains regression evidence, not the
+canonical target search. The approved implementation reduces volume at each
+trial composition through the deterministic pressure-root service and defines
+the lower TPD envelope over eligible strict-stable pressure roots. It then uses
+NLopt `NLOPT_GN_DIRECT_L` over the bounded `C - 2` modified-composition chart.
+The lower envelope may be nonsmooth where the selected density branch changes,
+so Stage I does not require a global derivative or a local NLP polish to accept
+an independently certified negative witness.
+
+The DIRECT-L evaluation budget and completion contract must be frozen from a
+bounded implementation assignment and measured evidence. They must not be
+silently inherited from the archived 50-start profile or used to change a
+physical tolerance. The archived Ipopt multistart remains a named regression
+oracle until the replacement has parity evidence.
 
 Terminal precedence is asymmetric:
 
@@ -253,6 +280,11 @@ Terminal precedence is asymmetric:
 - Without a confirmed negative witness or complete no-negative accounting, the
   result remains indeterminate or resource-limited.
 
+A Provider failure or incomplete pressure-root evaluation is never converted
+to a large finite objective penalty. It remains explicit search evidence. Such
+a failure prevents a completed no-negative claim, although it does not erase a
+separately certified negative existence witness.
+
 `negative_tpd` is an existence claim, not complete phase enumeration or a
 globally optimal split.
 
@@ -262,8 +294,22 @@ globally optimal split.
 
 Stage II implements the Perdomo semi-infinite dual strategy. The upper problem
 is a finite linear program in the modified multipliers over the complete
-retained cut pool. Each nonconvex lower problem minimizes the reduced phase
-function in modified composition and packing/volume at the current multiplier.
+retained cut pool. The canonical production owner for this Problem-(64) LP is
+HiGHS, with Equilibrium independently recomputing its objective, row
+activities, primal residual, and dual residual. The current analytic envelope
+implementation remains a manufactured test oracle, not the future general
+production solver.
+
+Each nonconvex lower Problem-(65) minimizes the reduced phase function in
+modified composition and packing/volume at the current multiplier. Its
+canonical strategy is global basin discovery followed by accurate local
+refinement: continuation states, retained cut states, Stage-I witnesses,
+source-independent physical seeds, deterministic Sobol samples, and one
+stall-triggered DIRECT-L pressure-envelope exploration propose distinct
+physical basins; exact-Hessian Ipopt then refines every retained
+representative. SLSQP is not the default replacement because it remains local
+and does not use the exact Provider-derived Hessian already available to the
+Ipopt path.
 
 Each certified improving lower terminal may add one cut. A certified improving
 point is existence evidence: unrelated incomplete starts do not erase it.
@@ -272,17 +318,19 @@ accounting remains mandatory before declaring no improving cut or a final
 finite-search gap.
 
 The controller retains cut identity, bounds, multipliers, attempt completion,
-Provider/domain failures, candidate status, and bounded no-progress/resource
-exits. The full cut pool is not the same concept as the current candidate phase
-set.
+Provider/domain failures, discovery source, physical basin identity, candidate
+status, and bounded no-progress/resource exits. The full cut pool is not the
+same concept as the current candidate phase set. Global exploration proposes
+basins; it does not certify KKT conditions or prove that the global lower
+minimum was found.
 
 ### Feasible-simplex and packing charts
 
-Stage-II lower solves use one private lower-shifted feasible-simplex chart. It
-maps the unchanged deterministic physical starts into an interior cube while
-preserving all independent lower bounds and the dependent-fraction upper sum.
-Arbitrary Ipopt trial points therefore remain inside the physical modified
-simplex before a strict Provider evaluation.
+Stage-II lower local-refinement solves use one private lower-shifted
+feasible-simplex chart. It maps each retained physical basin representative
+into an interior cube while preserving all independent lower bounds and the
+dependent-fraction upper sum. Arbitrary Ipopt trial points therefore remain
+inside the physical modified simplex before a strict Provider evaluation.
 
 The chart supplies exact value, Jacobian, and Hessian chain rules. Terminal
 acceptance is recomputed in original `u,q` coordinates. Internal chart KKT is
@@ -357,7 +405,7 @@ plus the declared candidate neighborhoods. The omitted dependent modified
 balance follows from normalization; the physical lift and electroneutrality
 recover ordinary balances.
 
-The implementation is one general `m_p` TNLP. It computes material and
+The implementation is one general exact-Hessian Ipopt `m_p` TNLP. It computes material and
 per-phase simplex constraints algebraically before Provider evaluation. Every
 phase has one linear dependent-fraction inequality with exact constant
 Jacobian and zero Hessian contribution. Its multiplier contributes to the full
@@ -373,8 +421,10 @@ terminal fails closed.
 Candidate sets that are infeasible, incomplete, nonconverged, or physically
 rejected return to Stage II under the existing controller policy. Duplicate
 phases may be merged only through the current evidence-backed lifecycle. A
-small phase amount alone does not authorize KKT-inactive retirement, and this
-design does not claim unimplemented retirement semantics.
+small phase amount alone does not authorize KKT-inactive retirement. Future
+retirement requires a phase-amount bound, correct multiplier sign,
+complementarity, a non-descending reduced derivative, remaining-balance
+feasibility, one-at-a-time retirement, and an active-set re-solve.
 
 The source requires bound complementarity and logarithmic refinement for
 trace-bound components. The archived WIP runtime detected that condition and
@@ -433,9 +483,11 @@ The resulting source-topology disagreement is evidence, not an electrolyte-LLE
 admission or a Perdomo numerical reproduction.
 
 D-026 identified one source-complete, installed, public, genuinely two-liquid
-ePC-SAFT case as the next critical gate. After the WIP cleanup and strategy
-revision, a new bounded assignment must rebind that gate. Any resumed generic
-controller must, without a chemistry-specific branch or retuning:
+ePC-SAFT case as the next critical gate. The solver strategy is now canonized,
+but no runtime implementation is authorized or started. A new bounded
+assignment and compatible corrected Provider artifact must rebind that gate.
+Any resumed generic controller must, without a chemistry-specific branch or
+retuning:
 
 1. establish Stage-I instability;
 2. form eligible Stage-II candidates with truthful search accounting;

@@ -26,6 +26,35 @@ never promoted separately.
 scikit-build-core, pytest, and an exact installed provider wheel containing
 the neutral-mixture `epcsaft.native_sdk.v1` tail.
 
+## Outcome Proof
+
+**Intent:** Preserve the executed neutral HELD controller contract and its `NON_ADMISSION` evidence while keeping the deferred lifecycle correction inactive.
+**Current Behavior:** Current `tp_flash` serves the bounded neutral methane/ethane candidate; its installed campaign is `NON_ADMISSION`, and Task 8 has no implementation authority.
+**Expected Outcome:** Tasks 1--7 remain reproducible provenance, the fixed-route displacement remains complete, and any Task-8 revival starts from a new governed leaf.
+**Target Output:** One `TpFlashResult` or `FlashError` with separate solver, numerical, physical, search, and non-globality evidence for the reviewed neutral scope.
+**Owner:** Equilibrium owns the HELD controller, certification, and result; the installed Provider owns phase thermodynamics and nonlinear tensors.
+**Interface:** Public `tp_flash(model, T, P, z)` with private Stage-I/II/III native implementation and no public stage or solver controls.
+**Cutover:** Tasks 1--7 completed the cutover from fixed `two_phase_flash` to the single `tp_flash` surface.
+**Replaced Path:** The fixed-route API, result, diagnostics, native sources, tests, stubs, exports, and documentation were deleted without alias.
+**Evidence:** Source tests, derivative checks, review checkpoints, isolated-wheel records, installed Validation `NON_ADMISSION`, and retired-owner negative-space checks.
+**Acceptance Proof:** The exact candidate remains reproducible, all diagnostic axes and resource outcomes remain truthful, and current source contains no displaced fixed-route owner.
+**Stop Criteria:** Stop on authority expansion, changed resource or tolerance contracts, Provider mismatch, failed evidence replay, or an attempt to execute deferred Task 8 without a new leaf.
+**Avoid:** Do not reinterpret `NON_ADMISSION`, promise globality, revive fixed routes, add generic phase APIs, or silently activate the deferred redesign.
+**Risk:** Mixing executed Tasks 1--7 with deferred Task 8 could mutate a frozen candidate and invalidate its immutable campaign evidence.
+
+## Implementation Boundaries
+
+**Files To Create:** The executed tasks created the HELD stage owners, tests, one candidate receipt, and retained artifact records; Task 8 creates nothing without separate authority.
+**Files To Modify:** Only the package HELD owners, public `tp_flash` surface, tests, and governing documentation named in the executed tasks.
+**Files To Avoid:** Provider implementation, Validation evidence, accepted pure-saturation authority, retired fixed-route files, release metadata, and user-owned IDE state.
+**Source Of Truth:** The neutral HELD design, frozen v1 resource profile, exact Provider artifact, candidate receipt, and installed Validation verdict.
+**Read Path:** Canonical design, retained source identity, immutable artifacts and receipts, current source, and Validation campaign evidence.
+**Write Path:** No active write path for the frozen candidate; a separately authorized Task-8 leaf may modify only its named HELD sources and tests.
+**Integration Points:** `tp_flash`, `ProviderContext`, Ipopt Stage-I/II/III problems, typed diagnostics, isolated-wheel build, and Validation campaign handoff.
+**Migration Or Cutover:** The fixed-route-to-HELD cutover is complete; Task 8 is a deferred correction, not a new migration.
+**Replaced Path Handling:** Keep `two_phase_flash` and every duplicate owner deleted, with negative-space evidence covering symbols, bindings, sources, tests, and docs.
+**Acceptance Proof Gate:** Preserve the exact frozen candidate and `NON_ADMISSION` evidence; any future correction needs new tests, artifact identity, review, and Validation before promotion can be considered.
+
 ## Global constraints
 
 - Read `AGENTS.md`, `CONTEXT.md`, `ARCHITECTURE.yaml`,
@@ -78,6 +107,10 @@ stage_iii_candidate_radius_mol: 1e-3
 **Produces:** focused failing tests for private native Stage I evaluators; no
 production edit or public partial stage.
 
+**Use Cases:**
+
+- Make Stage-I acceptance evidence visible before implementation and prevent a partial public controller path.
+
 - [ ] Add private-evaluator tests for `g_bar`, pressure stationarity, reduced
   composition gradient, log-volume gradient/Hessian, TPD sign, reference
   selection, deterministic starts, negative confirmation, no-negative-found,
@@ -100,6 +133,10 @@ production edit or public partial stage.
 - Modify: `tests/test_held.py`
 
 **Consumes:** existing `ProviderContext::evaluate_mixture` only.
+
+**Use Cases:**
+
+- Establish exact derivative and negative-witness proof while detecting any duplicate EOS or density owner.
 
 - [ ] Add failing private-evaluator tests for `g_bar`, pressure stationarity,
   reduced composition gradient, log-volume gradient/Hessian, and TPD.
@@ -132,6 +169,10 @@ absence of a false stability/globality claim before Task 3.
 - Modify: `cpp/src/module.cpp`
 - Modify: `tests/test_held.py`
 
+**Use Cases:**
+
+- Verify the complete cut envelope against an independent oracle before Stage-II acceptance can progress.
+
 - [ ] Write failing tests using explicit synthetic cut coefficients for a
   unique vertex, tied vertices, redundant cuts, nearly parallel cuts,
   infeasibility, and an unbounded/missing-endpoint initialization.
@@ -155,6 +196,10 @@ absence of a false stability/globality claim before Task 3.
 - Modify: `cpp/src/held.hpp`
 - Modify: `cpp/src/module.cpp`
 - Modify: `tests/test_held.py`
+
+**Use Cases:**
+
+- Retain distinct candidate evidence, deduplicate repeated basins, and expose resource exhaustion instead of fabricating a completed search.
 
 - [ ] Write failing tests for one lower solve below the current upper bound,
   one valid but non-tight cut, deterministic start ordering, bound
@@ -190,6 +235,10 @@ minimality before Task 5.
 - Modify: `cpp/src/two_phase_flash.cpp`
 - Modify: `cpp/src/module.cpp`
 - Modify: `tests/test_held.py`
+
+**Use Cases:**
+
+- Prove direct total-free-energy refinement and feedback while rejecting a fallback to the displaced fixed-phase solution.
 
 - [ ] Write failing tests for lever-rule initialization, `+/-1e-3 mol`
   candidate-neighborhood bounds, infeasible balances, exact Stage III
@@ -227,6 +276,10 @@ Stage-I/II/III controller and feedback semantics before public cutover.
 - Delete: `cpp/src/two_phase_flash.hpp`
 - Delete: `tests/test_two_phase_flash.py`
 
+**Use Cases:**
+
+- Complete one atomic public cutover that deletes the fixed-route API, tests, bindings, and duplicate result owners without an alias.
+
 - [ ] First add the RED public contract tests requiring
   `tp_flash(model,T,P,z) -> TpFlashResult`, existing `PhaseState`, one compact
   `HeldDiagnostics`, existing `FlashError`, the frozen outcome vocabulary, and
@@ -255,6 +308,10 @@ Stage-I/II/III controller and feedback semantics before public cutover.
 - Modify: `AGENTS.md` only if the active scope sentence requires narrowing
 - Create: one candidate receipt under the existing receipt category
 - Modify: `docs/designs/2026-07-17-neutral-held-v1.md` status only
+
+**Use Cases:**
+
+- Produce immutable installed-artifact evidence and stop at the review and Validation authority boundary.
 
 - [ ] Update current capability prose to distinguish accepted pure saturation
   from local `neutral-held-v1`; retain `globality=not_guaranteed`, exact
@@ -296,6 +353,10 @@ test, build, artifact, receipt, resource, tolerance, or public-surface change.
 - Modify: `cpp/src/held.cpp` only if controller handoff requires it
 - Modify: `cpp/src/module.cpp` only for the existing private trace converter
 - Modify: `tests/test_held.py`
+
+**Use Cases:**
+
+- Under a future governed leaf, correct candidate-pair retirement and duplicate-basin progress without reopening the deleted fixed route.
 
 - [ ] Treat design Section 13 as the sole semantic owner. Implement its
   separate cut/provisional-candidate/current-pair ownership, deterministic

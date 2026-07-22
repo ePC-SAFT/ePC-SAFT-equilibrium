@@ -9,7 +9,8 @@ Before work, read doctrine revision 3 at
 `https://github.com/ePC-SAFT/.github/blob/main/GOVERNANCE.md`. Local policy may
 narrow that doctrine but must not contradict it.
 
-This repository is limited to equilibrium routes, phase discovery, local
+This repository is limited to equilibrium routes, phase discovery,
+deterministic root and finite global exploration, stage-owned LPs and local
 NLPs, Ipopt, certification, and equilibrium results. It consumes a compatible
 installed provider and does not own provider internals or Ceres.
 
@@ -20,8 +21,8 @@ are scientific and migration provenance, not current package authority.
 ## Agent home and Validation work
 
 - The Equilibrium agent remains rooted in this repository and is the sole owner
-  of equilibrium formulations, phase discovery, Ipopt execution, certification,
-  diagnostics, and equilibrium result contracts.
+  of equilibrium formulations, phase discovery, equilibrium-solver execution,
+  certification, diagnostics, and equilibrium result contracts.
 - When Migration assigns a bounded Equilibrium campaign, this same agent may use
   a clean checkout or worktree of the sibling Validation repository to author
   and execute it. Its task home does not move to Validation.

@@ -18,7 +18,7 @@ replace a formulation owner.
 | --- | --- | --- |
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
-| Strong-electrolyte Perdomo HELD2 | [Perdomo HELD2](designs/2026-07-21-perdomo-held2.md) | Current `main` retains the private manufactured Stage-I/II/III foundation; the installed public-dispatch subject is archived non-production evidence, and electrolyte LLE is not admitted |
+| Strong-electrolyte Perdomo HELD2 | [Perdomo HELD2](designs/2026-07-21-perdomo-held2.md) and [solver-strategy plan](plans/2026-07-21-perdomo-held2-solver-strategy.md) | The numerical strategy is canonized but unimplemented; current `main` retains the private manufactured Stage-I/II/III foundation, the installed public-dispatch subject is archived non-production evidence, and electrolyte LLE is not admitted |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Reactive or coupled phase-chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
@@ -67,6 +67,11 @@ Provider domain and derivative contracts, homogeneous reference selection,
 modified-coordinate stability search, complete-cut Stage II, general candidate
 set Stage III, and formulation-specific certificates. Perdomo modified moles
 must not be replaced by or conflated with Ascani counterion-pair coordinates.
+The linked implementation plan assigns deterministic pressure-root
+enumeration to density topology, DIRECT-L to the reduced Stage-I search, HiGHS
+to the Stage-II upper LP, basin exploration plus exact-Hessian Ipopt to the
+Stage-II lower problem, and exact-Hessian Ipopt to Stage III. These are future
+internal owners, not current public behavior or caller-selectable backends.
 
 ## Shared package contract
 
@@ -77,7 +82,9 @@ Equilibrium owns:
 
 - fixed-`T,P` equilibrium formulations and coordinate transformations;
 - phase stability and discovery controllers;
-- Ipopt problem construction and exact Lagrangian derivatives;
+- deterministic root and finite global-exploration accounting;
+- stage-specific LP and NLP construction, including exact Lagrangian
+  derivatives where required;
 - local numerical and physical certification;
 - fail-closed controller outcomes and typed results; and
 - package-authored, public-artifact Validation campaigns assigned by Migration.
@@ -94,7 +101,8 @@ Every mixture result keeps the following questions independent:
 
 1. **Artifact and input completeness:** Is the installed Provider table,
    fingerprint, component order, temperature, feed, and model domain suitable?
-2. **Solver status:** What did Ipopt or the bounded controller terminate with?
+2. **Solver status:** What did the assigned root search, global explorer, LP
+   solver, local NLP solver, or bounded controller terminate with?
 3. **Numerical status:** Do original-coordinate feasibility, stationarity,
    complementarity, derivative, and search-accounting checks pass?
 4. **Physical status:** Do balance, normalization, charge, pressure, potential,

@@ -17,6 +17,35 @@ candidate.
 
 **Tech Stack:** Python 3.13, C++17, pybind11, Ipopt, CMake, scikit-build-core, pytest, installed `epcsaft.native_sdk.v1`.
 
+## Outcome Proof
+
+**Intent:** Preserve the exact implementation and evidence record for the superseded fixed-two-phase candidate without authorizing its revival.
+**Current Behavior:** The `two_phase_flash` route and result family are removed; Validation retains the candidate as `NON_ADMISSION` evidence.
+**Expected Outcome:** Readers can reproduce the historical candidate and understand why the successor HELD controller displaced it, while runtime stays on the successor surface.
+**Target Output:** Historical `TwoPhaseFlashResult` candidate evidence only; no current public output or compatibility alias.
+**Owner:** Equilibrium owns the retained formulation history; the neutral HELD design owns the successor controller and public `tp_flash` route.
+**Interface:** Historical `two_phase_flash` and its private native solve seam, both retired from current runtime.
+**Cutover:** Completed when neutral HELD introduced `tp_flash` and deleted the fixed-route public and native surfaces.
+**Replaced Path:** `two_phase_flash`, `TwoPhaseFlashResult`, duplicate diagnostics, native bindings, sources, tests, stubs, exports, and documentation were removed without redirect or alias.
+**Evidence:** The frozen implementation history, installed-artifact campaign, `NON_ADMISSION` result, successor negative-space tests, and canonical designs.
+**Acceptance Proof:** Current source exposes no retired symbols, preserves the historical evidence, and leaves the accepted pure-saturation capability unchanged.
+**Stop Criteria:** Stop on any proposal to reopen this plan, restore a compatibility path, reinterpret `NON_ADMISSION`, or change runtime from historical documentation work.
+**Avoid:** Do not revive fixed-phase public APIs, overwrite evidence, modify Provider ownership, or infer global phase stability.
+**Risk:** Treating an executed historical checklist as an active plan could restore a scientifically superseded route or erase the reason for its retirement.
+
+## Implementation Boundaries
+
+**Files To Create:** Historical implementation files and evidence are listed task by task; no file creation is authorized now.
+**Files To Modify:** Only canonical status or provenance references may change under a separate documentation assignment.
+**Files To Avoid:** Current runtime sources, Provider code, accepted receipts, Validation records, artifacts, and unrelated IDE state.
+**Source Of Truth:** The superseded fixed-route design, its immutable campaign evidence, and the neutral HELD successor design.
+**Read Path:** Git history, retained design and plan, immutable Validation evidence, and current negative-space tests.
+**Write Path:** No active implementation path; documentation-only corrections require their own bounded GitHub leaf.
+**Integration Points:** Historical Provider mixture SDK, Ipopt TNLP, Python result conversion, and the successor `tp_flash` cutover.
+**Migration Or Cutover:** Neutral HELD owns the completed migration away from this route.
+**Replaced Path Handling:** Keep every retired symbol deleted and prove absence rather than adding redirects, aliases, or wrappers.
+**Acceptance Proof Gate:** Current exports and native sources must show no fixed-route owner while canonical evidence still explains the `NON_ADMISSION` outcome.
+
 ## Global Constraints
 
 - Read `AGENTS.md`, `CONTEXT.md`, `ARCHITECTURE.yaml`, the accepted pure-saturation design/receipt, and the canonical Slice 2 design before editing.
@@ -45,6 +74,10 @@ candidate.
 **Interfaces:**
 - Consumes: accepted pure-saturation authority from promotion 0018.
 - Produces: `two_phase_flash(...) -> TwoPhaseFlashResult` and one extended `PhaseState`.
+
+**Use Cases:**
+
+- Preserve the original public-contract evidence so the later cutover can prove which surface it retired.
 
 - [ ] **Step 1: Correct stale authority wording**
 
@@ -115,6 +148,10 @@ git commit -m "test: freeze local two phase flash contract"
 - Consumes: accepted pure SDK prefix plus reviewed mixture SDK tail.
 - Produces: one `ProviderContext` that validates/retains the capsule and evaluates pure or mixture phase blocks.
 
+**Use Cases:**
+
+- Demonstrate one Provider boundary and detect a duplicate or private Provider implementation path.
+
 - [ ] **Step 1: Add malformed tail tests**
 
 Construct ctypes capsules with wrong table size, result size, component count, null callback, wrong coordinate count, short buffers, nonfinite tensors, wrong fingerprint, and callback errors. Require the native boundary to reject each with a structured message before Ipopt starts.
@@ -174,6 +211,10 @@ git commit -m "refactor: share provider capsule context"
 **Interfaces:**
 - Consumes: `ProviderContext::evaluate_mixture`.
 - Produces: native objective, gradient, constraints, Jacobian, and exact Lagrangian Hessian in six solver coordinates.
+
+**Use Cases:**
+
+- Retain exact derivative proof for the historical local NLP without converting local convergence into phase-discovery evidence.
 
 - [ ] **Step 1: Add a native evaluation hook test**
 
@@ -240,6 +281,10 @@ git commit -m "feat: add direct two phase TP objective"
 - Consumes: exact TNLP and fixed feed.
 - Produces: native solve payload with separate solver, numerical, and local-physical evidence.
 
+**Use Cases:**
+
+- Make acceptance evidence visible for local states and reject collapsed or uncertified terminals despite solver success.
+
 - [ ] **Step 1: Add success and adversarial tests**
 
 Require deterministic attempts in both binary enrichment directions, a confirmation attempt from perturbed volumes/phase split, and rejection for collapsed phases, active trace bounds, role reversal after density ordering, failed KKT, callback error, unacceptable Ipopt termination, or confirmation disagreement.
@@ -289,6 +334,10 @@ git commit -m "feat: solve local neutral two phase flash"
 - Consumes: fixed native payload.
 - Produces: immutable public result and structured `FlashError`.
 
+**Use Cases:**
+
+- Preserve the accepted saturation interface while documenting the fixed-route result that the successor later deleted.
+
 - [ ] **Step 1: Implement exact result conversion**
 
 Define `FlashDiagnostics` fields for attempts, bounds, constraint violation, confirmation deltas, material balance, pressure stationarity, chemical-potential equality, KKT norm, phase distance, exact derivatives, failure reason, and `globality_certificate=False`. Missing or wrong-sized native fields raise `RuntimeError`; Python does not infer acceptance.
@@ -322,6 +371,10 @@ git commit -m "feat: expose local two phase flash result"
 **Interfaces:**
 - Consumes: immutable provider/equilibrium wheels and validation-owned May 2015 source/tolerance contract.
 - Produces: one local methane/ethane candidate subject for migration review.
+
+**Use Cases:**
+
+- Retain installed-artifact and `NON_ADMISSION` evidence while preventing the superseded candidate from becoming a new migration or promotion path.
 
 - [ ] **Step 1: Document exact capability and equations**
 

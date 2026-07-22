@@ -19,8 +19,11 @@ not change scientific admission or runtime authority.
 
 Canonical package-local phase-equilibrium documentation is indexed in
 `docs/phase-equilibrium.md`. The detailed current Perdomo formulation owner is
-`docs/designs/2026-07-21-perdomo-held2.md`; the accepted pure-saturation and
-frozen neutral-HELD designs retain their existing ownership.
+`docs/designs/2026-07-21-perdomo-held2.md`; its canonical future numerical
+implementation plan is
+`docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. The accepted
+pure-saturation and frozen neutral-HELD designs retain their existing
+ownership.
 
 The lab copy is non-authoritative provenance and research for this accepted
 slice. The receipt does not imply phase discovery, global stability, mixture
@@ -70,9 +73,13 @@ electrolyte-LLE or Perdomo numerical-reproduction admission.
 
 D-026 identified one source-complete installed ePC-SAFT two-liquid case as the
 next public Stage-I/II/III evidence gate. After archival of the experimental
-runtime, implementation waits for a new bounded strategy assignment and exact
-Provider artifact. No speculative case constants, route, tolerance, resource,
-or runtime correction is active.
+runtime, the numerical strategy is now canonized but unimplemented:
+deterministic pressure-root enumeration, DIRECT-L reduced-envelope Stage I,
+HiGHS Stage-II upper LP, global basin discovery plus exact-Hessian Ipopt for
+the Stage-II lower problem, and exact-Hessian Ipopt Stage III. Implementation
+waits for a new bounded assignment and an exact compatible corrected Provider
+artifact. No speculative case constants, route, tolerance, resource, or
+runtime correction is active. Current `main` still links only Ipopt.
 
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD
@@ -153,3 +160,5 @@ candidate receipt do not admit the provider mixture tail or create an accepted
 equilibrium capability.
 
 `implementation_plan_status: controller_redesign_design_deferred`
+
+`perdomo_held2_solver_strategy_status: canonized-unimplemented`

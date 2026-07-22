@@ -91,8 +91,18 @@ homogeneous phase and a cross-EOS source-topology disagreement. It does not admi
 electrolyte LLE or reproduce Perdomo's SAFT-gamma-Mie numerical endpoints. The
 future gate remains one source-complete installed ePC-SAFT case that reaches
 and passes Stage II and Stage III with two distinct liquids. It requires a new
-bounded strategy assignment and exact Provider artifact before runtime work
-resumes.
+bounded implementation assignment and exact corrected Provider artifact before
+runtime work resumes.
+
+The future HELD2 solver strategy is now canonized in
+`docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. It assigns
+deterministic pressure-root enumeration to homogeneous and trial-composition
+density topology, NLopt DIRECT-L to the reduced Stage-I TPD search, HiGHS to
+the Stage-II upper LP, global basin discovery plus exact-Hessian Ipopt to the
+Stage-II lower problem, and exact-Hessian Ipopt to Stage III. SLSQP is not the
+default replacement for Ipopt. This is a plan, not current runtime behavior:
+current `main` still links only Ipopt, exposes no electrolyte public dispatch,
+and admits no electrolyte capability.
 
 The earlier fixed-two-phase campaign remains `NON_ADMISSION` under the frozen
 May `3*u_c` composition contract: 12 of 17 rows passed, rows 002/009/010/011
@@ -148,7 +158,9 @@ The canonical documentation map is `docs/phase-equilibrium.md`. Detailed
 formulation owners are
 `docs/designs/2026-07-17-pure-saturation-slice.md`,
 `docs/designs/2026-07-17-neutral-held-v1.md`, and
-`docs/designs/2026-07-21-perdomo-held2.md`. Migration receipt
+`docs/designs/2026-07-21-perdomo-held2.md`; the canonical future HELD2
+execution plan is
+`docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
 solve is not a phase-discovery or global-stability proof. The local HELD
