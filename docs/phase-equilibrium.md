@@ -19,7 +19,7 @@ replace a formulation owner.
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
 | Strong-electrolyte Perdomo HELD2 | [Perdomo HELD2](designs/2026-07-21-perdomo-held2.md) | Non-production development candidate; public installed dispatch exists, but electrolyte LLE is not admitted |
-| Private homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) | D-028-bound non-production foundation; underscored test seam only; installed case is manufactured/nonpredictive |
+| Private homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md), [water self-ionization integration](designs/2026-07-21-water-self-ionization-provider-integration.md) | D-028-bound non-production foundation; underscored test seam only; manufactured evidence plus one source-complete water activity-consistency case |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Coupled multiphase chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
@@ -81,9 +81,14 @@ first, and permits only a final `lambda=1` continuation state to pass.
 
 Its certificate axes keep artifact/input completeness, Ipopt status, numerical
 and physical checks, reduced-Hessian local status, predictive status, finite
-search, and globality separate. The only installed-Provider test uses synthetic
-reference data and is labeled manufactured/nonpredictive. There is no public
-solve route, result type, chemistry dataset, or nonideal predictive claim.
+search, and globality separate. The manufactured installed-Provider seam
+remains labeled manufactured/nonpredictive. The private water self-ionization
+profile adds one source-complete input at 298.15 K and 1 bar: exact Held
+Provider mechanics/reference data, IAPWS R11-24 `Kw`, and the explicit
+mixed-standard to Provider-basis transformation. Its independently recomputed
+activity product closes, so it is consistency evidence; predictive agreement
+remains `not_adjudicated`. There is no public solve route, result type,
+generalized chemistry registry, or globality claim.
 
 ## Shared package contract
 

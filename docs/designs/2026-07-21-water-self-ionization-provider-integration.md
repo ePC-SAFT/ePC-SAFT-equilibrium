@@ -1,6 +1,6 @@
 # Private Water Self-Ionization Provider Integration
 
-Status: approved private non-production design
+Status: implemented private non-production consistency checkpoint
 
 Authority effect: none
 
@@ -78,7 +78,9 @@ sequence and returns only quantities with a neutral thermodynamic meaning:
 - the sum of the cation and anion infinite-dilution log fugacity coefficients;
 - the pure-solvent log fugacity coefficient;
 - the solvent molar mass;
-- the accepted terminal reference molality and convergence error; and
+- the accepted terminal reference molality and convergence error;
+- the exact pure-solvent liquid molar volume selected by Provider's existing
+  fixed-pressure density closure for direct-solve initialization; and
 - the model fingerprint, component order, charge order, state, and basis ID.
 
 It exposes no reaction, equilibrium constant, standard chemical potential,
@@ -156,6 +158,25 @@ and independent recomputation of the IAPWS activity product. A final isolated
 cross-wheel test installs immutable Provider and Equilibrium wheels and proves
 that no sibling source, retired lab runtime, or copied Provider equation is
 loaded.
+
+The stable implementation checkpoint is Equilibrium commit
+`770ee8d30c39df4031ea302c795fb279d7288463`, tree
+`8ddb247ed4cd45aeced1d0952eb5adde51ad6da8`, consuming Provider commit
+`4efb9345c852e66ed43e8ef446ac6c5ca4875d88`, tree
+`3a1dda2efedf3374b6ae8f89237ffec4add2e544`. The immutable wheel hashes are
+`52c66db982d553c498c0ad198cbf56b8c8bb6c46a3be2322b7e537ed219ff38c`
+for Equilibrium and
+`1927f6cb8926489d3ca1ff88c529f181bc0d237b00c98a8112df68f2315eb4ee`
+for Provider.
+
+The isolated two-wheel result is accepted directly at `lambda=1` with amounts
+`(0.9999999963720961, 1.8139519042204282e-9,
+1.8139519042204282e-9) mol`, volume
+`1.8069403485329877e-5 m3`, packing fraction `0.4553313497620865`, reaction
+affinity residual `5.044853423896711e-13`, and relative pressure residual
+`7.74860382080078e-12`. No forbidden source path was imported. These digits are
+reproducibility evidence, not a model-accuracy tolerance or public reference
+value.
 
 Artifact/input completeness, solver/KKT convergence, independent numerical
 convergence, physical validity, local-minimum status, predictive agreement,

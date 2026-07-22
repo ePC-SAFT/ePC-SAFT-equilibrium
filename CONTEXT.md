@@ -74,10 +74,15 @@ underscored native test seams: it compiles ordered balances, reactions, and
 reference records; constructs an exact positive electroneutral chart; owns one
 fixed-`T,P` Ipopt TNLP and its certificates; and consumes the installed
 Provider's Helmholtz, pressure, volume-domain, packing, and derivative
-callbacks. Its installed-Provider case is synthetic and explicitly
-`manufactured_nonpredictive`. It adds no public operation, result family,
-source-backed nonideal reaction claim, receipt, or authority. D-026 remains the
-public HELD2 admission gate.
+callbacks. The manufactured seam remains explicitly
+`manufactured_nonpredictive`. A second private profile now consumes the exact
+Held water/hydronium/hydroxide Provider artifact, transforms the retained
+IAPWS R11-24 mixed standard state into the declared Provider Helmholtz basis,
+and closes the 298.15 K, 1 bar activity product. That profile is
+`installed_provider_source_complete_consistency`: predictive agreement remains
+`not_adjudicated`, globality remains `not_guaranteed`, and no public operation,
+result family, receipt, or authority is added. D-026 remains the public HELD2
+admission gate.
 
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD
@@ -133,6 +138,8 @@ candidate source and a public route do not accept their own promotion.
 `private_development_foundation: homogeneous-reacting-phase-d028`
 
 `private_development_foundation_authority_effect: none`
+
+`private_water_self_ionization_checkpoint: source-complete-consistency-only`
 
 `local_candidate_authority_effect: none`
 

@@ -155,8 +155,13 @@ formulation owners are
 `docs/designs/2026-07-17-neutral-held-v1.md`, and
 `docs/designs/2026-07-21-perdomo-held2.md`. The D-028 private, non-production
 reacting-phase foundation is documented separately in
-`docs/designs/2026-07-21-private-reacting-phase-kernel.md`; it adds no public
-operation or predictive chemical claim. Migration receipt
+`docs/designs/2026-07-21-private-reacting-phase-kernel.md`. Its first
+source-complete input is the private 298.15 K, 1 bar water self-ionization
+consistency case documented in
+`docs/designs/2026-07-21-water-self-ionization-provider-integration.md`. It
+closes the retained IAPWS activity product against one exact installed
+Provider artifact, but adds no public operation, predictive-agreement claim,
+or globality claim. Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
 solve is not a phase-discovery or global-stability proof. The local HELD
