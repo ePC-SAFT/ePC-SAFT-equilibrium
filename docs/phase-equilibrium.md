@@ -91,6 +91,11 @@ Provider artifact and must not be inferred from the retained IAPWS source
 equation record. There is no public solve route, result type, generalized
 chemistry registry, or globality claim.
 
+An authenticated Provider bundle with explicitly unknown applicability may reach
+the underscored phase-block evidence seam for diagnostic transport checks. It
+cannot enter an Ipopt solve or pass physical validity until Provider supplies a
+finite source-temperature domain.
+
 ## Shared package contract
 
 The installed `epcsaft` Provider owns resolved thermodynamic input, component

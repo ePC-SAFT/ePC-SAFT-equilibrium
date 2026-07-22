@@ -8,6 +8,7 @@ from pathlib import Path
 
 import epcsaft
 import pytest
+from epcsaft import records
 
 from epcsaft_equilibrium import _equilibrium
 
@@ -701,6 +702,49 @@ def _figiel_provider_model() -> epcsaft.EPCSAFT:
     return epcsaft.EPCSAFT(parameters)
 
 
+def _user_provided_figiel_model() -> epcsaft.EPCSAFT:
+    installed = epcsaft.ParameterBundle.from_catalog(
+        "figiel-2025-reference-electrolytes", version=1
+    )
+    selected = installed.select(("water", "sodium-cation", "chloride-anion"))
+    domains = tuple(
+        records.ValidityDomain(
+            domain.domain_id,
+            "unknown",
+        )
+        for domain in installed.domains
+    )
+    values = selected.records
+    bundle = epcsaft.ParameterBundle.from_records(
+        bundle_id="user-figiel-unknown-domain",
+        bundle_version=1,
+        purpose="user-provided",
+        sources=installed.sources,
+        domains=domains,
+        components=selected.components,
+        singles=(value for value in values if isinstance(value, records.SingleParameterRecord)),
+        pairs=(value for value in values if isinstance(value, records.PairParameterRecord)),
+        sites=(value for value in values if isinstance(value, records.SiteRecord)),
+        associations=(
+            value
+            for value in values
+            if isinstance(value, records.AssociationParameterRecord)
+        ),
+        correlations=(
+            value
+            for value in values
+            if isinstance(
+                value,
+                (records.ConstantCorrelation, records.ConstantPlusSumOfExponentialsCorrelation),
+            )
+        ),
+        models=(value for value in values if isinstance(value, records.ModelParameterRecord)),
+    )
+    return epcsaft.EPCSAFT(
+        bundle.select(("water", "sodium-cation", "chloride-anion"))
+    )
+
+
 def _analytic_charged_reference(model: epcsaft.EPCSAFT) -> dict[str, object]:
     return {
         "component_count": 5,
@@ -1095,6 +1139,49 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
     assert 1.0e-6 < result["packing_fraction"] < 0.74
     assert result["predictive_status"] == "manufactured_nonpredictive"
     assert result["globality_certificate"] == "not_guaranteed"
+
+
+def test_unknown_user_bundle_domain_allows_block_evidence_but_not_a_solve() -> None:
+    model = _user_provided_figiel_model()
+    capsule = epcsaft.native_sdk(model)
+    block = _equilibrium._chemical_evaluate_provider_block(
+        capsule,
+        298.15,
+        (0.98, 0.01, 0.01),
+        1.0e-3,
+        model.parameter_fingerprint,
+    )
+
+    assert math.isfinite(block["value"])
+    assert math.isfinite(block["pressure_pa"])
+    assert all(math.isfinite(value) for value in block["gradient"])
+    assert all(math.isfinite(value) for value in block["hessian"])
+
+    spec = {
+        "species_ids": model.component_ids,
+        "charges": (0, 1, -1),
+        "provider_component_ids": model.component_ids,
+        "provider_charges": (0, 1, -1),
+        "provider_fingerprint": model.parameter_fingerprint,
+        "expected_provider_component_ids": model.component_ids,
+        "expected_provider_charges": (0, 1, -1),
+        "expected_provider_fingerprint": model.parameter_fingerprint,
+        "balance_matrix": ((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
+        "declared_balance_rank": 2,
+        "reaction_matrix": ((-1.0, 1.0, 1.0),),
+        "feed_amounts": (0.8, 0.1, 0.1),
+        "ln_k": (0.0,),
+        "temperature_k": 298.15,
+        "pressure_pa": 100_000.0,
+        "complete_closed_system": True,
+    }
+    _bind_record(spec)
+    with pytest.raises(ValueError, match="source temperature domain is unavailable"):
+        _equilibrium._chemical_solve_provider_manufactured(
+            capsule,
+            spec,
+            {"packing_fraction_bounds": (1.0e-6, 0.74)},
+        )
 
 
 def test_provider_manufactured_reaction_rejects_capsule_identity_and_source_domain() -> None:

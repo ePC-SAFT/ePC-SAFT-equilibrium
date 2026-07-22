@@ -46,10 +46,13 @@ const epcsaft_native_sdk_v1& checked_chemical_sdk(const py::capsule& capsule) {
         || sdk->evaluate_packing_fraction == nullptr) {
         throw py::value_error("Provider capsule is missing the reacting-phase callbacks");
     }
-    if (!std::isfinite(sdk->source_temperature_min_k)
-        || !std::isfinite(sdk->source_temperature_max_k)
-        || sdk->source_temperature_min_k <= 0.0
-        || sdk->source_temperature_max_k < sdk->source_temperature_min_k
+    const bool temperature_domain_unknown = std::isnan(sdk->source_temperature_min_k)
+        && std::isnan(sdk->source_temperature_max_k);
+    const bool temperature_domain_valid = std::isfinite(sdk->source_temperature_min_k)
+        && std::isfinite(sdk->source_temperature_max_k)
+        && sdk->source_temperature_min_k > 0.0
+        && sdk->source_temperature_max_k >= sdk->source_temperature_min_k;
+    if ((!temperature_domain_unknown && !temperature_domain_valid)
         || (!std::isnan(sdk->total_ion_mole_fraction_max)
             && (!std::isfinite(sdk->total_ion_mole_fraction_max)
                 || sdk->total_ion_mole_fraction_max < 0.0
@@ -298,8 +301,9 @@ py::dict provider_block_evidence(
     if (amounts.size() != metadata.component_ids.size()) {
         throw py::value_error("Provider component order has the wrong length");
     }
-    if (temperature_k < sdk.source_temperature_min_k
-        || temperature_k > sdk.source_temperature_max_k) {
+    if (std::isfinite(sdk.source_temperature_min_k)
+        && (temperature_k < sdk.source_temperature_min_k
+            || temperature_k > sdk.source_temperature_max_k)) {
         throw py::value_error("temperature is outside the Provider source domain");
     }
     const ProviderContext provider(sdk, expected_fingerprint);
@@ -519,6 +523,9 @@ py::dict solve_provider_manufactured(
     const epcsaft_native_sdk_v1& sdk = checked_chemical_sdk(capsule);
     const ChemicalProviderMetadata metadata = chemical_provider_metadata(sdk);
     const ReactionSystemInput input = reaction_system_input(spec);
+    if (!std::isfinite(sdk.source_temperature_min_k)) {
+        throw py::value_error("Provider source temperature domain is unavailable");
+    }
     if (input.provider_component_ids != metadata.component_ids) {
         throw py::value_error("Provider capsule component order does not match the reaction system");
     }
