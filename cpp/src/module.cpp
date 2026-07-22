@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -15,6 +16,7 @@
 
 #include "held.hpp"
 #include "held2.hpp"
+#include "held2_stage_ii_upper.hpp"
 #include "saturation.hpp"
 
 namespace py = pybind11;
@@ -1531,6 +1533,18 @@ py::dict held2_manufactured_stage_i(
             item["upper_bound"] = bound.upper_bound;
             item["multiplier"] = bound.multiplier;
             item["cut_count"] = bound.cut_count;
+            item["upper_solver"] = bound.upper_solver;
+            item["upper_solver_version"] = bound.upper_solver_version;
+            item["upper_solver_status"] = bound.upper_solver_status;
+            item["upper_primal_feasible"] = bound.upper_primal_feasible;
+            item["upper_dual_feasible"] = bound.upper_dual_feasible;
+            item["upper_primal_residual_inf"] =
+                bound.upper_primal_residual_inf;
+            item["upper_dual_residual_inf"] =
+                bound.upper_dual_residual_inf;
+            item["cut_slacks"] = bound.cut_slacks;
+            item["cut_duals"] = bound.cut_duals;
+            item["active_cut_ids"] = bound.active_cut_ids;
             history.append(std::move(item));
         }
         py::list candidates;
@@ -1820,6 +1834,62 @@ py::dict held2_installed_pressure_envelope(
     result["charges"] = std::move(charges);
     result["molar_volume_bounds"] = molar_volume_bounds;
     result["parameter_fingerprint"] = expected_fingerprint;
+    return result;
+}
+
+py::dict held2_stage_ii_upper_lp(
+    const std::vector<double>& intercepts,
+    const std::vector<std::vector<double>>& slopes,
+    double value_lower_bound,
+    const std::string& solver
+) {
+    if (intercepts.size() != slopes.size()) {
+        throw py::value_error("HELD2 upper LP cut intercept and slope counts differ");
+    }
+    const std::size_t dimension = slopes.empty() ? 1 : slopes.front().size();
+    epcsaft_equilibrium::Held2StageIIUpperProblem problem;
+    problem.multiplier_lower_bounds.assign(
+        dimension,
+        -std::numeric_limits<double>::infinity()
+    );
+    problem.multiplier_upper_bounds.assign(
+        dimension,
+        std::numeric_limits<double>::infinity()
+    );
+    problem.value_lower_bound = value_lower_bound;
+    for (std::size_t index = 0; index < intercepts.size(); ++index) {
+        problem.cuts.push_back({
+            static_cast<int>(index),
+            intercepts[index],
+            slopes[index],
+        });
+    }
+    epcsaft_equilibrium::Held2StageIIUpperResult evaluation;
+    if (solver == "highs") {
+        evaluation = epcsaft_equilibrium::solve_held2_stage_ii_upper_highs(problem);
+    } else if (solver == "analytic_1d_test_oracle") {
+        evaluation =
+            epcsaft_equilibrium::solve_held2_stage_ii_upper_analytic_1d(problem);
+    } else {
+        throw py::value_error("unsupported HELD2 upper LP solver request");
+    }
+    py::dict result;
+    result["outcome"] = evaluation.outcome;
+    result["solver"] = evaluation.solver;
+    result["solver_status"] = evaluation.solver_status;
+    result["solver_version"] = evaluation.solver_version;
+    result["solver_finished"] = evaluation.solver_finished;
+    result["primal_feasible"] = evaluation.primal_feasible;
+    result["dual_feasible"] = evaluation.dual_feasible;
+    result["upper_bound"] = evaluation.outcome == "optimal"
+        ? py::cast(evaluation.upper_bound)
+        : py::none();
+    result["multipliers"] = evaluation.multipliers;
+    result["cut_slacks"] = evaluation.cut_slacks;
+    result["cut_duals"] = evaluation.cut_duals;
+    result["active_cut_ids"] = evaluation.active_cut_ids;
+    result["primal_residual_inf"] = evaluation.primal_residual_inf;
+    result["dual_residual_inf"] = evaluation.dual_residual_inf;
     return result;
 }
 
@@ -2124,6 +2194,15 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("topology"),
         py::arg("composition"),
         py::arg("initial_interval_count")
+    );
+    module.def(
+        "_held2_stage_ii_upper_lp",
+        &held2_stage_ii_upper_lp,
+        py::arg("intercepts"),
+        py::arg("slopes"),
+        py::arg("value_lower_bound") =
+            -std::numeric_limits<double>::infinity(),
+        py::arg("solver") = "highs"
     );
     module.def(
         "_held2_pressure_envelope",

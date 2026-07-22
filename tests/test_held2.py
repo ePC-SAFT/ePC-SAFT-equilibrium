@@ -485,6 +485,16 @@ def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
     assert all(
         entry["lower_bound"] <= entry["upper_bound"] + 1.0e-10 for entry in result["bound_history"]
     )
+    assert all(entry["upper_solver"] == "highs_lp" for entry in result["bound_history"])
+    assert all(entry["upper_solver_version"] == "1.15.1" for entry in result["bound_history"])
+    assert all(entry["upper_primal_feasible"] for entry in result["bound_history"])
+    assert all(entry["upper_dual_feasible"] for entry in result["bound_history"])
+    assert all(
+        entry["upper_primal_residual_inf"] <= 1.0e-8 for entry in result["bound_history"]
+    )
+    assert all(
+        entry["upper_dual_residual_inf"] <= 1.0e-8 for entry in result["bound_history"]
+    )
     assert result["cut_count"] >= 3
     assert sorted(
         candidate["modified_fractions"][1] for candidate in result["candidates"]
@@ -543,6 +553,86 @@ def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
         "physical_kkt_passed": 120,
         "step6_eligible": 38,
     }
+
+
+def test_held2_stage_ii_highs_upper_lp_matches_analytic_envelope() -> None:
+    result = _equilibrium._held2_stage_ii_upper_lp(
+        (1.0, 2.0),
+        ((1.0,), (-1.0,)),
+    )
+    oracle = _equilibrium._held2_stage_ii_upper_lp(
+        (1.0, 2.0),
+        ((1.0,), (-1.0,)),
+        -math.inf,
+        "analytic_1d_test_oracle",
+    )
+
+    assert result["outcome"] == "optimal"
+    assert result["solver"] == "highs_lp"
+    assert result["solver_version"] == "1.15.1"
+    assert result["upper_bound"] == pytest.approx(1.5)
+    assert result["multipliers"] == pytest.approx((0.5,))
+    assert result["upper_bound"] == pytest.approx(oracle["upper_bound"])
+    assert result["multipliers"] == pytest.approx(oracle["multipliers"])
+    assert result["primal_feasible"] is True
+    assert result["dual_feasible"] is True
+    assert result["primal_residual_inf"] <= 1.0e-8
+    assert result["dual_residual_inf"] <= 1.0e-8
+    assert result["cut_slacks"] == pytest.approx((0.0, 0.0), abs=1.0e-8)
+    assert result["active_cut_ids"] == [0, 1]
+
+
+def test_held2_stage_ii_highs_upper_lp_retains_tied_and_redundant_cuts() -> None:
+    result = _equilibrium._held2_stage_ii_upper_lp(
+        (1.0, 1.0, 10.0),
+        ((1.0,), (1.0,), (-1.0,)),
+    )
+
+    assert result["outcome"] == "optimal"
+    assert result["upper_bound"] == pytest.approx(5.5)
+    assert result["multipliers"] == pytest.approx((4.5,))
+    assert result["cut_slacks"] == pytest.approx((0.0, 0.0, 0.0), abs=1.0e-8)
+    assert result["active_cut_ids"] == [0, 1, 2]
+    assert len(result["cut_duals"]) == 3
+
+
+def test_held2_stage_ii_highs_upper_lp_handles_nearly_parallel_cuts() -> None:
+    result = _equilibrium._held2_stage_ii_upper_lp(
+        (1.0, 1.0),
+        ((1.0,), (-1.0 + 1.0e-8,)),
+    )
+
+    assert result["outcome"] == "optimal"
+    assert result["upper_bound"] == pytest.approx(1.0, abs=1.0e-8)
+    assert result["multipliers"] == pytest.approx((0.0,), abs=1.0e-8)
+    assert result["primal_feasible"] is True
+    assert result["dual_feasible"] is True
+
+
+@pytest.mark.parametrize(
+    ("intercepts", "slopes", "value_lower_bound", "expected"),
+    [
+        ((1.0,), ((0.0,),), 2.0, "infeasible"),
+        ((), (), -math.inf, "unbounded"),
+    ],
+)
+def test_held2_stage_ii_highs_upper_lp_fails_closed(
+    intercepts: tuple[float, ...],
+    slopes: tuple[tuple[float, ...], ...],
+    value_lower_bound: float,
+    expected: str,
+) -> None:
+    result = _equilibrium._held2_stage_ii_upper_lp(
+        intercepts,
+        slopes,
+        value_lower_bound,
+    )
+
+    assert result["outcome"] == expected
+    assert result["primal_feasible"] is False
+    assert result["dual_feasible"] is False
+    assert result["upper_bound"] is None
+    assert result["multipliers"] == []
 
 
 def test_held2_pressure_envelope_classifies_three_root_topology() -> None:

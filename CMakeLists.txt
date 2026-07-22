@@ -6,6 +6,25 @@ find_package(pybind11 CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(Ipopt REQUIRED IMPORTED_TARGET ipopt)
 
+include(FetchContent)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(BUILD_CXX_EXE OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_EXTRAS_LIB OFF CACHE BOOL "" FORCE)
+set(ZLIB OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+  highs
+  URL https://github.com/ERGO-Code/HiGHS/releases/download/v1.15.1/source-archive.tar.gz
+  URL_HASH SHA256=30132da2b21899c62f07c4d6566325a3b869a7da4ce61d8b25f833b38e1562b1
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_GetProperties(highs)
+if(NOT highs_POPULATED)
+  FetchContent_Populate(highs)
+  add_subdirectory("${highs_SOURCE_DIR}" "${highs_BINARY_DIR}" EXCLUDE_FROM_ALL)
+endif()
+
 execute_process(
   COMMAND
     "${Python_EXECUTABLE}" -c
@@ -31,12 +50,13 @@ pybind11_add_module(
   cpp/src/held_stage_ii.cpp
   cpp/src/held_stage_iii.cpp
   cpp/src/held2.cpp
+  cpp/src/held2_stage_ii_upper.cpp
   cpp/src/held2_stage_iii.cpp
   cpp/src/saturation.cpp
 )
 target_compile_features(_equilibrium PRIVATE cxx_std_17)
 target_include_directories(_equilibrium PRIVATE "${epcsaft_include_dir}")
-target_link_libraries(_equilibrium PRIVATE PkgConfig::Ipopt)
+target_link_libraries(_equilibrium PRIVATE PkgConfig::Ipopt highs)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(_equilibrium PRIVATE -Wall -Wextra -Wpedantic)
 endif()

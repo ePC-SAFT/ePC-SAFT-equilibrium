@@ -135,6 +135,13 @@ def _runtime_evidence() -> dict[str, Any]:
             "historical_dual_pullback_fixture_status",
         }
     }
+    stage_ii["bound_history"] = [
+        {
+            key: entry[key]
+            for key in ("cut_count", "lower_bound", "multiplier", "upper_bound")
+        }
+        for entry in stage_ii["bound_history"]
+    ]
     candidates = ((0.2, 1.0), (0.20000002, 1.0), (0.8, 1.0))
     stage_iii = _equilibrium._held2_adapter(
         CHARGES,
