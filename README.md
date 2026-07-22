@@ -109,6 +109,17 @@ Stage-II assignments as private development routes and links pinned NLopt
 evidence, public electrolyte dispatch, and capability admission remain outside
 that landed scope.
 
+The private controller also has an observational live-progress test for the
+Perdomo (2025) Table 3 NaCl-water workflow. It is silent by default. Run:
+
+```bash
+pytest -s tests/test_perdomo_held2_trace.py::test_perdomo_table3_nacl_workflow --held2-live
+```
+
+to see reference roots, actual Stage-I evaluations, certificates, and exact
+skip/final reasons as they occur. The observer does not change the returned
+result, gates, budgets, or finite-search globality label.
+
 The earlier fixed-two-phase campaign remains `NON_ADMISSION` under the frozen
 May `3*u_c` composition contract: 12 of 17 rows passed, rows 002/009/010/011
 were solved model/data misses, and row 012 had no package-accepted local state.

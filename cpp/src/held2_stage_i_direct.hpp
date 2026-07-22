@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "held2.hpp"
+#include "held2_progress.hpp"
 
 namespace epcsaft_equilibrium {
 
@@ -41,7 +42,8 @@ struct Held2StageIDirectResult {
     std::size_t composition_dimension,
     int evaluation_budget,
     double negative_tpd_threshold,
-    const Held2StageIReducedEvaluator& evaluator
+    const Held2StageIReducedEvaluator& evaluator,
+    Held2ProgressObserver* observer = nullptr
 );
 
 [[nodiscard]] Held2StageIDirectResult solve_held2_manufactured_stage_i_direct(

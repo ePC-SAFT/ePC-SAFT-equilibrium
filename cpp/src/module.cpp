@@ -3,7 +3,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <limits>
+#include <sstream>
+#include <streambuf>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -16,6 +19,7 @@
 
 #include "held.hpp"
 #include "held2.hpp"
+#include "held2_progress.hpp"
 #include "held2_stage_i_direct.hpp"
 #include "held2_stage_ii_basin.hpp"
 #include "held2_stage_ii_upper.hpp"
@@ -2363,9 +2367,13 @@ struct InstalledHeld2StageI {
 
 InstalledHeld2StageI run_installed_held2_stage_i(
     const InstalledHeld2Problem& problem,
-    int evaluation_budget
+    int evaluation_budget,
+    epcsaft_equilibrium::Held2ProgressObserver* observer = nullptr
 ) {
     InstalledHeld2StageI result;
+    epcsaft_equilibrium::Held2ProgressEvent progress;
+    progress.kind = epcsaft_equilibrium::Held2ProgressKind::ReferenceStart;
+    epcsaft_equilibrium::observe_held2(observer, progress);
     try {
         result.reference_envelope = problem.envelope(problem.independent_feed());
     } catch (const std::exception& error) {
@@ -2373,17 +2381,49 @@ InstalledHeld2StageI run_installed_held2_stage_i(
         result.search.termination_reason = std::string(
             "reference_envelope_failed: "
         ) + error.what();
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
+        progress.stage = "REFERENCE";
+        progress.reason = result.search.termination_reason;
+        epcsaft_equilibrium::observe_held2(observer, progress);
         return result;
+    }
+    for (std::size_t index = 0;
+         index < result.reference_envelope.roots.size();
+         ++index) {
+        const auto& root = result.reference_envelope.roots[index];
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::ReferenceRoot;
+        progress.count = static_cast<int>(index + 1);
+        progress.volume = root.volume;
+        progress.pressure_residual = root.pressure_residual;
+        progress.objective = root.objective;
+        progress.mechanical_class = root.mechanical_class;
+        epcsaft_equilibrium::observe_held2(observer, progress);
     }
     if (result.reference_envelope.outcome != "selected") {
         result.search.declared_evaluation_budget = evaluation_budget;
         result.search.termination_reason = "reference_envelope_failed: "
             + result.reference_envelope.failure_reason;
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
+        progress.stage = "REFERENCE";
+        progress.reason = result.search.termination_reason;
+        epcsaft_equilibrium::observe_held2(observer, progress);
         return result;
     }
     result.reference = result.reference_envelope.roots[static_cast<std::size_t>(
         result.reference_envelope.selected_root_index
     )].state;
+    progress = {};
+    progress.kind = epcsaft_equilibrium::Held2ProgressKind::ReferenceSelected;
+    progress.count = result.reference_envelope.selected_root_index + 1;
+    progress.status = "certified";
+    epcsaft_equilibrium::observe_held2(observer, progress);
+    progress = {};
+    progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageStart;
+    progress.stage = "STAGE I - DIRECT-L TPD SEARCH";
+    epcsaft_equilibrium::observe_held2(observer, progress);
     const epcsaft_equilibrium::Held2StageIReducedEvaluator evaluator = [
         &problem,
         reference = result.reference
@@ -2427,8 +2467,15 @@ InstalledHeld2StageI run_installed_held2_stage_i(
         problem.coordinates().independent_indices.size(),
         evaluation_budget,
         -1.0e-8,
-        evaluator
+        evaluator,
+        observer
     );
+    progress = {};
+    progress.kind = epcsaft_equilibrium::Held2ProgressKind::Certificate;
+    progress.stage = "STAGE I";
+    progress.status = result.search.outcome;
+    progress.reason = result.search.termination_reason;
+    epcsaft_equilibrium::observe_held2(observer, progress);
     return result;
 }
 
@@ -2884,8 +2931,12 @@ py::dict held2_installed_controller(
     const std::string& expected_fingerprint,
     int stage_i_evaluation_budget,
     int stage_ii_major_iteration_cap,
-    int stage_ii_local_attempt_cap_per_major
+    int stage_ii_local_attempt_cap_per_major,
+    bool trace
 ) {
+    epcsaft_equilibrium::Held2TerminalProgress terminal_progress(std::cout);
+    epcsaft_equilibrium::Held2ProgressObserver* observer =
+        trace ? &terminal_progress : nullptr;
     const epcsaft_native_sdk_v1& sdk = checked_molar_volume_sdk(capsule);
     const InstalledHeld2Problem problem(
         sdk,
@@ -2894,8 +2945,14 @@ py::dict held2_installed_controller(
         physical_feed,
         expected_fingerprint
     );
+    epcsaft_equilibrium::Held2ProgressEvent progress;
+    progress.kind = epcsaft_equilibrium::Held2ProgressKind::CaseStart;
+    progress.case_id = "installed-held2-controller";
+    progress.temperature_k = temperature_k;
+    progress.pressure_pa = pressure_pa;
+    epcsaft_equilibrium::observe_held2(observer, progress);
     const InstalledHeld2StageI stage_i = run_installed_held2_stage_i(
-        problem, stage_i_evaluation_budget
+        problem, stage_i_evaluation_budget, observer
     );
     py::dict result;
     result["controller"] = "perdomo_held2_integrated_private_v1";
@@ -2909,23 +2966,73 @@ py::dict held2_installed_controller(
     result["stage_i"] = held2_stage_i_direct_to_dict(stage_i.search);
     result["stage_ii"] = py::none();
     result["stage_iii"] = py::none();
+    result["stage_ii_skip_reason"] = py::none();
+    result["stage_iii_skip_reason"] = py::none();
     result["predictive_comparison_status"] =
         "not_allowed_before_physical_acceptance";
 
     if (stage_i.search.outcome != "negative_witness_found"
         || stage_i.search.negative_witness_index < 0) {
-        result["outcome"] = "stage_i_finite_search_without_negative_witness";
+        const bool search_indeterminate = stage_i.search.outcome == "indeterminate";
+        const std::string outcome = search_indeterminate
+            ? "indeterminate_stage_i"
+            : "stage_i_finite_search_without_negative_witness";
+        result["outcome"] = outcome;
         result["failure_stage"] = "stage_i";
+        result["failure_reason"] = stage_i.search.termination_reason;
+        const std::string skip_reason = search_indeterminate
+            ? stage_i.search.termination_reason
+            : "stage_i_negative_witness_not_found";
+        result["stage_ii_skip_reason"] = skip_reason;
+        result["stage_iii_skip_reason"] = skip_reason;
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageSkipped;
+        progress.stage = "STAGE II";
+        progress.reason = skip_reason;
+        epcsaft_equilibrium::observe_held2(observer, progress);
+        progress.stage = "STAGE III";
+        epcsaft_equilibrium::observe_held2(observer, progress);
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
+        progress.status = outcome;
+        progress.reason = stage_i.search.termination_reason;
+        epcsaft_equilibrium::observe_held2(observer, progress);
         return result;
     }
     const auto& witness = stage_i.search.evaluations[static_cast<std::size_t>(
         stage_i.search.negative_witness_index
     )];
     if (witness.pressure_envelope.selected_root_index < 0) {
+        const std::string failure_reason =
+            "stage_i_witness_has_no_selected_pressure_root";
         result["outcome"] = "indeterminate_stage_i_witness";
         result["failure_stage"] = "stage_i";
+        result["failure_reason"] = failure_reason;
+        result["stage_ii_skip_reason"] = failure_reason;
+        result["stage_iii_skip_reason"] = failure_reason;
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
+        progress.stage = "STAGE I";
+        progress.reason = failure_reason;
+        epcsaft_equilibrium::observe_held2(observer, progress);
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageSkipped;
+        progress.stage = "STAGE II";
+        progress.reason = failure_reason;
+        epcsaft_equilibrium::observe_held2(observer, progress);
+        progress.stage = "STAGE III";
+        epcsaft_equilibrium::observe_held2(observer, progress);
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
+        progress.status = "indeterminate_stage_i_witness";
+        progress.reason = failure_reason;
+        epcsaft_equilibrium::observe_held2(observer, progress);
         return result;
     }
+    progress = {};
+    progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageStart;
+    progress.stage = "STAGE II - HiGHS LP / IPOPT LOWER SEARCH";
+    epcsaft_equilibrium::observe_held2(observer, progress);
     const auto& witness_state = witness.pressure_envelope.roots[
         static_cast<std::size_t>(witness.pressure_envelope.selected_root_index)
     ].state;
@@ -2953,14 +3060,37 @@ py::dict held2_installed_controller(
             stage_i.reference,
             witnesses,
             stage_ii_major_iteration_cap,
-            stage_ii_local_attempt_cap_per_major
+            stage_ii_local_attempt_cap_per_major,
+            observer
         );
     result["stage_ii"] = held2_stage_ii_to_dict(stage_ii);
     if (stage_ii.outcome != "candidate_set" || stage_ii.candidates.size() < 2) {
         result["outcome"] = "indeterminate_stage_ii";
         result["failure_stage"] = "stage_ii";
+        result["failure_reason"] = stage_ii.outcome;
+        result["stage_iii_skip_reason"] = stage_ii.outcome;
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
+        progress.stage = "STAGE II";
+        progress.reason = stage_ii.outcome;
+        epcsaft_equilibrium::observe_held2(observer, progress);
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageSkipped;
+        progress.stage = "STAGE III";
+        progress.reason = stage_ii.outcome;
+        epcsaft_equilibrium::observe_held2(observer, progress);
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
+        progress.status = "indeterminate_stage_ii";
+        progress.reason = stage_ii.outcome;
+        epcsaft_equilibrium::observe_held2(observer, progress);
         return result;
     }
+
+    progress = {};
+    progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageStart;
+    progress.stage = "STAGE III - IPOPT TOTAL FREE ENERGY";
+    epcsaft_equilibrium::observe_held2(observer, progress);
 
     std::vector<std::array<double, 2>> phase_coordinate_bounds;
     phase_coordinate_bounds.reserve(stage_ii.candidates.size());
@@ -2978,18 +3108,35 @@ py::dict held2_installed_controller(
             problem.physical_feed(),
             stage_ii.candidates,
             evaluator,
-            phase_coordinate_bounds
+            phase_coordinate_bounds,
+            observer
         );
     result["stage_iii"] = held2_stage_iii_to_dict(stage_iii);
     if (stage_iii.physical_status != "accepted") {
         result["outcome"] = "indeterminate_stage_iii";
         result["failure_stage"] = "stage_iii";
+        result["failure_reason"] = stage_iii.failure_reason;
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
+        progress.stage = "STAGE III";
+        progress.reason = stage_iii.failure_reason;
+        epcsaft_equilibrium::observe_held2(observer, progress);
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
+        progress.status = "indeterminate_stage_iii";
+        progress.reason = stage_iii.failure_reason;
+        epcsaft_equilibrium::observe_held2(observer, progress);
         return result;
     }
     result["outcome"] = "physical_equilibrium_accepted";
     result["failure_stage"] = py::none();
+    result["failure_reason"] = py::none();
     result["predictive_comparison_status"] =
         "eligible_but_not_executed_private_controller";
+    progress = {};
+    progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
+    progress.status = "physical_equilibrium_accepted";
+    epcsaft_equilibrium::observe_held2(observer, progress);
     return result;
 }
 
@@ -3152,11 +3299,133 @@ py::dict held2_stage_iii_retirement_decision(
     return result;
 }
 
+std::string held2_terminal_progress_fixture() {
+    std::ostringstream output;
+    epcsaft_equilibrium::Held2TerminalProgress progress(output);
+    epcsaft_equilibrium::Held2ProgressEvent event;
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::CaseStart;
+    event.case_id = "perdomo-table3-nacl-water";
+    event.temperature_k = 298.15;
+    event.pressure_pa = 2508.0;
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::ReferenceStart;
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::ReferenceRoot;
+    event.mechanical_class = "strict_stable";
+    event.count = 1;
+    event.objective = -1.0;
+    event.volume = 2.0e-5;
+    event.pressure_residual = 1.0e-10;
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::StageStart;
+    event.stage = "STAGE I - DIRECT-L TPD SEARCH";
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::StageIEvaluation;
+    event.status = "certified";
+    event.iteration = 1;
+    event.objective = -1.0e-3;
+    event.volume = 2.0e-5;
+    event.pressure_residual = 1.0e-10;
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::StageIIUpper;
+    event.major_iteration = 0;
+    event.upper_bound = -1.0;
+    event.status = "optimal";
+    event.primal_residual = 1.0e-12;
+    event.dual_residual = 2.0e-12;
+    event.count = 2;
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::LocalIteration;
+    event.stage = "STAGE II IPOPT";
+    event.iteration = 1;
+    event.objective = -1.1;
+    event.primal_residual = 1.0e-8;
+    event.dual_residual = 2.0e-8;
+    event.complementarity = 3.0e-8;
+    event.step_norm = 4.0e-4;
+    event.primal_step = 0.9;
+    event.line_search_steps = 1;
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::Certificate;
+    event.stage = "STAGE II STEP 6";
+    event.status = "ineligible";
+    event.reason = "fixture_gate";
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
+    event.stage = "STAGE II";
+    event.reason = "fixture";
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::StageSkipped;
+    event.stage = "STAGE II";
+    event.reason = "fixture";
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
+    event.status = "fixture_complete";
+    progress.observe(event);
+    return output.str();
+}
+
+class FailingProgressBuffer final : public std::streambuf {
+protected:
+    int_type overflow(int_type) override {
+        return traits_type::eof();
+    }
+};
+
+class ThrowingProgressObserver final
+    : public epcsaft_equilibrium::Held2ProgressObserver {
+public:
+    void observe(const epcsaft_equilibrium::Held2ProgressEvent&) override {
+        throw std::runtime_error("observer failure");
+    }
+};
+
+bool held2_terminal_progress_failure_fixture() {
+    FailingProgressBuffer buffer;
+    std::ostream output(&buffer);
+    epcsaft_equilibrium::Held2TerminalProgress progress(output);
+    epcsaft_equilibrium::Held2ProgressEvent event;
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
+    event.status = "must_not_throw";
+    progress.observe(event);
+    ThrowingProgressObserver throwing;
+    epcsaft_equilibrium::observe_held2(&throwing, event);
+    return !progress.healthy();
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_equilibrium, module) {
     module.doc() = "Native local equilibrium formulation over epcsaft.native_sdk.v1";
     module.def("sdk_info", &sdk_info, py::arg("capsule"));
+    module.def(
+        "_held2_terminal_progress_fixture",
+        &held2_terminal_progress_fixture
+    );
+    module.def(
+        "_held2_terminal_progress_failure_fixture",
+        &held2_terminal_progress_failure_fixture
+    );
     module.def(
         "evaluate_mixture_phase",
         &evaluate_mixture_phase,
@@ -3415,7 +3684,9 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("expected_fingerprint"),
         py::arg("stage_i_evaluation_budget") = 50,
         py::arg("stage_ii_major_iteration_cap") = 8,
-        py::arg("stage_ii_local_attempt_cap_per_major") = 50
+        py::arg("stage_ii_local_attempt_cap_per_major") = 50,
+        py::kw_only(),
+        py::arg("trace") = false
     );
     module.def(
         "_held2_stage_ii_upper_lp",
