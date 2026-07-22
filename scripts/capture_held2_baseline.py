@@ -149,14 +149,33 @@ def _runtime_evidence() -> dict[str, Any]:
         CHARGES,
         PHYSICAL_FEED,
         candidates,
-        "stage_iii",
+        "stage_iii_legacy_baseline",
     )
     stage_iii_failure = _equilibrium._held2_adapter(
         CHARGES,
         PHYSICAL_FEED,
         ((0.1, 1.0), (0.2, 1.0), (0.3, 1.0)),
-        "stage_iii",
+        "stage_iii_legacy_baseline",
     )
+    # Schema v1 predates the active-set lifecycle. Replay its exact private
+    # numerical route and omit only fields that did not exist in that schema.
+    new_stage_iii_fields = {
+        "active_set_resolve_count",
+        "bound_complementarity_inf_norm",
+        "dual_sign_violation_inf_norm",
+        "lifecycle",
+        "minimum_phase_fraction",
+        "retired_inactive_count",
+        "stage_iii_solve_count",
+    }
+    stage_iii = {
+        key: value for key, value in stage_iii.items() if key not in new_stage_iii_fields
+    }
+    stage_iii_failure = {
+        key: value
+        for key, value in stage_iii_failure.items()
+        if key not in new_stage_iii_fields
+    }
     stage_iii_derivatives = _equilibrium._held2_adapter(
         CHARGES,
         PHYSICAL_FEED,
@@ -177,8 +196,6 @@ def _runtime_evidence() -> dict[str, Any]:
         "stage_iii_derivatives": stage_iii_derivatives,
         "stage_iii_failure": stage_iii_failure,
     }
-
-
 def _artifact_record(wheel: Path, member_suffix: str, installed_path: Path) -> dict[str, Any]:
     member, member_sha256 = _wheel_payload(wheel, member_suffix)
     installed_sha256 = _sha256_path(installed_path)

@@ -1136,6 +1136,15 @@ def test_held2_general_mp_stage_iii_refines_then_merges_duplicate_phases() -> No
     assert result["feedback"] == "none"
     assert result["input_candidate_count"] == 3
     assert result["retired_duplicate_count"] == 1
+    assert result["retired_inactive_count"] == 0
+    assert result["stage_iii_solve_count"] == 2
+    assert result["active_set_resolve_count"] == 1
+    assert [
+        step["action"] for step in result["lifecycle"] if step["action"] != "retain_phase"
+    ] == [
+        "merge_duplicate",
+        "accept_active_set",
+    ]
     assert len(result["phases"]) == 2
     assert sorted(phase["modified_fractions"][1] for phase in result["phases"]) == pytest.approx(
         [0.2, 0.8], abs=2.0e-7
@@ -1153,7 +1162,111 @@ def test_held2_general_mp_stage_iii_refines_then_merges_duplicate_phases() -> No
     assert result["trace_refinement_status"] == "not_required"
     assert result["minimum_phase_distance"] > 1.0e-3
     assert result["kkt_stationarity_inf_norm"] < 1.0e-7
+    assert result["dual_sign_violation_inf_norm"] < 1.0e-8
+    assert result["bound_complementarity_inf_norm"] < 1.0e-8
+    assert result["minimum_phase_fraction"] > 1.0e-10
     assert abs(result["enumeration_objective_gap"]) < 1.0e-9
+
+
+def test_held2_stage_iii_retires_only_kkt_inactive_phases_one_at_a_time() -> None:
+    active_trace = _equilibrium._held2_stage_iii_retirement_decision(
+        5.0e-11,
+        0.0,
+        0.0,
+        -1.0e-4,
+        True,
+    )
+    inactive = _equilibrium._held2_stage_iii_retirement_decision(
+        5.0e-11,
+        0.25,
+        0.0,
+        0.25,
+        True,
+    )
+    balance_required = _equilibrium._held2_stage_iii_retirement_decision(
+        5.0e-11,
+        0.25,
+        0.0,
+        0.25,
+        False,
+    )
+
+    assert active_trace["retire"] is False
+    assert active_trace["reason"] == "descent_or_marginal_phase"
+    assert inactive["retire"] is True
+    assert inactive["reason"] == "kkt_inactive"
+    assert balance_required["retire"] is False
+    assert balance_required["reason"] == "remaining_balance_infeasible"
+
+    result = _equilibrium._held2_adapter(
+        CHARGES,
+        PHYSICAL_FEED,
+        ((0.2, 1.0), (0.35, 1.0), (0.65, 1.0), (0.8, 1.0)),
+        "stage_iii",
+    )
+
+    assert result["solver_status"] in {"solve_succeeded", "solved_to_acceptable_level"}
+    assert result["numerical_status"] == "converged"
+    assert result["physical_status"] == "accepted"
+    assert result["retired_inactive_count"] == 2
+    assert result["stage_iii_solve_count"] == 3
+    assert result["active_set_resolve_count"] == 2
+    state_changes = [
+        step for step in result["lifecycle"] if step["action"] != "retain_phase"
+    ]
+    assert [step["active_candidate_count"] for step in state_changes] == [4, 3, 2]
+    assert [step["action"] for step in state_changes] == [
+        "retire_kkt_inactive",
+        "retire_kkt_inactive",
+        "accept_active_set",
+    ]
+    assert all(
+        step["solver_status"] in {"solve_succeeded", "solved_to_acceptable_level"}
+        for step in result["lifecycle"]
+    )
+    assert [step["decision_reason"] for step in state_changes] == [
+        "kkt_inactive",
+        "kkt_inactive",
+        "active_set_certified",
+    ]
+    assert [
+        step["candidate_composition"] for step in state_changes[:-1]
+    ] == pytest.approx([0.35, 0.65])
+    retained = [step for step in result["lifecycle"] if step["action"] == "retain_phase"]
+    assert len(retained) == 4
+    assert all(
+        step["decision_reason"] == "phase_amount_active"
+        for step in retained
+    )
+
+    trace = _equilibrium._held2_adapter(
+        CHARGES,
+        (0.999999998, 1.0e-9, 1.0e-9),
+        ((2.0e-10, 1.0), (0.8, 1.0)),
+        "stage_iii",
+    )
+    assert trace["solver_status"] in {"solve_succeeded", "solved_to_acceptable_level"}
+    assert trace["numerical_status"] == "converged"
+    assert trace["physical_status"] == "not_adjudicated"
+    assert trace["feedback"] == "return_to_stage_ii"
+    assert trace["failure_reason"] == "trace_component_requires_log_refinement"
+    assert trace["trace_refinement_status"] == "complementarity_refinement_required"
+
+
+def test_held2_stage_iii_ipopt_success_does_not_override_physical_potential_failure() -> None:
+    result = _equilibrium._held2_adapter(
+        CHARGES,
+        PHYSICAL_FEED,
+        ((0.1, 1.0), (0.9, 1.0)),
+        "stage_iii",
+    )
+
+    assert result["solver_status"] in {"solve_succeeded", "solved_to_acceptable_level"}
+    assert result["numerical_status"] == "converged"
+    assert result["physical_status"] == "rejected"
+    assert result["feedback"] == "return_to_stage_ii"
+    assert result["failure_reason"] == "stage_iii_physical_certificate_failed"
+    assert result["modified_potential_mixed_gap"] > 1.0e-8
 
 
 def test_held2_general_mp_stage_iii_returns_infeasible_set_to_stage_ii() -> None:
@@ -1169,3 +1282,19 @@ def test_held2_general_mp_stage_iii_returns_infeasible_set_to_stage_ii() -> None
     assert result["feedback"] == "return_to_stage_ii"
     assert result["failure_reason"] == "candidate_set_does_not_bracket_feed"
     assert result["globality_certificate"] == "not_guaranteed"
+    assert result["lifecycle"] == [
+        {
+            "solve_index": 1,
+            "active_candidate_count": 3,
+            "removed_candidate_index": -1,
+            "action": "initialization_failed",
+            "phase_fraction": 0.0,
+            "lower_bound_multiplier": 0.0,
+            "reduced_derivative": 0.0,
+            "complementarity_inf_norm": 0.0,
+            "candidate_composition": 0.0,
+            "candidate_volume": 0.0,
+            "solver_status": "not_run",
+            "decision_reason": "candidate_set_does_not_bracket_feed",
+        }
+    ]
