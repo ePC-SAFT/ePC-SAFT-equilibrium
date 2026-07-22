@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -9,6 +10,8 @@ namespace epcsaft_equilibrium {
 
 inline constexpr const char* kHeld2ManufacturedFormulationId =
     "perdomo-held2.modified-mole.manufactured.v1";
+inline constexpr double kHeld2PackingFractionMinimum = 1.0e-6;
+inline constexpr double kHeld2PackingFractionMaximum = 0.74;
 
 struct Held2Coordinates {
     std::vector<double> charges;
@@ -80,7 +83,78 @@ struct Held2StateEvaluation {
     std::vector<double> hessian;
     std::vector<double> modified_potentials;
     double pressure_stationarity_relative = 0.0;
+    double pressure_stationarity_derivative_log_volume = 0.0;
 };
+
+using Held2StateEvaluator = std::function<Held2StateEvaluation(
+    const std::vector<double>&,
+    double
+)>;
+
+struct Held2PressureScanPoint {
+    double log_volume = 0.0;
+    double volume = 0.0;
+    double pressure_residual = 0.0;
+    double pressure_derivative_log_volume = 0.0;
+    double objective = 0.0;
+    bool valid = false;
+    std::string failure;
+};
+
+struct Held2PressureScanInterval {
+    double lower_log_volume = 0.0;
+    double upper_log_volume = 0.0;
+    int depth = 0;
+    std::string status;
+};
+
+struct Held2PressureRoot {
+    double log_volume = 0.0;
+    double volume = 0.0;
+    double objective = 0.0;
+    double pressure_residual = 0.0;
+    double pressure_derivative_log_volume = 0.0;
+    double objective_curvature_log_volume = 0.0;
+    std::string mechanical_class = "unclassified";
+    std::string origin;
+    bool boundary = false;
+    Held2StateEvaluation state;
+};
+
+struct Held2PressureEnvelopeResult {
+    std::string outcome = "indeterminate";
+    std::string failure_reason;
+    std::string root_completeness = "not_proven";
+    std::string selection_scope =
+        "lowest_among_detected_strict_stable_roots";
+    int selected_root_index = -1;
+    int evaluation_failure_count = 0;
+    int refinement_failure_count = 0;
+    int stationary_point_count = 0;
+    int tangential_root_count = 0;
+    int marginal_root_count = 0;
+    int boundary_root_count = 0;
+    int objective_tie_count = 0;
+    int deduplicated_root_count = 0;
+    std::vector<Held2PressureScanPoint> scan_points;
+    std::vector<Held2PressureScanInterval> intervals;
+    std::vector<Held2PressureRoot> roots;
+};
+
+[[nodiscard]] Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
+    const std::vector<double>& independent_modified_fractions,
+    const std::array<double, 2>& molar_volume_bounds,
+    const Held2StateEvaluator& evaluator,
+    int initial_interval_count,
+    int maximum_subdivision_depth = 8
+);
+
+[[nodiscard]] Held2PressureEnvelopeResult
+evaluate_held2_manufactured_pressure_envelope(
+    const std::string& topology,
+    double composition,
+    int initial_interval_count
+);
 
 struct Held2StageICandidate {
     std::vector<double> modified_fractions;

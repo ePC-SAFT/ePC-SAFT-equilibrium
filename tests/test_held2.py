@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from itertools import pairwise
 
 import epcsaft
 import pytest
@@ -542,6 +543,163 @@ def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
         "physical_kkt_passed": 120,
         "step6_eligible": 38,
     }
+
+
+def test_held2_pressure_envelope_classifies_three_root_topology() -> None:
+    result = _equilibrium._held2_pressure_envelope("three_root", 0.25, 64)
+
+    assert result["outcome"] == "selected"
+    assert result["root_completeness"] == "not_proven"
+    assert result["selection_scope"] == "lowest_among_detected_strict_stable_roots"
+    assert [root["mechanical_class"] for root in result["roots"]] == [
+        "strict_stable",
+        "unstable",
+        "strict_stable",
+    ]
+    assert [root["log_volume"] for root in result["roots"]] == pytest.approx(
+        [-1.0, -0.2, 1.0], abs=1.0e-8
+    )
+    assert result["selected_root_index"] in {0, 2}
+    assert len(result["scan_points"]) > 64
+    assert len(result["intervals"]) >= 64
+    assert all(interval["status"] for interval in result["intervals"])
+    assert result["intervals"][0]["lower_log_volume"] == pytest.approx(-1.5)
+    assert result["intervals"][-1]["upper_log_volume"] == pytest.approx(1.5)
+    assert all(
+        left["upper_log_volume"] == pytest.approx(right["lower_log_volume"])
+        for left, right in pairwise(result["intervals"])
+    )
+
+
+@pytest.mark.parametrize(
+    ("topology", "outcome", "failure_reason"),
+    [
+        ("one_root", "selected", ""),
+        ("tangential", "indeterminate", "marginal_root"),
+        ("boundary", "indeterminate", "boundary_root"),
+        ("invalid", "indeterminate", "evaluation_failed"),
+        ("tied", "indeterminate", "stable_objective_tie"),
+    ],
+)
+def test_held2_pressure_envelope_fail_closed_topologies(
+    topology: str,
+    outcome: str,
+    failure_reason: str,
+) -> None:
+    result = _equilibrium._held2_pressure_envelope(topology, 0.25, 64)
+
+    assert result["outcome"] == outcome
+    assert result["failure_reason"] == failure_reason
+    assert result["root_completeness"] == "not_proven"
+    if topology == "invalid":
+        assert result["evaluation_failure_count"] > 0
+        assert any(not point["valid"] for point in result["scan_points"])
+    if topology == "tangential":
+        assert result["tangential_root_count"] == 1
+        assert result["marginal_root_count"] == 1
+    if topology == "boundary":
+        assert result["boundary_root_count"] == 1
+    if topology == "tied":
+        assert result["objective_tie_count"] == 1
+
+
+def test_held2_pressure_envelope_detects_close_roots_and_deduplicates_nodes() -> None:
+    close = _equilibrium._held2_pressure_envelope("close_roots", 0.25, 256)
+    duplicate = _equilibrium._held2_pressure_envelope("node_root", 0.25, 64)
+
+    assert close["outcome"] == "indeterminate"
+    assert close["failure_reason"] == "stable_objective_tie"
+    assert [root["log_volume"] for root in close["roots"]] == pytest.approx(
+        [-0.02, 0.0, 0.02], abs=1.0e-8
+    )
+    assert duplicate["outcome"] == "selected"
+    assert len(duplicate["roots"]) == 1
+    assert duplicate["deduplicated_root_count"] >= 1
+
+
+def test_held2_pressure_envelope_records_branch_switch() -> None:
+    left = _equilibrium._held2_pressure_envelope("branch_switch", 0.25, 64)
+    right = _equilibrium._held2_pressure_envelope("branch_switch", 0.75, 64)
+
+    assert left["outcome"] == "selected"
+    assert right["outcome"] == "selected"
+    assert left["roots"][left["selected_root_index"]]["log_volume"] < 0.0
+    assert right["roots"][right["selected_root_index"]]["log_volume"] > 0.0
+
+
+def test_held2_pressure_envelope_uses_provider_bounds_and_exact_derivatives() -> None:
+    model = _figiel_brine_model()
+    result = _equilibrium._held2_pressure_envelope(
+        epcsaft.native_sdk(model),
+        298.15,
+        100_000.0,
+        (0.02,),
+        model.parameter_fingerprint,
+        64,
+    )
+
+    assert result["root_completeness"] == "not_proven"
+    assert result["globality_certificate"] == "not_guaranteed"
+    assert result["molar_volume_bounds"][0] > 0.0
+    assert result["molar_volume_bounds"][1] > result["molar_volume_bounds"][0]
+    assert result["evaluation_failure_count"] == 0
+    assert all(point["valid"] for point in result["scan_points"])
+    assert result["outcome"] == "selected"
+    assert result["selected_root_index"] == 0
+    assert [root["mechanical_class"] for root in result["roots"]] == [
+        "strict_stable",
+        "unstable",
+        "strict_stable",
+    ]
+    assert result["roots"][0]["objective"] < result["roots"][2]["objective"]
+    assert all(abs(root["pressure_residual"]) <= 1.0e-8 for root in result["roots"])
+    assert all(
+        root["mechanical_class"] in {"strict_stable", "unstable", "marginal"}
+        for root in result["roots"]
+    )
+    for root in result["roots"]:
+        if root["mechanical_class"] == "strict_stable":
+            assert root["pressure_derivative_log_volume"] < 0.0
+            assert root["objective_curvature_log_volume"] > 0.0
+        elif root["mechanical_class"] == "unstable":
+            assert root["pressure_derivative_log_volume"] > 0.0
+            assert root["objective_curvature_log_volume"] < 0.0
+
+    log_volume = result["roots"][0]["log_volume"]
+    step = 1.0e-5
+    center = _equilibrium._held2_adapter(
+        epcsaft.native_sdk(model),
+        298.15,
+        100_000.0,
+        (0.02,),
+        log_volume,
+        model.parameter_fingerprint,
+    )
+    lower = _equilibrium._held2_adapter(
+        epcsaft.native_sdk(model),
+        298.15,
+        100_000.0,
+        (0.02,),
+        log_volume - step,
+        model.parameter_fingerprint,
+    )
+    upper = _equilibrium._held2_adapter(
+        epcsaft.native_sdk(model),
+        298.15,
+        100_000.0,
+        (0.02,),
+        log_volume + step,
+        model.parameter_fingerprint,
+    )
+    finite_difference = (
+        upper["pressure_stationarity_relative"]
+        - lower["pressure_stationarity_relative"]
+    ) / (2.0 * step)
+    assert center["pressure_stationarity_derivative_log_volume"] == pytest.approx(
+        finite_difference,
+        rel=2.0e-8,
+        abs=2.0e-8,
+    )
 
 
 def test_held2_general_mp_stage_iii_exact_lagrangian_hessian() -> None:
