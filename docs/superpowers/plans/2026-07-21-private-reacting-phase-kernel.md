@@ -114,4 +114,13 @@
 - [x] Run focused pytest, full pytest, Ruff, mypy, native build warnings, and the installed-artifact case from the exact Provider wheel.
 - [x] Inspect `git diff`, staged diff, public exports, dependency edges, and generated artifacts.
 - [x] Run `bash "$HOME/.codex/hooks/codex-cleanup.sh" --repo-root .` and remove only task-owned ignored artifacts if reported.
-- [ ] Mark plan checkboxes from actual evidence, commit a stable checkpoint, push `codex/chemical-equilibrium`, and report commit/tree/artifact/test evidence plus unresolved scientific blockers.
+- [x] Mark plan checkboxes from actual evidence, commit a stable checkpoint, push `codex/chemical-equilibrium`, and report commit/tree/artifact/test evidence plus unresolved scientific blockers.
+
+## Completion evidence
+
+- Private kernel checkpoint: commit `273023202c702f86a45d5c57b671a2b12f07bb2d`, tree `d47ccb38647788ca8a328a8d272bdcfced8ec4ef`.
+- Exact installed Provider wheel SHA-256: `9e4da0d7ba7896bcd2ec096400553d935e0516c61f1bd9f41f2370ab68ab36ea`.
+- Final ephemeral Equilibrium verification wheel SHA-256: `198a64c19cc8c597011035f2aa482da70d8dfda1b93f59f1c4788e5ff23e1768`.
+- Final isolated full suite: `176 passed in 27.73s`.
+- Static evidence: Ruff clean, strict mypy clean, `ARCHITECTURE.yaml` parsed, staged diff check clean, and no public reacting-phase export.
+- Cleanup evidence: task-owned Ruff, mypy, pytest, and `__pycache__` candidates removed; final cleanup state clean.
