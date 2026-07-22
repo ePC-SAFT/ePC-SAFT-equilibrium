@@ -72,14 +72,15 @@ one-phase result is cross-EOS source-topology-disagreement evidence, not an
 electrolyte-LLE or Perdomo numerical-reproduction admission.
 
 D-026 identified one source-complete installed ePC-SAFT two-liquid case as the
-next public Stage-I/II/III evidence gate. After archival of the experimental
-runtime, the numerical strategy is now canonized but unimplemented:
-deterministic pressure-root enumeration, DIRECT-L reduced-envelope Stage I,
-HiGHS Stage-II upper LP, global basin discovery plus exact-Hessian Ipopt for
-the Stage-II lower problem, and exact-Hessian Ipopt Stage III. Implementation
-waits for a new bounded assignment and an exact compatible corrected Provider
-artifact. No speculative case constants, route, tolerance, resource, or
-runtime correction is active. Current `main` still links only Ipopt.
+next public Stage-I/II/III evidence gate. Current `main` now implements the
+private Stage-I/II numerical strategy: deterministic pressure-root
+enumeration, DIRECT-L reduced-envelope Stage I, HiGHS Stage-II upper LP, and
+deterministic physical basin discovery plus exact-Hessian Ipopt for the
+Stage-II lower problem. The legacy Stage-II controller remains a regression
+oracle. Stage-III hardening, a compatible installed two-liquid subject,
+Validation, and public admission require separate authority. No speculative
+case constants, route, tolerance, resource, or public runtime correction is
+active.
 
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD
@@ -161,4 +162,4 @@ equilibrium capability.
 
 `implementation_plan_status: controller_redesign_design_deferred`
 
-`perdomo_held2_solver_strategy_status: canonized-unimplemented`
+`perdomo_held2_solver_strategy_status: stage-i-ii-implemented-private-stage-iii-pending`

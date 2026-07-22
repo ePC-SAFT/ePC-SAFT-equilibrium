@@ -1,6 +1,6 @@
 # Perdomo HELD2 Solver-Strategy Implementation Plan
 
-Status: canonical future implementation plan; not executed
+Status: Tasks 0--6 implemented on `main`; Tasks 7--8 remain bounded future work
 
 Authority effect: none
 
@@ -24,25 +24,26 @@ formulations, independent physical certificates, diagnostics, and fail-closed
 outcomes. Global exploration and local convergence are separate jobs; neither
 is a thermodynamic or mathematical globality certificate.
 
-**Target tech stack:** Python 3.13, C++17, pybind11, CMake, Ipopt, NLopt,
-HiGHS, scikit-build-core, pytest, and one exact installed Provider artifact.
-NLopt and HiGHS are planned dependencies, not dependencies of current `main`.
+**Target tech stack:** Python 3.13, C++17, pybind11, CMake, Ipopt, pinned NLopt
+2.11.0, pinned HiGHS 1.15.1, scikit-build-core, pytest, and one exact installed
+Provider artifact. Current `main` fetches the two pinned source archives by
+SHA-256 and links them into the private extension.
 
 ## Outcome Proof
 
 **Intent:** Implement one source-faithful HELD2 controller whose numerical owner matches each stage and whose certificates remain independent of solver status.
-**Current Behavior:** Current `main` retains a private manufactured HELD2 foundation with shared Ipopt searches; the installed public-dispatch WIP is archived and electrolyte LLE is unadmitted.
-**Expected Outcome:** A bounded future candidate uses deterministic pressure roots, DIRECT-L Stage I, HiGHS Problem (64), basin discovery plus Ipopt Problem (65), and Ipopt Problem (67).
+**Current Behavior:** Current `main` uses deterministic pressure roots, DIRECT-L Stage I, HiGHS Problem (64), and deterministic basin discovery plus Ipopt Problem (65). The installed public-dispatch WIP is archived, Stage-III hardening remains pending, and electrolyte LLE is unadmitted.
+**Expected Outcome:** A later bounded candidate completes the Problem-(67) lifecycle and installed two-liquid evidence without changing the landed Stage-I/II contracts.
 **Target Output:** One existing `TpFlashResult` or `FlashError` carrying solver, numerical, physical, search, root-completeness, predictive, and globality evidence.
 **Owner:** Equilibrium owns HELD2 coordinates, stage solvers, controllers, and certificates; the installed Provider owns EOS values, domains, pressure, packing, and exact tensors.
 **Interface:** Existing public `tp_flash(model, T, P, z)` and private solver-neutral HELD2 evaluators; no public stage or optimizer selector.
-**Cutover:** A future authorized candidate may replace the private manufactured routing only after every named checkpoint and exact artifact gate passes.
-**Replaced Path:** Retire authoritative Stage-I use of shared Ipopt search and the production analytic Stage-II upper envelope only after DIRECT-L and HiGHS parity; retain old paths as test oracles until then.
+**Cutover:** Stage-I/II private routing has completed its guarded cutover. Public electrolyte dispatch still requires every remaining checkpoint and exact artifact gate.
+**Replaced Path:** The fixed-start Stage-I Ipopt route, analytic Stage-II upper envelope, and pre-exploration Stage-II controller remain test-only regression oracles.
 **Evidence:** Frozen dual-pullback terminals, manufactured root and basin topologies, derivative parity, LP oracle parity, complete search traces, Stage-III certificates, and an exact installed two-liquid tracer.
 **Acceptance Proof:** The target owner map is visible in diagnostics, all hard gates pass without tolerance changes, displaced production paths are unreachable, and finite-search globality remains `not_guaranteed`.
 **Stop Criteria:** Stop on missing Provider correction, contradictory baseline evidence, failed root or certificate accounting, unauthorized runtime scope, or inability to reproduce the frozen regression.
 **Avoid:** Do not use SLSQP as a policy substitute, copy EOS equations, return fake penalties, hard-code a chemistry, relax tolerances, or publish finite-search globality.
-**Risk:** Solver migration can hide certificate regressions or make planned dependencies appear current unless each cutover preserves the frozen evaluator and diagnostics.
+**Risk:** Solver migration can hide certificate regressions or leave dependency status stale unless each cutover preserves the frozen evaluator, diagnostics, and documentation.
 
 ## Implementation Boundaries
 
@@ -97,14 +98,18 @@ Do not add:
 
 ## 2. Current implementation versus approved target
 
-Current `main` retains a private manufactured HELD2 foundation. Its shared
-`Held2SearchTnlp` and `solve_held2_search` path currently sends the homogeneous
-reference, Stage-I searches, and Stage-II lower searches to Ipopt. Stage III
-has a separate `Held2StageIIITnlp`. The current build links Ipopt only. The
-installed public-dispatch WIP remains archived at
+Current `main` retains a private HELD2 development implementation. The
+homogeneous and trial-composition services enumerate pressure roots;
+`held2_stage_i_direct.cpp` owns DIRECT-L Stage I;
+`held2_stage_ii_upper.cpp` owns the HiGHS Problem-(64) LP; and
+`held2_stage_ii_basin.cpp` proposes deterministic physical basin
+representatives before `Held2SearchTnlp` refines each representative with
+exact-Hessian Ipopt. The pre-exploration Stage-II controller is reachable only
+through the `stage_ii_legacy` regression route. Stage III retains its separate
+`Held2StageIIITnlp`. The installed public-dispatch WIP remains archived at
 `archive/held2-pre-strategy-2026-07-21` and is not a production baseline.
 
-The approved target is:
+The current owner map is:
 
 | Operation | Target numerical owner | Required interpretation |
 | --- | --- | --- |
@@ -325,10 +330,10 @@ potential equality.
 
 ## 8. Solver-neutral evaluation and dependency boundary
 
-Before adding a new solver, extract the shared HELD2 value, gradient, Hessian,
-physical-state, and Provider-status evaluation from the current TNLP adapter.
-Ipopt and the envelope explorers must consume the same scientific evaluator.
-Do not create parallel objective formulas for different solvers.
+Current `main` provides the shared HELD2 value, gradient, Hessian,
+physical-state, and Provider-status evaluation used by Ipopt and the envelope
+explorers. New solver work must consume that evaluator rather than create a
+parallel objective formula.
 
 The Provider remains the only owner of EOS values and nonlinear tensors.
 Equilibrium applies only the exact coordinate transformations
@@ -340,10 +345,10 @@ Hessian_y = J^T Hessian_w J
             + sum_k gradient_w[k] Hessian_y(w_k).
 ```
 
-Add NLopt and HiGHS to CMake only when their implementation tasks begin and
-the exact exported targets in the build environment are verified. Do not edit
-the current `public_surface.build_dependencies` as if those libraries were
-already installed.
+Current CMake fetches NLopt 2.11.0 and HiGHS 1.15.1 from fixed upstream source
+archives with SHA-256 verification. `THIRD_PARTY_NOTICES.md` records their
+licenses, and the wheel audit must reject leaked headers, libraries, or extra
+extension modules.
 
 ## 9. Required status and diagnostic fields
 
@@ -393,13 +398,13 @@ Step-6 eligibility, and physical basin/candidate identity.
 
 - Create visible baseline evidence before any solver cutover so later changes cannot redefine success.
 
-- [ ] Record the Equilibrium commit/tree, Provider artifact hash and source
+- [x] Record the Equilibrium commit/tree, Provider artifact hash and source
   identity, model-bundle fingerprint, compiler, Ipopt version, and linear
   solver.
-- [ ] Replay the current manufactured HELD2 suite and the assigned archived or
+- [x] Replay the current manufactured HELD2 suite and the assigned archived or
   reconstructed Stage-II dual-pullback fixture.
-- [ ] Freeze every declared start and terminal, including failed attempts.
-- [ ] Confirm the known pass/fail classification before any solver change. If
+- [x] Freeze every declared start and terminal, including failed attempts.
+- [x] Confirm the known pass/fail classification before any solver change. If
   the historical 25-recovered/11-narrow/12-broad partition is not reproducible
   from the assigned artifact, record the evidence gap rather than fabricating
   parity.
@@ -415,12 +420,12 @@ artifact before refactoring.
 
 - Prove evaluator parity and prevent duplicate scientific formulas across solver adapters.
 
-- [ ] Add failing parity tests for value, gradient, Hessian, physical lift,
+- [x] Add failing parity tests for value, gradient, Hessian, physical lift,
   pressure, and Provider failure propagation.
-- [ ] Extract the scientific evaluation from `Held2SearchTnlp` without changing
+- [x] Extract the scientific evaluation from `Held2SearchTnlp` without changing
   coordinates, bounds, formulas, or tolerances.
-- [ ] Make the current Ipopt adapter consume the extracted evaluator.
-- [ ] Prove start-by-start and derivative parity with the frozen baseline.
+- [x] Make the current Ipopt adapter consume the extracted evaluator.
+- [x] Prove start-by-start and derivative parity with the frozen baseline.
 
 ### Task 2: Generalize the deterministic pressure-root envelope
 
@@ -430,13 +435,13 @@ artifact before refactoring.
 
 - Make density-branch topology and root-completeness evidence visible before Stage-I or Stage-II exploration consumes the envelope.
 
-- [ ] Add manufactured tests for one root, stable--unstable--stable roots,
+- [x] Add manufactured tests for one root, stable--unstable--stable roots,
   close roots, a tangential root, a branch switch, a boundary root, an invalid
   interval, a tied stable objective, and deduplication.
-- [ ] Reuse the canonical fixed-feed root implementation at arbitrary feasible
+- [x] Reuse the canonical fixed-feed root implementation at arbitrary feasible
   modified compositions.
-- [ ] Return complete interval, root, branch, mechanical, and failure records.
-- [ ] Keep `root_completeness="not_proven"` unless validated interval evidence
+- [x] Return complete interval, root, branch, mechanical, and failure records.
+- [x] Keep `root_completeness="not_proven"` unless validated interval evidence
   is later added.
 
 **Review checkpoint B:** approve root topology, failure accounting, and the
@@ -451,11 +456,11 @@ absence of a duplicate EOS/density implementation.
 
 - Replace the production upper-envelope path only after HiGHS matches the analytic oracle and passes independent LP acceptance checks.
 
-- [ ] Verify the installed HiGHS CMake target and record its version.
-- [ ] Add failing analytic-envelope parity tests covering unique, tied,
+- [x] Verify the installed HiGHS CMake target and record its version.
+- [x] Add failing analytic-envelope parity tests covering unique, tied,
   redundant, nearly parallel, infeasible, and unbounded cut systems.
-- [ ] Implement the sparse LP adapter with primal/dual residual recomputation.
-- [ ] Retain the analytic implementation only as a test oracle.
+- [x] Implement the sparse LP adapter with primal/dual residual recomputation.
+- [x] Retain the analytic implementation only as a test oracle.
 
 **Review checkpoint C:** approve row signs, active cuts, objective parity, and
 independent LP certification before production routing changes.
@@ -469,15 +474,15 @@ independent LP certification before production routing changes.
 
 - Find a certified negative witness under a declared budget while retaining the legacy Ipopt path as a migration oracle.
 
-- [ ] Verify the installed NLopt CMake target, C++ callback/forced-stop API,
+- [x] Verify the installed NLopt CMake target, C++ callback/forced-stop API,
   and version.
-- [ ] Add failing tests for a narrow negative pocket, a nonnegative envelope,
+- [x] Add failing tests for a narrow negative pocket, a nonnegative envelope,
   a pressure-branch switch, physical boundary points, Provider failure, root
   failure, budget exhaustion, and negative-witness asymmetry.
-- [ ] Implement deterministic `NLOPT_GN_DIRECT_L` over the closed feasible
+- [x] Implement deterministic `NLOPT_GN_DIRECT_L` over the closed feasible
   composition chart and the shared TPD envelope.
-- [ ] Keep legacy fixed-start Ipopt as a named regression strategy.
-- [ ] Freeze a versioned Stage-I evaluation budget from measured evidence.
+- [x] Keep legacy fixed-start Ipopt as a named regression strategy.
+- [x] Freeze a versioned Stage-I evaluation budget from measured evidence.
 
 **Review checkpoint D:** compare strategies under declared budgets using first
 certified negative witness, best certified TPD, Provider calls, failure
@@ -491,10 +496,10 @@ accounting, reproducibility, and honest globality wording.
 
 - Distinguish certificate recovery from missing-basin evidence before authorizing any Stage-II discovery change.
 
-- [ ] Replay the current Stage-II controller with the accepted dual pullback,
+- [x] Replay the current Stage-II controller with the accepted dual pullback,
   fixed-volume Step 6, and same-major ordering.
-- [ ] Determine whether candidate starvation remains after certificate repair.
-- [ ] Identify missing basins, repeated basins, cut deficiencies, and genuine
+- [x] Determine whether candidate starvation remains after certificate repair.
+- [x] Identify missing basins, repeated basins, cut deficiencies, and genuine
   KKT failures separately.
 
 **Review checkpoint E:** authorize only the smallest discovery-layer change
@@ -508,16 +513,16 @@ supported by the replay.
 
 - Discover and deduplicate physical basins, then require Ipopt and independent certificates before candidate acceptance.
 
-- [ ] Add manufactured multiple-basin, same-composition/different-density,
+- [x] Add manufactured multiple-basin, same-composition/different-density,
   different-composition/same-density, duplicate-start, stalled-search, and
   Provider-failure tests.
-- [ ] Add continuation, cut-state, Stage-I witness, physical seed, and Sobol
+- [x] Add continuation, cut-state, Stage-I witness, physical seed, and Sobol
   start families without chemistry-specific constants.
-- [ ] Cluster in physical composition and volume/packing coordinates.
-- [ ] Add one declared stall-triggered DIRECT-L envelope exploration.
-- [ ] Refine every retained representative through the existing exact-Hessian
+- [x] Cluster in physical composition and volume/packing coordinates.
+- [x] Add one declared stall-triggered DIRECT-L envelope exploration.
+- [x] Refine every retained representative through the existing exact-Hessian
   Ipopt Stage-II solve.
-- [ ] Apply independent physical KKT, cut, and Step-6 candidate predicates to
+- [x] Apply independent physical KKT, cut, and Step-6 candidate predicates to
   every terminal.
 
 **Review checkpoint F:** approve basin coverage, unchanged certificates, and
@@ -550,9 +555,9 @@ the assigned receipt/evidence locations
 
 - Complete the governed cutover proof, remove displaced production routing, and stop before Validation, publication, or promotion authority.
 
-- [ ] Update current-versus-target documentation after each landed strategy
-  component; never describe planned dependencies as installed.
-- [ ] Run the compact test suite, derivative checks, manufactured matrix, and
+- [x] Update current-versus-target documentation after each landed strategy
+  component and record the dependency state supported by current CMake.
+- [x] Run the compact test suite, derivative checks, manufactured matrix, and
   exact assigned tracer under one immutable installed Provider artifact.
 - [ ] Retain complete start, branch, cut, candidate, Stage-III lifecycle, and
   failure diagnostics.
