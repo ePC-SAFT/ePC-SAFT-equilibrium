@@ -82,7 +82,11 @@ The remaining installed-completion contract is specified in
 and sequenced by the
 [HELD2 Installed Completion Plan](plans/2026-07-22-held2-installed-completion.md).
 Those documents begin from the retained Stage-II-indeterminate artifact and do
-not reinterpret it as an equilibrium result.
+not reinterpret it as an equilibrium result. Current source has classified the
+artifact's unit-cube callback failure as bounded binary64 contact, preserves
+ordered trial/accepted-iterate and upper-LP evidence, and reaches successful
+local Ipopt termination for that exact start. It still has no certified
+installed Stage-II candidate set or physical Stage-III result.
 
 ## Shared package contract
 

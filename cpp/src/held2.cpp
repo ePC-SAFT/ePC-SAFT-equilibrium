@@ -15,6 +15,8 @@
 #include <utility>
 
 #include <coin/IpIpoptApplication.hpp>
+#include <coin/IpDenseVector.hpp>
+#include <coin/IpIpoptData.hpp>
 #include <coin/IpTNLP.hpp>
 
 namespace epcsaft_equilibrium {
@@ -173,6 +175,7 @@ struct Held2SearchRun {
     std::vector<double> lower_bound_multipliers;
     std::vector<double> upper_bound_multipliers;
     std::vector<double> coordinate_jacobian;
+    std::vector<Held2StageIILocalEvaluation> evaluation_trace;
 };
 
 struct Held2StageIISimplexChart {
@@ -181,6 +184,7 @@ struct Held2StageIISimplexChart {
     std::vector<double> jacobian;
     std::vector<double> component_hessians;
     bool singular = false;
+    bool normalized_boundary_contact = false;
 };
 
 struct Held2PhysicalKkt {
@@ -357,14 +361,16 @@ public:
     bool eval_f(
         Ipopt::Index n,
         const Ipopt::Number* x,
-        bool,
+        bool new_x,
         Ipopt::Number& objective
     ) override {
         try {
             objective = evaluate(n, x).objective;
+            record_evaluation("eval_f", n, x, new_x, true, "");
             return true;
         } catch (const std::exception& error) {
             callback_error_ = error.what();
+            record_evaluation("eval_f", n, x, new_x, false, error.what());
             return false;
         }
     }
@@ -372,7 +378,7 @@ public:
     bool eval_grad_f(
         Ipopt::Index n,
         const Ipopt::Number* x,
-        bool,
+        bool new_x,
         Ipopt::Number* gradient
     ) override {
         try {
@@ -381,6 +387,7 @@ public:
             return true;
         } catch (const std::exception& error) {
             callback_error_ = error.what();
+            record_evaluation("eval_grad_f", n, x, new_x, false, error.what());
             return false;
         }
     }
@@ -411,7 +418,7 @@ public:
     bool eval_h(
         Ipopt::Index n,
         const Ipopt::Number* x,
-        bool,
+        bool new_x,
         Ipopt::Number objective_factor,
         Ipopt::Index m,
         const Ipopt::Number*,
@@ -447,8 +454,45 @@ public:
             return true;
         } catch (const std::exception& error) {
             callback_error_ = error.what();
+            record_evaluation("eval_h", n, x, new_x, false, error.what());
             return false;
         }
+    }
+
+    bool intermediate_callback(
+        Ipopt::AlgorithmMode,
+        Ipopt::Index,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Index,
+        const Ipopt::IpoptData* ip_data,
+        Ipopt::IpoptCalculatedQuantities*
+    ) override {
+        if (ip_data != nullptr && Ipopt::IsValid(ip_data->curr())
+            && Ipopt::IsValid(ip_data->curr()->x())) {
+            const auto* dense = dynamic_cast<const Ipopt::DenseVector*>(
+                Ipopt::GetRawPtr(ip_data->curr()->x())
+            );
+            if (dense != nullptr
+                && dense->Dim() == static_cast<Ipopt::Index>(initial_.size())) {
+                record_evaluation(
+                    "accepted_iterate",
+                    dense->Dim(),
+                    dense->Values(),
+                    true,
+                    true,
+                    "",
+                    true
+                );
+            }
+        }
+        return true;
     }
 
     void finalize_solution(
@@ -464,6 +508,7 @@ public:
         const Ipopt::IpoptData*,
         Ipopt::IpoptCalculatedQuantities*
     ) override {
+        record_evaluation("terminal", n, x, true, true, "", true);
         variables_.assign(x, x + n);
         lower_bound_multipliers_.assign(z_lower, z_lower + n);
         upper_bound_multipliers_.assign(z_upper, z_upper + n);
@@ -487,10 +532,42 @@ public:
             lower_bound_multipliers_,
             upper_bound_multipliers_,
             {},
+            evaluation_trace_,
         };
     }
 
 private:
+    void record_evaluation(
+        const std::string& callback,
+        Ipopt::Index n,
+        const Ipopt::Number* x,
+        bool new_x,
+        bool succeeded,
+        const std::string& error,
+        bool accepted_iterate = false
+    ) {
+        Held2StageIILocalEvaluation record;
+        record.sequence = static_cast<int>(evaluation_trace_.size());
+        record.callback = callback;
+        record.new_x = new_x;
+        record.callback_succeeded = succeeded;
+        record.accepted_iterate = accepted_iterate;
+        record.error = error;
+        if (x != nullptr && n == static_cast<Ipopt::Index>(initial_.size())) {
+            record.raw_variables.assign(x, x + n);
+            for (Ipopt::Index index = 0; index < n; ++index) {
+                const double value = x[index];
+                record.maximum_bound_violation = std::max({
+                    record.maximum_bound_violation,
+                    lower_[static_cast<std::size_t>(index)] - value,
+                    value - upper_[static_cast<std::size_t>(index)],
+                });
+            }
+        }
+        record.mapping_status = succeeded ? "mapped" : "callback_failed";
+        evaluation_trace_.push_back(std::move(record));
+    }
+
     [[nodiscard]] Held2StateEvaluation evaluate(
         Ipopt::Index n,
         const Ipopt::Number* x
@@ -511,6 +588,7 @@ private:
     std::vector<double> variables_;
     std::vector<double> lower_bound_multipliers_;
     std::vector<double> upper_bound_multipliers_;
+    std::vector<Held2StageIILocalEvaluation> evaluation_trace_;
 };
 
 Held2SearchRun solve_held2_search(
@@ -586,13 +664,13 @@ Held2StageIISimplexChart evaluate_stage_ii_simplex_chart(
             remaining -= shifted;
         }
     } else {
-        result.chart_coordinates = coordinates;
-        for (double value : result.chart_coordinates) {
-            if (value < 0.0 || value > 1.0) {
-                throw std::invalid_argument(
-                    "HELD2 Stage II chart coordinate is outside [0, 1]"
-                );
-            }
+        for (std::size_t index = 0; index < dimension; ++index) {
+            const Held2StageIIChartCoordinate normalized =
+                normalize_held2_stage_ii_chart_coordinate(coordinates[index]);
+            result.chart_coordinates[index] = normalized.normalized;
+            result.normalized_boundary_contact =
+                result.normalized_boundary_contact
+                || normalized.normalized_boundary_contact;
         }
         for (std::size_t index = 0; index < dimension; ++index) {
             double product = free_scale * result.chart_coordinates[index];
@@ -790,6 +868,32 @@ Held2SearchRun solve_stage_ii_local(
         chart_lower,
         chart_upper
     );
+    for (Held2StageIILocalEvaluation& evaluation : run.evaluation_trace) {
+        if (evaluation.raw_variables.size() != dimension + 1) {
+            evaluation.mapping_status = "variables_unavailable";
+            continue;
+        }
+        const std::vector<double> chart_coordinates(
+            evaluation.raw_variables.begin(),
+            evaluation.raw_variables.end() - 1
+        );
+        try {
+            const Held2StageIISimplexChart mapped = evaluate_stage_ii_simplex_chart(
+                independent_lower,
+                independent_upper,
+                composition_sum_upper,
+                chart_coordinates,
+                false
+            );
+            evaluation.physical_variables = mapped.physical_coordinates;
+            evaluation.physical_variables.push_back(evaluation.raw_variables.back());
+            evaluation.mapping_status = mapped.normalized_boundary_contact
+                ? "normalized_boundary_contact"
+                : "mapped";
+        } catch (const std::exception&) {
+            evaluation.mapping_status = "chart_out_of_bounds";
+        }
+    }
     if (run.variables.size() != dimension + 1) {
         return run;
     }
@@ -1037,6 +1141,36 @@ double enumerated_manufactured_objective(double feed_composition) {
 }
 
 }  // namespace
+
+Held2StageIIChartCoordinate normalize_held2_stage_ii_chart_coordinate(
+    double coordinate
+) {
+    if (!std::isfinite(coordinate)) {
+        throw std::invalid_argument("HELD2 Stage II chart coordinate is not finite");
+    }
+    if (coordinate >= 0.0 && coordinate <= 1.0) {
+        return {coordinate, coordinate, false};
+    }
+    double lower_contact = 0.0;
+    double upper_contact = 1.0;
+    for (int step = 0; step < 4; ++step) {
+        lower_contact = std::nextafter(
+            lower_contact,
+            -std::numeric_limits<double>::infinity()
+        );
+        upper_contact = std::nextafter(
+            upper_contact,
+            std::numeric_limits<double>::infinity()
+        );
+        if (coordinate == lower_contact) {
+            return {coordinate, 0.0, true};
+        }
+        if (coordinate == upper_contact) {
+            return {coordinate, 1.0, true};
+        }
+    }
+    throw std::invalid_argument("HELD2 Stage II chart coordinate is outside [0, 1]");
+}
 
 Held2StateEvaluation evaluate_held2_manufactured_state(
     const Held2Coordinates& coordinates,
@@ -2540,6 +2674,7 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
         }
         result.bound_history.push_back({
             lower_bound,
+            true,
             upper_bound,
             {multiplier},
             static_cast<int>(cuts.size()),
@@ -2831,6 +2966,23 @@ Held2StageIIResult solve_held2_stage_ii(
         }
         const double upper_bound = upper_solve.upper_bound;
         const std::vector<double>& multipliers = upper_solve.multipliers;
+        result.bound_history.push_back({
+            0.0,
+            false,
+            upper_bound,
+            multipliers,
+            static_cast<int>(cuts.size()),
+            upper_solve.solver,
+            upper_solve.solver_version,
+            upper_solve.solver_status,
+            upper_solve.primal_feasible,
+            upper_solve.dual_feasible,
+            upper_solve.primal_residual_inf,
+            upper_solve.dual_residual_inf,
+            upper_solve.cut_slacks,
+            upper_solve.cut_duals,
+            upper_solve.active_cut_ids,
+        });
 
         std::vector<Held2StageIIBasinSeed> seeds;
         for (const Held2StateEvaluation& basin : traced_basins) {
@@ -2980,6 +3132,13 @@ Held2StageIIResult solve_held2_stage_ii(
                 attempt.internal_terminal = run.variables;
                 attempt.lower_bound_multipliers = run.lower_bound_multipliers;
                 attempt.upper_bound_multipliers = run.upper_bound_multipliers;
+                attempt.evaluation_trace = run.evaluation_trace;
+                for (const Held2StageIILocalEvaluation& evaluation : run.evaluation_trace) {
+                    if (!evaluation.physical_variables.empty()) {
+                        attempt.last_valid_physical_variables =
+                            evaluation.physical_variables;
+                    }
+                }
                 attempt.provider_status = "provider_exact";
                 if (!run.solver_converged || !run.callback_error.empty()
                     || run.variables.size() != dimension + 1) {
@@ -3118,22 +3277,8 @@ Held2StageIIResult solve_held2_stage_ii(
             result.distinct_basin_count = static_cast<int>(traced_basins.size());
             return result;
         }
-        result.bound_history.push_back({
-            lower_bound,
-            upper_bound,
-            multipliers,
-            static_cast<int>(cuts.size()),
-            upper_solve.solver,
-            upper_solve.solver_version,
-            upper_solve.solver_status,
-            upper_solve.primal_feasible,
-            upper_solve.dual_feasible,
-            upper_solve.primal_residual_inf,
-            upper_solve.dual_residual_inf,
-            upper_solve.cut_slacks,
-            upper_solve.cut_duals,
-            upper_solve.active_cut_ids,
-        });
+        result.bound_history.back().lower_bound = lower_bound;
+        result.bound_history.back().lower_bound_available = true;
         const bool duplicate_cut = std::any_of(
             cuts.begin(),
             cuts.end(),
