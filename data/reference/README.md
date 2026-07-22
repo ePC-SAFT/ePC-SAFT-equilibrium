@@ -57,7 +57,7 @@ the identical capability-level values are recorded in `ARCHITECTURE.yaml`.
 `scripts/capture_held2_candidate.py` from one immutable, non-editable
 Equilibrium wheel and the exact pinned Provider wheel. It records the private
 integrated controller's homogeneous-reference, Stage-I, and bounded Stage-II
-evidence for the Khudaida Table-3 tracer. A resource-limited Stage-II outcome
-is retained as indeterminate; Stage III and predictive comparison are not
-silently run. This file is development evidence only and has no capability or
-publication authority.
+evidence for the Khudaida Table-3 tracer. The retained Stage-II callback
+failure and exhausted one-attempt bound remain indeterminate; Stage III and
+predictive comparison are not silently run. This file is development evidence
+only and has no capability or publication authority.

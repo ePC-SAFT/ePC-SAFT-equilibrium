@@ -151,7 +151,7 @@ local_candidate:
 development_candidate:
   name: perdomo-held2
   implementation_status: current-main-private-integrated-stage-i-ii-iii-development
-  solver_strategy_status: integrated-controller-landed-installed-candidate-evidence-pending
+  solver_strategy_status: integrated-controller-landed-installed-candidate-evidence-retained
   authority_effect: none
   current_public_electrolyte_dispatch: false
   archived_installed_wip:
@@ -208,9 +208,9 @@ development_candidate:
     copied_provider_equations: false
   coordinate_contract:
     physical: [component_amounts, volume]
-    stage_i: [independent_modified_fractions, log_volume]
+    stage_i: [feasible_simplex_chart]
     stage_ii: [feasible_simplex_chart, log_packing_fraction]
-    stage_iii: [phase_fractions, per_phase_feasible_simplex_chart, per_phase_log_packing_fraction]
+    stage_iii: [phase_fractions, per_phase_feasible_simplex_chart, per_phase_log_molar_volume]
     eliminated_charged_species: largest-absolute-charge
     dependent_retained_species: molecular
     exact_chain_rule: true
@@ -252,16 +252,26 @@ development_candidate:
     review: APPROVE_WIP_CHECKPOINT
     authority_effect: none
   integrated_candidate_checkpoint:
-    status: pending-immutable-installed-capture
+    status: retained-private-installed-candidate
     fixture: data/reference/perdomo_held2_candidate_v1.json
     capture_script: scripts/capture_held2_candidate.py
+    implementation_commit: 40d01d32dbcda67caa5eafc71b04abe74b80f016
+    implementation_tree: 2dfec318226194fb556a33c50ce01b501915122b
+    equilibrium_wheel_sha256: 606686b766162a4366b2274113a954329ba1496a9b4a27f819b5e2c030979188
+    equilibrium_native_sha256: 6ca0ee33ff9d20625172d5c085fe4a430fd8cf63ca1c233842e0dc3cde4019e3
     provider_wheel_sha256: 9e4da0d7ba7896bcd2ec096400553d935e0516c61f1bd9f41f2370ab68ab36ea
+    provider_native_sha256: 99b1d30e8f98dbd26b710f06af5e995707c4ad067b77846ae45c202b3e90bc13
+    tracer_outcome: indeterminate-stage-ii-lower-search
+    stage_i_outcome: certified-negative-witness-found
+    stage_iii_status: not-run
+    predictive_comparison_status: not-allowed-before-physical-acceptance
     start_terminal_exposure: complete
     authority_effect: none
   package_tests:
     - tests/test_held2.py
+    - tests/test_held2_candidate.py
   next_evidence_gate: source-complete-installed-two-liquid-stage-ii-iii-case
-  next_gate_status: stage-i-ii-landed-pending-stage-iii-and-installed-two-liquid-assignment
+  next_gate_status: integrated-candidate-fails-closed-in-stage-ii-pending-separate-two-liquid-assignment
   globality_certificate: not_guaranteed
   target_unsupported_multicomponent_non_electrolyte_behavior: structured-FlashError-before-search
   promotion_status: not-requested

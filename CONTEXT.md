@@ -164,4 +164,4 @@ equilibrium capability.
 
 `implementation_plan_status: controller_redesign_design_deferred`
 
-`perdomo_held2_solver_strategy_status: stage-i-ii-implemented-private-stage-iii-pending`
+`perdomo_held2_solver_strategy_status: integrated-private-stage-i-ii-iii-candidate-retained`

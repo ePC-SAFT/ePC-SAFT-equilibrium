@@ -32,14 +32,14 @@ SHA-256 and links them into the private extension.
 ## Outcome Proof
 
 **Intent:** Implement one source-faithful HELD2 controller whose numerical owner matches each stage and whose certificates remain independent of solver status.
-**Current Behavior:** Current `main` uses deterministic pressure roots, DIRECT-L Stage I, HiGHS Problem (64), and deterministic basin discovery plus Ipopt Problem (65). The installed public-dispatch WIP is archived, Stage-III hardening remains pending, and electrolyte LLE is unadmitted.
-**Expected Outcome:** A later bounded candidate completes the Problem-(67) lifecycle and installed two-liquid evidence without changing the landed Stage-I/II contracts.
+**Current Behavior:** The private integrated controller uses deterministic pressure roots, DIRECT-L Stage I, HiGHS Problem (64), deterministic basin discovery plus exact-Hessian Ipopt Problem (65), and hardened exact-Hessian Ipopt Problem (67). The immutable Khudaida candidate fails closed in Stage II, public electrolyte dispatch is disabled, and electrolyte LLE is unadmitted.
+**Expected Outcome:** A separate bounded assignment supplies installed two-liquid Stage-II/III evidence without changing the retained controller contracts.
 **Target Output:** One existing `TpFlashResult` or `FlashError` carrying solver, numerical, physical, search, root-completeness, predictive, and globality evidence.
 **Owner:** Equilibrium owns HELD2 coordinates, stage solvers, controllers, and certificates; the installed Provider owns EOS values, domains, pressure, packing, and exact tensors.
 **Interface:** Existing public `tp_flash(model, T, P, z)` and private solver-neutral HELD2 evaluators; no public stage or optimizer selector.
 **Cutover:** Stage-I/II private routing has completed its guarded cutover. Public electrolyte dispatch still requires every remaining checkpoint and exact artifact gate.
-**Replaced Path:** The fixed-start Stage-I Ipopt route, analytic Stage-II upper envelope, and pre-exploration Stage-II controller remain test-only regression oracles.
-**Evidence:** Frozen dual-pullback terminals, manufactured root and basin topologies, derivative parity, LP oracle parity, complete search traces, Stage-III certificates, and an exact installed two-liquid tracer.
+**Replaced Path:** The fixed-start Stage-I Ipopt route, analytic Stage-II upper envelope, pre-exploration Stage-II controller, and their legacy baseline fixture are removed. Focused manufactured formulation oracles remain.
+**Evidence:** Manufactured root and basin topologies, derivative parity, LP oracle parity, complete search traces, Stage-III certificates, and one immutable installed Khudaida tracer.
 **Acceptance Proof:** The target owner map is visible in diagnostics, all hard gates pass without tolerance changes, displaced production paths are unreachable, and finite-search globality remains `not_guaranteed`.
 **Stop Criteria:** Stop on missing Provider correction, contradictory pre-change evidence, failed root or certificate accounting, unauthorized runtime scope, or inability to reproduce the frozen regression.
 **Avoid:** Do not use SLSQP as a policy substitute, copy EOS equations, return fake penalties, hard-code a chemistry, relax tolerances, or publish finite-search globality.
@@ -537,12 +537,12 @@ bounded no-progress behavior before Stage III is exercised on a new pool.
 
 - Retire only KKT-inactive phases, re-solve the active set, and keep failed physical-potential evidence visible despite Ipopt success.
 
-- [ ] Add failing tests for KKT-active trace phases, KKT-inactive phase
+- [x] Add failing tests for KKT-active trace phases, KKT-inactive phase
   retirement, one-at-a-time retirement, active-set re-solve, duplicate merge,
   Stage-II feedback, and physical-potential failure despite Ipopt success.
-- [ ] Keep the direct total-free-energy objective and exact Hessian.
-- [ ] Implement only evidence-backed retirement and re-solve semantics.
-- [ ] Preserve the fail-closed trace-refinement gate until logarithmic trace
+- [x] Keep the direct total-free-energy objective and exact Hessian.
+- [x] Implement only evidence-backed retirement and re-solve semantics.
+- [x] Preserve the fail-closed trace-refinement gate until logarithmic trace
   refinement is separately implemented and verified.
 
 ### Task 8: Integrate, document, and build an isolated candidate only when authorized
@@ -559,9 +559,9 @@ the assigned receipt/evidence locations
   component and record the dependency state supported by current CMake.
 - [x] Run the compact test suite, derivative checks, manufactured matrix, and
   exact assigned tracer under one immutable installed Provider artifact.
-- [ ] Retain complete start, branch, cut, candidate, Stage-III lifecycle, and
+- [x] Retain complete start, branch, cut, candidate, Stage-III lifecycle, and
   failure diagnostics.
-- [ ] Stop after local candidate evidence. Publication, Validation mutation,
+- [x] Stop after local candidate evidence. Publication, Validation mutation,
   promotion, and authority transfer require separate authorization.
 
 ## 11. Minimum verification matrix

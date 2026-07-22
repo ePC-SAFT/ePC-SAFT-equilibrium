@@ -42,7 +42,7 @@ def _installed_distribution(name: str) -> dict[str, Any]:
     root = Path(distribution.locate_file("")).resolve()
     if "site-packages" not in root.parts:
         raise ValueError(f"{name} is not imported from site-packages")
-    return {"version": distribution.version, "root": str(root)}
+    return {"version": distribution.version, "location": "site-packages"}
 
 
 def _wheel_record(wheel: Path, installed_module: Path) -> dict[str, Any]:
@@ -60,7 +60,6 @@ def _wheel_record(wheel: Path, installed_module: Path) -> dict[str, Any]:
     return {
         "filename": wheel.name,
         "member": matches[0],
-        "module_import_path": str(installed_module),
         "native_payload_sha256": payload_sha256,
         "sha256": _sha256_path(wheel),
         "size_bytes": wheel.stat().st_size,
