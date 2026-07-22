@@ -153,7 +153,10 @@ The canonical documentation map is `docs/phase-equilibrium.md`. Detailed
 formulation owners are
 `docs/designs/2026-07-17-pure-saturation-slice.md`,
 `docs/designs/2026-07-17-neutral-held-v1.md`, and
-`docs/designs/2026-07-21-perdomo-held2.md`. Migration receipt
+`docs/designs/2026-07-21-perdomo-held2.md`. The D-028 private, non-production
+reacting-phase foundation is documented separately in
+`docs/designs/2026-07-21-private-reacting-phase-kernel.md`; it adds no public
+operation or predictive chemical claim. Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
 solve is not a phase-discovery or global-stability proof. The local HELD

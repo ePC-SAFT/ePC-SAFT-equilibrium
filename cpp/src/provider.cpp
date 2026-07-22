@@ -219,7 +219,7 @@ std::array<double, 2> ProviderContext::evaluate_molar_volume_bounds(
     );
     if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
         throw std::domain_error(
-            "provider molar-volume domain evaluation failed with status "
+            "provider molar-volume domain/fingerprint evaluation failed with status "
             + std::to_string(status)
         );
     }

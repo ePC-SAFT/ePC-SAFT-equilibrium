@@ -19,9 +19,10 @@ replace a formulation owner.
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
 | Strong-electrolyte Perdomo HELD2 | [Perdomo HELD2](designs/2026-07-21-perdomo-held2.md) | Non-production development candidate; public installed dispatch exists, but electrolyte LLE is not admitted |
+| Private homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) | D-028-bound non-production foundation; underscored test seam only; installed case is manufactured/nonpredictive |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
-| Reactive or coupled phase-chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
+| Coupled multiphase chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
 
 The only accepted capability is `pure-component-saturation-v1`. A public
 symbol, a local candidate, an installed campaign, or a converged local solve is
@@ -67,6 +68,22 @@ Provider domain and derivative contracts, homogeneous reference selection,
 modified-coordinate stability search, complete-cut Stage II, general candidate
 set Stage III, and formulation-specific certificates. Perdomo modified moles
 must not be replaced by or conflated with Ascani counterion-pair coordinates.
+
+### Private homogeneous reacting phase
+
+The D-028 design owns one private homogeneous fixed-`T,P` reacting-phase
+foundation. It validates ordered species, conservation and independent
+reaction ranks, dimensionless source/reference-bound `lnK`, and the exact
+Provider identity before solving. It constructs `g_ref` in the Provider
+Helmholtz coordinate basis, uses a general positive electroneutral amount
+chart, performs max-min initialization, attempts the true Provider objective
+first, and permits only a final `lambda=1` continuation state to pass.
+
+Its certificate axes keep artifact/input completeness, Ipopt status, numerical
+and physical checks, reduced-Hessian local status, predictive status, finite
+search, and globality separate. The only installed-Provider test uses synthetic
+reference data and is labeled manufactured/nonpredictive. There is no public
+solve route, result type, chemistry dataset, or nonideal predictive claim.
 
 ## Shared package contract
 
@@ -132,12 +149,13 @@ its own package-local design and bounded capability gate.
 
 ### Reactive and coupled equilibrium
 
-Standalone chemical equilibrium and simultaneous phase-chemical equilibrium
-require ordered species, phase incidence, stoichiometric and elemental balance
-matrices, standard states, source-bound equilibrium constants, and distinct
-reaction/transfer certificates. Staged chemistry followed by a phase-only
-solve is initialization evidence, not a coupled equilibrium result. No such
-public schema or runtime route is currently admitted.
+The private homogeneous foundation does not complete simultaneous
+phase-chemical equilibrium. A coupled formulation still requires explicit
+phase incidence, global conservation, phase-specific electroneutrality,
+source-complete standard-state transformations, phase discovery, and distinct
+reaction/transfer/pressure certificates. Staged chemistry followed by a
+phase-only solve is initialization evidence, not a coupled equilibrium result.
+No public reactive schema or runtime route is admitted.
 
 ## Historical and scientific provenance
 

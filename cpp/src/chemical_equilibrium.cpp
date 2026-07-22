@@ -241,11 +241,11 @@ void validate_reference_records(const ReactionSystemInput& input) {
             throw std::invalid_argument("lnK must be explicitly dimensionless");
         }
         require_finite(record.temperature_k, "equilibrium constant temperature");
+        require_finite(record.pressure_pa, "equilibrium constant pressure");
         if (record.temperature_k != input.temperature_k) {
             throw std::invalid_argument("equilibrium constant temperature binding does not match");
         }
         if (record.pressure_binding == "fixed") {
-            require_finite(record.pressure_pa, "equilibrium constant pressure");
             if (record.pressure_pa != input.pressure_pa) {
                 throw std::invalid_argument("equilibrium constant pressure binding does not match");
             }
@@ -331,6 +331,13 @@ SimplexDerivatives reference_softmax(
     std::transform(weights.begin(), weights.end(), result.shares.begin(), [total](double value) {
         return value / total;
     });
+    if (!std::all_of(result.shares.begin(), result.shares.end(), [](double share) {
+            return std::isfinite(share) && share > 0.0;
+        })) {
+        throw std::invalid_argument(
+            "amount chart simplex is outside the strictly positive representable domain"
+        );
+    }
     result.jacobian.assign(category_count * dimension, 0.0);
     result.hessians.assign(category_count * dimension * dimension, 0.0);
     for (std::size_t category = 0; category < category_count; ++category) {
@@ -370,6 +377,11 @@ void fill_charged_group(
         const std::size_t species = species_indices[category];
         const double charge = std::abs(static_cast<double>(chart.charges[species]));
         const double amount = charge_equivalents * simplex.shares[category] / charge;
+        if (!std::isfinite(amount) || amount <= 0.0) {
+            throw std::invalid_argument(
+                "amount chart is outside the strictly positive representable domain"
+            );
+        }
         result.amounts[species] = amount;
         result.jacobian[species * coordinate_count] = amount;
         result.amount_hessians[species * coordinate_count * coordinate_count] = amount;

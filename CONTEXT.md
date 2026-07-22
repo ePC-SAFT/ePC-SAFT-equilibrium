@@ -68,6 +68,17 @@ next public Stage-I/II/III gate. Equilibrium is ready for that selected case
 and waits for the exact Provider artifact and Migration dispatch. No speculative
 case constants, route, tolerance, resource, or runtime correction is active.
 
+D-028 separately binds a private, non-production homogeneous reacting-phase
+foundation. The implementation is intentionally reachable only through
+underscored native test seams: it compiles ordered balances, reactions, and
+reference records; constructs an exact positive electroneutral chart; owns one
+fixed-`T,P` Ipopt TNLP and its certificates; and consumes the installed
+Provider's Helmholtz, pressure, volume-domain, packing, and derivative
+callbacks. Its installed-Provider case is synthetic and explicitly
+`manufactured_nonpredictive`. It adds no public operation, result family,
+source-backed nonideal reaction claim, receipt, or authority. D-026 remains the
+public HELD2 admission gate.
+
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD
 `5a678beff38717478fd333c65e77f005cc2f6b15` and record SHA-256
@@ -118,6 +129,10 @@ candidate source and a public route do not accept their own promotion.
 `local_candidate: neutral-held-v1`
 
 `active_development_candidate: perdomo-held2-installed-public-dispatch`
+
+`private_development_foundation: homogeneous-reacting-phase-d028`
+
+`private_development_foundation_authority_effect: none`
 
 `local_candidate_authority_effect: none`
 
