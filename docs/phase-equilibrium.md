@@ -77,6 +77,13 @@ removed; only focused manufactured formulation oracles remain. None of these
 internal owners is a caller-selectable backend or current public electrolyte
 behavior.
 
+The remaining installed-completion contract is specified in
+[HELD2 Installed Completion](designs/2026-07-22-held2-installed-completion.md)
+and sequenced by the
+[HELD2 Installed Completion Plan](plans/2026-07-22-held2-installed-completion.md).
+Those documents begin from the retained Stage-II-indeterminate artifact and do
+not reinterpret it as an equilibrium result.
+
 ## Shared package contract
 
 The installed `epcsaft` Provider owns resolved thermodynamic input, component
