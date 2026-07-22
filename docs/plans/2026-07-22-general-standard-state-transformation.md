@@ -79,4 +79,4 @@
 - [x] Build against the exact Provider wheel.
 - [x] Run focused chemical-equilibrium tests, full pytest, Ruff, strict mypy, diff checks, and the repository cleanup audit.
 - [x] Review the staged diff for one direct private path and no obsolete water-only compatibility surface.
-- [ ] Commit and push #34, open its PR against `codex/chemical-equilibrium`, and merge only after the exact head is clean and verified.
+- [x] Commit and push #34, open its PR against `codex/chemical-equilibrium`, and merge only after the exact head is clean and verified.
