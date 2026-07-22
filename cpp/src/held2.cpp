@@ -1332,6 +1332,60 @@ std::vector<double> held2_lift_independent_fractions(
     return held2_lift_modified_fractions(coordinates, modified_fractions);
 }
 
+std::vector<double> held2_map_unit_cube_to_independent_fractions(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& unit_cube_coordinates
+) {
+    const std::size_t dimension = coordinates.independent_indices.size();
+    if (dimension == 0 || unit_cube_coordinates.size() != dimension
+        || coordinates.independent_lower_bounds.size() != dimension
+        || coordinates.independent_upper_bounds.size() != dimension) {
+        throw std::invalid_argument("HELD2 simplex chart dimensions are invalid");
+    }
+    require_finite_vector(unit_cube_coordinates, "HELD2 simplex cube coordinates");
+    const auto dependent_retained = static_cast<std::size_t>(
+        std::find(
+            coordinates.retained_indices.begin(),
+            coordinates.retained_indices.end(),
+            coordinates.dependent_index
+        ) - coordinates.retained_indices.begin()
+    );
+    const double composition_sum_upper = 1.0 - kModifiedLowerScale
+        * coordinates.modified_factors[dependent_retained];
+    const double lower_sum = std::accumulate(
+        coordinates.independent_lower_bounds.begin(),
+        coordinates.independent_lower_bounds.end(),
+        0.0
+    );
+    const double free_scale = composition_sum_upper - lower_sum;
+    if (!(free_scale > 0.0)) {
+        throw std::invalid_argument("HELD2 simplex chart has no feasible interior");
+    }
+    for (std::size_t index = 0; index < dimension; ++index) {
+        const double simplex_maximum = free_scale
+            + coordinates.independent_lower_bounds[index];
+        if (coordinates.independent_upper_bounds[index] < simplex_maximum) {
+            throw std::invalid_argument(
+                "HELD2 simplex chart requires redundant independent upper bounds"
+            );
+        }
+        if (unit_cube_coordinates[index] < 0.0
+            || unit_cube_coordinates[index] > 1.0) {
+            throw std::invalid_argument("HELD2 simplex cube coordinate is outside [0, 1]");
+        }
+    }
+
+    std::vector<double> independent(dimension, 0.0);
+    double remaining_fraction = 1.0;
+    for (std::size_t index = 0; index < dimension; ++index) {
+        const double shifted = free_scale * remaining_fraction
+            * unit_cube_coordinates[index];
+        independent[index] = coordinates.independent_lower_bounds[index] + shifted;
+        remaining_fraction *= 1.0 - unit_cube_coordinates[index];
+    }
+    return independent;
+}
+
 std::vector<double> held2_transform_modified_potentials(
     const Held2Coordinates& coordinates,
     const std::vector<double>& chemical_potentials
