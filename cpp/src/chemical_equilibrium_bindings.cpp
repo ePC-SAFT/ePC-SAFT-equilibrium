@@ -157,6 +157,7 @@ py::dict compile_system(const py::dict& spec) {
     result["charges"] = compiled.charges;
     result["balance_rank"] = compiled.balance_rank;
     result["reaction_rank"] = compiled.reaction_rank;
+    result["reaction_qr_diagonal_ratio"] = compiled.reaction_qr_diagonal_ratio;
     result["balance_totals"] = compiled.balance_totals;
     result["g_ref"] = compiled.g_ref;
     result["reference_reconstruction_inf_norm"] =

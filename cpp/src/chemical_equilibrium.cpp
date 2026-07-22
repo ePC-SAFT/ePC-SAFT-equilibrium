@@ -78,50 +78,6 @@ std::size_t matrix_rank(DenseMatrix matrix) {
     return pivot_row;
 }
 
-std::vector<double> solve_square(DenseMatrix matrix, std::vector<double> right_hand_side) {
-    if (matrix.rows == 0 || matrix.rows != matrix.columns
-        || matrix.values.size() != matrix.rows * matrix.columns
-        || right_hand_side.size() != matrix.rows) {
-        throw std::invalid_argument("reference reconstruction linear system is invalid");
-    }
-    const double tolerance = numerical_tolerance(matrix_scale(matrix), matrix.rows);
-    for (std::size_t column = 0; column < matrix.columns; ++column) {
-        std::size_t pivot = column;
-        for (std::size_t row = column + 1; row < matrix.rows; ++row) {
-            if (std::abs(matrix(row, column)) > std::abs(matrix(pivot, column))) {
-                pivot = row;
-            }
-        }
-        if (std::abs(matrix(pivot, column)) <= tolerance) {
-            throw std::invalid_argument("reaction matrix rank is deficient");
-        }
-        if (pivot != column) {
-            for (std::size_t index = column; index < matrix.columns; ++index) {
-                std::swap(matrix(pivot, index), matrix(column, index));
-            }
-            std::swap(right_hand_side[pivot], right_hand_side[column]);
-        }
-        const double pivot_value = matrix(column, column);
-        for (std::size_t row = column + 1; row < matrix.rows; ++row) {
-            const double factor = matrix(row, column) / pivot_value;
-            for (std::size_t index = column; index < matrix.columns; ++index) {
-                matrix(row, index) -= factor * matrix(column, index);
-            }
-            right_hand_side[row] -= factor * right_hand_side[column];
-        }
-    }
-    std::vector<double> solution(matrix.rows, 0.0);
-    for (std::size_t reverse = matrix.rows; reverse > 0; --reverse) {
-        const std::size_t row = reverse - 1;
-        double value = right_hand_side[row];
-        for (std::size_t column = row + 1; column < matrix.columns; ++column) {
-            value -= matrix(row, column) * solution[column];
-        }
-        solution[row] = value / matrix(row, row);
-    }
-    return solution;
-}
-
 double multiply_inf_norm(const DenseMatrix& left, const DenseMatrix& right_transposed) {
     if (left.columns != right_transposed.columns) {
         throw std::invalid_argument("matrix product dimensions are inconsistent");
@@ -139,35 +95,133 @@ double multiply_inf_norm(const DenseMatrix& left, const DenseMatrix& right_trans
     return norm;
 }
 
-std::vector<double> construct_minimum_norm_reference(
+struct ReferenceReconstruction {
+    std::vector<double> reference;
+    std::size_t rank = 0;
+    double qr_diagonal_ratio = 0.0;
+};
+
+ReferenceReconstruction construct_minimum_norm_reference(
     const DenseMatrix& reaction_matrix,
     const std::vector<double>& ln_k
 ) {
-    DenseMatrix gram{
-        reaction_matrix.rows,
-        reaction_matrix.rows,
-        std::vector<double>(reaction_matrix.rows * reaction_matrix.rows, 0.0),
+    if (reaction_matrix.rows == 0 || reaction_matrix.rows > reaction_matrix.columns
+        || ln_k.size() != reaction_matrix.rows) {
+        throw std::invalid_argument("reference reconstruction linear system is invalid");
+    }
+
+    const std::size_t species_count = reaction_matrix.columns;
+    const std::size_t reaction_count = reaction_matrix.rows;
+    DenseMatrix factor{
+        species_count,
+        reaction_count,
+        std::vector<double>(species_count * reaction_count, 0.0),
     };
-    for (std::size_t row = 0; row < reaction_matrix.rows; ++row) {
-        for (std::size_t column = 0; column < reaction_matrix.rows; ++column) {
-            for (std::size_t species = 0; species < reaction_matrix.columns; ++species) {
-                gram(row, column) += reaction_matrix(row, species)
-                    * reaction_matrix(column, species);
+    std::vector<double> scaled_right_hand_side(reaction_count, 0.0);
+    for (std::size_t reaction = 0; reaction < reaction_count; ++reaction) {
+        double row_norm = 0.0;
+        for (std::size_t species = 0; species < species_count; ++species) {
+            row_norm = std::hypot(row_norm, reaction_matrix(reaction, species));
+        }
+        if (row_norm == 0.0) {
+            throw std::invalid_argument("reaction matrix rank is deficient");
+        }
+        scaled_right_hand_side[reaction] = -ln_k[reaction] / row_norm;
+        for (std::size_t species = 0; species < species_count; ++species) {
+            factor(species, reaction) = reaction_matrix(reaction, species) / row_norm;
+        }
+    }
+
+    std::vector<std::size_t> permutation(reaction_count, 0);
+    std::iota(permutation.begin(), permutation.end(), 0);
+    std::vector<double> reflector_scales(reaction_count, 0.0);
+    std::vector<double> diagonal_magnitudes(reaction_count, 0.0);
+    const double rank_tolerance = numerical_tolerance(1.0, species_count);
+
+    for (std::size_t column = 0; column < reaction_count; ++column) {
+        std::size_t pivot = column;
+        double pivot_norm = 0.0;
+        for (std::size_t candidate = column; candidate < reaction_count; ++candidate) {
+            double trailing_norm = 0.0;
+            for (std::size_t row = column; row < species_count; ++row) {
+                trailing_norm = std::hypot(trailing_norm, factor(row, candidate));
+            }
+            if (trailing_norm > pivot_norm) {
+                pivot = candidate;
+                pivot_norm = trailing_norm;
             }
         }
+        if (pivot_norm <= rank_tolerance) {
+            throw std::invalid_argument("reaction matrix rank is deficient");
+        }
+        if (pivot != column) {
+            for (std::size_t row = 0; row < species_count; ++row) {
+                std::swap(factor(row, pivot), factor(row, column));
+            }
+            std::swap(permutation[pivot], permutation[column]);
+        }
+
+        double column_norm = 0.0;
+        for (std::size_t row = column; row < species_count; ++row) {
+            column_norm = std::hypot(column_norm, factor(row, column));
+        }
+        const double leading_value = factor(column, column);
+        const double diagonal = -std::copysign(column_norm, leading_value);
+        const double reflector_leading = leading_value - diagonal;
+        if (std::abs(diagonal) <= rank_tolerance || reflector_leading == 0.0) {
+            throw std::invalid_argument("reaction matrix rank is deficient");
+        }
+        reflector_scales[column] = (diagonal - leading_value) / diagonal;
+        factor(column, column) = diagonal;
+        for (std::size_t row = column + 1; row < species_count; ++row) {
+            factor(row, column) /= reflector_leading;
+        }
+        for (std::size_t other = column + 1; other < reaction_count; ++other) {
+            double projection = factor(column, other);
+            for (std::size_t row = column + 1; row < species_count; ++row) {
+                projection += factor(row, column) * factor(row, other);
+            }
+            projection *= reflector_scales[column];
+            factor(column, other) -= projection;
+            for (std::size_t row = column + 1; row < species_count; ++row) {
+                factor(row, other) -= factor(row, column) * projection;
+            }
+        }
+        diagonal_magnitudes[column] = std::abs(diagonal);
     }
-    std::vector<double> right_hand_side(ln_k.size(), 0.0);
-    std::transform(ln_k.begin(), ln_k.end(), right_hand_side.begin(), [](double value) {
-        return -value;
-    });
-    const std::vector<double> dual = solve_square(std::move(gram), std::move(right_hand_side));
-    std::vector<double> reference(reaction_matrix.columns, 0.0);
-    for (std::size_t species = 0; species < reaction_matrix.columns; ++species) {
-        for (std::size_t reaction = 0; reaction < reaction_matrix.rows; ++reaction) {
-            reference[species] += reaction_matrix(reaction, species) * dual[reaction];
+
+    std::vector<double> projected_reference(reaction_count, 0.0);
+    for (std::size_t row = 0; row < reaction_count; ++row) {
+        double value = scaled_right_hand_side[permutation[row]];
+        for (std::size_t column = 0; column < row; ++column) {
+            value -= factor(column, row) * projected_reference[column];
+        }
+        projected_reference[row] = value / factor(row, row);
+    }
+
+    std::vector<double> reference(species_count, 0.0);
+    std::copy(projected_reference.begin(), projected_reference.end(), reference.begin());
+    for (std::size_t reverse = reaction_count; reverse > 0; --reverse) {
+        const std::size_t column = reverse - 1;
+        double projection = reference[column];
+        for (std::size_t row = column + 1; row < species_count; ++row) {
+            projection += factor(row, column) * reference[row];
+        }
+        projection *= reflector_scales[column];
+        reference[column] -= projection;
+        for (std::size_t row = column + 1; row < species_count; ++row) {
+            reference[row] -= factor(row, column) * projection;
         }
     }
-    return reference;
+
+    const auto [minimum_diagonal, maximum_diagonal] = std::minmax_element(
+        diagonal_magnitudes.begin(), diagonal_magnitudes.end()
+    );
+    return {
+        std::move(reference),
+        reaction_count,
+        *minimum_diagonal / *maximum_diagonal,
+    };
 }
 
 double reference_residual_inf_norm(
@@ -580,13 +634,13 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     if (balance_rank != input.declared_balance_rank) {
         throw std::invalid_argument("declared balance rank does not match balance matrix rank");
     }
-    const std::size_t reaction_rank = matrix_rank(input.reaction_matrix);
-    if (reaction_rank != input.reaction_matrix.rows) {
-        throw std::invalid_argument("reaction matrix rank is deficient");
-    }
     if (input.ln_k.size() != input.reaction_matrix.rows) {
         throw std::invalid_argument("equilibrium constants are incomplete for the reaction matrix");
     }
+    ReferenceReconstruction reconstruction = construct_minimum_norm_reference(
+        input.reaction_matrix, input.ln_k
+    );
+    const std::size_t reaction_rank = reconstruction.rank;
     if (input.complete_closed_system
         && balance_rank + reaction_rank != species_count) {
         throw std::invalid_argument("complete closed system rank sum does not equal species count");
@@ -619,11 +673,8 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     }
     validate_reference_records(input);
 
-    std::vector<double> reference = construct_minimum_norm_reference(
-        input.reaction_matrix, input.ln_k
-    );
     const double reference_residual = reference_residual_inf_norm(
-        input.reaction_matrix, reference, input.ln_k
+        input.reaction_matrix, reconstruction.reference, input.ln_k
     );
     double ln_k_scale = 0.0;
     for (double value : input.ln_k) {
@@ -648,10 +699,11 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
         std::move(balance_totals),
         input.feed_amounts,
         input.ln_k,
-        std::move(reference),
+        std::move(reconstruction.reference),
         input.provider_fingerprint,
         balance_rank,
         reaction_rank,
+        reconstruction.qr_diagonal_ratio,
         reference_residual,
         conservation_norm,
         reaction_charge_norm,

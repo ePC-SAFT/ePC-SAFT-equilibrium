@@ -236,6 +236,90 @@ def test_reaction_compiler_reconstructs_minimum_norm_reference() -> None:
     assert compiled["charge_reaction_inf_norm"] == 0.0
 
 
+def _bind_record(spec: dict[str, object]) -> None:
+    spec["equilibrium_constant_records"] = tuple(
+        {
+            "source_id": f"manufactured:reaction-{index}",
+            "reference_id": "provider-helmholtz-coordinate-basis",
+            "dimensionless": True,
+            "temperature_k": spec["temperature_k"],
+            "pressure_pa": spec["pressure_pa"],
+            "pressure_binding": "fixed",
+        }
+        for index in range(len(spec["ln_k"]))  # type: ignore[arg-type]
+    )
+
+
+def _nearly_dependent_system(
+    reaction_scale: float, delta: float, *, reverse_order: bool = False
+) -> dict[str, object]:
+    reactions: tuple[tuple[float, ...], ...] = (
+        (-1.0, 1.0, 0.0, 0.0),
+        (
+            -reaction_scale,
+            reaction_scale,
+            reaction_scale * delta,
+            -reaction_scale * delta,
+        ),
+    )
+    ln_k: tuple[float, ...] = (2.0, reaction_scale * (2.0 - delta))
+    if reverse_order:
+        reactions = tuple(reversed(reactions))
+        ln_k = tuple(reversed(ln_k))
+    spec = {
+        **_base_system(),
+        "species_ids": ("A", "B", "C", "D"),
+        "charges": (0, 0, 0, 0),
+        "provider_component_ids": ("A", "B", "C", "D"),
+        "provider_charges": (0, 0, 0, 0),
+        "expected_provider_component_ids": ("A", "B", "C", "D"),
+        "expected_provider_charges": (0, 0, 0, 0),
+        "balance_matrix": (
+            (1.0, 1.0, 1.0, 1.0),
+            (1.0, 1.0, 0.0, 0.0),
+        ),
+        "declared_balance_rank": 2,
+        "reaction_matrix": reactions,
+        "feed_amounts": (1.0, 1.0, 1.0, 1.0),
+        "ln_k": ln_k,
+    }
+    _bind_record(spec)
+    return spec
+
+
+def test_reaction_compiler_is_stable_for_scaled_nearly_dependent_reactions() -> None:
+    delta = 1.0e-6
+    expected_reference = (1.0, -1.0, 0.5, -0.5)
+    qr_diagonal_ratios = []
+
+    for reaction_scale, reverse_order in (
+        (1.0, False),
+        (1.0, True),
+        (1.0e8, False),
+        (1.0e8, True),
+    ):
+        compiled = _equilibrium._chemical_compile_system(
+            _nearly_dependent_system(
+                reaction_scale, delta, reverse_order=reverse_order
+            )
+        )
+
+        assert compiled["reaction_rank"] == 2
+        assert compiled["g_ref"] == pytest.approx(expected_reference, abs=2.0e-9)
+        assert compiled["reference_reconstruction_inf_norm"] <= 5.0e-8
+        qr_diagonal_ratios.append(compiled["reaction_qr_diagonal_ratio"])
+
+    assert qr_diagonal_ratios == pytest.approx(
+        (qr_diagonal_ratios[0],) * 4, rel=2.0e-9
+    )
+    assert 1.0e-8 < qr_diagonal_ratios[0] < 1.0e-4
+
+
+def test_reaction_compiler_rejects_numerically_dependent_reactions() -> None:
+    with pytest.raises(ValueError, match="reaction matrix rank"):
+        _equilibrium._chemical_compile_system(_nearly_dependent_system(1.0, 1.0e-14))
+
+
 def _change(path: str, value: object) -> Callable[[dict[str, object]], None]:
     def apply(spec: dict[str, object]) -> None:
         if "." not in path:
@@ -249,6 +333,12 @@ def _change(path: str, value: object) -> Callable[[dict[str, object]], None]:
     return apply
 
 
+def _make_rank_deficient(spec: dict[str, object]) -> None:
+    spec["reaction_matrix"] = ((-1.0, 1.0), (-2.0, 2.0))
+    spec["ln_k"] = (math.log(4.0), math.log(16.0))
+    _bind_record(spec)
+
+
 @pytest.mark.parametrize(
     ("mutate", "message"),
     (
@@ -258,10 +348,7 @@ def _change(path: str, value: object) -> Callable[[dict[str, object]], None]:
         (_change("declared_balance_rank", 2), "declared balance rank"),
         (_change("balance_matrix", ((1.0, 1.0), (2.0, 2.0))), "balance matrix rank"),
         (_change("reaction_matrix", ((-1.0, 2.0),)), "conserve"),
-        (
-            _change("reaction_matrix", ((-1.0, 1.0), (-2.0, 2.0))),
-            "reaction matrix rank",
-        ),
+        (_make_rank_deficient, "reaction matrix rank"),
         (_change("complete_closed_system", False), "complete closed system"),
         (_change("equilibrium_constant_records.dimensionless", False), "dimensionless"),
         (_change("equilibrium_constant_records.source_id", ""), "source identity"),
@@ -423,22 +510,6 @@ def test_amount_chart_rejects_invalid_topology_or_coordinates(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         _amount_chart(charges, coordinates)
-
-
-def _bind_record(spec: dict[str, object]) -> None:
-    records = []
-    for index in range(len(spec["ln_k"])):  # type: ignore[arg-type]
-        records.append(
-            {
-                "source_id": f"manufactured:reaction-{index}",
-                "reference_id": "provider-helmholtz-coordinate-basis",
-                "dimensionless": True,
-                "temperature_k": spec["temperature_k"],
-                "pressure_pa": spec["pressure_pa"],
-                "pressure_binding": "fixed",
-            }
-        )
-    spec["equilibrium_constant_records"] = tuple(records)
 
 
 def _manufactured_solve(
