@@ -52,6 +52,10 @@ double direct_objective(
     progress.kind = Held2ProgressKind::StageIEvaluation;
     progress.iteration = evaluation_index + 1;
     progress.objective = retained.tpd;
+    progress.physical_total_ion_mole_fraction =
+        retained.physical_total_ion_mole_fraction;
+    progress.total_ion_mole_fraction_max =
+        retained.total_ion_mole_fraction_max;
     progress.status = retained.certified ? "certified" : "failed";
     progress.reason = retained.failure_reason;
     if (retained.pressure_envelope.selected_root_index >= 0) {
@@ -250,7 +254,8 @@ Held2StageIDirectResult solve_held2_manufactured_stage_i_direct(
         evaluation.independent_modified_fractions =
             held2_map_unit_cube_to_independent_fractions(
                 coordinates,
-                chart_coordinates
+                chart_coordinates,
+                std::numeric_limits<double>::quiet_NaN()
             );
         evaluation.pressure_envelope = manufactured_envelope(
             evaluation.independent_modified_fractions

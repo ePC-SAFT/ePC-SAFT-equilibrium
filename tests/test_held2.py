@@ -88,6 +88,73 @@ def test_held2_perdomo_transform_lift_and_bounds_match_the_source_coordinates() 
     assert result["transformed_modified_potentials"] == pytest.approx([3.0, 1.0])
 
 
+@pytest.mark.parametrize(
+    ("cube_coordinate", "expected_modified_ion_fraction"),
+    ((0.0, 2.0e-10), (0.5, 0.1900000001), (1.0, 0.38)),
+)
+def test_held2_stage_i_chart_respects_provider_total_ion_ceiling(
+    cube_coordinate: float,
+    expected_modified_ion_fraction: float,
+) -> None:
+    result = _equilibrium._held2_adapter(
+        CHARGES,
+        (cube_coordinate,),
+        0.38,
+        "stage_i_source_domain",
+    )
+
+    assert result["independent_modified_fractions"] == pytest.approx(
+        [expected_modified_ion_fraction]
+    )
+    assert result["physical_total_ion_mole_fraction"] == pytest.approx(
+        expected_modified_ion_fraction
+    )
+    assert result["total_ion_mole_fraction_max"] == pytest.approx(0.38)
+
+
+def test_held2_stage_i_chart_without_provider_ion_ceiling_keeps_simplex_domain() -> None:
+    result = _equilibrium._held2_adapter(
+        CHARGES,
+        (0.5,),
+        math.nan,
+        "stage_i_source_domain",
+    )
+
+    assert result["independent_modified_fractions"] == pytest.approx([0.5])
+    assert result["physical_total_ion_mole_fraction"] == pytest.approx(0.5)
+    assert result["total_ion_mole_fraction_max"] is None
+
+
+def test_held2_stage_i_chart_applies_ion_ceiling_only_to_charged_coordinates() -> None:
+    result = _equilibrium._held2_adapter(
+        (0.0, 0.0, 1.0, -1.0),
+        (0.0, 1.0),
+        0.38,
+        "stage_i_source_domain",
+    )
+
+    assert result["independent_modified_fractions"] == pytest.approx(
+        [1.0e-10, 0.38]
+    )
+    assert result["physical_total_ion_mole_fraction"] == pytest.approx(
+        sum(result["independent_modified_fractions"])
+    )
+    assert result["physical_total_ion_mole_fraction"] <= 0.38
+
+
+@pytest.mark.parametrize("ion_ceiling", (-0.1, 1.0e-12, 1.1, math.inf))
+def test_held2_stage_i_chart_rejects_invalid_provider_ion_ceiling(
+    ion_ceiling: float,
+) -> None:
+    with pytest.raises(ValueError, match="total-ion mole-fraction ceiling"):
+        _equilibrium._held2_adapter(
+            CHARGES,
+            (0.5,),
+            ion_ceiling,
+            "stage_i_source_domain",
+        )
+
+
 def test_held2_adapter_direct_objective_and_gradient_match_oracle() -> None:
     center = (0.27, 0.73, 0.92, 1.08)
     direction = (0.03, -0.04, 0.05, -0.02)

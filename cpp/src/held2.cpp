@@ -2058,7 +2058,8 @@ std::vector<double> held2_lift_independent_fractions(
 
 std::vector<double> held2_map_unit_cube_to_independent_fractions(
     const Held2Coordinates& coordinates,
-    const std::vector<double>& unit_cube_coordinates
+    const std::vector<double>& unit_cube_coordinates,
+    double total_ion_mole_fraction_max
 ) {
     const std::size_t dimension = coordinates.independent_indices.size();
     if (dimension == 0 || unit_cube_coordinates.size() != dimension
@@ -2081,17 +2082,32 @@ std::vector<double> held2_map_unit_cube_to_independent_fractions(
         coordinates.independent_lower_bounds.end(),
         0.0
     );
-    const double free_scale = composition_sum_upper - lower_sum;
-    if (!(free_scale > 0.0)) {
+    double remaining_composition = composition_sum_upper - lower_sum;
+    if (!(remaining_composition > 0.0)) {
         throw std::invalid_argument("HELD2 simplex chart has no feasible interior");
     }
+    double charged_lower_sum = 0.0;
     for (std::size_t index = 0; index < dimension; ++index) {
-        const double simplex_maximum = free_scale
-            + coordinates.independent_lower_bounds[index];
-        if (coordinates.independent_upper_bounds[index] < simplex_maximum) {
-            throw std::invalid_argument(
-                "HELD2 simplex chart requires redundant independent upper bounds"
-            );
+        if (coordinates.charges[coordinates.independent_indices[index]] != 0.0) {
+            charged_lower_sum += coordinates.independent_lower_bounds[index];
+        }
+    }
+    if (!std::isnan(total_ion_mole_fraction_max)
+        && (!std::isfinite(total_ion_mole_fraction_max)
+            || total_ion_mole_fraction_max <= charged_lower_sum
+            || total_ion_mole_fraction_max > 1.0)) {
+        throw std::invalid_argument(
+            "HELD2 Provider total-ion mole-fraction ceiling is invalid or infeasible"
+        );
+    }
+    double remaining_ion = std::isnan(total_ion_mole_fraction_max)
+        ? std::numeric_limits<double>::infinity()
+        : total_ion_mole_fraction_max - charged_lower_sum;
+    for (std::size_t index = 0; index < dimension; ++index) {
+        if (coordinates.independent_lower_bounds[index] < 0.0
+            || coordinates.independent_upper_bounds[index]
+                < coordinates.independent_lower_bounds[index]) {
+            throw std::invalid_argument("HELD2 simplex chart bounds are invalid");
         }
         if (unit_cube_coordinates[index] < 0.0
             || unit_cube_coordinates[index] > 1.0) {
@@ -2100,12 +2116,23 @@ std::vector<double> held2_map_unit_cube_to_independent_fractions(
     }
 
     std::vector<double> independent(dimension, 0.0);
-    double remaining_fraction = 1.0;
     for (std::size_t index = 0; index < dimension; ++index) {
-        const double shifted = free_scale * remaining_fraction
-            * unit_cube_coordinates[index];
+        const bool charged =
+            coordinates.charges[coordinates.independent_indices[index]] != 0.0;
+        double available = charged
+            ? std::min(remaining_composition, remaining_ion)
+            : remaining_composition;
+        available = std::min(
+            available,
+            coordinates.independent_upper_bounds[index]
+                - coordinates.independent_lower_bounds[index]
+        );
+        const double shifted = available * unit_cube_coordinates[index];
         independent[index] = coordinates.independent_lower_bounds[index] + shifted;
-        remaining_fraction *= 1.0 - unit_cube_coordinates[index];
+        remaining_composition -= shifted;
+        if (charged) {
+            remaining_ion -= shifted;
+        }
     }
     return independent;
 }

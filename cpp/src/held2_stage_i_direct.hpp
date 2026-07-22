@@ -14,6 +14,10 @@ struct Held2StageIReducedEvaluation {
     std::vector<double> chart_coordinates;
     std::vector<double> independent_modified_fractions;
     Held2PressureEnvelopeResult pressure_envelope;
+    double physical_total_ion_mole_fraction =
+        std::numeric_limits<double>::quiet_NaN();
+    double total_ion_mole_fraction_max =
+        std::numeric_limits<double>::quiet_NaN();
     double tpd = std::numeric_limits<double>::infinity();
     bool certified = false;
     std::string failure_reason;
@@ -34,6 +38,8 @@ struct Held2StageIDirectResult {
     int completed_evaluation_count = 0;
     int failed_evaluation_count = 0;
     int negative_witness_index = -1;
+    double total_ion_mole_fraction_max =
+        std::numeric_limits<double>::quiet_NaN();
     double minimum_tpd = std::numeric_limits<double>::infinity();
     std::vector<Held2StageIReducedEvaluation> evaluations;
 };

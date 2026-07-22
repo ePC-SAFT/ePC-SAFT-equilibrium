@@ -42,6 +42,9 @@ constexpr std::size_t kElectrolyteSdkTableSize =
 constexpr std::size_t kMolarVolumeSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_molar_volume_bounds)
     + sizeof(epcsaft_evaluate_molar_volume_bounds_v1);
+constexpr std::size_t kSourceDomainSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, total_ion_mole_fraction_max)
+    + sizeof(double);
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
 
 py::dict held2_stage_ii_to_dict(
@@ -119,6 +122,16 @@ const epcsaft_native_sdk_v1& checked_molar_volume_sdk(
         || sdk.evaluate_molar_volume_bounds == nullptr) {
         throw py::value_error(
             "provider capsule is missing the molar-volume domain contract"
+        );
+    }
+    return sdk;
+}
+
+const epcsaft_native_sdk_v1& checked_held2_sdk(const py::capsule& capsule) {
+    const epcsaft_native_sdk_v1& sdk = checked_molar_volume_sdk(capsule);
+    if (sdk.table_size < kSourceDomainSdkTableSize) {
+        throw py::value_error(
+            "provider capsule is missing the electrolyte source-domain contract"
         );
     }
     return sdk;
@@ -1383,6 +1396,58 @@ py::dict held2_coordinate_evidence(
     return result;
 }
 
+double held2_total_ion_mole_fraction(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_fractions
+) {
+    if (charges.size() != physical_fractions.size()) {
+        throw std::invalid_argument(
+            "HELD2 charge and physical-composition dimensions changed"
+        );
+    }
+    double total = 0.0;
+    for (std::size_t index = 0; index < charges.size(); ++index) {
+        if (charges[index] != 0.0) {
+            total += physical_fractions[index];
+        }
+    }
+    return total;
+}
+
+py::dict held2_stage_i_source_domain_evidence(
+    const std::vector<double>& charges,
+    const std::vector<double>& chart_coordinates,
+    double total_ion_mole_fraction_max,
+    const std::string& stage
+) {
+    if (stage != "stage_i_source_domain") {
+        throw py::value_error("unknown HELD2 source-domain evidence stage");
+    }
+    const epcsaft_equilibrium::Held2Coordinates coordinates =
+        epcsaft_equilibrium::make_held2_coordinates(charges);
+    const std::vector<double> independent =
+        epcsaft_equilibrium::held2_map_unit_cube_to_independent_fractions(
+            coordinates,
+            chart_coordinates,
+            total_ion_mole_fraction_max
+        );
+    const std::vector<double> physical =
+        epcsaft_equilibrium::held2_lift_independent_fractions(
+            coordinates,
+            independent
+        );
+    py::dict result;
+    result["independent_modified_fractions"] = independent;
+    result["physical_fractions"] = physical;
+    result["physical_total_ion_mole_fraction"] =
+        held2_total_ion_mole_fraction(charges, physical);
+    result["total_ion_mole_fraction_max"] =
+        std::isnan(total_ion_mole_fraction_max)
+        ? py::none()
+        : py::cast(total_ion_mole_fraction_max);
+    return result;
+}
+
 py::dict held2_state_evaluation_to_dict(
     const epcsaft_equilibrium::Held2StateEvaluation& evaluation
 ) {
@@ -1763,6 +1828,14 @@ py::dict held2_stage_i_reduced_evaluation_to_dict(
     result["chart_coordinates"] = evaluation.chart_coordinates;
     result["independent_modified_fractions"] =
         evaluation.independent_modified_fractions;
+    result["physical_total_ion_mole_fraction"] =
+        std::isfinite(evaluation.physical_total_ion_mole_fraction)
+        ? py::cast(evaluation.physical_total_ion_mole_fraction)
+        : py::none();
+    result["total_ion_mole_fraction_max"] =
+        std::isfinite(evaluation.total_ion_mole_fraction_max)
+        ? py::cast(evaluation.total_ion_mole_fraction_max)
+        : py::none();
     result["tpd"] = std::isfinite(evaluation.tpd)
         ? py::cast(evaluation.tpd)
         : py::none();
@@ -1821,6 +1894,10 @@ py::dict held2_stage_i_direct_to_dict(
     result["declared_evaluation_budget"] = evaluation.declared_evaluation_budget;
     result["completed_evaluation_count"] = evaluation.completed_evaluation_count;
     result["failed_evaluation_count"] = evaluation.failed_evaluation_count;
+    result["total_ion_mole_fraction_max"] =
+        std::isfinite(evaluation.total_ion_mole_fraction_max)
+        ? py::cast(evaluation.total_ion_mole_fraction_max)
+        : py::none();
     result["minimum_tpd"] = std::isfinite(evaluation.minimum_tpd)
         ? py::cast(evaluation.minimum_tpd)
         : py::none();
@@ -2239,6 +2316,7 @@ public:
               charges_from_sdk(sdk)
           )),
           provider_(sdk, std::move(expected_fingerprint)),
+          total_ion_mole_fraction_max_(sdk.total_ion_mole_fraction_max),
           pressure_over_rt_(pressure_pa_
               / (kGasConstantJPerMolK * temperature_k_)) {
         if (!std::isfinite(temperature_k_) || !std::isfinite(pressure_pa_)
@@ -2267,6 +2345,13 @@ public:
                 retained - coordinates_.retained_indices.begin()
             )]);
         }
+        static_cast<void>(
+            epcsaft_equilibrium::held2_map_unit_cube_to_independent_fractions(
+                coordinates_,
+                std::vector<double>(coordinates_.independent_indices.size(), 0.0),
+                total_ion_mole_fraction_max_
+            )
+        );
     }
 
     [[nodiscard]] epcsaft_equilibrium::Held2StateEvaluation evaluate(
@@ -2338,6 +2423,10 @@ public:
         return provider_.fingerprint();
     }
 
+    [[nodiscard]] double total_ion_mole_fraction_max() const {
+        return total_ion_mole_fraction_max_;
+    }
+
 private:
     static std::vector<double> charges_from_sdk(
         const epcsaft_native_sdk_v1& sdk
@@ -2355,6 +2444,7 @@ private:
     std::vector<double> physical_feed_;
     epcsaft_equilibrium::Held2Coordinates coordinates_;
     epcsaft_equilibrium::ProviderContext provider_;
+    double total_ion_mole_fraction_max_;
     double pressure_over_rt_;
     std::vector<double> independent_feed_;
 };
@@ -2371,6 +2461,8 @@ InstalledHeld2StageI run_installed_held2_stage_i(
     epcsaft_equilibrium::Held2ProgressObserver* observer = nullptr
 ) {
     InstalledHeld2StageI result;
+    result.search.total_ion_mole_fraction_max =
+        problem.total_ion_mole_fraction_max();
     epcsaft_equilibrium::Held2ProgressEvent progress;
     progress.kind = epcsaft_equilibrium::Held2ProgressKind::ReferenceStart;
     epcsaft_equilibrium::observe_held2(observer, progress);
@@ -2433,8 +2525,22 @@ InstalledHeld2StageI run_installed_held2_stage_i(
         try {
             evaluation.independent_modified_fractions =
                 epcsaft_equilibrium::held2_map_unit_cube_to_independent_fractions(
-                    problem.coordinates(), chart_coordinates
+                    problem.coordinates(),
+                    chart_coordinates,
+                    problem.total_ion_mole_fraction_max()
                 );
+            const std::vector<double> physical =
+                epcsaft_equilibrium::held2_lift_independent_fractions(
+                    problem.coordinates(),
+                    evaluation.independent_modified_fractions
+                );
+            evaluation.physical_total_ion_mole_fraction =
+                held2_total_ion_mole_fraction(
+                    problem.coordinates().charges,
+                    physical
+                );
+            evaluation.total_ion_mole_fraction_max =
+                problem.total_ion_mole_fraction_max();
             evaluation.pressure_envelope = problem.envelope(
                 evaluation.independent_modified_fractions
             );
@@ -2470,6 +2576,8 @@ InstalledHeld2StageI run_installed_held2_stage_i(
         evaluator,
         observer
     );
+    result.search.total_ion_mole_fraction_max =
+        problem.total_ion_mole_fraction_max();
     progress = {};
     progress.kind = epcsaft_equilibrium::Held2ProgressKind::Certificate;
     progress.stage = "STAGE I";
@@ -2487,7 +2595,7 @@ py::dict held2_installed_stage_i_direct(
     const std::string& expected_fingerprint,
     int evaluation_budget
 ) {
-    const epcsaft_native_sdk_v1& sdk = checked_molar_volume_sdk(capsule);
+    const epcsaft_native_sdk_v1& sdk = checked_held2_sdk(capsule);
     const InstalledHeld2Problem problem(
         sdk,
         temperature_k,
@@ -2937,7 +3045,7 @@ py::dict held2_installed_controller(
     epcsaft_equilibrium::Held2TerminalProgress terminal_progress(std::cout);
     epcsaft_equilibrium::Held2ProgressObserver* observer =
         trace ? &terminal_progress : nullptr;
-    const epcsaft_native_sdk_v1& sdk = checked_molar_volume_sdk(capsule);
+    const epcsaft_native_sdk_v1& sdk = checked_held2_sdk(capsule);
     const InstalledHeld2Problem problem(
         sdk,
         temperature_k,
@@ -3586,6 +3694,14 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("charges"),
         py::arg("physical_feed"),
         py::arg("chemical_potentials")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_stage_i_source_domain_evidence,
+        py::arg("charges"),
+        py::arg("chart_coordinates"),
+        py::arg("total_ion_mole_fraction_max"),
+        py::arg("stage")
     );
     module.def(
         "_held2_adapter",

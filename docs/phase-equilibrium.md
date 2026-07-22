@@ -67,6 +67,13 @@ Provider domain and derivative contracts, homogeneous reference selection,
 modified-coordinate stability search, complete-cut Stage II, general candidate
 set Stage III, and formulation-specific certificates. Perdomo modified moles
 must not be replaced by or conflated with Ascani counterion-pair coordinates.
+For finite Provider `total_ion_mole_fraction_max`, the Stage-I cube-to-modified
+composition map enforces that immutable source ceiling before requesting a
+pressure envelope. In Perdomo coordinates the total physical ion fraction is
+the sum of the retained charged modified fractions, so this is an exact
+coordinate-domain restriction rather than an EOS approximation or tolerance.
+Malformed or infeasible ceilings fail before global exploration; `NaN` retains
+the ordinary modified-simplex domain declared by a Provider with no ion cap.
 The linked implementation plan assigns deterministic pressure-root
 enumeration to density topology, DIRECT-L to the reduced Stage-I search, HiGHS
 to the Stage-II upper LP, basin exploration plus exact-Hessian Ipopt to the
@@ -115,11 +122,15 @@ pytest -s tests/test_perdomo_held2_trace.py::test_perdomo_table3_nacl_workflow -
 
 Without `--held2-live`, the same test is quiet and asserts the same structured
 result. Current ePC-SAFT/Provider evidence selects the lowest of two stable
-reference roots, then fails closed at the first Stage-I trial composition
-because the Provider cannot construct that trial's molar-volume domain. Stage
-II and Stage III are reported as skipped with the exact causal reason. This is
-a workflow diagnostic, not a reproduction of Perdomo's SAFT-gamma-Mie endpoint
-and not an admitted electrolyte-LLE result.
+reference roots. The Figiel Provider caps total ion mole fraction at `0.38`;
+the domain-aware Stage-I map therefore changes the first DIRECT-L midpoint from
+the inadmissible `0.50` physical ion fraction to `0.1900000001`. All 50 declared
+evaluations complete without Provider failure and detect no TPD below the
+material `-1e-8` margin; the smallest detected TPD is positive and near zero.
+Stage II and Stage III are consequently skipped because no negative witness was
+detected under the completed finite search. This is not a stability proof, a
+reproduction of Perdomo's SAFT-gamma-Mie endpoint, or an admitted electrolyte-
+LLE result.
 
 ## Shared package contract
 

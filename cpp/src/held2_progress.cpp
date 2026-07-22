@@ -61,8 +61,15 @@ void Held2TerminalProgress::observe(const Held2ProgressEvent& event) {
                 output_ << "  TPD=" << std::setw(13) << event.objective
                         << "  P rel.=" << std::setw(13)
                         << event.pressure_residual
-                        << "  V=" << std::setw(13) << event.volume
-                        << "  " << event.status << '\n';
+                        << "  V=" << std::setw(13) << event.volume;
+                if (std::isfinite(event.physical_total_ion_mole_fraction)
+                    && std::isfinite(event.total_ion_mole_fraction_max)) {
+                    output_ << "  x_ion=" << std::setw(13)
+                            << event.physical_total_ion_mole_fraction
+                            << "  limit=" << std::setw(13)
+                            << event.total_ion_mole_fraction_max;
+                }
+                output_ << "  " << event.status << '\n';
             }
             break;
         case Held2ProgressKind::StageIIUpper:
