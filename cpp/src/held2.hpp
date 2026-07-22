@@ -96,6 +96,10 @@ using Held2StateEvaluator = std::function<Held2StateEvaluation(
     double
 )>;
 
+using Held2VolumeBoundsEvaluator = std::function<std::array<double, 2>(
+    const std::vector<double>&
+)>;
+
 struct Held2PressureScanPoint {
     double log_volume = 0.0;
     double volume = 0.0;
@@ -181,7 +185,7 @@ struct Held2StageIResult {
 struct Held2StageIIBound {
     double lower_bound = 0.0;
     double upper_bound = 0.0;
-    double multiplier = 0.0;
+    std::vector<double> multipliers;
     int cut_count = 0;
     std::string upper_solver;
     std::string upper_solver_version;
@@ -197,7 +201,9 @@ struct Held2StageIIBound {
 
 struct Held2StageIICandidate {
     std::vector<double> modified_fractions;
+    std::vector<double> independent_modified_fractions;
     double volume = 0.0;
+    double phase_coordinate = 0.0;
     double lower_gap = 0.0;
 };
 
@@ -211,7 +217,7 @@ struct Held2StageIIAttempt {
     double physical_start_volume = 0.0;
     std::string solver_status = "not_run";
     bool solver_converged = false;
-    std::string provider_status = "manufactured_oracle";
+    std::string provider_status = "not_evaluated";
     std::string callback_error;
     std::vector<double> internal_terminal;
     std::vector<double> terminal_modified_fractions;
@@ -233,16 +239,15 @@ struct Held2StageIIAttempt {
     bool step6_eligible = false;
     int basin_id = -1;
     double same_major_upper_bound = 0.0;
-    double same_major_multiplier = 0.0;
+    std::vector<double> same_major_multipliers;
 };
 
 struct Held2StageIIResult {
     std::string outcome;
-    std::string search_strategy = "legacy_fixed_multistart_ipopt_v1";
-    std::string global_explorer = "none";
+    std::string search_strategy = "continuation_sobol_direct_l_ipopt_v1";
+    std::string global_explorer = "continuation_sobol_direct_l";
     std::string local_solver = "ipopt_exact_hessian";
     std::string globality_certificate = "not_guaranteed";
-    std::string historical_dual_pullback_fixture_status = "not_assigned";
     int major_iterations = 0;
     int lower_starts_per_iteration = 0;
     int cut_count = 0;
@@ -252,6 +257,8 @@ struct Held2StageIIResult {
     int duplicate_representative_count = 0;
     int duplicate_terminal_count = 0;
     int distinct_basin_count = 0;
+    int local_attempt_cap_per_major = 0;
+    bool local_attempts_truncated = false;
     bool direct_escalation_used = false;
     std::vector<Held2StageIIBound> bound_history;
     std::vector<Held2StageIIAttempt> attempt_trace;
@@ -290,7 +297,7 @@ struct Held2StageIIILifecycleStep {
     double lower_bound_multiplier = 0.0;
     double reduced_derivative = 0.0;
     double complementarity_inf_norm = 0.0;
-    double candidate_composition = 0.0;
+    std::vector<double> candidate_independent_modified_fractions;
     double candidate_volume = 0.0;
     std::string solver_status;
     std::string decision_reason;
@@ -353,9 +360,15 @@ struct Held2StageIIIResult {
     const std::vector<double>& physical_feed
 );
 
-[[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii_legacy(
-    const std::vector<double>& charges,
-    const std::vector<double>& physical_feed
+[[nodiscard]] Held2StageIIResult solve_held2_stage_ii(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const Held2StateEvaluator& evaluator,
+    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
+    const Held2StateEvaluation& reference,
+    const std::vector<Held2StageICandidate>& stage_i_candidates,
+    int major_iteration_cap,
+    int local_attempt_cap_per_major
 );
 
 [[nodiscard]] Held2StageIIINlpEvaluation evaluate_held2_manufactured_stage_iii_nlp(
@@ -370,6 +383,23 @@ struct Held2StageIIIResult {
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed,
     const std::vector<std::array<double, 2>>& candidates
+);
+
+[[nodiscard]] Held2StageIIINlpEvaluation evaluate_held2_stage_iii_nlp(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const Held2StateEvaluator& evaluator,
+    std::size_t phase_count,
+    const std::vector<double>& variables,
+    const std::vector<double>& equality_multipliers
+);
+
+[[nodiscard]] Held2StageIIIResult solve_held2_stage_iii(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const std::vector<Held2StageIICandidate>& candidates,
+    const Held2StateEvaluator& evaluator,
+    const std::vector<std::array<double, 2>>& phase_coordinate_bounds
 );
 
 struct Held2Certificate {

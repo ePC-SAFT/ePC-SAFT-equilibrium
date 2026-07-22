@@ -18,7 +18,7 @@ replace a formulation owner.
 | --- | --- | --- |
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
-| Strong-electrolyte Perdomo HELD2 | [Perdomo HELD2](designs/2026-07-21-perdomo-held2.md) and [solver-strategy plan](plans/2026-07-21-perdomo-held2-solver-strategy.md) | Current `main` contains the private Stage-I/II implementation and regression evidence; Stage III remains a development foundation, the installed public-dispatch subject is archived non-production evidence, and electrolyte LLE is not admitted |
+| Strong-electrolyte Perdomo HELD2 | [Perdomo HELD2](designs/2026-07-21-perdomo-held2.md) and [solver-strategy plan](plans/2026-07-21-perdomo-held2-solver-strategy.md) | Private integrated Stage-I/II/III development controller with fail-closed installed evidence; no public electrolyte dispatch or admitted electrolyte LLE capability |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Reactive or coupled phase-chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
@@ -70,12 +70,19 @@ must not be replaced by or conflated with Ascani counterion-pair coordinates.
 The linked implementation plan assigns deterministic pressure-root
 enumeration to density topology, DIRECT-L to the reduced Stage-I search, HiGHS
 to the Stage-II upper LP, basin exploration plus exact-Hessian Ipopt to the
-Stage-II lower problem, and exact-Hessian Ipopt to Stage III. Current `main`
-implements the Stage-I and Stage-II assignments through private bindings and
-manufactured or exact-Provider tests. The fixed-start Stage-I Ipopt path,
-analytic Problem-(64) envelope, and pre-exploration Stage-II controller remain
-regression oracles. None of these internal owners is a caller-selectable
-backend or current public electrolyte behavior.
+Stage-II lower problem, and exact-Hessian Ipopt to Stage III. The private
+integrated controller executes that stage order and retains every bounded
+failure as evidence. Replaced HELD2 runtime routes and baseline fixtures are
+removed; only focused manufactured formulation oracles remain. None of these
+internal owners is a caller-selectable backend or current public electrolyte
+behavior.
+
+The remaining installed-completion contract is specified in
+[HELD2 Installed Completion](designs/2026-07-22-held2-installed-completion.md)
+and sequenced by the
+[HELD2 Installed Completion Plan](plans/2026-07-22-held2-installed-completion.md).
+Those documents begin from the retained Stage-II-indeterminate artifact and do
+not reinterpret it as an equilibrium result.
 
 ## Shared package contract
 

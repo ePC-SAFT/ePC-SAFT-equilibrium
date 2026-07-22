@@ -32,16 +32,16 @@ SHA-256 and links them into the private extension.
 ## Outcome Proof
 
 **Intent:** Implement one source-faithful HELD2 controller whose numerical owner matches each stage and whose certificates remain independent of solver status.
-**Current Behavior:** Current `main` uses deterministic pressure roots, DIRECT-L Stage I, HiGHS Problem (64), and deterministic basin discovery plus Ipopt Problem (65). The installed public-dispatch WIP is archived, Stage-III hardening remains pending, and electrolyte LLE is unadmitted.
-**Expected Outcome:** A later bounded candidate completes the Problem-(67) lifecycle and installed two-liquid evidence without changing the landed Stage-I/II contracts.
+**Current Behavior:** The private integrated controller uses deterministic pressure roots, DIRECT-L Stage I, HiGHS Problem (64), deterministic basin discovery plus exact-Hessian Ipopt Problem (65), and hardened exact-Hessian Ipopt Problem (67). The immutable Khudaida candidate fails closed in Stage II, public electrolyte dispatch is disabled, and electrolyte LLE is unadmitted.
+**Expected Outcome:** A separate bounded assignment supplies installed two-liquid Stage-II/III evidence without changing the retained controller contracts.
 **Target Output:** One existing `TpFlashResult` or `FlashError` carrying solver, numerical, physical, search, root-completeness, predictive, and globality evidence.
 **Owner:** Equilibrium owns HELD2 coordinates, stage solvers, controllers, and certificates; the installed Provider owns EOS values, domains, pressure, packing, and exact tensors.
 **Interface:** Existing public `tp_flash(model, T, P, z)` and private solver-neutral HELD2 evaluators; no public stage or optimizer selector.
 **Cutover:** Stage-I/II private routing has completed its guarded cutover. Public electrolyte dispatch still requires every remaining checkpoint and exact artifact gate.
-**Replaced Path:** The fixed-start Stage-I Ipopt route, analytic Stage-II upper envelope, and pre-exploration Stage-II controller remain test-only regression oracles.
-**Evidence:** Frozen dual-pullback terminals, manufactured root and basin topologies, derivative parity, LP oracle parity, complete search traces, Stage-III certificates, and an exact installed two-liquid tracer.
+**Replaced Path:** The fixed-start Stage-I Ipopt route, analytic Stage-II upper envelope, pre-exploration Stage-II controller, and their legacy baseline fixture are removed. Focused manufactured formulation oracles remain.
+**Evidence:** Manufactured root and basin topologies, derivative parity, LP oracle parity, complete search traces, Stage-III certificates, and one immutable installed Khudaida tracer.
 **Acceptance Proof:** The target owner map is visible in diagnostics, all hard gates pass without tolerance changes, displaced production paths are unreachable, and finite-search globality remains `not_guaranteed`.
-**Stop Criteria:** Stop on missing Provider correction, contradictory baseline evidence, failed root or certificate accounting, unauthorized runtime scope, or inability to reproduce the frozen regression.
+**Stop Criteria:** Stop on missing Provider correction, contradictory pre-change evidence, failed root or certificate accounting, unauthorized runtime scope, or inability to reproduce the frozen regression.
 **Avoid:** Do not use SLSQP as a policy substitute, copy EOS equations, return fake penalties, hard-code a chemistry, relax tolerances, or publish finite-search globality.
 **Risk:** Solver migration can hide certificate regressions or leave dependency status stale unless each cutover preserves the frozen evaluator, diagnostics, and documentation.
 
@@ -55,7 +55,7 @@ SHA-256 and links them into the private extension.
 **Write Path:** The named Equilibrium HELD2 sources, tests, build metadata, canonical docs, and task-authorized local evidence only.
 **Integration Points:** Provider SDK, deterministic pressure-root service, NLopt DIRECT-L, HiGHS LP, Ipopt Stage-II/III TNLPs, Python diagnostics, and later installed-artifact validation.
 **Migration Or Cutover:** Land evaluator extraction, root envelope, HiGHS, Stage-I strategy, Stage-II discovery, and Stage-III lifecycle through the ordered checkpoints before any public route changes.
-**Replaced Path Handling:** Keep legacy Stage-I Ipopt and analytic upper-envelope code as regression oracles until parity, then remove or make production-unreachable without aliases or fallback routing.
+**Replaced Path Handling:** Remove replaced Stage-I Ipopt and analytic upper-envelope production routes after parity; keep only focused manufactured test oracles, without aliases or fallback routing.
 **Acceptance Proof Gate:** All Project Truss task use cases, manufactured matrix, frozen pass/fail partitions, dependency diagnostics, and assigned installed tracer must pass under unchanged scientific gates.
 
 ## 1. Governing contracts
@@ -105,9 +105,9 @@ homogeneous and trial-composition services enumerate pressure roots;
 `held2_stage_ii_basin.cpp` proposes deterministic physical basin
 representatives before `Held2SearchTnlp` refines each representative with
 exact-Hessian Ipopt. The pre-exploration Stage-II controller is reachable only
-through the `stage_ii_legacy` regression route. Stage III retains its separate
+through the manufactured Stage-II test oracle. Stage III retains its separate
 `Held2StageIIITnlp`. The installed public-dispatch WIP remains archived at
-`archive/held2-pre-strategy-2026-07-21` and is not a production baseline.
+`archive/held2-pre-strategy-2026-07-21` and has no production authority.
 
 The current owner map is:
 
@@ -396,7 +396,7 @@ Step-6 eligibility, and physical basin/candidate identity.
 
 **Use Cases:**
 
-- Create visible baseline evidence before any solver cutover so later changes cannot redefine success.
+- Create visible pre-change evidence before any solver cutover so later changes cannot redefine success.
 
 - [x] Record the Equilibrium commit/tree, Provider artifact hash and source
   identity, model-bundle fingerprint, compiler, Ipopt version, and linear
@@ -409,7 +409,7 @@ Step-6 eligibility, and physical basin/candidate identity.
   from the assigned artifact, record the evidence gap rather than fabricating
   parity.
 
-**Review checkpoint A:** approve the exact baseline and immutable regression
+**Review checkpoint A:** approve the exact pre-change evidence and immutable regression
 artifact before refactoring.
 
 ### Task 1: Extract one solver-neutral HELD2 evaluator
@@ -425,7 +425,7 @@ artifact before refactoring.
 - [x] Extract the scientific evaluation from `Held2SearchTnlp` without changing
   coordinates, bounds, formulas, or tolerances.
 - [x] Make the current Ipopt adapter consume the extracted evaluator.
-- [x] Prove start-by-start and derivative parity with the frozen baseline.
+- [x] Prove start-by-start and derivative parity with the frozen pre-change evidence.
 
 ### Task 2: Generalize the deterministic pressure-root envelope
 
@@ -472,7 +472,7 @@ independent LP certification before production routing changes.
 
 **Use Cases:**
 
-- Find a certified negative witness under a declared budget while retaining the legacy Ipopt path as a migration oracle.
+- Find a certified negative witness under a declared budget and remove the replaced Ipopt Stage-I route after parity evidence is captured.
 
 - [x] Verify the installed NLopt CMake target, C++ callback/forced-stop API,
   and version.
@@ -481,7 +481,7 @@ independent LP certification before production routing changes.
   failure, budget exhaustion, and negative-witness asymmetry.
 - [x] Implement deterministic `NLOPT_GN_DIRECT_L` over the closed feasible
   composition chart and the shared TPD envelope.
-- [x] Keep legacy fixed-start Ipopt as a named regression strategy.
+- [x] Remove the replaced fixed-start Ipopt Stage-I strategy after parity evidence was captured.
 - [x] Freeze a versioned Stage-I evaluation budget from measured evidence.
 
 **Review checkpoint D:** compare strategies under declared budgets using first
@@ -537,12 +537,12 @@ bounded no-progress behavior before Stage III is exercised on a new pool.
 
 - Retire only KKT-inactive phases, re-solve the active set, and keep failed physical-potential evidence visible despite Ipopt success.
 
-- [ ] Add failing tests for KKT-active trace phases, KKT-inactive phase
+- [x] Add failing tests for KKT-active trace phases, KKT-inactive phase
   retirement, one-at-a-time retirement, active-set re-solve, duplicate merge,
   Stage-II feedback, and physical-potential failure despite Ipopt success.
-- [ ] Keep the direct total-free-energy objective and exact Hessian.
-- [ ] Implement only evidence-backed retirement and re-solve semantics.
-- [ ] Preserve the fail-closed trace-refinement gate until logarithmic trace
+- [x] Keep the direct total-free-energy objective and exact Hessian.
+- [x] Implement only evidence-backed retirement and re-solve semantics.
+- [x] Preserve the fail-closed trace-refinement gate until logarithmic trace
   refinement is separately implemented and verified.
 
 ### Task 8: Integrate, document, and build an isolated candidate only when authorized
@@ -559,9 +559,9 @@ the assigned receipt/evidence locations
   component and record the dependency state supported by current CMake.
 - [x] Run the compact test suite, derivative checks, manufactured matrix, and
   exact assigned tracer under one immutable installed Provider artifact.
-- [ ] Retain complete start, branch, cut, candidate, Stage-III lifecycle, and
+- [x] Retain complete start, branch, cut, candidate, Stage-III lifecycle, and
   failure diagnostics.
-- [ ] Stop after local candidate evidence. Publication, Validation mutation,
+- [x] Stop after local candidate evidence. Publication, Validation mutation,
   promotion, and authority transfer require separate authorization.
 
 ## 11. Minimum verification matrix
@@ -581,7 +581,7 @@ the assigned receipt/evidence locations
 | Duplicate starts | one physical basin and candidate | start count mistaken for phase count |
 | Same composition, different density | distinct basins | composition-only deduplication |
 | Different composition, same density | distinct basins | density-only deduplication |
-| Frozen dual-pullback terminals | baseline pass/fail partition unchanged | certificate drift |
+| Frozen dual-pullback terminals | pre-change pass/fail partition unchanged | certificate drift |
 | Perturbed physical gradient | KKT certificate fails | flexible multipliers hiding error |
 | Fixed-volume Step 6 | only fixed-volume derivative satisfies source test | coordinate-basis recurrence |
 | Mixed-major Step 6 | deliberate old/new multiplier mix fails | controller state mixing |

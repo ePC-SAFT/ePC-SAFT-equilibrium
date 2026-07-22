@@ -1,14 +1,14 @@
 # Perdomo HELD2 Strong-Electrolyte Phase Equilibrium
 
-Status: canonical design with private Stage-I/II development implementation
+Status: canonical design with private integrated Stage-I/II/III implementation
 
 Authority effect: none
 
 ## Status and authority
 
 This document is the package-local scientific and numerical owner for the
-Perdomo HELD2 strong-electrolyte formulation. Current `main` retains its private
-Stage-I/II implementation and manufactured Stage-III foundation. The later
+Perdomo HELD2 strong-electrolyte formulation. Current `main` contains one
+private callback-driven Stage-I/II/III controller. The later
 installed public-dispatch and reference-hardening runtime is archived at
 `archive/held2-pre-strategy-2026-07-21` as non-production evidence.
 Organization doctrine revision 3 and
@@ -253,8 +253,8 @@ reference state has zero TPD by construction. Trial states must satisfy the
 Provider source, composition, charge, packing, and volume domains.
 
 The archived WIP used a declared deterministic finite Ipopt multistart in
-modified composition and volume. Current `main` retains it as a regression
-oracle. The implemented Stage-I strategy reduces volume at each
+modified composition and volume. That replaced runtime and its baseline
+fixture are removed. The implemented Stage-I strategy reduces volume at each
 trial composition through the deterministic pressure-root service and defines
 the lower TPD envelope over eligible strict-stable pressure roots. It then uses
 NLopt `NLOPT_GN_DIRECT_L` over the bounded `C - 2` modified-composition chart.
@@ -263,9 +263,8 @@ so Stage I does not require a global derivative or a local NLP polish to accept
 an independently certified negative witness.
 
 The private strategy retains its declared DIRECT-L evaluation budget and
-completion accounting separately from the archived 50-start profile. The
-implementation did not change a physical tolerance. The archived Ipopt
-multistart remains a named regression oracle.
+completion accounting. The implementation did not change a physical
+tolerance.
 
 Terminal precedence is asymmetric:
 
@@ -417,16 +416,16 @@ declared-valid state remains separately observable; exhaustion without a valid
 terminal fails closed.
 
 Candidate sets that are infeasible, incomplete, nonconverged, or physically
-rejected return to Stage II under the existing controller policy. Duplicate
-phases may be merged only through the current evidence-backed lifecycle. A
-small phase amount alone does not authorize KKT-inactive retirement. Future
-retirement requires a phase-amount bound, correct multiplier sign,
+rejected return a Stage-II feedback status under the bounded private
+controller policy. Duplicate phases are merged only through the
+evidence-backed lifecycle. A small phase amount alone does not authorize
+KKT-inactive retirement. Retirement requires a phase-amount bound, correct multiplier sign,
 complementarity, a non-descending reduced derivative, remaining-balance
 feasibility, one-at-a-time retirement, and an active-set re-solve.
 
 The source requires bound complementarity and logarithmic refinement for
-trace-bound components. The archived WIP runtime detected that condition and
-failed closed with `complementarity_refinement_required`; it does not yet
+trace-bound components. The controller detects that condition and fails closed
+with `complementarity_refinement_required`; it does not yet
 implement the final logarithmic trace refinement. Trace components are not
 passed to Ipopt near `1e-300` and must not be accepted through an unconditional
 interior modified-potential equality.
