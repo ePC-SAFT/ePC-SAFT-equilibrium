@@ -68,7 +68,28 @@ def test_held2_observer_is_quiet_by_default_and_does_not_change_results(capfd) -
     assert "HELD2.0  case=installed-held2-controller" in traced_output.out
     assert "REFERENCE PRESSURE ROOTS" in traced_output.out
     assert "STAGE I - DIRECT-L TPD SEARCH" in traced_output.out
+    assert "x_ion=" in traced_output.out
+    assert "limit= 3.800000e-01" in traced_output.out
     assert "STAGE II - SKIPPED" in traced_output.out
+
+
+def test_perdomo_stage_i_first_trial_respects_provider_ionic_domain() -> None:
+    model = _perdomo_table3_model()
+    result = _equilibrium._held2_stage_i_direct(
+        epcsaft.native_sdk(model),
+        298.15,
+        2508.0,
+        PERDOMO_TABLE3_FEED,
+        model.parameter_fingerprint,
+        1,
+    )
+
+    assert result["total_ion_mole_fraction_max"] == pytest.approx(0.38)
+    assert result["completed_evaluation_count"] >= 1
+    assert result["failed_evaluation_count"] == 0
+    first = result["evaluations"][0]
+    assert first["physical_total_ion_mole_fraction"] <= 0.38 + 1.0e-12
+    assert "status 3" not in first["failure_reason"]
 
 
 def test_perdomo_table3_nacl_workflow(held2_live: bool) -> None:
@@ -108,18 +129,22 @@ def test_perdomo_table3_nacl_workflow(held2_live: bool) -> None:
     )
 
     stage_i = result["stage_i"]
-    assert stage_i["outcome"] == "indeterminate"
-    assert stage_i["termination_reason"] == "required_envelope_evaluation_failed"
-    assert stage_i["completed_evaluation_count"] == 0
-    assert stage_i["failed_evaluation_count"] == 1
-    assert stage_i["evaluations"][0]["failure_reason"].startswith(
-        "provider_evaluation_failed: provider molar-volume domain evaluation failed"
+    assert stage_i["outcome"] == "no_negative_witness_detected"
+    assert stage_i["termination_reason"] == "declared_budget_exhausted"
+    assert stage_i["completed_evaluation_count"] == 50
+    assert stage_i["failed_evaluation_count"] == 0
+    assert stage_i["minimum_tpd"] >= -1.0e-8
+    assert stage_i["total_ion_mole_fraction_max"] == pytest.approx(0.38)
+    assert all(
+        evaluation["physical_total_ion_mole_fraction"] <= 0.38 + 1.0e-12
+        and "status 3" not in evaluation["failure_reason"]
+        for evaluation in stage_i["evaluations"]
     )
-    assert result["outcome"] == "indeterminate_stage_i"
-    assert result["failure_reason"] == "required_envelope_evaluation_failed"
+    assert result["outcome"] == "stage_i_finite_search_without_negative_witness"
+    assert result["failure_reason"] == "declared_budget_exhausted"
     assert result["failure_stage"] == "stage_i"
-    assert result["stage_ii_skip_reason"] == "required_envelope_evaluation_failed"
-    assert result["stage_iii_skip_reason"] == "required_envelope_evaluation_failed"
+    assert result["stage_ii_skip_reason"] == "stage_i_negative_witness_not_found"
+    assert result["stage_iii_skip_reason"] == "stage_i_negative_witness_not_found"
     assert result["stage_ii"] is None
     assert result["stage_iii"] is None
     assert result["globality_certificate"] == "not_guaranteed"

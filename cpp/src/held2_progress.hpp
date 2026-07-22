@@ -40,6 +40,10 @@ struct Held2ProgressEvent {
     double gap = std::numeric_limits<double>::quiet_NaN();
     double volume = 0.0;
     double pressure_residual = 0.0;
+    double physical_total_ion_mole_fraction =
+        std::numeric_limits<double>::quiet_NaN();
+    double total_ion_mole_fraction_max =
+        std::numeric_limits<double>::quiet_NaN();
     double primal_residual = std::numeric_limits<double>::quiet_NaN();
     double dual_residual = std::numeric_limits<double>::quiet_NaN();
     double complementarity = std::numeric_limits<double>::quiet_NaN();

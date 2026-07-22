@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 
 namespace epcsaft_equilibrium {
@@ -149,7 +150,8 @@ double direct_objective(
     const std::vector<double> independent =
         held2_map_unit_cube_to_independent_fractions(
             *context.coordinates,
-            cube
+            cube,
+            std::numeric_limits<double>::quiet_NaN()
         );
     Held2StageIIBasinEvaluation evaluation = evaluate_fail_closed(
         *context.evaluator,
@@ -312,7 +314,11 @@ Held2StageIIBasinExplorationResult explore_held2_stage_ii_basins(
              sobol_count
          )) {
         const std::vector<double> independent =
-            held2_map_unit_cube_to_independent_fractions(coordinates, cube);
+            held2_map_unit_cube_to_independent_fractions(
+                coordinates,
+                cube,
+                std::numeric_limits<double>::quiet_NaN()
+            );
         retain_evaluation(
             result,
             evaluate_fail_closed(evaluator, independent),

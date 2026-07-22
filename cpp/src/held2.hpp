@@ -49,7 +49,8 @@ struct Held2StateEvaluation;
 
 [[nodiscard]] std::vector<double> held2_map_unit_cube_to_independent_fractions(
     const Held2Coordinates& coordinates,
-    const std::vector<double>& unit_cube_coordinates
+    const std::vector<double>& unit_cube_coordinates,
+    double total_ion_mole_fraction_max
 );
 
 [[nodiscard]] std::vector<double> held2_transform_modified_potentials(
