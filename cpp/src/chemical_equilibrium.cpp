@@ -710,55 +710,228 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     };
 }
 
-MixedStandardStateResult transform_water_self_ionization_standard_state(
-    double ln_kw_mixed_standard,
-    const StandardReferenceEvaluation& reference
+SourceStandardStateResult transform_source_standard_state(
+    const DenseMatrix& reaction_matrix,
+    const std::vector<double>& source_ln_k,
+    const std::vector<double>& log_activity_scale_factors,
+    const std::vector<int>& charges,
+    const std::vector<std::string>& component_ids,
+    const std::string& provider_fingerprint,
+    double temperature_k,
+    double pressure_pa,
+    const NeutralReferenceEvaluation& reference
 ) {
     constexpr std::string_view kProviderBasis =
-        "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3";
-    if (!std::isfinite(ln_kw_mixed_standard)) {
-        throw std::invalid_argument("mixed-standard lnKw must be finite");
+        EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1;
+    if (reaction_matrix.rows == 0 || reaction_matrix.columns == 0
+        || reaction_matrix.values.size() != reaction_matrix.rows * reaction_matrix.columns
+        || source_ln_k.size() != reaction_matrix.rows
+        || log_activity_scale_factors.size() != reaction_matrix.columns
+        || charges.size() != reaction_matrix.columns
+        || component_ids.size() != reaction_matrix.columns
+        || reference.component_count != reaction_matrix.columns
+        || reference.neutral_basis_row_count == 0
+        || reference.neutral_basis_row_count > reaction_matrix.columns
+        || reference.neutral_basis.size()
+            != reference.neutral_basis_row_count * reaction_matrix.columns
+        || reference.log_fugacity_contractions.size()
+            != reference.neutral_basis_row_count
+        || reference.reference_composition.size() != reaction_matrix.columns) {
+        throw std::invalid_argument("neutral-reference transformation dimensions are inconsistent");
     }
-    if (reference.basis_id != kProviderBasis) {
-        throw std::invalid_argument("Provider standard-reference basis identity mismatch");
+    if (reference.basis_id != kProviderBasis
+        || reference.parameter_fingerprint.empty()
+        || provider_fingerprint.empty()
+        || provider_fingerprint != reference.parameter_fingerprint) {
+        throw std::invalid_argument("Provider neutral-reference identity is incompatible");
     }
-    if (reference.parameter_fingerprint.empty()) {
-        throw std::invalid_argument("Provider standard-reference fingerprint is incomplete");
+    if (reference.derivative_availability
+        != EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_NONE_V1) {
+        throw std::invalid_argument(
+            "Provider neutral-reference derivative availability is unsupported"
+        );
     }
-    for (double value : {
-             reference.formula_unit_log_fugacity,
-             reference.pure_solvent_log_fugacity,
-             reference.solvent_molar_mass_kg_per_mol,
-             reference.reference_molality_mol_per_kg,
-             reference.convergence_error,
-             reference.pure_solvent_molar_volume_m3_per_mol,
-         }) {
-        if (!std::isfinite(value)) {
-            throw std::invalid_argument("Provider standard-reference scalar is not finite");
+    if (!std::isfinite(temperature_k) || !std::isfinite(pressure_pa)
+        || temperature_k != reference.temperature_k || pressure_pa != reference.pressure_pa) {
+        throw std::invalid_argument("source/reference temperature and pressure are not bound");
+    }
+    std::unordered_set<std::string> unique_ids;
+    for (const std::string& id : component_ids) {
+        if (id.empty() || !unique_ids.insert(id).second) {
+            throw std::invalid_argument("source component identity is incomplete");
         }
     }
-    if (reference.solvent_molar_mass_kg_per_mol <= 0.0
-        || reference.solvent_molar_mass_kg_per_mol >= 1.0) {
-        throw std::invalid_argument("Provider solvent molar mass must be in kg/mol");
+    require_finite_vector(source_ln_k, "source lnK");
+    require_finite_vector(log_activity_scale_factors, "log activity-scale factors");
+    require_finite_vector(reaction_matrix.values, "source reactions");
+    require_finite_vector(reference.reference_composition, "Provider reference composition");
+    if (reference.reference_amount_mol != 1.0
+        || reference.reference_number_density_mol_per_m3 != 1.0
+        || !std::isfinite(reference.solvent_molar_mass_kg_per_mol)
+        || reference.solvent_molar_mass_kg_per_mol <= 0.0
+        || !std::isfinite(reference.reference_molality_mol_per_kg)
+        || reference.reference_molality_mol_per_kg <= 0.0
+        || !std::isfinite(reference.reference_convergence_error)
+        || reference.reference_convergence_error < 0.0
+        || reference.reference_convergence_error > 5.0e-5) {
+        throw std::invalid_argument("Provider neutral-reference scalar identity is incompatible");
     }
-    if (reference.reference_molality_mol_per_kg <= 0.0) {
-        throw std::invalid_argument("Provider terminal molality must be positive");
+    double reference_composition_sum = 0.0;
+    for (double value : reference.reference_composition) {
+        if (value < 0.0) {
+            throw std::invalid_argument("Provider reference composition is negative");
+        }
+        reference_composition_sum += value;
     }
-    if (reference.convergence_error < 0.0) {
-        throw std::invalid_argument("Provider reference convergence error must be nonnegative");
+    if (std::abs(reference_composition_sum - 1.0)
+        > numerical_tolerance(1.0, reference.reference_composition.size())) {
+        throw std::invalid_argument("Provider reference composition is not normalized");
     }
-    if (reference.pure_solvent_molar_volume_m3_per_mol <= 0.0) {
-        throw std::invalid_argument("Provider pure-solvent molar volume must be positive");
+    for (std::size_t row = 0; row < reference.neutral_basis_row_count; ++row) {
+        for (std::size_t component = 0; component < reaction_matrix.columns; ++component) {
+            require_finite(
+                reference.neutral_basis[row * reaction_matrix.columns + component],
+                "Provider neutral basis"
+            );
+        }
+    }
+    require_finite_vector(reference.log_fugacity_contractions, "Provider contractions");
+    DenseMatrix neutral_basis{
+        reference.neutral_basis_row_count,
+        reaction_matrix.columns,
+        reference.neutral_basis,
+    };
+    if (matrix_rank(neutral_basis) != neutral_basis.rows) {
+        throw std::invalid_argument("Provider neutral-reference basis is rank deficient");
+    }
+    const double charge_tolerance = numerical_tolerance(
+        matrix_scale(reaction_matrix), reaction_matrix.columns
+    );
+    for (std::size_t row = 0; row < reaction_matrix.rows; ++row) {
+        double reaction_charge = 0.0;
+        for (std::size_t component = 0; component < reaction_matrix.columns; ++component) {
+            reaction_charge += static_cast<double>(charges[component])
+                * reaction_matrix(row, component);
+        }
+        if (std::abs(reaction_charge) > charge_tolerance) {
+            throw std::invalid_argument("source reaction is not charge neutral");
+        }
+    }
+    for (std::size_t row = 0; row < neutral_basis.rows; ++row) {
+        double basis_charge = 0.0;
+        for (std::size_t component = 0; component < neutral_basis.columns; ++component) {
+            basis_charge += static_cast<double>(charges[component])
+                * neutral_basis(row, component);
+        }
+        if (std::abs(basis_charge) > charge_tolerance) {
+            throw std::invalid_argument("Provider neutral basis row is not charge neutral");
+        }
     }
 
-    // This is the IAPWS thermodynamic standard molality, not Provider's
-    // terminal infinite-dilution evaluation coordinate.
-    constexpr double kStandardMolalityMolPerKg = 1.0;
-    const double delta = 2.0 * std::log(
-        reference.solvent_molar_mass_kg_per_mol * kStandardMolalityMolPerKg
-    ) + reference.formula_unit_log_fugacity
-        - 2.0 * reference.pure_solvent_log_fugacity;
-    return {delta, ln_kw_mixed_standard + delta};
+    const std::size_t basis_count = neutral_basis.rows;
+    DenseMatrix gram{basis_count, basis_count, std::vector<double>(basis_count * basis_count, 0.0)};
+    for (std::size_t first = 0; first < basis_count; ++first) {
+        for (std::size_t second = 0; second < basis_count; ++second) {
+            for (std::size_t component = 0; component < neutral_basis.columns; ++component) {
+                gram(first, second) += neutral_basis(first, component)
+                    * neutral_basis(second, component);
+            }
+        }
+    }
+    auto solve_full_column_system = [&](const std::vector<double>& values) {
+        std::vector<double> matrix = gram.values;
+        std::vector<double> rhs(basis_count, 0.0);
+        for (std::size_t row = 0; row < basis_count; ++row) {
+            for (std::size_t component = 0; component < neutral_basis.columns; ++component) {
+                rhs[row] += neutral_basis(row, component) * values[component];
+            }
+        }
+        for (std::size_t pivot = 0; pivot < basis_count; ++pivot) {
+            std::size_t selected = pivot;
+            for (std::size_t row = pivot + 1; row < basis_count; ++row) {
+                if (std::abs(matrix[row * basis_count + pivot])
+                    > std::abs(matrix[selected * basis_count + pivot])) {
+                    selected = row;
+                }
+            }
+            if (std::abs(matrix[selected * basis_count + pivot])
+                <= numerical_tolerance(1.0, basis_count)) {
+                throw std::invalid_argument("Provider neutral-reference basis solve is rank deficient");
+            }
+            if (selected != pivot) {
+                for (std::size_t column = pivot; column < basis_count; ++column) {
+                    std::swap(
+                        matrix[selected * basis_count + column],
+                        matrix[pivot * basis_count + column]
+                    );
+                }
+                std::swap(rhs[selected], rhs[pivot]);
+            }
+            for (std::size_t row = pivot + 1; row < basis_count; ++row) {
+                const double factor = matrix[row * basis_count + pivot]
+                    / matrix[pivot * basis_count + pivot];
+                for (std::size_t column = pivot; column < basis_count; ++column) {
+                    matrix[row * basis_count + column] -= factor
+                        * matrix[pivot * basis_count + column];
+                }
+                rhs[row] -= factor * rhs[pivot];
+            }
+        }
+        std::vector<double> result(basis_count, 0.0);
+        for (std::size_t reverse = basis_count; reverse > 0; --reverse) {
+            const std::size_t row = reverse - 1;
+            double value = rhs[row];
+            for (std::size_t column = row + 1; column < basis_count; ++column) {
+                value -= matrix[row * basis_count + column] * result[column];
+            }
+            result[row] = value / matrix[row * basis_count + row];
+        }
+        return result;
+    };
+
+    SourceStandardStateResult result;
+    result.standard_offsets.assign(reaction_matrix.rows, 0.0);
+    result.ln_k_provider_basis.assign(reaction_matrix.rows, 0.0);
+    result.reaction_to_neutral_basis = DenseMatrix{
+        reaction_matrix.rows,
+        basis_count,
+        std::vector<double>(reaction_matrix.rows * basis_count, 0.0),
+    };
+    for (std::size_t reaction = 0; reaction < reaction_matrix.rows; ++reaction) {
+        std::vector<double> nu(reaction_matrix.columns, 0.0);
+        for (std::size_t component = 0; component < reaction_matrix.columns; ++component) {
+            nu[component] = reaction_matrix(reaction, component);
+        }
+        const std::vector<double> coefficients = solve_full_column_system(nu);
+        double residual = 0.0;
+        double scale_offset = 0.0;
+        double contraction_offset = 0.0;
+        for (std::size_t component = 0; component < reaction_matrix.columns; ++component) {
+            scale_offset += nu[component] * log_activity_scale_factors[component];
+        }
+        for (std::size_t basis = 0; basis < basis_count; ++basis) {
+            result.reaction_to_neutral_basis(reaction, basis) = coefficients[basis];
+            contraction_offset += coefficients[basis]
+                * reference.log_fugacity_contractions[basis];
+        }
+        for (std::size_t component = 0; component < reaction_matrix.columns; ++component) {
+            double reconstructed = 0.0;
+            for (std::size_t basis = 0; basis < basis_count; ++basis) {
+                reconstructed += coefficients[basis] * neutral_basis(basis, component);
+            }
+            residual = std::max(residual, std::abs(reconstructed - nu[component]));
+        }
+        result.representation_residual_inf_norm = std::max(
+            result.representation_residual_inf_norm, residual
+        );
+        result.standard_offsets[reaction] = scale_offset + contraction_offset;
+        result.ln_k_provider_basis[reaction] = source_ln_k[reaction]
+            + result.standard_offsets[reaction];
+    }
+    result.derivative_availability = reference.derivative_availability;
+    result.basis_id = reference.basis_id;
+    result.parameter_fingerprint = reference.parameter_fingerprint;
+    return result;
 }
 
 }  // namespace epcsaft_equilibrium

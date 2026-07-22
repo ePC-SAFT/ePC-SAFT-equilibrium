@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -29,13 +30,20 @@ struct PackingFractionEvaluation {
     std::vector<double> hessian;
 };
 
-struct StandardReferenceEvaluation {
-    double formula_unit_log_fugacity = 0.0;
-    double pure_solvent_log_fugacity = 0.0;
+struct NeutralReferenceEvaluation {
+    std::size_t component_count = 0;
+    std::size_t neutral_basis_row_count = 0;
+    std::vector<double> neutral_basis;
+    std::vector<double> log_fugacity_contractions;
+    std::vector<double> reference_composition;
+    std::uint32_t derivative_availability = EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_NONE_V1;
+    double temperature_k = 0.0;
+    double pressure_pa = 0.0;
     double solvent_molar_mass_kg_per_mol = 0.0;
+    double reference_amount_mol = 0.0;
+    double reference_number_density_mol_per_m3 = 0.0;
     double reference_molality_mol_per_kg = 0.0;
-    double convergence_error = 0.0;
-    double pure_solvent_molar_volume_m3_per_mol = 0.0;
+    double reference_convergence_error = 0.0;
     std::string basis_id;
     std::string parameter_fingerprint;
 };
@@ -75,7 +83,7 @@ public:
         double volume_m3
     ) const;
 
-    [[nodiscard]] StandardReferenceEvaluation evaluate_standard_reference(
+    [[nodiscard]] NeutralReferenceEvaluation evaluate_neutral_reference(
         double temperature_k,
         double pressure_pa
     ) const;
