@@ -35,6 +35,7 @@ struct StandardReferenceEvaluation {
     double solvent_molar_mass_kg_per_mol = 0.0;
     double reference_molality_mol_per_kg = 0.0;
     double convergence_error = 0.0;
+    double pure_solvent_molar_volume_m3_per_mol = 0.0;
     std::string basis_id;
     std::string parameter_fingerprint;
 };

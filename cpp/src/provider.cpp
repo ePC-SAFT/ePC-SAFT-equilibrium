@@ -359,7 +359,9 @@ StandardReferenceEvaluation ProviderContext::evaluate_standard_reference(
         || result.reference_molality_mol_per_kg <= 0.0
         || !std::isfinite(result.reference_convergence_error)
         || result.reference_convergence_error < 0.0
-        || result.reference_convergence_error > 5.0e-5) {
+        || result.reference_convergence_error > 5.0e-5
+        || !std::isfinite(result.pure_solvent_molar_volume_m3_per_mol)
+        || result.pure_solvent_molar_volume_m3_per_mol <= 0.0) {
         throw std::invalid_argument(
             "Provider standard-reference evaluation returned invalid scalars"
         );
@@ -386,6 +388,7 @@ StandardReferenceEvaluation ProviderContext::evaluate_standard_reference(
         result.solvent_molar_mass_kg_per_mol,
         result.reference_molality_mol_per_kg,
         result.reference_convergence_error,
+        result.pure_solvent_molar_volume_m3_per_mol,
         std::move(basis_id),
         std::move(parameter_fingerprint),
     };

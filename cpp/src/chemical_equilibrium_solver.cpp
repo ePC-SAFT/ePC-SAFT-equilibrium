@@ -71,12 +71,16 @@ std::string ipopt_status_name(Ipopt::ApplicationReturnStatus status) {
 
 void configure_ipopt(
     const Ipopt::SmartPtr<Ipopt::IpoptApplication>& application,
-    int max_iterations
+    int max_iterations,
+    double objective_scaling_factor = 1.0
 ) {
     application->Options()->SetStringValue("option_file_name", "");
     application->Options()->SetIntegerValue("print_level", 0);
     application->Options()->SetStringValue("sb", "yes");
     application->Options()->SetIntegerValue("max_iter", max_iterations);
+    application->Options()->SetNumericValue(
+        "obj_scaling_factor", objective_scaling_factor
+    );
     application->Options()->SetNumericValue("tol", 1.0e-10);
     application->Options()->SetNumericValue("acceptable_tol", 1.0e-9);
     application->Options()->SetIntegerValue("acceptable_iter", 0);
@@ -1285,7 +1289,7 @@ MaxMinInitializationResult max_min_initialization(
             && maximum < 0.5 * kInfinity;
         if (finite_amount_bounds) {
             result.amount_upper_bounds[species] = std::nextafter(
-                maximum * (1.0 + 1.0e-9) + 1.0e-12,
+                2.0 * maximum + 1.0e-12,
                 std::numeric_limits<double>::infinity()
             );
         }
@@ -1313,11 +1317,14 @@ ChemicalSolveResult solve_reaction(
     const PhaseEvaluator& phase_evaluator,
     const ReactionDomain& domain,
     double initial_volume,
-    const std::vector<double>& starting_amounts
+    const std::vector<double>& starting_amounts,
+    double objective_scaling_factor
 ) {
     if (!std::isfinite(temperature_k) || temperature_k <= 0.0
         || !std::isfinite(pressure_pa) || pressure_pa <= 0.0
-        || !std::isfinite(trace_floor) || trace_floor <= 0.0) {
+        || !std::isfinite(trace_floor) || trace_floor <= 0.0
+        || !std::isfinite(objective_scaling_factor)
+        || objective_scaling_factor <= 0.0) {
         throw std::invalid_argument("reaction solve scales are invalid");
     }
     ChemicalSolveResult result;
@@ -1409,7 +1416,7 @@ ChemicalSolveResult solve_reaction(
     if (max_iterations < 0) {
         throw std::invalid_argument("reaction solver iteration limit must be nonnegative");
     }
-    configure_ipopt(application, max_iterations);
+    configure_ipopt(application, max_iterations, objective_scaling_factor);
     const Ipopt::ApplicationReturnStatus initialize_status = application->Initialize();
     if (initialize_status != Ipopt::Solve_Succeeded) {
         result.solver_status = "initialization_" + ipopt_status_name(initialize_status);
@@ -1648,7 +1655,8 @@ ChemicalSolveResult solve_manufactured_ideal_reaction(
         ideal_phase_evaluator(),
         ReactionDomain{},
         std::numeric_limits<double>::quiet_NaN(),
-        {}
+        {},
+        1.0
     );
     if (result.accepted) {
         result.final_lambda = 1.0;
@@ -1681,7 +1689,7 @@ ProviderPhaseBlockEvidence evaluate_provider_phase_block(
     };
 }
 
-ChemicalSolveResult solve_provider_manufactured_reaction(
+ChemicalSolveResult solve_provider_reaction(
     const CompiledReactionSystem& system,
     const ProviderContext& provider,
     double temperature_k,
@@ -1690,6 +1698,9 @@ ChemicalSolveResult solve_provider_manufactured_reaction(
     double packing_fraction_max,
     double total_ion_fraction_max,
     double trace_floor,
+    const std::vector<double>& gauge_coefficients,
+    double preferred_initial_molar_volume_m3_per_mol,
+    const std::vector<double>& preferred_starting_amounts,
     int max_iterations
 ) {
     if (!std::isfinite(packing_fraction_min)
@@ -1724,12 +1735,21 @@ ChemicalSolveResult solve_provider_manufactured_reaction(
         result.trace_status = "at_or_below_floor";
         return result;
     }
+    const std::vector<double>& starting_amounts = preferred_starting_amounts.empty()
+        ? initialization.amounts
+        : preferred_starting_amounts;
+    if (starting_amounts.size() != system.species_ids.size()
+        || !std::all_of(starting_amounts.begin(), starting_amounts.end(), [](double amount) {
+            return std::isfinite(amount) && amount > 0.0;
+        })) {
+        throw std::invalid_argument("Provider reaction starting amounts are invalid");
+    }
     const double total = std::accumulate(
-        initialization.amounts.begin(), initialization.amounts.end(), 0.0
+        starting_amounts.begin(), starting_amounts.end(), 0.0
     );
-    std::vector<double> mole_fractions(initialization.amounts.size(), 0.0);
+    std::vector<double> mole_fractions(starting_amounts.size(), 0.0);
     for (std::size_t species = 0; species < mole_fractions.size(); ++species) {
-        mole_fractions[species] = initialization.amounts[species] / total;
+        mole_fractions[species] = starting_amounts[species] / total;
     }
     const std::array<double, 2> molar_bounds = provider.evaluate_molar_volume_bounds(
         temperature_k, mole_fractions, packing_fraction_min, packing_fraction_max
@@ -1738,25 +1758,37 @@ ChemicalSolveResult solve_provider_manufactured_reaction(
     double upper_volume = std::nextafter(total * molar_bounds[1], 0.0);
     const auto pressure_residual = [&](double volume) {
         return provider.evaluate_electrolyte(
-            temperature_k, initialization.amounts, volume
+            temperature_k, starting_amounts, volume
         ).pressure_pa - pressure_pa;
     };
-    double lower_residual = pressure_residual(lower_volume);
-    const double upper_residual = pressure_residual(upper_volume);
     double initial_volume = std::sqrt(lower_volume * upper_volume);
-    if (std::signbit(lower_residual) != std::signbit(upper_residual)) {
-        for (int iteration = 0; iteration < 100; ++iteration) {
-            const double midpoint = std::sqrt(lower_volume * upper_volume);
-            const double midpoint_residual = pressure_residual(midpoint);
-            initial_volume = midpoint;
-            if (std::abs(midpoint_residual) <= 1.0e-10 * pressure_pa) {
-                break;
-            }
-            if (std::signbit(midpoint_residual) == std::signbit(lower_residual)) {
-                lower_volume = midpoint;
-                lower_residual = midpoint_residual;
-            } else {
-                upper_volume = midpoint;
+    if (std::isfinite(preferred_initial_molar_volume_m3_per_mol)) {
+        if (preferred_initial_molar_volume_m3_per_mol <= 0.0) {
+            throw std::invalid_argument("preferred Provider molar volume must be positive");
+        }
+        initial_volume = total * preferred_initial_molar_volume_m3_per_mol;
+        if (initial_volume <= lower_volume || initial_volume >= upper_volume) {
+            throw std::invalid_argument(
+                "preferred Provider molar volume is outside packing bounds"
+            );
+        }
+    } else {
+        double lower_residual = pressure_residual(lower_volume);
+        const double upper_residual = pressure_residual(upper_volume);
+        if (std::signbit(lower_residual) != std::signbit(upper_residual)) {
+            for (int iteration = 0; iteration < 100; ++iteration) {
+                const double midpoint = std::sqrt(lower_volume * upper_volume);
+                const double midpoint_residual = pressure_residual(midpoint);
+                initial_volume = midpoint;
+                if (std::abs(midpoint_residual) <= 1.0e-10 * pressure_pa) {
+                    break;
+                }
+                if (std::signbit(midpoint_residual) == std::signbit(lower_residual)) {
+                    lower_volume = midpoint;
+                    lower_residual = midpoint_residual;
+                } else {
+                    upper_volume = midpoint;
+                }
             }
         }
     }
@@ -1815,17 +1847,35 @@ ChemicalSolveResult solve_provider_manufactured_reaction(
         packing_fraction_max,
         total_ion_fraction_max,
     };
+    double objective_scaling_factor = 1.0;
+    if (!preferred_starting_amounts.empty()) {
+        double minimum_ionic_amount = std::numeric_limits<double>::infinity();
+        for (std::size_t species = 0; species < starting_amounts.size(); ++species) {
+            if (system.charges[species] != 0) {
+                minimum_ionic_amount = std::min(
+                    minimum_ionic_amount, starting_amounts[species]
+                );
+            }
+        }
+        if (!std::isfinite(minimum_ionic_amount) || minimum_ionic_amount <= 0.0) {
+            throw std::invalid_argument(
+                "preferred Provider ionic start cannot scale the objective"
+            );
+        }
+        objective_scaling_factor = 1.0 / minimum_ionic_amount;
+    }
     ChemicalSolveResult direct = solve_reaction(
         system,
         temperature_k,
         pressure_pa,
-        {},
+        gauge_coefficients,
         trace_floor,
         max_iterations,
         phase_evaluator_at(1.0),
         domain,
         initial_volume,
-        {}
+        starting_amounts,
+        objective_scaling_factor
     );
     if (direct.accepted) {
         direct.final_lambda = 1.0;
@@ -1838,13 +1888,14 @@ ChemicalSolveResult solve_provider_manufactured_reaction(
         system,
         temperature_k,
         pressure_pa,
-        {},
+        gauge_coefficients,
         trace_floor,
         max_iterations,
         phase_evaluator_at(0.0),
         domain,
         initial_volume,
-        {}
+        starting_amounts,
+        objective_scaling_factor
     );
     if (!current.accepted) {
         return direct;
@@ -1859,13 +1910,14 @@ ChemicalSolveResult solve_provider_manufactured_reaction(
             system,
             temperature_k,
             pressure_pa,
-            {},
+            gauge_coefficients,
             trace_floor,
             max_iterations,
             phase_evaluator_at(trial_lambda),
             domain,
             current.volume_m3,
-            current.amounts
+            current.amounts,
+            objective_scaling_factor
         );
         if (!trial.accepted) {
             step *= 0.5;

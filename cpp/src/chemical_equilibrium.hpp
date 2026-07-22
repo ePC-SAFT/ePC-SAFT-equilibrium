@@ -210,7 +210,7 @@ struct StandardReferenceEvaluation;
     const StandardReferenceEvaluation& reference
 );
 
-[[nodiscard]] ChemicalSolveResult solve_provider_manufactured_reaction(
+[[nodiscard]] ChemicalSolveResult solve_provider_reaction(
     const CompiledReactionSystem& system,
     const ProviderContext& provider,
     double temperature_k,
@@ -219,6 +219,9 @@ struct StandardReferenceEvaluation;
     double packing_fraction_max,
     double total_ion_fraction_max,
     double trace_floor,
+    const std::vector<double>& gauge_coefficients,
+    double preferred_initial_molar_volume_m3_per_mol,
+    const std::vector<double>& preferred_starting_amounts,
     int max_iterations = 500
 );
 

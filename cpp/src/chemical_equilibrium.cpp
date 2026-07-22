@@ -715,6 +715,7 @@ MixedStandardStateResult transform_water_self_ionization_standard_state(
              reference.solvent_molar_mass_kg_per_mol,
              reference.reference_molality_mol_per_kg,
              reference.convergence_error,
+             reference.pure_solvent_molar_volume_m3_per_mol,
          }) {
         if (!std::isfinite(value)) {
             throw std::invalid_argument("Provider standard-reference scalar is not finite");
@@ -729,6 +730,9 @@ MixedStandardStateResult transform_water_self_ionization_standard_state(
     }
     if (reference.convergence_error < 0.0) {
         throw std::invalid_argument("Provider reference convergence error must be nonnegative");
+    }
+    if (reference.pure_solvent_molar_volume_m3_per_mol <= 0.0) {
+        throw std::invalid_argument("Provider pure-solvent molar volume must be positive");
     }
 
     // This is the IAPWS thermodynamic standard molality, not Provider's
