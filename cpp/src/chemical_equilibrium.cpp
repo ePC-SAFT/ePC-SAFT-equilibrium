@@ -255,39 +255,6 @@ void validate_reference_records(const ReactionSystemInput& input) {
             throw std::invalid_argument("equilibrium constant pressure binding is incomplete");
         }
     }
-    if (!input.has_standard_state_transformation) {
-        if (!input.provider_basis_id.empty()
-            || input.standard_state_transformation_residual != 0.0) {
-            throw std::invalid_argument(
-                "standard-state transformation evidence is inconsistent"
-            );
-        }
-        return;
-    }
-    if (input.provider_basis_id.empty()) {
-        throw std::invalid_argument("standard-state Provider basis identity is incomplete");
-    }
-    require_finite(
-        input.standard_state_transformation_residual,
-        "standard-state transformation residual"
-    );
-    double ln_k_scale = 0.0;
-    for (double value : input.ln_k) {
-        ln_k_scale = std::max(ln_k_scale, std::abs(value));
-    }
-    const double residual_tolerance = numerical_tolerance(
-        ln_k_scale, input.species_ids.size()
-    );
-    if (std::abs(input.standard_state_transformation_residual) > residual_tolerance) {
-        throw std::invalid_argument("standard-state transformation residual is inconsistent");
-    }
-    for (const EquilibriumConstantRecord& record : input.equilibrium_constant_records) {
-        if (record.reference_id != input.provider_basis_id) {
-            throw std::invalid_argument(
-                "equilibrium constant Provider basis identity does not match transformation"
-            );
-        }
-    }
 }
 
 }  // namespace
@@ -683,9 +650,6 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
         input.ln_k,
         std::move(reference),
         input.provider_fingerprint,
-        input.has_standard_state_transformation,
-        input.provider_basis_id,
-        input.standard_state_transformation_residual,
         balance_rank,
         reaction_rank,
         reference_residual,

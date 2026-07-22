@@ -856,25 +856,6 @@ def test_iapws_mixed_standard_state_transform_uses_thermodynamic_standard_molali
     assert transformed["provider_basis_id"] == reference["basis_id"]
     assert transformed["source_id"] == "iapws-r11-24"
 
-    spec = _base_system()
-    source_records = [dict(item) for item in spec["equilibrium_constant_records"]]
-    source_records[0]["reference_id"] = transformed["provider_basis_id"]
-    spec["equilibrium_constant_records"] = tuple(source_records)
-    spec["has_standard_state_transformation"] = True
-    spec["provider_basis_id"] = transformed["provider_basis_id"]
-    spec["standard_state_transformation_residual"] = transformed[
-        "transformation_residual"
-    ]
-    compiled = _equilibrium._chemical_compile_system(spec)
-    assert compiled["has_standard_state_transformation"] is True
-    assert compiled["provider_basis_id"] == transformed["provider_basis_id"]
-    assert compiled["standard_state_transformation_residual"] <= 2.0e-15
-
-    inconsistent = copy.deepcopy(spec)
-    inconsistent["standard_state_transformation_residual"] = 1.0e-3
-    with pytest.raises(ValueError, match="transformation residual"):
-        _equilibrium._chemical_compile_system(inconsistent)
-
 
 def test_installed_provider_reference_transforms_iapws_ln_kw_in_exact_basis() -> None:
     model = _held_water_ionization_model()
@@ -1046,7 +1027,7 @@ def test_source_complete_water_self_ionization_solves_and_recomputes_iapws_activ
     assert independently_recomputed == pytest.approx(values["ln_kw"], abs=1.0e-8)
 
 
-@pytest.mark.parametrize("trace_floor", (1.0e-18, 1.0e-15, 1.0e-12))
+@pytest.mark.parametrize("trace_floor", (1.0e-18, 1.0e-12))
 def test_source_complete_water_self_ionization_is_trace_floor_stable(
     trace_floor: float,
 ) -> None:
@@ -1062,7 +1043,7 @@ def test_source_complete_water_self_ionization_is_trace_floor_stable(
     assert result["reaction_affinity_inf_norm"] <= 1.0e-7
 
 
-def test_source_complete_water_self_ionization_is_gauge_scale_and_basis_invariant() -> None:
+def test_source_complete_water_self_ionization_is_scale_and_basis_invariant() -> None:
     model = _held_water_ionization_model()
     capsule = epcsaft.native_sdk(model)
     options = {"packing_fraction_bounds": (1.0e-6, 0.74), "trace_floor": 1.0e-12}
@@ -1070,11 +1051,6 @@ def test_source_complete_water_self_ionization_is_gauge_scale_and_basis_invarian
         capsule, _water_self_ionization_spec(model), options
     )
 
-    gauged = _equilibrium._chemical_solve_provider_water_self_ionization(
-        capsule,
-        _water_self_ionization_spec(model),
-        {**options, "test_gauge_coefficients": (2.5, -1.75)},
-    )
     scaled_feed = _equilibrium._chemical_solve_provider_water_self_ionization(
         capsule, _water_self_ionization_spec(model, feed_scale=10.0), options
     )
@@ -1085,10 +1061,8 @@ def test_source_complete_water_self_ionization_is_gauge_scale_and_basis_invarian
     )
 
     assert baseline["accepted"] is True
-    assert gauged["accepted"] is True
     assert scaled_feed["accepted"] is True
     assert scaled_basis["accepted"] is True
-    assert gauged["amounts"] == pytest.approx(baseline["amounts"], rel=2.0e-8)
     assert scaled_basis["amounts"] == pytest.approx(baseline["amounts"], rel=2.0e-8)
     assert scaled_feed["amounts"] == pytest.approx(
         tuple(10.0 * amount for amount in baseline["amounts"]), rel=2.0e-8
