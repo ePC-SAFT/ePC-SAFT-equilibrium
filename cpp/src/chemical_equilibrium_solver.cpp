@@ -1314,6 +1314,7 @@ ChemicalSolveResult solve_reaction(
     const std::vector<double>& gauge_coefficients,
     double trace_floor,
     int max_iterations,
+    const MaxMinInitializationResult& initialization,
     const PhaseEvaluator& phase_evaluator,
     const ReactionDomain& domain,
     double initial_volume,
@@ -1328,13 +1329,7 @@ ChemicalSolveResult solve_reaction(
         throw std::invalid_argument("reaction solve scales are invalid");
     }
     ChemicalSolveResult result;
-    const MaxMinInitializationResult initialization = max_min_initialization(
-        system.balance_matrix,
-        system.feed_amounts,
-        system.charges,
-        trace_floor,
-        domain.total_ion_fraction_max
-    );
+    result.max_min_solve_count = 1;
     result.solver_status = initialization.solver_status;
     if (!initialization.strict_positive_feasible) {
         result.numerical_status = "failed";
@@ -1645,6 +1640,13 @@ ChemicalSolveResult solve_manufactured_ideal_reaction(
     double trace_floor,
     int max_iterations
 ) {
+    const MaxMinInitializationResult initialization = max_min_initialization(
+        system.balance_matrix,
+        system.feed_amounts,
+        system.charges,
+        trace_floor,
+        std::numeric_limits<double>::quiet_NaN()
+    );
     ChemicalSolveResult result = solve_reaction(
         system,
         temperature_k,
@@ -1652,6 +1654,7 @@ ChemicalSolveResult solve_manufactured_ideal_reaction(
         gauge_coefficients,
         trace_floor,
         max_iterations,
+        initialization,
         ideal_phase_evaluator(),
         ReactionDomain{},
         std::numeric_limits<double>::quiet_NaN(),
@@ -1729,6 +1732,7 @@ ChemicalSolveResult solve_provider_reaction(
     );
     if (!initialization.strict_positive_feasible) {
         ChemicalSolveResult result;
+        result.max_min_solve_count = 1;
         result.solver_status = initialization.solver_status;
         result.numerical_status = "failed";
         result.trace_status = "at_or_below_floor";
@@ -1870,6 +1874,7 @@ ChemicalSolveResult solve_provider_reaction(
         {},
         trace_floor,
         max_iterations,
+        initialization,
         phase_evaluator_at(1.0),
         domain,
         initial_volume,
@@ -1890,6 +1895,7 @@ ChemicalSolveResult solve_provider_reaction(
         {},
         trace_floor,
         max_iterations,
+        initialization,
         phase_evaluator_at(0.0),
         domain,
         initial_volume,
@@ -1912,6 +1918,7 @@ ChemicalSolveResult solve_provider_reaction(
             {},
             trace_floor,
             max_iterations,
+            initialization,
             phase_evaluator_at(trial_lambda),
             domain,
             current.volume_m3,

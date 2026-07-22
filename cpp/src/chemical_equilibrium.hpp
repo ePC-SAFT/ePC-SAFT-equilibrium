@@ -114,6 +114,7 @@ struct ChemicalSolveResult {
     double final_lambda = 0.0;
     bool has_final_lambda = false;
     bool continuation_used = false;
+    std::size_t max_min_solve_count = 0;
     std::string kkt_scope = "not_adjudicated";
     std::size_t active_balance_constraint_count = 0;
     std::vector<double> kkt_residual;

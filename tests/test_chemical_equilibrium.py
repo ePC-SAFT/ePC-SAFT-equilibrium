@@ -831,6 +831,7 @@ def test_source_complete_water_self_ionization_solves_and_recomputes_iapws_activ
 
     assert result["profile"] == "installed_provider_source_complete_consistency"
     assert result["accepted"] is True
+    assert result["max_min_solve_count"] == 1
     assert result["solver_status"] == "solve_succeeded"
     assert result["artifact_input_status"] == "passed"
     assert result["numerical_status"] == "passed"
@@ -951,6 +952,7 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
 
     assert result["profile"] == "installed_provider_manufactured_nonpredictive"
     assert result["accepted"] is True
+    assert result["max_min_solve_count"] == 1
     final = _equilibrium._chemical_evaluate_provider_block(
         capsule,
         temperature_k,
