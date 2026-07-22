@@ -351,12 +351,13 @@ failure.
 ### Source-faithful candidate selection
 
 Perdomo Step 6 runs immediately after every certified improving-cut insertion
-and on the no-improvement path. Candidate predicates retain separate source
-tolerances for:
+and on the no-improvement path. Candidate predicates use the named package
+tolerance contract for:
 
 - dual-value proximity;
 - fixed-volume composition-gradient agreement with the multiplier over the
-  source `I^m` retained component set, with relative multiplier scaling;
+  source `I^m` retained component set, using the zero-safe threshold
+  `1e-8 + 1e-7*max(abs(gradient), abs(multiplier))`;
 - packing/pressure stationarity; and
 - phase distinctness.
 
@@ -364,10 +365,11 @@ Candidate gradients for this test are fixed-volume physical gradients. The
 `q`-chart gradients belong to the lower TNLP and include a non-negligible chain
 term; substituting them changes the source predicate.
 
-Two candidates are distinct when the source eta-or-composition test passes:
-packing differs sufficiently **or** at least one admitted modified composition
-differs sufficiently. This candidate clustering is independent of the tighter
-cut-growth duplicate threshold.
+Numerical duplicate basins use `1e-7` physical-composition and log-volume
+distances. Two candidates are confidently distinct when physical composition
+**or** log volume differs by more than `1e-5`. The band between those tests is
+unresolved and fails closed. Candidate identity remains independent of the
+tighter cut-growth duplicate decision.
 
 Stage III may start only from the ordinary controller-owned candidate vector.
 There is no caller-injected witness or case-specific candidate escape hatch.

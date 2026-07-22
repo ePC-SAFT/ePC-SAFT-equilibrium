@@ -1,4 +1,5 @@
 #include "held2_stage_ii_upper.hpp"
+#include "held2_tolerances.hpp"
 
 #include <Highs.h>
 
@@ -8,8 +9,6 @@
 
 namespace epcsaft_equilibrium {
 namespace {
-
-constexpr double kLpAuditTolerance = 1.0e-8;
 
 void validate_problem(const Held2StageIIUpperProblem& problem) {
     const std::size_t dimension = problem.multiplier_lower_bounds.size();
@@ -156,6 +155,7 @@ Held2StageIIUpperResult solve_held2_stage_ii_upper_highs(
     result.cut_slacks.reserve(problem.cuts.size());
     result.cut_duals.reserve(problem.cuts.size());
     double primal_residual = 0.0;
+    double primal_scale = std::abs(result.upper_bound);
     for (std::size_t row = 0; row < problem.cuts.size(); ++row) {
         const Held2StageIIUpperCut& cut = problem.cuts[row];
         double cut_value = cut.intercept;
@@ -163,10 +163,13 @@ Held2StageIIUpperResult solve_held2_stage_ii_upper_highs(
             cut_value += cut.slopes[index] * result.multipliers[index];
         }
         const double slack = cut_value - result.upper_bound;
+        primal_scale = std::max({
+            primal_scale, std::abs(cut_value), std::abs(cut.intercept)
+        });
         result.cut_slacks.push_back(slack);
         result.cut_duals.push_back(solution.row_dual[row]);
         primal_residual = std::max(primal_residual, std::max(0.0, -slack));
-        if (std::abs(slack) <= kLpAuditTolerance) {
+        if (audit_held2_tolerance(kHeld2LpActiveCut, slack).passed) {
             result.active_cut_ids.push_back(cut.id);
         }
     }
@@ -190,15 +193,19 @@ Held2StageIIUpperResult solve_held2_stage_ii_upper_highs(
         std::max(0.0, result.upper_bound - problem.value_upper_bound)
     );
     result.primal_residual_inf = primal_residual;
+    result.primal_scale = primal_scale;
 
     double dual_residual = 0.0;
+    double dual_scale = 1.0;
+    double complementarity = 0.0;
     for (std::size_t row = 0; row < problem.cuts.size(); ++row) {
         dual_residual = std::max(
             dual_residual,
             std::max(0.0, -solution.row_dual[row])
         );
-        dual_residual = std::max(
-            dual_residual,
+        dual_scale = std::max(dual_scale, std::abs(solution.row_dual[row]));
+        complementarity = std::max(
+            complementarity,
             std::abs(solution.row_dual[row] * result.cut_slacks[row])
         );
     }
@@ -218,20 +225,21 @@ Held2StageIIUpperResult solve_held2_stage_ii_upper_highs(
         const double lower = model.lp_.col_lower_[index];
         const double upper = model.lp_.col_upper_[index];
         const double reduced_cost = solution.col_dual[index];
+        dual_scale = std::max({dual_scale, std::abs(residual), std::abs(reduced_cost)});
         const bool at_lower = std::isfinite(lower)
-            && std::abs(value - lower) <= kLpAuditTolerance;
+            && audit_held2_tolerance(kHeld2BoundActivity, value - lower).passed;
         const bool at_upper = std::isfinite(upper)
-            && std::abs(upper - value) <= kLpAuditTolerance;
+            && audit_held2_tolerance(kHeld2BoundActivity, upper - value).passed;
         if (at_lower && !at_upper) {
             dual_residual = std::max(dual_residual, std::max(0.0, reduced_cost));
-            dual_residual = std::max(
-                dual_residual,
+            complementarity = std::max(
+                complementarity,
                 std::abs((value - lower) * reduced_cost)
             );
         } else if (at_upper && !at_lower) {
             dual_residual = std::max(dual_residual, std::max(0.0, -reduced_cost));
-            dual_residual = std::max(
-                dual_residual,
+            complementarity = std::max(
+                complementarity,
                 std::abs((upper - value) * reduced_cost)
             );
         } else if (!at_lower && !at_upper) {
@@ -239,8 +247,16 @@ Held2StageIIUpperResult solve_held2_stage_ii_upper_highs(
         }
     }
     result.dual_residual_inf = dual_residual;
-    result.primal_feasible = primal_residual <= kLpAuditTolerance;
-    result.dual_feasible = dual_residual <= kLpAuditTolerance;
+    result.dual_scale = dual_scale;
+    result.complementarity_inf = complementarity;
+    result.primal_feasible = audit_held2_tolerance(
+        kHeld2LpPrimal, primal_residual, primal_scale
+    ).passed;
+    result.dual_feasible = audit_held2_tolerance(
+        kHeld2LpDual, dual_residual, dual_scale
+    ).passed && audit_held2_tolerance(
+        kHeld2LpComplementarity, complementarity
+    ).passed;
     if (!result.primal_feasible || !result.dual_feasible) {
         result.solver_status = "optimal_but_residual_audit_failed";
         result.multipliers.clear();
@@ -310,7 +326,10 @@ Held2StageIIUpperResult solve_held2_stage_ii_upper_analytic_1d(
     result.primal_feasible = true;
     result.dual_feasible = true;
     result.primal_residual_inf = 0.0;
+    result.primal_scale = std::max(std::abs(best), std::abs(multiplier));
     result.dual_residual_inf = 0.0;
+    result.dual_scale = 1.0;
+    result.complementarity_inf = 0.0;
     return result;
 }
 

@@ -34,7 +34,10 @@ struct Held2StageIIUpperResult {
     std::vector<double> cut_duals;
     std::vector<int> active_cut_ids;
     double primal_residual_inf = std::numeric_limits<double>::infinity();
+    double primal_scale = 0.0;
     double dual_residual_inf = std::numeric_limits<double>::infinity();
+    double dual_scale = 0.0;
+    double complementarity_inf = std::numeric_limits<double>::infinity();
 };
 
 [[nodiscard]] Held2StageIIUpperResult solve_held2_stage_ii_upper_highs(

@@ -1,6 +1,7 @@
 #include "held2.hpp"
 #include "held2_stage_ii_basin.hpp"
 #include "held2_stage_ii_upper.hpp"
+#include "held2_tolerances.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -22,17 +23,8 @@
 namespace epcsaft_equilibrium {
 namespace {
 
-constexpr double kCoordinateTolerance = 1.0e-12;
 // Perdomo Eq. (61) uses 1e-10 times the eliminated-ion coordinate factor.
 constexpr double kModifiedLowerScale = 1.0e-10;
-// The approved manufactured oracle uses a strict 1e-8 direct certificate.
-constexpr double kCertificateTolerance = 1.0e-8;
-constexpr double kStageITpdThreshold = -1.0e-8;
-constexpr double kStageIIKktTolerance = 1.0e-7;
-constexpr double kStageIIStep6EpsilonB = 1.0e-8;
-constexpr double kStageIIStep6EpsilonLambda = 1.0e-7;
-constexpr double kStageIIStep6EpsilonX = 1.0e-7;
-constexpr double kStageIIStep6EpsilonVolume = 1.0e-7;
 constexpr int kStageIIpoptIterations = 300;
 constexpr unsigned int kStageISeed = 2025;
 
@@ -65,6 +57,17 @@ double charge_residual(
     double result = 0.0;
     for (std::size_t index = 0; index < charges.size(); ++index) {
         result += charges[index] * fractions[index];
+    }
+    return result;
+}
+
+double charge_scale(
+    const std::vector<double>& charges,
+    const std::vector<double>& fractions
+) {
+    double result = 0.0;
+    for (std::size_t index = 0; index < charges.size(); ++index) {
+        result += std::abs(charges[index] * fractions[index]);
     }
     return result;
 }
@@ -156,12 +159,17 @@ void configure_held2_ipopt(const Ipopt::SmartPtr<Ipopt::IpoptApplication>& appli
     application->Options()->SetIntegerValue("print_level", 0);
     application->Options()->SetStringValue("sb", "yes");
     application->Options()->SetIntegerValue("max_iter", kStageIIpoptIterations);
-    application->Options()->SetNumericValue("tol", 1.0e-10);
-    application->Options()->SetNumericValue("acceptable_tol", 1.0e-9);
+    application->Options()->SetNumericValue("tol", kHeld2IpoptTarget.atol);
+    application->Options()->SetNumericValue(
+        "acceptable_tol", kHeld2IpoptAcceptable.atol
+    );
     application->Options()->SetIntegerValue("acceptable_iter", 0);
     application->Options()->SetStringValue("jacobian_approximation", "exact");
     application->Options()->SetStringValue("hessian_approximation", "exact");
     application->Options()->SetStringValue("nlp_scaling_method", "none");
+    application->Options()->SetNumericValue(
+        "constr_viol_tol", kHeld2IpoptConstraint.atol
+    );
     application->Options()->SetNumericValue("bound_relax_factor", 0.0);
     application->Options()->SetStringValue("honor_original_bounds", "yes");
     application->Options()->SetStringValue("check_derivatives_for_naninf", "yes");
@@ -188,9 +196,12 @@ struct Held2StageIISimplexChart {
 };
 
 struct Held2PhysicalKkt {
+    double primal_inf_norm = std::numeric_limits<double>::infinity();
+    double dual_sign_violation_inf_norm = std::numeric_limits<double>::infinity();
     double stationarity_inf_norm = std::numeric_limits<double>::infinity();
     double complementarity = std::numeric_limits<double>::infinity();
     double reconstruction_inf_norm = std::numeric_limits<double>::infinity();
+    double reconstruction_scale = std::numeric_limits<double>::infinity();
     bool dual_signs_valid = false;
 };
 
@@ -944,28 +955,40 @@ Held2PhysicalKkt evaluate_stage_ii_physical_kkt(
         throw std::invalid_argument("HELD2 Stage II physical KKT dimensions changed");
     }
     Held2PhysicalKkt result;
-    result.dual_signs_valid = std::all_of(
-        chart_lower_multipliers.begin(),
-        chart_lower_multipliers.end(),
-        [](double value) { return value >= -kCertificateTolerance; }
-    ) && std::all_of(
-        chart_upper_multipliers.begin(),
-        chart_upper_multipliers.end(),
-        [](double value) { return value >= -kCertificateTolerance; }
-    );
+    result.dual_sign_violation_inf_norm = 0.0;
+    for (double value : chart_lower_multipliers) {
+        result.dual_sign_violation_inf_norm = std::max(
+            result.dual_sign_violation_inf_norm, std::max(0.0, -value)
+        );
+    }
+    for (double value : chart_upper_multipliers) {
+        result.dual_sign_violation_inf_norm = std::max(
+            result.dual_sign_violation_inf_norm, std::max(0.0, -value)
+        );
+    }
+    result.dual_signs_valid = audit_held2_tolerance(
+        kHeld2Stage2DualSign, result.dual_sign_violation_inf_norm
+    ).passed;
     if (!result.dual_signs_valid) {
         return result;
     }
+    result.primal_inf_norm = 0.0;
     for (std::size_t index = 0; index < variables.size(); ++index) {
-        if (lower[index] > upper[index]
-            || variables[index] < lower[index] - kCertificateTolerance
-            || variables[index] > upper[index] + kCertificateTolerance) {
+        if (lower[index] > upper[index]) {
             return result;
         }
+        result.primal_inf_norm = std::max({
+            result.primal_inf_norm,
+            std::max(0.0, lower[index] - variables[index]),
+            std::max(0.0, variables[index] - upper[index]),
+        });
     }
     const double simplex_slack = composition_sum_upper
         - std::accumulate(variables.begin(), variables.end() - 1, 0.0);
-    if (simplex_slack < -kCertificateTolerance) {
+    result.primal_inf_norm = std::max(
+        result.primal_inf_norm, std::max(0.0, -simplex_slack)
+    );
+    if (!audit_held2_tolerance(kHeld2Stage2Primal, result.primal_inf_norm).passed) {
         return result;
     }
 
@@ -992,7 +1015,7 @@ Held2PhysicalKkt evaluate_stage_ii_physical_kkt(
     const auto multiplier_cap = [](double slack) {
         return slack <= 0.0
             ? std::numeric_limits<double>::infinity()
-            : kCertificateTolerance / slack;
+            : kHeld2Stage2Complementarity.atol / slack;
     };
     double simplex_lower = 0.0;
     double simplex_upper = multiplier_cap(simplex_slack);
@@ -1008,7 +1031,7 @@ Held2PhysicalKkt evaluate_stage_ii_physical_kkt(
                 + multiplier_cap(variables[index] - lower[index])
         );
     }
-    if (simplex_lower > simplex_upper + kCoordinateTolerance) {
+    if (simplex_lower > simplex_upper + kHeld2Stage2DualPullback.atol) {
         return result;
     }
     const double simplex_multiplier = std::isfinite(simplex_upper)
@@ -1053,6 +1076,13 @@ Held2PhysicalKkt evaluate_stage_ii_physical_kkt(
         reconstruction,
         std::abs(chart_force.back() - reconstructed.back())
     );
+    double reconstruction_scale = 0.0;
+    for (double value : physical_force) {
+        reconstruction_scale = std::max(reconstruction_scale, std::abs(value));
+    }
+    for (double value : reconstructed) {
+        reconstruction_scale = std::max(reconstruction_scale, std::abs(value));
+    }
     double stationarity = 0.0;
     for (std::size_t index = 0; index < dimension; ++index) {
         stationarity = std::max(
@@ -1070,6 +1100,7 @@ Held2PhysicalKkt evaluate_stage_ii_physical_kkt(
     result.stationarity_inf_norm = stationarity;
     result.complementarity = complementarity;
     result.reconstruction_inf_norm = reconstruction;
+    result.reconstruction_scale = reconstruction_scale;
     return result;
 }
 
@@ -1114,7 +1145,8 @@ double enumerated_manufactured_objective(double feed_composition) {
 
     double best = std::numeric_limits<double>::infinity();
     for (std::size_t index = 0; index < compositions.size(); ++index) {
-        if (std::abs(compositions[index] - feed_composition) <= kCoordinateTolerance) {
+        if (std::abs(compositions[index] - feed_composition)
+            <= kHeld2BasinDuplicateComposition.atol) {
             best = std::min(best, phase_minima[index]);
         }
         if (compositions[index] > feed_composition) {
@@ -1151,23 +1183,13 @@ Held2StageIIChartCoordinate normalize_held2_stage_ii_chart_coordinate(
     if (coordinate >= 0.0 && coordinate <= 1.0) {
         return {coordinate, coordinate, false};
     }
-    double lower_contact = 0.0;
-    double upper_contact = 1.0;
-    for (int step = 0; step < 4; ++step) {
-        lower_contact = std::nextafter(
-            lower_contact,
-            -std::numeric_limits<double>::infinity()
-        );
-        upper_contact = std::nextafter(
-            upper_contact,
-            std::numeric_limits<double>::infinity()
-        );
-        if (coordinate == lower_contact) {
-            return {coordinate, 0.0, true};
-        }
-        if (coordinate == upper_contact) {
-            return {coordinate, 1.0, true};
-        }
+    if (coordinate < 0.0
+        && audit_held2_tolerance(kHeld2ChartContact, coordinate).passed) {
+        return {coordinate, 0.0, true};
+    }
+    if (coordinate > 1.0
+        && audit_held2_tolerance(kHeld2ChartContact, coordinate - 1.0).passed) {
+        return {coordinate, 1.0, true};
     }
     throw std::invalid_argument("HELD2 Stage II chart coordinate is outside [0, 1]");
 }
@@ -1333,6 +1355,8 @@ Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
 
     const double lower_log_volume = std::log(molar_volume_bounds[0]);
     const double upper_log_volume = std::log(molar_volume_bounds[1]);
+    result.lower_log_volume = lower_log_volume;
+    result.upper_log_volume = upper_log_volume;
     const double span = upper_log_volume - lower_log_volume;
     std::vector<WorkingInterval> pending;
     pending.reserve(static_cast<std::size_t>(initial_interval_count));
@@ -1373,11 +1397,14 @@ Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
         const bool left_stationary = stationary_bracketed(left, middle);
         const bool right_stationary = stationary_bracketed(middle, right);
         const auto joint_root = [](const EvaluatedPoint& point) {
-            return std::abs(point.diagnostic.pressure_residual)
-                    <= kCertificateTolerance
-                && std::abs(
-                    point.diagnostic.pressure_derivative_log_volume
-                ) <= kCoordinateTolerance;
+            return audit_held2_tolerance(
+                       kHeld2RootPressure,
+                       point.diagnostic.pressure_residual
+                   ).passed
+                && audit_held2_tolerance(
+                       kHeld2RootStationary,
+                       point.diagnostic.pressure_derivative_log_volume
+                   ).passed;
         };
         const bool left_joint_root = joint_root(left) || joint_root(middle);
         const bool right_joint_root = joint_root(middle) || joint_root(right);
@@ -1446,13 +1473,16 @@ Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
             return std::nullopt;
         }
         const double tolerance = stationary
-            ? kCoordinateTolerance
-            : kCertificateTolerance;
+            ? kHeld2RootStationary.atol
+            : kHeld2RootPressure.atol;
         EvaluatedPoint best = std::abs(residual(left)) <= std::abs(residual(right))
             ? left
             : right;
         for (int iteration = 0; iteration < 120; ++iteration) {
-            if (bracket.upper - bracket.lower <= kCoordinateTolerance
+            if (audit_held2_tolerance(
+                    kHeld2RootLogVolumeWidth,
+                    bracket.upper - bracket.lower
+                ).passed
                 && (stationary || std::abs(residual(best)) <= tolerance)) {
                 return best;
             }
@@ -1498,8 +1528,14 @@ Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
             point.state.pressure_stationarity_derivative_log_volume;
         root.objective_curvature_log_volume = point.state.hessian.back();
         root.origin = std::move(origin);
-        root.boundary = std::abs(root.log_volume - lower_log_volume) <= 1.0e-8
-            || std::abs(root.log_volume - upper_log_volume) <= 1.0e-8;
+        root.boundary = audit_held2_tolerance(
+                            kHeld2RootBoundary,
+                            root.log_volume - lower_log_volume
+                        ).passed
+            || audit_held2_tolerance(
+                   kHeld2RootBoundary,
+                   upper_log_volume - root.log_volume
+               ).passed;
         root.state = point.state;
         return root;
     };
@@ -1522,7 +1558,7 @@ Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
             [&stationary](double retained) {
                 return std::abs(
                     retained - stationary->diagnostic.log_volume
-                ) < 1.0e-8;
+                ) <= kHeld2RootDuplicate.atol;
             }
         );
         if (duplicate) {
@@ -1530,8 +1566,10 @@ Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
         }
         stationary_points.push_back(stationary->diagnostic.log_volume);
         ++result.stationary_point_count;
-        if (std::abs(stationary->diagnostic.pressure_residual)
-            <= kCertificateTolerance) {
+        if (audit_held2_tolerance(
+                kHeld2RootPressure,
+                stationary->diagnostic.pressure_residual
+            ).passed) {
             ++result.tangential_root_count;
             candidates.push_back(make_root(*stationary, "tangential"));
         }
@@ -1548,7 +1586,7 @@ Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
         if (!result.roots.empty()
             && std::abs(
                 result.roots.back().log_volume - candidate.log_volume
-            ) < 1.0e-8) {
+            ) <= kHeld2RootDuplicate.atol) {
             result.roots.back().boundary = result.roots.back().boundary
                 || candidate.boundary;
             if (candidate.origin == "tangential") {
@@ -1567,11 +1605,15 @@ Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
         if (root.boundary) {
             ++result.boundary_root_count;
         }
-        const bool marginal =
-            std::abs(root.pressure_derivative_log_volume)
-                <= kCertificateTolerance
-            || std::abs(root.objective_curvature_log_volume)
-                <= kCertificateTolerance;
+        const double mechanical_margin = std::min(
+            std::abs(root.pressure_derivative_log_volume),
+            std::abs(root.objective_curvature_log_volume)
+        );
+        const bool mechanical_margin_passed = audit_held2_tolerance(
+            kHeld2MechanicalMargin,
+            mechanical_margin
+        ).passed;
+        const bool marginal = !mechanical_margin_passed;
         if (marginal) {
             root.mechanical_class = "marginal";
             ++result.marginal_root_count;
@@ -1611,10 +1653,14 @@ Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
         }
         std::vector<int> lowest;
         for (int index : stable_indices) {
-            if (std::abs(
-                    result.roots[static_cast<std::size_t>(index)].objective
-                        - lowest_objective
-                ) <= kCertificateTolerance) {
+            const double objective =
+                result.roots[static_cast<std::size_t>(index)].objective;
+            const double scale = std::max(std::abs(objective), std::abs(lowest_objective));
+            if (audit_held2_tolerance(
+                    kHeld2StableObjectiveTie,
+                    objective - lowest_objective,
+                    scale
+                ).passed) {
                 lowest.push_back(index);
             }
         }
@@ -1855,11 +1901,14 @@ std::vector<double> held2_transform_physical_fractions(
     for (double value : physical_fractions) {
         total += value;
     }
-    if (std::abs(total - 1.0) > kCoordinateTolerance) {
+    if (!audit_held2_tolerance(kHeld2CompositionSum, total - 1.0).passed) {
         throw std::invalid_argument("physical mole fractions must sum to one");
     }
-    if (std::abs(charge_residual(coordinates.charges, physical_fractions))
-        > kCoordinateTolerance) {
+    if (!audit_held2_tolerance(
+            kHeld2ChargeBalance,
+            charge_residual(coordinates.charges, physical_fractions),
+            charge_scale(coordinates.charges, physical_fractions)
+        ).passed) {
         throw std::invalid_argument("physical feed must be electroneutral");
     }
     std::vector<double> modified;
@@ -1874,7 +1923,9 @@ std::vector<double> held2_transform_physical_fractions(
     for (double value : modified) {
         modified_total += value;
     }
-    if (std::abs(modified_total - 1.0) > kCoordinateTolerance) {
+    if (!audit_held2_tolerance(
+            kHeld2CompositionSum, modified_total - 1.0
+        ).passed) {
         throw std::invalid_argument("modified mole fractions do not sum to one");
     }
     return modified;
@@ -1895,7 +1946,9 @@ std::vector<double> held2_lift_modified_fractions(
         }
         modified_total += value;
     }
-    if (std::abs(modified_total - 1.0) > kCoordinateTolerance) {
+    if (!audit_held2_tolerance(
+            kHeld2CompositionSum, modified_total - 1.0
+        ).passed) {
         throw std::invalid_argument("modified mole fractions must sum to one");
     }
 
@@ -1909,7 +1962,8 @@ std::vector<double> held2_lift_modified_fractions(
     for (std::size_t index : coordinates.retained_indices) {
         eliminated -= coordinates.charges[index] / eliminated_charge * physical[index];
     }
-    if (eliminated < -kCoordinateTolerance) {
+    if (eliminated < 0.0
+        && !audit_held2_tolerance(kHeld2ReconstructedIon, eliminated).passed) {
         throw std::invalid_argument("eliminated ion amount must be nonnegative");
     }
     physical[coordinates.eliminated_index] = std::max(0.0, eliminated);
@@ -2280,7 +2334,7 @@ Held2StageIResult solve_held2_manufactured_stage_i(
                 * (run.variables[index] - reference_variables[index]);
         }
         result.minimum_tpd = std::min(result.minimum_tpd, tpd);
-        if (tpd >= kStageITpdThreshold) {
+        if (!audit_held2_tolerance(kHeld2TpdNegativeMargin, tpd).passed) {
             continue;
         }
         const bool duplicate = std::any_of(
@@ -2290,8 +2344,10 @@ Held2StageIResult solve_held2_manufactured_stage_i(
                 return maximum_abs_difference(
                            candidate.modified_fractions,
                            state.modified_fractions
-                       ) < 1.0e-7
-                    && std::abs(candidate.volume - state.volume) < 1.0e-7;
+                       ) <= kHeld2BasinDuplicateComposition.atol
+                    && std::abs(
+                           std::log(candidate.volume) - std::log(state.volume)
+                       ) <= kHeld2BasinDuplicateLogVolume.atol;
             }
         );
         if (!duplicate) {
@@ -2320,7 +2376,6 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
     const std::vector<double>& physical_feed
 ) {
     constexpr int major_iteration_cap = 100;
-    constexpr double stage_ii_tolerance = 1.0e-8;
     const Held2Coordinates coordinates = make_held2_coordinates(charges);
     if (coordinates.independent_indices.size() != 1) {
         throw std::invalid_argument(
@@ -2579,9 +2634,9 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
             attempt.objective = state.objective;
             attempt.lower_value = value;
             attempt.pressure_residual = state.pressure_stationarity_relative;
-            attempt.pressure_passed =
-                std::abs(state.pressure_stationarity_relative)
-                <= stage_ii_tolerance;
+            attempt.pressure_passed = audit_held2_tolerance(
+                kHeld2RootPressure, state.pressure_stationarity_relative
+            ).passed;
 
             if (run.lower_bound_multipliers.size() == run.variables.size()
                 && run.upper_bound_multipliers.size() == run.variables.size()) {
@@ -2591,13 +2646,23 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
                 };
                 double stationarity_inf = 0.0;
                 double complementarity_inf = 0.0;
+                double dual_sign_violation = 0.0;
                 bool dual_signs_valid = true;
                 for (std::size_t index = 0; index < run.variables.size(); ++index) {
+                    dual_sign_violation = std::max({
+                        dual_sign_violation,
+                        -run.lower_bound_multipliers[index],
+                        -run.upper_bound_multipliers[index],
+                    });
                     dual_signs_valid = dual_signs_valid
-                        && run.lower_bound_multipliers[index]
-                            >= -stage_ii_tolerance
-                        && run.upper_bound_multipliers[index]
-                            >= -stage_ii_tolerance;
+                        && audit_held2_tolerance(
+                            kHeld2Stage2DualSign,
+                            std::max({
+                                0.0,
+                                -run.lower_bound_multipliers[index],
+                                -run.upper_bound_multipliers[index],
+                            })
+                        ).passed;
                     stationarity_inf = std::max(
                         stationarity_inf,
                         std::abs(
@@ -2626,19 +2691,41 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
                 // physical coordinate itself, so the pullback is the identity.
                 attempt.physical_kkt_inf_norm = stationarity_inf;
                 attempt.complementarity_inf_norm = complementarity_inf;
+                attempt.primal_inf_norm = 0.0;
+                attempt.dual_sign_violation_inf_norm = dual_sign_violation;
+                attempt.dual_pullback_inf_norm = 0.0;
+                attempt.dual_pullback_scale = std::max({
+                    std::abs(run.lower_bound_multipliers.front()),
+                    std::abs(run.upper_bound_multipliers.front()),
+                    std::abs(run.lower_bound_multipliers.back()),
+                    std::abs(run.upper_bound_multipliers.back()),
+                });
                 attempt.dual_signs_valid = dual_signs_valid;
                 attempt.physical_kkt_passed = attempt.pressure_passed
                     && dual_signs_valid
-                    && stationarity_inf <= stage_ii_tolerance
-                    && complementarity_inf <= stage_ii_tolerance;
+                    && audit_held2_tolerance(
+                           kHeld2Stage2Stationarity, stationarity_inf
+                       ).passed
+                    && audit_held2_tolerance(
+                           kHeld2Stage2Complementarity, complementarity_inf
+                       ).passed;
             }
             attempt.cut_eligible = attempt.physical_kkt_passed;
             const double lower_gap = upper_bound - value;
+            attempt.step6_gap = lower_gap;
+            attempt.fixed_volume_gradient_inf_norm = std::abs(
+                state.gradient.front() - multiplier
+            );
+            attempt.fixed_volume_gradient_scale = std::max(
+                std::abs(state.gradient.front()), std::abs(multiplier)
+            );
             attempt.step6_eligible = attempt.cut_eligible
-                && lower_gap >= -stage_ii_tolerance
-                && lower_gap <= stage_ii_tolerance
-                && std::abs(state.gradient.front() - multiplier)
-                    <= stage_ii_tolerance;
+                && audit_held2_tolerance(kHeld2Step6Gap, lower_gap).passed
+                && audit_held2_tolerance(
+                       kHeld2Step6Gradient,
+                       attempt.fixed_volume_gradient_inf_norm,
+                       attempt.fixed_volume_gradient_scale
+                   ).passed;
 
             const auto basin = std::find_if(
                 traced_basins.begin(),
@@ -2647,8 +2734,10 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
                     return maximum_abs_difference(
                                known.modified_fractions,
                                state.modified_fractions
-                           ) < 1.0e-7
-                        && std::abs(known.volume - state.volume) < 1.0e-7;
+                           ) <= kHeld2BasinDuplicateComposition.atol
+                        && std::abs(
+                               std::log(known.volume) - std::log(state.volume)
+                           ) <= kHeld2BasinDuplicateLogVolume.atol;
                 }
             );
             if (basin == traced_basins.end()) {
@@ -2684,7 +2773,10 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
             upper_solve.primal_feasible,
             upper_solve.dual_feasible,
             upper_solve.primal_residual_inf,
+            upper_solve.primal_scale,
             upper_solve.dual_residual_inf,
+            upper_solve.dual_scale,
+            upper_solve.complementarity_inf,
             upper_solve.cut_slacks,
             upper_solve.cut_duals,
             upper_solve.active_cut_ids,
@@ -2696,8 +2788,10 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
                 return maximum_abs_difference(
                            cut.modified_fractions,
                            best_state.modified_fractions
-                       ) < 1.0e-7
-                    && std::abs(cut.volume - best_state.volume) < 1.0e-7;
+                       ) <= kHeld2BasinDuplicateComposition.atol
+                    && std::abs(
+                           std::log(cut.volume) - std::log(best_state.volume)
+                       ) <= kHeld2BasinDuplicateLogVolume.atol;
             }
         );
         if (!duplicate) {
@@ -2708,21 +2802,46 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
             const double lower_value = cut.objective
                 + multiplier * (feed - cut.modified_fractions[independent_retained]);
             const double gap = upper_bound - lower_value;
-            if (gap >= -stage_ii_tolerance && gap <= stage_ii_tolerance
-                && std::abs(cut.gradient.front() - multiplier) <= stage_ii_tolerance
-                && std::abs(cut.gradient.back()) <= stage_ii_tolerance) {
-                const bool duplicate_candidate = std::any_of(
-                    result.candidates.begin(),
-                    result.candidates.end(),
-                    [&cut](const Held2StageIICandidate& known) {
-                        return maximum_abs_difference(
-                                   known.modified_fractions,
-                                   cut.modified_fractions
-                               ) < 1.0e-7
-                            && std::abs(known.volume - cut.volume) < 1.0e-7;
+            if (audit_held2_tolerance(kHeld2Step6Gap, gap).passed
+                && audit_held2_tolerance(
+                       kHeld2Step6Gradient,
+                       cut.gradient.front() - multiplier,
+                       std::max(std::abs(cut.gradient.front()), std::abs(multiplier))
+                   ).passed
+                && audit_held2_tolerance(
+                       kHeld2RootPressure, cut.gradient.back()
+                   ).passed) {
+                bool duplicate_candidate = false;
+                bool unresolved_identity = false;
+                for (const Held2StageIICandidate& known : result.candidates) {
+                    const double composition_distance = maximum_abs_difference(
+                        known.modified_fractions, cut.modified_fractions
+                    );
+                    const double log_volume_distance = std::abs(
+                        std::log(known.volume) - std::log(cut.volume)
+                    );
+                    if (composition_distance
+                            <= kHeld2BasinDuplicateComposition.atol
+                        && log_volume_distance
+                            <= kHeld2BasinDuplicateLogVolume.atol) {
+                        duplicate_candidate = true;
+                        break;
                     }
-                );
-                if (!duplicate_candidate) {
+                    if (!audit_held2_tolerance(
+                            kHeld2CandidateDistinctComposition,
+                            composition_distance
+                        ).passed
+                        && !audit_held2_tolerance(
+                            kHeld2CandidateDistinctLogVolume,
+                            log_volume_distance
+                        ).passed) {
+                        unresolved_identity = true;
+                        break;
+                    }
+                }
+                if (unresolved_identity) {
+                    ++result.unresolved_candidate_identity_count;
+                } else if (!duplicate_candidate) {
                     result.candidates.push_back({
                         cut.modified_fractions,
                         {cut.modified_fractions[independent_retained]},
@@ -2732,6 +2851,12 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
                     });
                 }
             }
+        }
+        if (result.unresolved_candidate_identity_count != 0) {
+            result.outcome = "indeterminate_candidate_identity";
+            result.cut_count = static_cast<int>(cuts.size());
+            result.distinct_basin_count = static_cast<int>(traced_basins.size());
+            return result;
         }
         if (result.candidates.size() > 1) {
             result.outcome = "candidate_set";
@@ -2978,7 +3103,10 @@ Held2StageIIResult solve_held2_stage_ii(
             upper_solve.primal_feasible,
             upper_solve.dual_feasible,
             upper_solve.primal_residual_inf,
+            upper_solve.primal_scale,
             upper_solve.dual_residual_inf,
+            upper_solve.dual_scale,
+            upper_solve.complementarity_inf,
             upper_solve.cut_slacks,
             upper_solve.cut_duals,
             upper_solve.active_cut_ids,
@@ -3163,8 +3291,9 @@ Held2StageIIResult solve_held2_stage_ii(
                 attempt.objective = state.objective;
                 attempt.lower_value = value;
                 attempt.pressure_residual = state.pressure_stationarity_relative;
-                attempt.pressure_passed = std::abs(attempt.pressure_residual)
-                    <= kCertificateTolerance;
+                attempt.pressure_passed = audit_held2_tolerance(
+                    kHeld2RootPressure, attempt.pressure_residual
+                ).passed;
                 attempt.chart_jacobian_condition =
                     lower_triangular_condition_inf(
                         run.coordinate_jacobian, dimension
@@ -3204,28 +3333,62 @@ Held2StageIIResult solve_held2_stage_ii(
                 attempt.physical_kkt_inf_norm = kkt.stationarity_inf_norm;
                 attempt.complementarity_inf_norm = kkt.complementarity;
                 attempt.dual_pullback_inf_norm = kkt.reconstruction_inf_norm;
+                attempt.dual_pullback_scale = kkt.reconstruction_scale;
+                attempt.primal_inf_norm = kkt.primal_inf_norm;
+                attempt.dual_sign_violation_inf_norm =
+                    kkt.dual_sign_violation_inf_norm;
                 attempt.dual_signs_valid = kkt.dual_signs_valid;
                 attempt.physical_kkt_passed = attempt.pressure_passed
+                    && audit_held2_tolerance(
+                           kHeld2Stage2Primal, kkt.primal_inf_norm
+                       ).passed
                     && kkt.dual_signs_valid
-                    && kkt.stationarity_inf_norm <= kStageIIKktTolerance
-                    && kkt.complementarity <= kCertificateTolerance
-                    && kkt.reconstruction_inf_norm <= kCoordinateTolerance;
+                    && audit_held2_tolerance(
+                           kHeld2Stage2Stationarity,
+                           kkt.stationarity_inf_norm
+                       ).passed
+                    && audit_held2_tolerance(
+                           kHeld2Stage2Complementarity,
+                           kkt.complementarity
+                       ).passed
+                    && audit_held2_tolerance(
+                           kHeld2Stage2DualPullback,
+                           kkt.reconstruction_inf_norm,
+                           kkt.reconstruction_scale
+                       ).passed;
                 attempt.cut_eligible = attempt.physical_kkt_passed;
                 const double gap = upper_bound - value;
+                attempt.step6_gap = gap;
                 bool fixed_volume_stationary = true;
                 for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
                     if (independent[coordinate]
-                        <= physical_lower[coordinate] + kCoordinateTolerance) {
+                        <= physical_lower[coordinate] + kHeld2BoundActivity.atol) {
                         continue;
                     }
+                    const double gradient_scale = std::max(
+                        std::abs(state.gradient[coordinate]),
+                        std::abs(multipliers[coordinate])
+                    );
+                    attempt.fixed_volume_gradient_inf_norm = std::max(
+                        attempt.fixed_volume_gradient_inf_norm,
+                        std::abs(
+                            state.gradient[coordinate]
+                                - multipliers[coordinate]
+                        )
+                    );
+                    attempt.fixed_volume_gradient_scale = std::max(
+                        attempt.fixed_volume_gradient_scale, gradient_scale
+                    );
                     fixed_volume_stationary = fixed_volume_stationary
-                        && std::abs(state.gradient[coordinate]
-                            - multipliers[coordinate])
-                            <= kStageIIStep6EpsilonLambda
-                                * std::abs(multipliers[coordinate]);
+                        && audit_held2_tolerance(
+                               kHeld2Step6Gradient,
+                               state.gradient[coordinate]
+                                   - multipliers[coordinate],
+                               gradient_scale
+                           ).passed;
                 }
                 attempt.step6_eligible = attempt.cut_eligible
-                    && std::abs(gap) <= kStageIIStep6EpsilonB
+                    && audit_held2_tolerance(kHeld2Step6Gap, gap).passed
                     && fixed_volume_stationary;
                 const auto basin = std::find_if(
                     traced_basins.begin(),
@@ -3234,9 +3397,11 @@ Held2StageIIResult solve_held2_stage_ii(
                         return maximum_abs_difference(
                                    known.modified_fractions,
                                    state.modified_fractions
-                               ) < kStageIIStep6EpsilonX
-                            && std::abs(known.volume - state.volume)
-                                < kStageIIStep6EpsilonVolume;
+                               ) <= kHeld2BasinDuplicateComposition.atol
+                            && std::abs(
+                                   std::log(known.volume)
+                                       - std::log(state.volume)
+                               ) <= kHeld2BasinDuplicateLogVolume.atol;
                     }
                 );
                 if (basin == traced_basins.end()) {
@@ -3286,9 +3451,11 @@ Held2StageIIResult solve_held2_stage_ii(
                 return maximum_abs_difference(
                            known.state.modified_fractions,
                            best.state.modified_fractions
-                       ) < kStageIIStep6EpsilonX
-                    && std::abs(known.state.volume - best.state.volume)
-                        < kStageIIStep6EpsilonVolume;
+                       ) <= kHeld2BasinDuplicateComposition.atol
+                    && std::abs(
+                           std::log(known.state.volume)
+                               - std::log(best.state.volume)
+                       ) <= kHeld2BasinDuplicateLogVolume.atol;
             }
         );
         if (!duplicate_cut) {
@@ -3305,33 +3472,63 @@ Held2StageIIResult solve_held2_stage_ii(
             bool fixed_volume_stationary = true;
             for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
                 if (cut.independent[coordinate]
-                    <= physical_lower[coordinate] + kCoordinateTolerance) {
+                    <= physical_lower[coordinate] + kHeld2BoundActivity.atol) {
                     continue;
                 }
+                const double gradient_scale = std::max(
+                    std::abs(cut.fixed_volume_gradient[coordinate]),
+                    std::abs(multipliers[coordinate])
+                );
                 fixed_volume_stationary = fixed_volume_stationary
-                    && std::abs(cut.fixed_volume_gradient[coordinate]
-                        - multipliers[coordinate])
-                        <= kStageIIStep6EpsilonLambda
-                            * std::abs(multipliers[coordinate]);
+                    && audit_held2_tolerance(
+                           kHeld2Step6Gradient,
+                           cut.fixed_volume_gradient[coordinate]
+                               - multipliers[coordinate],
+                           gradient_scale
+                       ).passed;
             }
-            if (std::abs(gap) > kStageIIStep6EpsilonB
-                || std::abs(cut.state.pressure_stationarity_relative)
-                    > kCertificateTolerance
+            if (!audit_held2_tolerance(kHeld2Step6Gap, gap).passed
+                || !audit_held2_tolerance(
+                        kHeld2RootPressure,
+                        cut.state.pressure_stationarity_relative
+                    ).passed
                 || !fixed_volume_stationary) {
                 continue;
             }
-            const bool distinct = std::all_of(
-                result.candidates.begin(),
-                result.candidates.end(),
-                [&cut](const Held2StageIICandidate& known) {
-                    return maximum_abs_difference(
-                               known.modified_fractions,
-                               cut.state.modified_fractions
-                           ) >= kStageIIStep6EpsilonX
-                        || std::abs(known.volume - cut.state.volume)
-                            >= kStageIIStep6EpsilonVolume;
+            bool distinct = true;
+            bool unresolved_identity = false;
+            for (const Held2StageIICandidate& known : result.candidates) {
+                const double composition_distance = maximum_abs_difference(
+                    known.modified_fractions, cut.state.modified_fractions
+                );
+                const double log_volume_distance = std::abs(
+                    known.phase_coordinate - std::log(cut.state.volume)
+                );
+                const bool duplicate =
+                    composition_distance <= kHeld2BasinDuplicateComposition.atol
+                    && log_volume_distance <= kHeld2BasinDuplicateLogVolume.atol;
+                if (duplicate) {
+                    distinct = false;
+                    break;
                 }
-            );
+                const bool confidently_distinct =
+                    audit_held2_tolerance(
+                        kHeld2CandidateDistinctComposition,
+                        composition_distance
+                    ).passed
+                    || audit_held2_tolerance(
+                        kHeld2CandidateDistinctLogVolume,
+                        log_volume_distance
+                    ).passed;
+                if (!confidently_distinct) {
+                    distinct = false;
+                    unresolved_identity = true;
+                    break;
+                }
+            }
+            if (unresolved_identity) {
+                ++result.unresolved_candidate_identity_count;
+            }
             if (distinct) {
                 result.candidates.push_back({
                     cut.state.modified_fractions,
@@ -3344,6 +3541,10 @@ Held2StageIIResult solve_held2_stage_ii(
         }
         result.cut_count = static_cast<int>(cuts.size());
         result.distinct_basin_count = static_cast<int>(traced_basins.size());
+        if (result.unresolved_candidate_identity_count != 0) {
+            result.outcome = "indeterminate_candidate_identity";
+            return result;
+        }
         if (result.candidates.size() > 1) {
             result.outcome = "candidate_set";
             return result;
@@ -3518,18 +3719,53 @@ Held2ManufacturedEvaluation evaluate_held2_manufactured(
     result.certificate.enumeration_objective_gap =
         result.objective - enumerated_manufactured_objective(feed);
     result.certificate.independent_modified_composition_count = 1.0;
-    const double maximum_metric = std::max({
-        result.certificate.modified_balance_abs,
-        result.certificate.ordinary_balance_inf_norm,
-        result.certificate.phase_charge_inf_norm,
-        result.certificate.modified_potential_gap,
-        result.certificate.pressure_stationarity_inf_norm,
-        result.certificate.reduced_kkt_inf_norm,
-        std::abs(result.certificate.enumeration_objective_gap),
-    });
-    result.certificate.accepted = maximum_metric < kCertificateTolerance;
-    result.certificate.independent_evidence =
-        std::abs(result.certificate.enumeration_objective_gap) < kCertificateTolerance;
+    const double phase_charge_scale = std::max(
+        charge_scale(charges, result.physical_phases[0]),
+        charge_scale(charges, result.physical_phases[1])
+    );
+    double modified_potential_scale = 0.0;
+    for (const auto& phase_potentials : result.phase_modified_potentials) {
+        for (double potential : phase_potentials) {
+            modified_potential_scale = std::max(
+                modified_potential_scale, std::abs(potential)
+            );
+        }
+    }
+    result.certificate.accepted =
+        audit_held2_tolerance(
+            kHeld2Stage3ModifiedBalance,
+            result.certificate.modified_balance_abs
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3ExplicitBalance,
+            result.certificate.ordinary_balance_inf_norm
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3Charge,
+            result.certificate.phase_charge_inf_norm,
+            phase_charge_scale
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3Potential,
+            result.certificate.modified_potential_gap,
+            modified_potential_scale
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3Pressure,
+            result.certificate.pressure_stationarity_inf_norm
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3Stationarity,
+            result.certificate.reduced_kkt_inf_norm
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3FreeEnergyGap,
+            result.certificate.enumeration_objective_gap
+        ).passed;
+    result.certificate.independent_evidence = audit_held2_tolerance(
+        kHeld2Stage3FreeEnergyGap,
+        result.certificate.enumeration_objective_gap
+    ).passed;
     return result;
 }
 

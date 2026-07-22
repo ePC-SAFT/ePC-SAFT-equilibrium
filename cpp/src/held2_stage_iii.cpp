@@ -1,4 +1,5 @@
 #include "held2.hpp"
+#include "held2_tolerances.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,8 +9,6 @@
 namespace epcsaft_equilibrium {
 namespace {
 
-constexpr double kNumericalTolerance = 1.0e-8;
-constexpr double kKktTolerance = 1.0e-7;
 constexpr double kVolumeLower = 0.5;
 constexpr double kVolumeUpper = 1.5;
 
@@ -62,7 +61,7 @@ Held2StageIIIRetirementDecision held2_stage_iii_retirement_decision(
     result.stationarity_residual = std::abs(
         reduced_derivative - lower_bound_multiplier + upper_bound_multiplier
     );
-    if (phase_fraction > kNumericalTolerance) {
+    if (audit_held2_tolerance(kHeld2PhaseActivity, phase_fraction).passed) {
         result.reason = "phase_amount_active";
         return result;
     }
@@ -70,20 +69,33 @@ Held2StageIIIRetirementDecision held2_stage_iii_retirement_decision(
         result.reason = "remaining_balance_infeasible";
         return result;
     }
-    if (lower_bound_multiplier <= kNumericalTolerance
-        || reduced_derivative <= kNumericalTolerance) {
+    const double retirement_margin = std::min(
+        lower_bound_multiplier, reduced_derivative
+    );
+    if (!audit_held2_tolerance(
+            kHeld2PhaseRetirementMargin, retirement_margin
+        ).passed) {
         result.reason = "descent_or_marginal_phase";
         return result;
     }
-    if (lower_bound_multiplier < 0.0 || upper_bound_multiplier < 0.0) {
+    const double sign_violation = std::max({
+        0.0, -lower_bound_multiplier, -upper_bound_multiplier
+    });
+    if (!audit_held2_tolerance(kHeld2Stage3DualSign, sign_violation).passed) {
         result.reason = "invalid_multiplier_sign";
         return result;
     }
-    if (result.complementarity_inf_norm > kNumericalTolerance) {
+    if (!audit_held2_tolerance(
+            kHeld2Stage3Complementarity,
+            result.complementarity_inf_norm
+        ).passed) {
         result.reason = "complementarity_failed";
         return result;
     }
-    if (result.stationarity_residual > kKktTolerance) {
+    if (!audit_held2_tolerance(
+            kHeld2Stage3Stationarity,
+            result.stationarity_residual
+        ).passed) {
         result.reason = "reduced_derivative_inconsistent";
         return result;
     }

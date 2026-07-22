@@ -1,4 +1,5 @@
 #include "held2.hpp"
+#include "held2_tolerances.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -18,11 +19,6 @@ namespace {
 
 constexpr double kCandidateRadius = 1.0e-3;
 constexpr double kConstraintLowerInfinity = -1.0e19;
-constexpr double kNumericalTolerance = 1.0e-8;
-constexpr double kKktTolerance = 1.0e-7;
-constexpr double kMergeTolerance = 1.0e-6;
-constexpr double kDistinctPhaseTolerance = 1.0e-3;
-constexpr double kActivePhaseTolerance = 1.0e-10;
 constexpr double kHeld2ModifiedLowerScale = 1.0e-10;
 
 struct StageIIIRun {
@@ -315,8 +311,8 @@ bool remaining_candidate_balance_feasible(
                 upper, candidates[phase].independent_modified_fractions[0]
             );
         }
-        return feed[0] >= lower - kNumericalTolerance
-            && feed[0] <= upper + kNumericalTolerance;
+        return feed[0] >= lower - kHeld2Stage3ModifiedBalance.atol
+            && feed[0] <= upper + kHeld2Stage3ModifiedBalance.atol;
     }
     const std::size_t column_count = candidates.size() - 1;
     HighsModel model;
@@ -661,10 +657,14 @@ StageIIIRun run_general_stage_iii(
     application->Options()->SetIntegerValue("print_level", 0);
     application->Options()->SetStringValue("sb", "yes");
     application->Options()->SetIntegerValue("max_iter", 300);
-    application->Options()->SetNumericValue("tol", 1.0e-10);
-    application->Options()->SetNumericValue("acceptable_tol", 1.0e-9);
+    application->Options()->SetNumericValue("tol", kHeld2IpoptTarget.atol);
+    application->Options()->SetNumericValue(
+        "acceptable_tol", kHeld2IpoptAcceptable.atol
+    );
     application->Options()->SetIntegerValue("acceptable_iter", 0);
-    application->Options()->SetNumericValue("constr_viol_tol", 1.0e-10);
+    application->Options()->SetNumericValue(
+        "constr_viol_tol", kHeld2IpoptConstraint.atol
+    );
     application->Options()->SetStringValue("jacobian_approximation", "exact");
     application->Options()->SetStringValue("hessian_approximation", "exact");
     application->Options()->SetStringValue("nlp_scaling_method", "none");
@@ -877,10 +877,22 @@ Held2StageIIIResult solve_held2_stage_iii(
             );
         }
         result.kkt_stationarity_inf_norm = maximum_abs(kkt);
-        if (constraint_violation > kNumericalTolerance
-            || result.kkt_stationarity_inf_norm > kKktTolerance
-            || result.dual_sign_violation_inf_norm > kNumericalTolerance
-            || result.bound_complementarity_inf_norm > kNumericalTolerance) {
+        result.kkt_evidence_available = true;
+        if (!audit_held2_tolerance(
+                kHeld2Stage3ModifiedBalance, constraint_violation
+            ).passed
+            || !audit_held2_tolerance(
+                kHeld2Stage3Stationarity,
+                result.kkt_stationarity_inf_norm
+            ).passed
+            || !audit_held2_tolerance(
+                kHeld2Stage3DualSign,
+                result.dual_sign_violation_inf_norm
+            ).passed
+            || !audit_held2_tolerance(
+                kHeld2Stage3Complementarity,
+                result.bound_complementarity_inf_norm
+            ).passed) {
             result.numerical_status = "not_converged";
             result.failure_reason = "stage_iii_numerical_certificate_failed";
             result.lifecycle.push_back(make_general_lifecycle_step(
@@ -964,12 +976,20 @@ Held2StageIIIResult solve_held2_stage_iii(
             for (std::size_t right = left + 1;
                  right < active_candidates.size();
                  ++right) {
-                if (maximum_abs_difference(
+                const double merge_distance = std::max(
+                    maximum_abs_difference(
                         states[left].modified_fractions,
                         states[right].modified_fractions
-                    ) > kMergeTolerance
-                    || std::abs(states[left].volume - states[right].volume)
-                        > kMergeTolerance) {
+                    ),
+                    std::abs(
+                        std::log(states[left].volume)
+                            - std::log(states[right].volume)
+                    )
+                );
+                if (!audit_held2_tolerance(
+                        kHeld2PhaseMerge,
+                        merge_distance
+                    ).passed) {
                     continue;
                 }
                 const std::size_t removed =
@@ -1072,6 +1092,15 @@ Held2StageIIIResult solve_held2_stage_iii(
                 coordinates.charges, phase.physical_fractions
             ))
         );
+        double phase_scale = 0.0;
+        for (std::size_t index = 0; index < coordinates.charges.size(); ++index) {
+            phase_scale += std::abs(
+                coordinates.charges[index] * phase.physical_fractions[index]
+            );
+        }
+        result.phase_charge_scale = std::max(
+            result.phase_charge_scale, phase_scale
+        );
     }
     result.modified_balance_inf_norm =
         maximum_abs_difference(modified_balance, modified_feed);
@@ -1095,8 +1124,8 @@ Held2StageIIIResult solve_held2_stage_iii(
                         result.phases[right].modified_fractions
                     ),
                     std::abs(
-                        result.phases[left].volume
-                        - result.phases[right].volume
+                        std::log(result.phases[left].volume)
+                            - std::log(result.phases[right].volume)
                     )
                 )
             );
@@ -1123,16 +1152,19 @@ Held2StageIIIResult solve_held2_stage_iii(
                     accepted_states[left].modified_potentials[retained]
                     - accepted_states[right].modified_potentials[retained]
                 );
-                const double scale = 1.0 + std::max(
+                const double scale = std::max(
                     std::abs(accepted_states[left].modified_potentials[retained]),
                     std::abs(accepted_states[right].modified_potentials[retained])
                 );
-                result.modified_potential_mixed_gap = std::max(
-                    result.modified_potential_mixed_gap, gap / scale
-                );
+                if (gap > result.modified_potential_mixed_gap) {
+                    result.modified_potential_mixed_gap = gap;
+                    result.modified_potential_scale = scale;
+                }
             }
         }
     }
+    result.physical_evidence_available = true;
+    result.phase_identity_evidence_available = true;
     if (result.trace_component_count > 0) {
         result.trace_refinement_status =
             "complementarity_refinement_required";
@@ -1140,16 +1172,62 @@ Held2StageIIIResult solve_held2_stage_iii(
         return result;
     }
     result.trace_refinement_status = "not_required";
+    const bool duplicate_identity = audit_held2_tolerance(
+        kHeld2PhaseMerge, result.minimum_phase_distance
+    ).passed;
+    const bool distinct_identity = audit_held2_tolerance(
+        kHeld2PhaseDistinct, result.minimum_phase_distance
+    ).passed;
+    if (duplicate_identity) {
+        result.phase_identity_status = "duplicate";
+    } else if (distinct_identity) {
+        result.phase_identity_status = "confidently_distinct";
+    } else {
+        result.phase_identity_status = "unresolved";
+        result.physical_status = "rejected";
+        result.failure_reason = "stage_iii_phase_identity_unresolved";
+        return result;
+    }
     const bool physical =
-        result.modified_balance_inf_norm < kNumericalTolerance
-        && result.ordinary_balance_inf_norm < kNumericalTolerance
-        && result.phase_charge_inf_norm < kNumericalTolerance
-        && result.pressure_stationarity_inf_norm < kNumericalTolerance
-        && result.modified_potential_mixed_gap < kNumericalTolerance
-        && result.minimum_phase_distance > kDistinctPhaseTolerance
-        && result.minimum_phase_fraction > kActivePhaseTolerance
-        && result.dual_sign_violation_inf_norm < kNumericalTolerance
-        && result.bound_complementarity_inf_norm < kNumericalTolerance;
+        audit_held2_tolerance(
+            kHeld2Stage3ModifiedBalance,
+            result.modified_balance_inf_norm
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3ExplicitBalance,
+            result.ordinary_balance_inf_norm
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3Charge,
+            result.phase_charge_inf_norm,
+            result.phase_charge_scale
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3Pressure,
+            result.pressure_stationarity_inf_norm
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3Potential,
+            result.modified_potential_mixed_gap,
+            result.modified_potential_scale
+        ).passed
+        && distinct_identity
+        && audit_held2_tolerance(
+            kHeld2PhaseActivity,
+            result.minimum_phase_fraction
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3Stationarity,
+            result.kkt_stationarity_inf_norm
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3DualSign,
+            result.dual_sign_violation_inf_norm
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3Complementarity,
+            result.bound_complementarity_inf_norm
+        ).passed;
     if (!physical) {
         result.physical_status = "rejected";
         result.failure_reason = "stage_iii_physical_certificate_failed";
