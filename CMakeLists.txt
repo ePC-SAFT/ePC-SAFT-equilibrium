@@ -25,6 +25,28 @@ if(NOT highs_POPULATED)
   add_subdirectory("${highs_SOURCE_DIR}" "${highs_BINARY_DIR}" EXCLUDE_FROM_ALL)
 endif()
 
+set(NLOPT_CXX ON CACHE BOOL "" FORCE)
+set(NLOPT_FORTRAN OFF CACHE BOOL "" FORCE)
+set(NLOPT_PYTHON OFF CACHE BOOL "" FORCE)
+set(NLOPT_OCTAVE OFF CACHE BOOL "" FORCE)
+set(NLOPT_MATLAB OFF CACHE BOOL "" FORCE)
+set(NLOPT_GUILE OFF CACHE BOOL "" FORCE)
+set(NLOPT_JAVA OFF CACHE BOOL "" FORCE)
+set(NLOPT_SWIG OFF CACHE BOOL "" FORCE)
+set(NLOPT_LUKSAN OFF CACHE BOOL "" FORCE)
+set(NLOPT_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+  nlopt
+  URL https://github.com/stevengj/nlopt/archive/refs/tags/v2.11.0.tar.gz
+  URL_HASH SHA256=53e552d83e9294d67db37f0f4a23f15933a9ef698485301a18b98b40004cf0de
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_GetProperties(nlopt)
+if(NOT nlopt_POPULATED)
+  FetchContent_Populate(nlopt)
+  add_subdirectory("${nlopt_SOURCE_DIR}" "${nlopt_BINARY_DIR}" EXCLUDE_FROM_ALL)
+endif()
+
 execute_process(
   COMMAND
     "${Python_EXECUTABLE}" -c
@@ -50,13 +72,14 @@ pybind11_add_module(
   cpp/src/held_stage_ii.cpp
   cpp/src/held_stage_iii.cpp
   cpp/src/held2.cpp
+  cpp/src/held2_stage_i_direct.cpp
   cpp/src/held2_stage_ii_upper.cpp
   cpp/src/held2_stage_iii.cpp
   cpp/src/saturation.cpp
 )
 target_compile_features(_equilibrium PRIVATE cxx_std_17)
 target_include_directories(_equilibrium PRIVATE "${epcsaft_include_dir}")
-target_link_libraries(_equilibrium PRIVATE PkgConfig::Ipopt highs)
+target_link_libraries(_equilibrium PRIVATE PkgConfig::Ipopt highs nlopt)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(_equilibrium PRIVATE -Wall -Wextra -Wpedantic)
 endif()

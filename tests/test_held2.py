@@ -23,6 +23,21 @@ def _figiel_brine_model() -> epcsaft.EPCSAFT:
     return epcsaft.EPCSAFT(parameters)
 
 
+def _khudaida_electrolyte_lle_model() -> epcsaft.EPCSAFT:
+    parameters = epcsaft.ParameterBundle.from_catalog(
+        "khudaida-2026-figure-2-electrolyte-lle", version=1
+    ).select(
+        (
+            "water",
+            "ethanol",
+            "isobutanol",
+            "sodium-cation",
+            "chloride-anion",
+        )
+    )
+    return epcsaft.EPCSAFT(parameters)
+
+
 def _manufactured_helmholtz(composition: float, molar_volume: float) -> float:
     shifted = composition - 0.5
     inner_squared = 0.15**2
@@ -403,6 +418,118 @@ def test_held2_manufactured_stage_i_finds_negative_tpd_with_declared_multistart(
         candidate["modified_fractions"][1] for candidate in result["candidates"]
     ) == pytest.approx([0.2, 0.8], abs=2.0e-7)
     assert all(candidate["tpd"] < -1.0e-8 for candidate in result["candidates"])
+
+
+def test_held2_stage_i_direct_l_finds_certified_negative_witness_deterministically() -> None:
+    first = _equilibrium._held2_stage_i_direct("negative", 80)
+    second = _equilibrium._held2_stage_i_direct("negative", 80)
+
+    assert first == second
+    assert first["outcome"] == "negative_witness_found"
+    assert first["termination_reason"] == "certified_negative_tpd"
+    assert first["search_strategy"] == "nlopt_direct_l_pressure_envelope_v1"
+    assert first["search_solver"] == "nlopt_gn_direct_l"
+    assert first["solver_version"] == "2.11.0"
+    assert first["declared_evaluation_budget"] == 80
+    assert 0 < first["completed_evaluation_count"] < 80
+    assert first["failed_evaluation_count"] == 0
+    assert first["globality_certificate"] == "not_guaranteed"
+    witness = first["negative_witness"]
+    assert witness["tpd"] < -1.0e-8
+    assert witness["pressure_certified"] is True
+    assert witness["mechanical_class"] == "strict_stable"
+    assert witness["root_origin"] == "sign_change"
+    assert witness["root_completeness"] == "not_proven"
+
+
+def test_held2_stage_i_direct_l_no_negative_is_only_finite_search_evidence() -> None:
+    result = _equilibrium._held2_stage_i_direct("no_negative", 40)
+
+    assert result["outcome"] == "no_negative_witness_detected"
+    assert result["termination_reason"] == "declared_budget_exhausted"
+    assert result["completed_evaluation_count"] == 40
+    assert result["failed_evaluation_count"] == 0
+    assert result["negative_witness"] is None
+    assert result["globality_certificate"] == "not_guaranteed"
+    assert all(evaluation["tpd"] >= -1.0e-8 for evaluation in result["evaluations"])
+
+
+def test_held2_stage_i_direct_l_finds_narrow_negative_pocket() -> None:
+    result = _equilibrium._held2_stage_i_direct("narrow_negative", 160)
+
+    assert result["outcome"] == "negative_witness_found"
+    assert result["negative_witness"]["tpd"] < -1.0e-6
+    assert result["negative_witness"]["independent_modified_fractions"][0] == pytest.approx(
+        0.73, abs=0.06
+    )
+
+
+@pytest.mark.parametrize(
+    ("topology", "failure_reason"),
+    [
+        ("boundary", "boundary_root"),
+        ("provider_failure", "evaluation_failed"),
+    ],
+)
+def test_held2_stage_i_direct_l_fails_closed_on_envelope_failure(
+    topology: str,
+    failure_reason: str,
+) -> None:
+    result = _equilibrium._held2_stage_i_direct(topology, 40)
+
+    assert result["outcome"] == "indeterminate"
+    assert result["termination_reason"] == "required_envelope_evaluation_failed"
+    assert result["failed_evaluation_count"] == 1
+    assert result["negative_witness"] is None
+    assert result["evaluations"][-1]["failure_reason"] == failure_reason
+
+
+def test_held2_stage_i_direct_l_retains_pressure_branch_switches() -> None:
+    result = _equilibrium._held2_stage_i_direct("branch_switch", 60)
+    selected_log_volumes = {
+        round(evaluation["selected_root_log_volume"], 6)
+        for evaluation in result["evaluations"]
+        if evaluation["certified"]
+    }
+
+    assert any(log_volume < 0.0 for log_volume in selected_log_volumes)
+    assert any(log_volume > 0.0 for log_volume in selected_log_volumes)
+    assert all(
+        len(evaluation["pressure_envelope"]["roots"]) == 3
+        for evaluation in result["evaluations"]
+        if evaluation["certified"]
+    )
+
+
+def test_held2_stage_i_direct_l_finds_khudaida_negative_witness() -> None:
+    model = _khudaida_electrolyte_lle_model()
+    result = _equilibrium._held2_stage_i_direct(
+        epcsaft.native_sdk(model),
+        293.15,
+        100_000.0,
+        (
+            0.6462224836985831,
+            0.04995832720498113,
+            0.2648918958670393,
+            0.01946364661469824,
+            0.01946364661469824,
+        ),
+        model.parameter_fingerprint,
+        50,
+    )
+
+    assert result["outcome"] == "negative_witness_found"
+    assert result["declared_evaluation_budget"] == 50
+    assert result["completed_evaluation_count"] <= 50
+    assert result["failed_evaluation_count"] == 0
+    assert result["negative_witness"]["tpd"] < -1.0e-8
+    assert result["negative_witness"]["pressure_certified"] is True
+    assert result["negative_witness"]["mechanical_class"] == "strict_stable"
+    assert result["reference_pressure_envelope"]["outcome"] == "selected"
+    assert result["reference_pressure_envelope"]["roots"][
+        result["reference_pressure_envelope"]["selected_root_index"]
+    ]["volume"] == pytest.approx(3.909560419949432e-5, rel=1.0e-8)
+    assert result["globality_certificate"] == "not_guaranteed"
 
 
 def test_held2_solver_neutral_search_objective_matches_raw_and_tpd_modes() -> None:

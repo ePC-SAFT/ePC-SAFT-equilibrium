@@ -45,6 +45,11 @@ struct Held2StateEvaluation;
     const std::vector<double>& independent_modified_fractions
 );
 
+[[nodiscard]] std::vector<double> held2_map_unit_cube_to_independent_fractions(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& unit_cube_coordinates
+);
+
 [[nodiscard]] std::vector<double> held2_transform_modified_potentials(
     const Held2Coordinates& coordinates,
     const std::vector<double>& chemical_potentials
