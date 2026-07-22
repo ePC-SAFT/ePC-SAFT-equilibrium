@@ -39,6 +39,13 @@ constexpr std::size_t kMolarVolumeSdkTableSize =
     + sizeof(epcsaft_evaluate_molar_volume_bounds_v1);
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
 
+py::dict held2_stage_ii_to_dict(
+    const epcsaft_equilibrium::Held2StageIIResult& evaluation
+);
+py::dict held2_stage_iii_to_dict(
+    const epcsaft_equilibrium::Held2StageIIIResult& evaluation
+);
+
 const epcsaft_native_sdk_v1& checked_sdk(const py::capsule& capsule) {
     const char* name = capsule.name();
     if (name == nullptr || std::string_view(name) != EPCSAFT_NATIVE_SDK_V1_CAPSULE_NAME) {
@@ -1522,128 +1529,12 @@ py::dict held2_manufactured_stage_i(
     const std::string& stage
 ) {
     if (stage == "stage_ii") {
-        const epcsaft_equilibrium::Held2StageIIResult evaluation =
+        py::dict result = held2_stage_ii_to_dict(
             epcsaft_equilibrium::solve_held2_manufactured_stage_ii(
-                charges,
-                physical_feed
-            );
-        py::list history;
-        for (const epcsaft_equilibrium::Held2StageIIBound& bound :
-             evaluation.bound_history) {
-            py::dict item;
-            item["lower_bound"] = bound.lower_bound;
-            item["upper_bound"] = bound.upper_bound;
-            item["multipliers"] = bound.multipliers;
-            item["cut_count"] = bound.cut_count;
-            item["upper_solver"] = bound.upper_solver;
-            item["upper_solver_version"] = bound.upper_solver_version;
-            item["upper_solver_status"] = bound.upper_solver_status;
-            item["upper_primal_feasible"] = bound.upper_primal_feasible;
-            item["upper_dual_feasible"] = bound.upper_dual_feasible;
-            item["upper_primal_residual_inf"] =
-                bound.upper_primal_residual_inf;
-            item["upper_dual_residual_inf"] =
-                bound.upper_dual_residual_inf;
-            item["cut_slacks"] = bound.cut_slacks;
-            item["cut_duals"] = bound.cut_duals;
-            item["active_cut_ids"] = bound.active_cut_ids;
-            history.append(std::move(item));
-        }
-        py::list candidates;
-        for (const epcsaft_equilibrium::Held2StageIICandidate& candidate :
-             evaluation.candidates) {
-            py::dict item;
-            item["modified_fractions"] = candidate.modified_fractions;
-            item["independent_modified_fractions"] =
-                candidate.independent_modified_fractions;
-            item["volume"] = candidate.volume;
-            item["phase_coordinate"] = candidate.phase_coordinate;
-            item["lower_gap"] = candidate.lower_gap;
-            candidates.append(std::move(item));
-        }
-        py::list attempt_trace;
-        int solver_converged_count = 0;
-        int physical_kkt_passed_count = 0;
-        int step6_eligible_count = 0;
-        for (const epcsaft_equilibrium::Held2StageIIAttempt& attempt :
-             evaluation.attempt_trace) {
-            py::dict item;
-            item["attempt_id"] = attempt.attempt_id;
-            item["major_iteration"] = attempt.major_iteration;
-            item["start_index"] = attempt.start_index;
-            item["start_source"] = attempt.start_source;
-            item["internal_start"] = attempt.internal_start;
-            item["physical_start_modified_fractions"] =
-                attempt.physical_start_modified_fractions;
-            item["physical_start_volume"] = attempt.physical_start_volume;
-            item["solver_status"] = attempt.solver_status;
-            item["solver_converged"] = attempt.solver_converged;
-            item["provider_status"] = attempt.provider_status;
-            item["callback_error"] = attempt.callback_error;
-            item["internal_terminal"] = attempt.internal_terminal;
-            item["terminal_modified_fractions"] =
-                attempt.terminal_modified_fractions;
-            item["terminal_volume"] = attempt.terminal_volume;
-            item["objective"] = attempt.objective;
-            item["lower_value"] = attempt.lower_value;
-            item["pressure_residual"] = attempt.pressure_residual;
-            item["lower_bound_multipliers"] = attempt.lower_bound_multipliers;
-            item["upper_bound_multipliers"] = attempt.upper_bound_multipliers;
-            item["chart_jacobian_condition"] = attempt.chart_jacobian_condition;
-            item["dual_pullback_inf_norm"] = attempt.dual_pullback_inf_norm;
-            item["chart_kkt_inf_norm"] = attempt.chart_kkt_inf_norm;
-            item["physical_kkt_inf_norm"] = attempt.physical_kkt_inf_norm;
-            item["complementarity_inf_norm"] = attempt.complementarity_inf_norm;
-            item["pressure_passed"] = attempt.pressure_passed;
-            item["dual_signs_valid"] = attempt.dual_signs_valid;
-            item["physical_kkt_passed"] = attempt.physical_kkt_passed;
-            item["cut_eligible"] = attempt.cut_eligible;
-            item["step6_eligible"] = attempt.step6_eligible;
-            item["basin_id"] = attempt.basin_id;
-            item["same_major_upper_bound"] = attempt.same_major_upper_bound;
-            item["same_major_multipliers"] = attempt.same_major_multipliers;
-            attempt_trace.append(std::move(item));
-            solver_converged_count += attempt.solver_converged ? 1 : 0;
-            physical_kkt_passed_count += attempt.physical_kkt_passed ? 1 : 0;
-            step6_eligible_count += attempt.step6_eligible ? 1 : 0;
-        }
-        py::dict attempt_classification;
-        attempt_classification["declared"] = evaluation.attempt_trace.size();
-        attempt_classification["solver_converged"] = solver_converged_count;
-        attempt_classification["solver_failed"] =
-            static_cast<int>(evaluation.attempt_trace.size())
-            - solver_converged_count;
-        attempt_classification["physical_kkt_passed"] =
-            physical_kkt_passed_count;
-        attempt_classification["step6_eligible"] = step6_eligible_count;
-        py::dict result;
+                charges, physical_feed
+            )
+        );
         result["profile"] = "perdomo-held2-stage-ii-manufactured-v1";
-        result["outcome"] = evaluation.outcome;
-        result["globality_certificate"] = "not_guaranteed";
-        result["major_iterations"] = evaluation.major_iterations;
-        result["lower_starts_per_iteration"] =
-            evaluation.lower_starts_per_iteration;
-        result["cut_count"] = evaluation.cut_count;
-        result["bound_history"] = std::move(history);
-        result["attempt_trace"] = std::move(attempt_trace);
-        result["attempt_classification"] = std::move(attempt_classification);
-        result["candidates"] = std::move(candidates);
-        result["search_strategy"] = evaluation.search_strategy;
-        result["global_explorer"] = evaluation.global_explorer;
-        result["local_solver"] = evaluation.local_solver;
-        result["exploration_evaluation_count"] =
-            evaluation.exploration_evaluation_count;
-        result["exploration_failure_count"] =
-            evaluation.exploration_failure_count;
-        result["exploration_representative_count"] =
-            evaluation.exploration_representative_count;
-        result["duplicate_representative_count"] =
-            evaluation.duplicate_representative_count;
-        result["duplicate_terminal_count"] =
-            evaluation.duplicate_terminal_count;
-        result["distinct_basin_count"] = evaluation.distinct_basin_count;
-        result["direct_escalation_used"] =
-            evaluation.direct_escalation_used;
         return result;
     }
     if (stage != "stage_i") {
@@ -2460,6 +2351,9 @@ py::dict held2_stage_ii_to_dict(
         bounds.append(std::move(item));
     }
     py::list attempts;
+    int solver_converged_count = 0;
+    int physical_kkt_passed_count = 0;
+    int step6_eligible_count = 0;
     for (const auto& attempt : evaluation.attempt_trace) {
         py::dict item;
         item["attempt_id"] = attempt.attempt_id;
@@ -2497,6 +2391,9 @@ py::dict held2_stage_ii_to_dict(
         item["same_major_upper_bound"] = attempt.same_major_upper_bound;
         item["same_major_multipliers"] = attempt.same_major_multipliers;
         attempts.append(std::move(item));
+        solver_converged_count += attempt.solver_converged ? 1 : 0;
+        physical_kkt_passed_count += attempt.physical_kkt_passed ? 1 : 0;
+        step6_eligible_count += attempt.step6_eligible ? 1 : 0;
     }
     py::list candidates;
     for (const auto& candidate : evaluation.candidates) {
@@ -2535,6 +2432,16 @@ py::dict held2_stage_ii_to_dict(
     result["direct_escalation_used"] = evaluation.direct_escalation_used;
     result["bound_history"] = std::move(bounds);
     result["attempt_trace"] = std::move(attempts);
+    py::dict attempt_classification;
+    attempt_classification["declared"] = evaluation.attempt_trace.size();
+    attempt_classification["solver_converged"] = solver_converged_count;
+    attempt_classification["solver_failed"] =
+        static_cast<int>(evaluation.attempt_trace.size())
+        - solver_converged_count;
+    attempt_classification["physical_kkt_passed"] =
+        physical_kkt_passed_count;
+    attempt_classification["step6_eligible"] = step6_eligible_count;
+    result["attempt_classification"] = std::move(attempt_classification);
     result["candidates"] = std::move(candidates);
     return result;
 }
@@ -2556,7 +2463,7 @@ py::dict held2_stage_iii_to_dict(
         py::dict item;
         item["solve_index"] = step.solve_index;
         item["active_candidate_count"] = step.active_candidate_count;
-        item["candidate_index"] = step.removed_candidate_index;
+        item["removed_candidate_index"] = step.removed_candidate_index;
         item["action"] = step.action;
         item["phase_fraction"] = step.phase_fraction;
         item["lower_bound_multiplier"] = step.lower_bound_multiplier;
@@ -2818,73 +2725,12 @@ py::dict held2_manufactured_stage_iii(
     if (stage != "stage_iii") {
         throw py::value_error("unsupported manufactured HELD2 Stage III request");
     }
-    const epcsaft_equilibrium::Held2StageIIIResult evaluation =
+    py::dict result = held2_stage_iii_to_dict(
         epcsaft_equilibrium::solve_held2_manufactured_stage_iii(
-            charges,
-            physical_feed,
-            candidates
-        );
-    py::list phases;
-    for (const epcsaft_equilibrium::Held2StageIIIPhase& phase : evaluation.phases) {
-        py::dict item;
-        item["phase_fraction"] = phase.phase_fraction;
-        item["modified_fractions"] = phase.modified_fractions;
-        item["physical_fractions"] = phase.physical_fractions;
-        item["volume"] = phase.volume;
-        phases.append(std::move(item));
-    }
-    py::list lifecycle;
-    for (const epcsaft_equilibrium::Held2StageIIILifecycleStep& step : evaluation.lifecycle) {
-        py::dict item;
-        item["solve_index"] = step.solve_index;
-        item["active_candidate_count"] = step.active_candidate_count;
-        item["removed_candidate_index"] = step.removed_candidate_index;
-        item["action"] = step.action;
-        item["phase_fraction"] = step.phase_fraction;
-        item["lower_bound_multiplier"] = step.lower_bound_multiplier;
-        item["reduced_derivative"] = step.reduced_derivative;
-        item["complementarity_inf_norm"] = step.complementarity_inf_norm;
-        item["candidate_independent_modified_fractions"] =
-            step.candidate_independent_modified_fractions;
-        item["candidate_volume"] = step.candidate_volume;
-        item["solver_status"] = step.solver_status;
-        item["decision_reason"] = step.decision_reason;
-        lifecycle.append(std::move(item));
-    }
-    py::dict result;
+            charges, physical_feed, candidates
+        )
+    );
     result["profile"] = "perdomo-held2-stage-iii-manufactured-v1";
-    result["solver_status"] = evaluation.solver_status;
-    result["numerical_status"] = evaluation.numerical_status;
-    result["physical_status"] = evaluation.physical_status;
-    result["globality_certificate"] = "not_guaranteed";
-    result["feedback"] = evaluation.feedback;
-    result["failure_reason"] = evaluation.failure_reason;
-    result["trace_refinement_status"] = evaluation.trace_refinement_status;
-    result["input_candidate_count"] = evaluation.input_candidate_count;
-    result["retired_duplicate_count"] = evaluation.retired_duplicate_count;
-    result["retired_inactive_count"] = evaluation.retired_inactive_count;
-    result["stage_iii_solve_count"] = evaluation.stage_iii_solve_count;
-    result["active_set_resolve_count"] = evaluation.active_set_resolve_count;
-    result["trace_component_count"] = evaluation.trace_component_count;
-    result["certified_modified_potential_count"] =
-        evaluation.certified_modified_potential_count;
-    result["objective"] = evaluation.objective;
-    result["modified_balance_inf_norm"] = evaluation.modified_balance_inf_norm;
-    result["ordinary_balance_inf_norm"] = evaluation.ordinary_balance_inf_norm;
-    result["phase_charge_inf_norm"] = evaluation.phase_charge_inf_norm;
-    result["pressure_stationarity_inf_norm"] =
-        evaluation.pressure_stationarity_inf_norm;
-    result["modified_potential_mixed_gap"] =
-        evaluation.modified_potential_mixed_gap;
-    result["minimum_phase_distance"] = evaluation.minimum_phase_distance;
-    result["kkt_stationarity_inf_norm"] = evaluation.kkt_stationarity_inf_norm;
-    result["dual_sign_violation_inf_norm"] = evaluation.dual_sign_violation_inf_norm;
-    result["bound_complementarity_inf_norm"] =
-        evaluation.bound_complementarity_inf_norm;
-    result["minimum_phase_fraction"] = evaluation.minimum_phase_fraction;
-    result["enumeration_objective_gap"] = evaluation.enumeration_objective_gap;
-    result["phases"] = std::move(phases);
-    result["lifecycle"] = std::move(lifecycle);
     return result;
 }
 
