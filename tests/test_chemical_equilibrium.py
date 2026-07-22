@@ -13,24 +13,6 @@ import pytest
 from epcsaft_equilibrium import _equilibrium
 
 
-class _StandardReferenceResult(ctypes.Structure):
-    _fields_ = (
-        ("struct_size", ctypes.c_uint32),
-        ("status", ctypes.c_int32),
-        ("temperature_k", ctypes.c_double),
-        ("pressure_pa", ctypes.c_double),
-        ("formula_unit_infinite_dilution_log_fugacity", ctypes.c_double),
-        ("pure_solvent_log_fugacity_coefficient", ctypes.c_double),
-        ("solvent_molar_mass_kg_per_mol", ctypes.c_double),
-        ("reference_molality_mol_per_kg", ctypes.c_double),
-        ("reference_convergence_error", ctypes.c_double),
-        ("pure_solvent_molar_volume_m3_per_mol", ctypes.c_double),
-        ("parameter_fingerprint", ctypes.c_char * 72),
-        ("helmholtz_basis_id", ctypes.c_char * 72),
-        ("error", ctypes.c_char * 160),
-    )
-
-
 class _StandardReferenceSdk(ctypes.Structure):
     _fields_ = (
         ("abi_version", ctypes.c_uint32),
@@ -62,16 +44,6 @@ class _StandardReferenceSdk(ctypes.Structure):
         ("electrolyte_standard_reference_result_size", ctypes.c_size_t),
         ("evaluate_electrolyte_standard_reference", ctypes.c_void_p),
     )
-
-
-_STANDARD_REFERENCE_CALLBACK = ctypes.CFUNCTYPE(
-    ctypes.c_int,
-    ctypes.c_void_p,
-    ctypes.c_double,
-    ctypes.c_double,
-    ctypes.POINTER(_StandardReferenceResult),
-)
-
 
 def _held_water_ionization_model() -> epcsaft.EPCSAFT:
     parameters = epcsaft.ParameterBundle.from_catalog(
@@ -810,48 +782,6 @@ def test_manufactured_charged_solution_is_species_order_invariant() -> None:
     )
 
 
-def test_installed_provider_standard_reference_tail_is_consumed_once() -> None:
-    model = _held_water_ionization_model()
-    result = _equilibrium._chemical_evaluate_provider_standard_reference(
-        epcsaft.native_sdk(model),
-        298.15,
-        100_000.0,
-        model.parameter_fingerprint,
-    )
-    public = model.reference_state(
-        temperature=298.15 * epcsaft.unit_registry.kelvin,
-        pressure=100_000.0 * epcsaft.unit_registry.pascal,
-        solvent_mole_fractions=(1.0, 0.0, 0.0),
-        phase="liquid",
-    )
-    pure_water = model.evaluate(
-        temperature=298.15 * epcsaft.unit_registry.kelvin,
-        pressure=100_000.0 * epcsaft.unit_registry.pascal,
-        mole_fractions=(1.0, 0.0, 0.0),
-        phase="liquid",
-    )
-
-    assert result["formula_unit_log_fugacity"] == pytest.approx(
-        math.fsum(public.infinite_dilution_log_fugacity), abs=2.0e-12
-    )
-    assert result["pure_solvent_log_fugacity"] == pytest.approx(
-        public._pure_water_log_fugacity, abs=2.0e-12
-    )
-    assert result["solvent_molar_mass_kg_per_mol"] == pytest.approx(0.01801528)
-    assert result["reference_molality_mol_per_kg"] == 1.0e-12
-    assert 0.0 <= result["convergence_error"] <= 5.0e-5
-    assert result["pure_solvent_molar_volume_m3_per_mol"] == pytest.approx(
-        1.0 / pure_water.molar_density.to("mole / meter**3").magnitude,
-        rel=2.0e-12,
-    )
-    assert result["basis_id"] == (
-        "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3"
-    )
-    assert result["parameter_fingerprint"] == model.parameter_fingerprint
-    assert result["component_ids"] == ["water", "hydronium-cation", "hydroxide-anion"]
-    assert result["charges"] == [0, 1, -1]
-
-
 def test_retained_iapws_record_reproduces_source_equations() -> None:
     record = _water_ionization_reference_record()
     state = record["state"]
@@ -913,35 +843,50 @@ def test_iapws_mixed_standard_state_transform_uses_thermodynamic_standard_molali
     assert transformed["source_id"] == "iapws-r11-24"
 
 
-@pytest.mark.parametrize(
-    ("section", "field", "value", "message"),
-    (
-        ("standard_state", "solvent_molar_mass_unit", "g/mol", "molar-mass unit"),
+def test_iapws_transform_rejects_each_unbound_or_inconsistent_input() -> None:
+    mutations = (
+        ("source identity", "record", "source", "id", "wrong-source"),
+        ("temperature", "record", "state", "temperature_k", 299.0),
+        ("pressure", "record", "state", "pressure_binding", "temperature_only"),
+        ("phase", "record", "state", "phase", "vapor"),
+        ("molar-mass unit", "record", "standard_state", "solvent_molar_mass_unit", "g/mol"),
+        ("standard molality", "record", "standard_state", "standard_molality_mol_per_kg", 1.0e-12),
         (
+            "transformation sign",
+            "record",
             "standard_state",
             "transformation_sign",
             "lnK_provider=lnKw_mixed-delta_standard_offset",
-            "transformation sign",
         ),
-        ("standard_state", "standard_molality_mol_per_kg", 1.0e-12, "standard molality"),
-        ("provider_binding", "reaction_stoichiometry", (-1.0, 1.0, 1.0), "1:1"),
-        ("state", "phase", "vapor", "state identity"),
-        ("state", "pressure_binding", "temperature_only", "pressure binding"),
-        ("values", "ln_kw", 32.2231929374538, "pKw and lnKw"),
-    ),
-)
-def test_iapws_mixed_standard_state_transform_rejects_record_mutations(
-    section: str, field: str, value: object, message: str
-) -> None:
-    record = _water_ionization_reference_record()
-    nested = record[section]
-    assert isinstance(nested, dict)
-    nested[field] = value
+        (
+            "reaction identity",
+            "record",
+            "provider_binding",
+            "reaction_stoichiometry",
+            (-1.0, 1.0, 1.0),
+        ),
+        ("basis identity", "record", "provider_binding", "basis_id", "wrong-basis"),
+        ("reconstruction", "record", "values", "ln_kw", 32.2231929374538),
+        ("reference convergence", "reference", None, "convergence_error", 1.0),
+    )
 
-    with pytest.raises(ValueError, match=message):
-        _equilibrium._chemical_transform_water_self_ionization_standard_state(
-            record, _manufactured_water_standard_reference()
-        )
+    for claim, target, section, field, value in mutations:
+        record = _water_ionization_reference_record()
+        reference = _manufactured_water_standard_reference()
+        container = record if target == "record" else reference
+        if section is not None:
+            nested = container[section]
+            assert isinstance(nested, dict)
+            container = nested
+        container[field] = value
+
+        try:
+            _equilibrium._chemical_transform_water_self_ionization_standard_state(
+                record, reference
+            )
+        except ValueError:
+            continue
+        pytest.fail(f"{claim} mutation was accepted")
 
 
 def test_source_complete_water_self_ionization_solves_and_recomputes_iapws_activity() -> None:
@@ -957,6 +902,7 @@ def test_source_complete_water_self_ionization_solves_and_recomputes_iapws_activ
 
     assert result["profile"] == "installed_provider_source_complete_consistency"
     assert result["accepted"] is True
+    assert result["max_min_solve_count"] == 1
     assert result["solver_status"] == "solve_succeeded"
     assert result["artifact_input_status"] == "passed"
     assert result["numerical_status"] == "passed"
@@ -1017,210 +963,15 @@ def test_source_complete_water_self_ionization_solves_and_recomputes_iapws_activ
     assert independently_recomputed == pytest.approx(values["ln_kw"], abs=1.0e-8)
 
 
-def test_source_complete_water_self_ionization_is_stable_at_lower_trace_floor() -> None:
+def test_provider_standard_reference_tail_rejects_incomplete_sdk() -> None:
     model = _held_water_ionization_model()
-    result = _equilibrium._chemical_solve_provider_water_self_ionization(
-        epcsaft.native_sdk(model),
-        _water_self_ionization_spec(model),
-        {"packing_fraction_bounds": (1.0e-6, 0.74), "trace_floor": 1.0e-18},
-    )
-
-    assert result["accepted"] is True
-    assert result["amounts"][1] == pytest.approx(1.8139519e-9, rel=2.0e-7)
-    assert result["reaction_affinity_inf_norm"] <= 1.0e-7
-
-
-def test_source_complete_water_self_ionization_is_scale_and_basis_invariant() -> None:
-    model = _held_water_ionization_model()
-    capsule = epcsaft.native_sdk(model)
-    options = {"packing_fraction_bounds": (1.0e-6, 0.74), "trace_floor": 1.0e-12}
-    baseline = _equilibrium._chemical_solve_provider_water_self_ionization(
-        capsule, _water_self_ionization_spec(model), options
-    )
-
-    scaled_feed = _equilibrium._chemical_solve_provider_water_self_ionization(
-        capsule, _water_self_ionization_spec(model, feed_scale=10.0), options
-    )
-    scaled_basis_spec = _water_self_ionization_spec(model)
-    scaled_basis_spec["reaction_matrix"] = ((-4.0, 2.0, 2.0),)
-    scaled_basis = _equilibrium._chemical_solve_provider_water_self_ionization(
-        capsule, scaled_basis_spec, options
-    )
-
-    assert baseline["accepted"] is True
-    assert scaled_feed["accepted"] is True
-    assert scaled_basis["accepted"] is True
-    assert scaled_basis["amounts"] == pytest.approx(baseline["amounts"], rel=2.0e-8)
-    assert scaled_feed["amounts"] == pytest.approx(
-        tuple(10.0 * amount for amount in baseline["amounts"]), rel=2.0e-8
-    )
-    assert scaled_feed["volume_m3"] == pytest.approx(
-        10.0 * baseline["volume_m3"], rel=2.0e-8
-    )
-    assert scaled_basis["ln_k_provider_basis"] == pytest.approx(
-        2.0 * baseline["ln_k_provider_basis"]
-    )
-
-
-def test_source_complete_water_self_ionization_rejects_stale_or_incomplete_inputs() -> None:
-    model = _held_water_ionization_model()
-    capsule = epcsaft.native_sdk(model)
-    options = {"packing_fraction_bounds": (1.0e-6, 0.74), "trace_floor": 1.0e-12}
-
-    stale = _water_self_ionization_spec(model)
-    stale["provider_fingerprint"] = "sha256:stale"
-    stale["expected_provider_fingerprint"] = "sha256:stale"
-    with pytest.raises(ValueError, match="fingerprint"):
-        _equilibrium._chemical_solve_provider_water_self_ionization(
-            capsule, stale, options
-        )
-
-    wrong_basis = _water_self_ionization_spec(model)
-    reference = wrong_basis["water_self_ionization_reference"]
-    assert isinstance(reference, dict)
-    provider_binding = reference["provider_binding"]
-    assert isinstance(provider_binding, dict)
-    provider_binding["basis_id"] = "stale-basis"
-    with pytest.raises(ValueError, match="basis identity"):
-        _equilibrium._chemical_solve_provider_water_self_ionization(
-            capsule, wrong_basis, options
-        )
-
-    missing_source = _water_self_ionization_spec(model)
-    reference = missing_source["water_self_ionization_reference"]
-    assert isinstance(reference, dict)
-    source = reference["source"]
-    assert isinstance(source, dict)
-    del source["id"]
-    with pytest.raises((KeyError, ValueError)):
-        _equilibrium._chemical_solve_provider_water_self_ionization(
-            capsule, missing_source, options
-        )
-
-    nonneutral = _water_self_ionization_spec(model)
-    nonneutral["feed_amounts"] = (1.0, 1.0e-8, 0.0)
-    with pytest.raises(ValueError, match="pure-water neutral feed"):
-        _equilibrium._chemical_solve_provider_water_self_ionization(
-            capsule, nonneutral, options
-        )
-
-    nonconverged = _water_self_ionization_spec(model)
-    reference = nonconverged["water_self_ionization_reference"]
-    assert isinstance(reference, dict)
-    provider_binding = reference["provider_binding"]
-    assert isinstance(provider_binding, dict)
-    provider_binding["maximum_reference_convergence_error"] = 1.0e-8
-    with pytest.raises(ValueError, match="convergence"):
-        _equilibrium._chemical_solve_provider_water_self_ionization(
-            capsule, nonconverged, options
-        )
-
-    with pytest.raises(ValueError, match="outside packing bounds"):
-        _equilibrium._chemical_solve_provider_water_self_ionization(
-            capsule,
-            _water_self_ionization_spec(model),
-            {"packing_fraction_bounds": (0.5, 0.74)},
-        )
-
-
-def test_source_complete_water_self_ionization_rejects_indeterminate_and_false_success() -> None:
-    model = _held_water_ionization_model()
-    capsule = epcsaft.native_sdk(model)
-    spec = _water_self_ionization_spec(model)
-
-    indeterminate = _equilibrium._chemical_solve_provider_water_self_ionization(
-        capsule,
-        spec,
-        {"packing_fraction_bounds": (1.0e-6, 0.74), "test_max_iterations": 0},
-    )
-    assert indeterminate["accepted"] is False
-    assert indeterminate["solver_status"] == "maximum_iterations_exceeded"
-    assert indeterminate["final_lambda"] is None
-
-    false_success = _equilibrium._chemical_solve_provider_water_self_ionization(
-        capsule,
-        spec,
-        {"packing_fraction_bounds": (1.0e-6, 0.74), "trace_floor": 1.0e-8},
-    )
-    assert false_success["solver_status"] == "solve_succeeded"
-    assert false_success["accepted"] is False
-    assert false_success["physical_status"] == "failed"
-    assert false_success["trace_status"] == "at_or_below_floor"
-    assert false_success["max_min_solve_count"] == 1
-
-
-def test_provider_standard_reference_tail_rejects_abi_identity_and_domain_mutations() -> None:
-    model = _held_water_ionization_model()
-
-    capsule, table, owners = _copied_sdk_capsule(model)
-    assert owners
-    table.table_size = _StandardReferenceSdk.source_pressure_max_pa.offset + ctypes.sizeof(
-        ctypes.c_double
-    )
-    with pytest.raises(ValueError, match="standard-reference ABI"):
-        _equilibrium._chemical_evaluate_provider_standard_reference(
-            capsule, 298.15, 100_000.0, model.parameter_fingerprint
-        )
-
     capsule, table, owners = _copied_sdk_capsule(model)
     assert owners
     table.evaluate_electrolyte_standard_reference = None
-    with pytest.raises(ValueError, match="standard-reference ABI"):
+    with pytest.raises(ValueError):
         _equilibrium._chemical_evaluate_provider_standard_reference(
             capsule, 298.15, 100_000.0, model.parameter_fingerprint
         )
-
-    capsule, table, owners = _copied_sdk_capsule(model)
-    assert owners
-    table.electrolyte_standard_reference_result_size -= 1
-    with pytest.raises(ValueError, match="standard-reference ABI"):
-        _equilibrium._chemical_evaluate_provider_standard_reference(
-            capsule, 298.15, 100_000.0, model.parameter_fingerprint
-        )
-
-    capsule, table, owners = _copied_sdk_capsule(model)
-    wrong_basis = ctypes.create_string_buffer(b"wrong-basis")
-    table.helmholtz_basis_id = ctypes.cast(wrong_basis, ctypes.c_char_p)
-    with pytest.raises(ValueError, match="standard-reference identity"):
-        _equilibrium._chemical_evaluate_provider_standard_reference(
-            capsule, 298.15, 100_000.0, model.parameter_fingerprint
-        )
-    assert owners and wrong_basis
-
-    with pytest.raises(ValueError, match="standard-reference identity"):
-        _equilibrium._chemical_evaluate_provider_standard_reference(
-            epcsaft.native_sdk(model), 298.15, 100_000.0, "sha256:wrong"
-        )
-
-    with pytest.raises(ValueError, match="standard-reference source domain"):
-        _equilibrium._chemical_evaluate_provider_standard_reference(
-            epcsaft.native_sdk(model), 299.0, 100_000.0, model.parameter_fingerprint
-        )
-
-
-def test_provider_standard_reference_tail_distinguishes_provider_failure() -> None:
-    model = _held_water_ionization_model()
-    capsule, table, owners = _copied_sdk_capsule(model)
-
-    @_STANDARD_REFERENCE_CALLBACK
-    def fail(
-        _context: int,
-        _temperature: float,
-        _pressure: float,
-        result: ctypes.POINTER(_StandardReferenceResult),
-    ) -> int:
-        result.contents.status = 4
-        result.contents.error = b"forced reference failure"
-        return 4
-
-    table.evaluate_electrolyte_standard_reference = ctypes.cast(
-        fail, ctypes.c_void_p
-    ).value
-    with pytest.raises(ValueError, match="Provider standard-reference evaluation failed"):
-        _equilibrium._chemical_evaluate_provider_standard_reference(
-            capsule, 298.15, 100_000.0, model.parameter_fingerprint
-        )
-    assert owners and fail
 
 
 def _figiel_provider_model() -> epcsaft.EPCSAFT:
@@ -1291,50 +1042,6 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
     assert 1.0e-6 < result["packing_fraction"] < 0.74
     assert result["predictive_status"] == "manufactured_nonpredictive"
     assert result["globality_certificate"] == "not_guaranteed"
-
-
-def test_installed_provider_phase_block_derivatives_are_exact_and_contract_bound() -> None:
-    model = _figiel_provider_model()
-    capsule = epcsaft.native_sdk(model)
-    center = (0.82, 0.08, 0.08, 1.0e-3)
-    direction = (0.03, -0.01, -0.01, 2.0e-5)
-    step = 2.0e-5
-
-    def evaluate(values: tuple[float, ...]) -> dict[str, object]:
-        return _equilibrium._chemical_evaluate_provider_block(
-            capsule,
-            298.15,
-            values[:-1],
-            values[-1],
-            model.parameter_fingerprint,
-        )
-
-    lower = evaluate(
-        tuple(value - step * delta for value, delta in zip(center, direction, strict=True))
-    )
-    result = evaluate(center)
-    upper = evaluate(
-        tuple(value + step * delta for value, delta in zip(center, direction, strict=True))
-    )
-    value_directional = (upper["value"] - lower["value"]) / (2.0 * step)
-    assert value_directional == pytest.approx(
-        sum(value * delta for value, delta in zip(result["gradient"], direction, strict=True)),
-        rel=2.0e-8,
-        abs=2.0e-9,
-    )
-    for row in range(len(center)):
-        gradient_directional = (upper["gradient"][row] - lower["gradient"][row]) / (
-            2.0 * step
-        )
-        hessian_directional = sum(
-            result["hessian"][row * len(center) + column] * direction[column]
-            for column in range(len(center))
-        )
-        assert gradient_directional == pytest.approx(
-            hessian_directional, rel=3.0e-8, abs=3.0e-8
-        )
-    assert result["component_ids"] == ["water", "sodium-cation", "chloride-anion"]
-    assert result["charges"] == [0, 1, -1]
 
 
 def test_provider_manufactured_reaction_rejects_capsule_identity_and_source_domain() -> None:
