@@ -121,7 +121,9 @@ def _runtime_evidence() -> dict[str, Any]:
         CHEMICAL_POTENTIALS,
     )
     stage_i = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_i")
-    stage_ii = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
+    stage_ii = _equilibrium._held2_adapter(
+        CHARGES, PHYSICAL_FEED, "stage_ii_legacy"
+    )
     # Schema v1 was captured before per-attempt Stage-II observability existed.
     # Keep its immutable artifact payload comparable while newer tests freeze
     # the complete deterministic attempt trace independently.

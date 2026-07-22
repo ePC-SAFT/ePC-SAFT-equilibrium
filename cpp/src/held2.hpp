@@ -227,6 +227,7 @@ struct Held2StageIIAttempt {
     double physical_kkt_inf_norm = 0.0;
     double complementarity_inf_norm = 0.0;
     bool pressure_passed = false;
+    bool dual_signs_valid = false;
     bool physical_kkt_passed = false;
     bool cut_eligible = false;
     bool step6_eligible = false;
@@ -237,10 +238,21 @@ struct Held2StageIIAttempt {
 
 struct Held2StageIIResult {
     std::string outcome;
+    std::string search_strategy = "legacy_fixed_multistart_ipopt_v1";
+    std::string global_explorer = "none";
+    std::string local_solver = "ipopt_exact_hessian";
+    std::string globality_certificate = "not_guaranteed";
     std::string historical_dual_pullback_fixture_status = "not_assigned";
     int major_iterations = 0;
     int lower_starts_per_iteration = 0;
     int cut_count = 0;
+    int exploration_evaluation_count = 0;
+    int exploration_failure_count = 0;
+    int exploration_representative_count = 0;
+    int duplicate_representative_count = 0;
+    int duplicate_terminal_count = 0;
+    int distinct_basin_count = 0;
+    bool direct_escalation_used = false;
     std::vector<Held2StageIIBound> bound_history;
     std::vector<Held2StageIIAttempt> attempt_trace;
     std::vector<Held2StageIICandidate> candidates;
@@ -300,6 +312,11 @@ struct Held2StageIIIResult {
 );
 
 [[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed
+);
+
+[[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii_legacy(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed
 );
