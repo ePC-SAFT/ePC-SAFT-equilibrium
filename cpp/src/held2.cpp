@@ -162,8 +162,11 @@ void configure_held2_ipopt(const Ipopt::SmartPtr<Ipopt::IpoptApplication>& appli
 
 struct Held2SearchRun {
     bool solver_converged = false;
+    std::string solver_status = "not_run";
     std::string callback_error;
     std::vector<double> variables;
+    std::vector<double> lower_bound_multipliers;
+    std::vector<double> upper_bound_multipliers;
 };
 
 class Held2SearchObjectiveEvaluator {
@@ -390,8 +393,8 @@ public:
         Ipopt::SolverReturn status,
         Ipopt::Index n,
         const Ipopt::Number* x,
-        const Ipopt::Number*,
-        const Ipopt::Number*,
+        const Ipopt::Number* z_lower,
+        const Ipopt::Number* z_upper,
         Ipopt::Index,
         const Ipopt::Number*,
         const Ipopt::Number*,
@@ -400,12 +403,28 @@ public:
         Ipopt::IpoptCalculatedQuantities*
     ) override {
         variables_.assign(x, x + n);
+        lower_bound_multipliers_.assign(z_lower, z_lower + n);
+        upper_bound_multipliers_.assign(z_upper, z_upper + n);
         solver_converged_ = status == Ipopt::SUCCESS
             || status == Ipopt::STOP_AT_ACCEPTABLE_POINT;
+        if (status == Ipopt::SUCCESS) {
+            solver_status_ = "success";
+        } else if (status == Ipopt::STOP_AT_ACCEPTABLE_POINT) {
+            solver_status_ = "acceptable_point";
+        } else {
+            solver_status_ = "failed_" + std::to_string(static_cast<int>(status));
+        }
     }
 
     [[nodiscard]] Held2SearchRun result() const {
-        return {solver_converged_, callback_error_, variables_};
+        return {
+            solver_converged_,
+            solver_status_,
+            callback_error_,
+            variables_,
+            lower_bound_multipliers_,
+            upper_bound_multipliers_,
+        };
     }
 
 private:
@@ -424,8 +443,11 @@ private:
     std::vector<double> lower_;
     std::vector<double> upper_;
     bool solver_converged_ = false;
+    std::string solver_status_ = "not_run";
     std::string callback_error_;
     std::vector<double> variables_;
+    std::vector<double> lower_bound_multipliers_;
+    std::vector<double> upper_bound_multipliers_;
 };
 
 Held2SearchRun solve_held2_search(
@@ -1132,6 +1154,7 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
     const std::vector<double> upper = {upper_composition, std::log(1.5)};
     Held2StageIIResult result;
     result.lower_starts_per_iteration = 10 * static_cast<int>(charges.size());
+    std::vector<Held2StateEvaluation> traced_basins;
 
     for (int major = 0; major < major_iteration_cap; ++major) {
         struct Line {
@@ -1195,7 +1218,26 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
         double lower_bound = std::numeric_limits<double>::infinity();
         Held2StateEvaluation best_state;
         bool lower_failed = false;
-        for (const std::vector<double>& start : starts) {
+        for (std::size_t start_index = 0; start_index < starts.size(); ++start_index) {
+            const std::vector<double>& start = starts[start_index];
+            Held2StageIIAttempt attempt;
+            attempt.attempt_id = static_cast<int>(result.attempt_trace.size());
+            attempt.major_iteration = major;
+            attempt.start_index = static_cast<int>(start_index);
+            attempt.start_source = start_index < 2
+                ? "phase_rich_seed"
+                : "frozen_random_v1";
+            attempt.internal_start = start;
+            attempt.same_major_upper_bound = upper_bound;
+            attempt.same_major_multiplier = multiplier;
+            const Held2StateEvaluation start_state = evaluator(
+                {start.front()},
+                start.back()
+            );
+            attempt.physical_start_modified_fractions =
+                start_state.modified_fractions;
+            attempt.physical_start_volume = start_state.volume;
+
             const Held2SearchRun run = solve_held2_search(
                 evaluator,
                 lower_reference_variables,
@@ -1205,9 +1247,16 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
                 lower,
                 upper
             );
+            attempt.solver_status = run.solver_status;
+            attempt.solver_converged = run.solver_converged;
+            attempt.callback_error = run.callback_error;
+            attempt.internal_terminal = run.variables;
+            attempt.lower_bound_multipliers = run.lower_bound_multipliers;
+            attempt.upper_bound_multipliers = run.upper_bound_multipliers;
             if (!run.solver_converged || !run.callback_error.empty()
                 || run.variables.size() != 2) {
                 lower_failed = true;
+                result.attempt_trace.push_back(std::move(attempt));
                 continue;
             }
             Held2StateEvaluation state = evaluator(
@@ -1216,9 +1265,86 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
             );
             const double value = state.objective
                 + multiplier * (feed - state.modified_fractions[independent_retained]);
+            attempt.terminal_modified_fractions = state.modified_fractions;
+            attempt.terminal_volume = state.volume;
+            attempt.objective = state.objective;
+            attempt.lower_value = value;
+            attempt.pressure_residual = state.pressure_stationarity_relative;
+            attempt.pressure_passed = std::abs(state.gradient.back())
+                <= stage_ii_tolerance;
+
+            if (run.lower_bound_multipliers.size() == run.variables.size()
+                && run.upper_bound_multipliers.size() == run.variables.size()) {
+                const std::array<double, 2> lower_gradient = {
+                    state.gradient.front() - multiplier,
+                    state.gradient.back(),
+                };
+                double stationarity_inf = 0.0;
+                double complementarity_inf = 0.0;
+                for (std::size_t index = 0; index < run.variables.size(); ++index) {
+                    stationarity_inf = std::max(
+                        stationarity_inf,
+                        std::abs(
+                            lower_gradient[index]
+                            - run.lower_bound_multipliers[index]
+                            + run.upper_bound_multipliers[index]
+                        )
+                    );
+                    complementarity_inf = std::max(
+                        complementarity_inf,
+                        std::abs(
+                            (run.variables[index] - lower[index])
+                            * run.lower_bound_multipliers[index]
+                        )
+                    );
+                    complementarity_inf = std::max(
+                        complementarity_inf,
+                        std::abs(
+                            (upper[index] - run.variables[index])
+                            * run.upper_bound_multipliers[index]
+                        )
+                    );
+                }
+                attempt.chart_kkt_inf_norm = stationarity_inf;
+                // The manufactured one-dimensional composition chart is the
+                // physical coordinate itself, so the pullback is the identity.
+                attempt.physical_kkt_inf_norm = stationarity_inf;
+                attempt.complementarity_inf_norm = complementarity_inf;
+                attempt.physical_kkt_passed = attempt.pressure_passed
+                    && stationarity_inf <= stage_ii_tolerance
+                    && complementarity_inf <= stage_ii_tolerance;
+            }
+            attempt.cut_eligible = attempt.physical_kkt_passed;
+            const double lower_gap = upper_bound - value;
+            attempt.step6_eligible = attempt.cut_eligible
+                && lower_gap >= -stage_ii_tolerance
+                && lower_gap <= stage_ii_tolerance
+                && std::abs(state.gradient.front() - multiplier)
+                    <= stage_ii_tolerance;
+
+            const auto basin = std::find_if(
+                traced_basins.begin(),
+                traced_basins.end(),
+                [&state](const Held2StateEvaluation& known) {
+                    return maximum_abs_difference(
+                               known.modified_fractions,
+                               state.modified_fractions
+                           ) < 1.0e-7
+                        && std::abs(known.volume - state.volume) < 1.0e-7;
+                }
+            );
+            if (basin == traced_basins.end()) {
+                attempt.basin_id = static_cast<int>(traced_basins.size());
+                traced_basins.push_back(state);
+            } else {
+                attempt.basin_id = static_cast<int>(
+                    std::distance(traced_basins.begin(), basin)
+                );
+            }
+            result.attempt_trace.push_back(std::move(attempt));
             if (value < lower_bound) {
                 lower_bound = value;
-                best_state = std::move(state);
+                best_state = state;
             }
         }
         ++result.major_iterations;

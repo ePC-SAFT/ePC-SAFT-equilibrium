@@ -1522,15 +1522,73 @@ py::dict held2_manufactured_stage_i(
             item["lower_gap"] = candidate.lower_gap;
             candidates.append(std::move(item));
         }
+        py::list attempt_trace;
+        int solver_converged_count = 0;
+        int physical_kkt_passed_count = 0;
+        int step6_eligible_count = 0;
+        for (const epcsaft_equilibrium::Held2StageIIAttempt& attempt :
+             evaluation.attempt_trace) {
+            py::dict item;
+            item["attempt_id"] = attempt.attempt_id;
+            item["major_iteration"] = attempt.major_iteration;
+            item["start_index"] = attempt.start_index;
+            item["start_source"] = attempt.start_source;
+            item["internal_start"] = attempt.internal_start;
+            item["physical_start_modified_fractions"] =
+                attempt.physical_start_modified_fractions;
+            item["physical_start_volume"] = attempt.physical_start_volume;
+            item["solver_status"] = attempt.solver_status;
+            item["solver_converged"] = attempt.solver_converged;
+            item["provider_status"] = attempt.provider_status;
+            item["callback_error"] = attempt.callback_error;
+            item["internal_terminal"] = attempt.internal_terminal;
+            item["terminal_modified_fractions"] =
+                attempt.terminal_modified_fractions;
+            item["terminal_volume"] = attempt.terminal_volume;
+            item["objective"] = attempt.objective;
+            item["lower_value"] = attempt.lower_value;
+            item["pressure_residual"] = attempt.pressure_residual;
+            item["lower_bound_multipliers"] = attempt.lower_bound_multipliers;
+            item["upper_bound_multipliers"] = attempt.upper_bound_multipliers;
+            item["chart_jacobian_condition"] = attempt.chart_jacobian_condition;
+            item["dual_pullback_inf_norm"] = attempt.dual_pullback_inf_norm;
+            item["chart_kkt_inf_norm"] = attempt.chart_kkt_inf_norm;
+            item["physical_kkt_inf_norm"] = attempt.physical_kkt_inf_norm;
+            item["complementarity_inf_norm"] = attempt.complementarity_inf_norm;
+            item["pressure_passed"] = attempt.pressure_passed;
+            item["physical_kkt_passed"] = attempt.physical_kkt_passed;
+            item["cut_eligible"] = attempt.cut_eligible;
+            item["step6_eligible"] = attempt.step6_eligible;
+            item["basin_id"] = attempt.basin_id;
+            item["same_major_upper_bound"] = attempt.same_major_upper_bound;
+            item["same_major_multiplier"] = attempt.same_major_multiplier;
+            attempt_trace.append(std::move(item));
+            solver_converged_count += attempt.solver_converged ? 1 : 0;
+            physical_kkt_passed_count += attempt.physical_kkt_passed ? 1 : 0;
+            step6_eligible_count += attempt.step6_eligible ? 1 : 0;
+        }
+        py::dict attempt_classification;
+        attempt_classification["declared"] = evaluation.attempt_trace.size();
+        attempt_classification["solver_converged"] = solver_converged_count;
+        attempt_classification["solver_failed"] =
+            static_cast<int>(evaluation.attempt_trace.size())
+            - solver_converged_count;
+        attempt_classification["physical_kkt_passed"] =
+            physical_kkt_passed_count;
+        attempt_classification["step6_eligible"] = step6_eligible_count;
         py::dict result;
         result["profile"] = "perdomo-held2-stage-ii-manufactured-v1";
         result["outcome"] = evaluation.outcome;
         result["globality_certificate"] = "not_guaranteed";
+        result["historical_dual_pullback_fixture_status"] =
+            evaluation.historical_dual_pullback_fixture_status;
         result["major_iterations"] = evaluation.major_iterations;
         result["lower_starts_per_iteration"] =
             evaluation.lower_starts_per_iteration;
         result["cut_count"] = evaluation.cut_count;
         result["bound_history"] = std::move(history);
+        result["attempt_trace"] = std::move(attempt_trace);
+        result["attempt_classification"] = std::move(attempt_classification);
         result["candidates"] = std::move(candidates);
         return result;
     }

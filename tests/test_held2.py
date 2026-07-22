@@ -491,6 +491,59 @@ def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
     assert all(abs(candidate["lower_gap"]) <= 1.0e-8 for candidate in result["candidates"])
 
 
+def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
+    first = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
+    second = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
+
+    assert first["historical_dual_pullback_fixture_status"] == "not_assigned"
+    assert first["attempt_trace"] == second["attempt_trace"]
+    assert len(first["attempt_trace"]) == (
+        first["major_iterations"] * first["lower_starts_per_iteration"]
+    )
+
+    for expected_attempt_id, attempt in enumerate(first["attempt_trace"]):
+        assert attempt["attempt_id"] == expected_attempt_id
+        assert attempt["major_iteration"] < first["major_iterations"]
+        assert attempt["start_index"] < first["lower_starts_per_iteration"]
+        assert attempt["start_source"] in {"phase_rich_seed", "frozen_random_v1"}
+        assert len(attempt["internal_start"]) == 2
+        assert len(attempt["physical_start_modified_fractions"]) == len(CHARGES) - 1
+        assert attempt["physical_start_volume"] > 0.0
+        assert attempt["provider_status"] == "manufactured_oracle"
+        assert attempt["same_major_upper_bound"] == pytest.approx(
+            first["bound_history"][attempt["major_iteration"]]["upper_bound"]
+        )
+        assert attempt["same_major_multiplier"] == pytest.approx(
+            first["bound_history"][attempt["major_iteration"]]["multiplier"]
+        )
+
+        if attempt["solver_converged"]:
+            assert attempt["solver_status"] in {"success", "acceptable_point"}
+            assert len(attempt["internal_terminal"]) == 2
+            assert len(attempt["terminal_modified_fractions"]) == len(CHARGES) - 1
+            assert attempt["terminal_volume"] > 0.0
+            assert len(attempt["lower_bound_multipliers"]) == 2
+            assert len(attempt["upper_bound_multipliers"]) == 2
+            assert attempt["chart_jacobian_condition"] == pytest.approx(1.0)
+            assert attempt["dual_pullback_inf_norm"] == pytest.approx(0.0)
+            assert attempt["chart_kkt_inf_norm"] >= 0.0
+            assert attempt["physical_kkt_inf_norm"] >= 0.0
+            assert attempt["complementarity_inf_norm"] >= 0.0
+            assert attempt["basin_id"] >= 0
+        else:
+            assert attempt["cut_eligible"] is False
+            assert attempt["step6_eligible"] is False
+
+    classification = first["attempt_classification"]
+    assert classification == {
+        "declared": 120,
+        "solver_converged": 120,
+        "solver_failed": 0,
+        "physical_kkt_passed": 120,
+        "step6_eligible": 38,
+    }
+
+
 def test_held2_general_mp_stage_iii_exact_lagrangian_hessian() -> None:
     candidates = ((0.2, 1.0), (0.20000002, 1.0), (0.8, 1.0))
     center = (0.25, 0.2, 1.0, 0.25, 0.21, 1.0, 0.5, 0.795, 1.0)

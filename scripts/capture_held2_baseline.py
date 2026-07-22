@@ -117,6 +117,19 @@ def _runtime_evidence() -> dict[str, Any]:
     )
     stage_i = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_i")
     stage_ii = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
+    # Schema v1 was captured before per-attempt Stage-II observability existed.
+    # Keep its immutable artifact payload comparable while newer tests freeze
+    # the complete deterministic attempt trace independently.
+    stage_ii = {
+        key: value
+        for key, value in stage_ii.items()
+        if key
+        not in {
+            "attempt_classification",
+            "attempt_trace",
+            "historical_dual_pullback_fixture_status",
+        }
+    }
     candidates = ((0.2, 1.0), (0.20000002, 1.0), (0.8, 1.0))
     stage_iii = _equilibrium._held2_adapter(
         CHARGES,
