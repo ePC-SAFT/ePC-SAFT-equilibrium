@@ -143,6 +143,45 @@ declared-search accounting and still do not prove globality.
 Missing or unavailable evidence remains `not_adjudicated`; it must not be
 converted into a fake numerical value, failure, or success.
 
+## HELD2 numerical tolerance contract
+
+HELD2 uses the named contract in `cpp/src/held2_tolerances.hpp`. A tolerance
+belongs to one mathematical quantity and one evidence owner; it is not a
+general-purpose accuracy knob. When a material scale exists, the gate is
+
+```text
+abs(residual) <= atol + rtol * scale
+```
+
+and diagnostics retain the raw residual, scale, both tolerances, the evaluated
+threshold, predicate result, category, and failure meaning. Exact-boundary
+semantics are defined by each named relation. Optimizer targets are requests
+to the solver and never substitute for scientific acceptance.
+
+| Owner | Named quantities | Contract |
+|---|---|---|
+| Representation | chart contact, composition sum, scaled charge, reconstructed ion | `1e-9` absolute |
+| Representation | bound activity | `1e-8` absolute |
+| Pressure roots | relative pressure, log-volume width, stationary residual, Provider-boundary and fallback duplicate classification | `1e-8`, `1e-9`, `1e-9`, `1e-8`, `1e-8` respectively |
+| Root topology | mechanical margin; stable-objective tie | strict margin `>1e-6`; tie `1e-8 + 1e-9*scale` |
+| Stage I | materially negative reduced TPD | `< -1e-8`; `[-1e-8,1e-8]` is inconclusive |
+| Stage-II LP | primal, dual, complementarity, active-cut diagnostic | `1e-9 + 1e-8*scale`, `1e-9 + 1e-8*scale`, `1e-8`, `1e-7` |
+| Stage-II KKT | primal, dual sign, pullback, stationarity, complementarity | `1e-8`, `1e-9`, `1e-9 + 1e-9*scale`, `1e-7`, `1e-8` |
+| Step 6 | gap; fixed-volume gradient | `1e-8`; `1e-8 + 1e-7*scale` |
+| Candidate identity | numerical duplicate; confidently distinct | `<=1e-7`; either physical composition or log-volume distance `>1e-5` |
+| Stage III | modified/explicit balances, scaled charge, pressure | `1e-8`, `1e-8`, `1e-9`, `1e-8` |
+| Stage III | modified potentials; KKT, dual sign, complementarity, free-energy gap | `1e-8 + 1e-7*scale`, `1e-7`, `1e-9`, `1e-8`, `1e-8` |
+| Phase identity | active, retirement evidence, merge, confidently distinct | `>1e-8`, `>1e-8`, `<=1e-6`, `>1e-4` |
+| Ipopt | target, disabled acceptable target, constraint target | `1e-10`, `1e-9`, `1e-10`; zero bound relaxation |
+
+Candidate distances between `1e-7` and `1e-5`, and phase distances between
+`1e-6` and `1e-4`, are unresolved identity bands and fail closed. Marginal
+roots, unresolved stable-root ordering, and unavailable evidence likewise do
+not become acceptance. Direct invalid user input remains invalid; the
+representation allowances apply only to validated transformations and solver
+iterates. Finite search always retains
+`globality_certificate="not_guaranteed"`.
+
 ## Closed future formulations
 
 ### Ascani counterion-pair equilibrium

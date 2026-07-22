@@ -19,6 +19,7 @@
 #include "held2_stage_i_direct.hpp"
 #include "held2_stage_ii_basin.hpp"
 #include "held2_stage_ii_upper.hpp"
+#include "held2_tolerances.hpp"
 #include "saturation.hpp"
 
 namespace py = pybind11;
@@ -1396,6 +1397,61 @@ py::dict held2_state_evaluation_to_dict(
     return result;
 }
 
+py::dict held2_tolerance_audit_to_dict(
+    const epcsaft_equilibrium::Held2ToleranceAudit& audit
+) {
+    py::dict result;
+    result["name"] = audit.tolerance->name;
+    result["category"] = audit.tolerance->category;
+    result["failure_meaning"] = audit.tolerance->failure_meaning;
+    result["relation"] = epcsaft_equilibrium::held2_tolerance_relation_name(
+        audit.tolerance->relation
+    );
+    result["residual"] = audit.residual;
+    result["scale"] = audit.scale;
+    result["atol"] = audit.tolerance->atol;
+    result["rtol"] = audit.tolerance->rtol;
+    result["threshold"] = audit.threshold;
+    result["passed"] = audit.passed;
+    return result;
+}
+
+py::list held2_tolerance_contract_evidence() {
+    py::list result;
+    for (const epcsaft_equilibrium::Held2Tolerance* tolerance :
+         epcsaft_equilibrium::kHeld2ToleranceContract) {
+        py::dict gate;
+        gate["name"] = tolerance->name;
+        gate["category"] = tolerance->category;
+        gate["failure_meaning"] = tolerance->failure_meaning;
+        gate["relation"] = epcsaft_equilibrium::held2_tolerance_relation_name(
+            tolerance->relation
+        );
+        gate["atol"] = tolerance->atol;
+        gate["rtol"] = tolerance->rtol;
+        result.append(std::move(gate));
+    }
+    return result;
+}
+
+py::dict held2_tolerance_audit_evidence(
+    const std::string& name,
+    double residual,
+    double scale
+) {
+    try {
+        return held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::held2_tolerance_by_name(name),
+                residual,
+                scale
+            )
+        );
+    } catch (const std::invalid_argument& error) {
+        throw py::value_error(error.what());
+    }
+}
+
 py::dict held2_manufactured_search_objective_evidence(
     const std::vector<double>& charges,
     const std::vector<double>& variables,
@@ -1540,7 +1596,16 @@ py::dict held2_stage_ii_chart_coordinate_evidence(
         result["normalized_coordinate"] = coordinate.normalized;
         result["normalized_boundary_contact"] =
             coordinate.normalized_boundary_contact;
-        result["policy"] = "binary64_four_ulp_unit_boundary_v1";
+        result["policy"] = "held2_chart_contact_abs_v2";
+        const double residual = coordinate.raw < 0.0
+            ? coordinate.raw
+            : coordinate.raw > 1.0 ? coordinate.raw - 1.0 : 0.0;
+        result["tolerance_audit"] = held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2ChartContact,
+                residual
+            )
+        );
         return result;
     } catch (const std::invalid_argument& error) {
         throw py::value_error(error.what());
@@ -1634,6 +1699,34 @@ py::dict held2_pressure_envelope_to_dict(
         item["mechanical_class"] = root.mechanical_class;
         item["origin"] = root.origin;
         item["boundary"] = root.boundary;
+        py::list tolerance_audits;
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2RootPressure,
+                root.pressure_residual
+            )
+        ));
+        const double mechanical_margin = std::min(
+            std::abs(root.pressure_derivative_log_volume),
+            std::abs(root.objective_curvature_log_volume)
+        );
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2MechanicalMargin,
+                mechanical_margin
+            )
+        ));
+        const double boundary_distance = std::min(
+            std::abs(root.log_volume - evaluation.lower_log_volume),
+            std::abs(evaluation.upper_log_volume - root.log_volume)
+        );
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2RootBoundary,
+                boundary_distance
+            )
+        ));
+        item["tolerance_audits"] = std::move(tolerance_audits);
         roots.append(std::move(item));
     }
     py::dict result;
@@ -1650,6 +1743,8 @@ py::dict held2_pressure_envelope_to_dict(
     result["boundary_root_count"] = evaluation.boundary_root_count;
     result["objective_tie_count"] = evaluation.objective_tie_count;
     result["deduplicated_root_count"] = evaluation.deduplicated_root_count;
+    result["lower_log_volume"] = evaluation.lower_log_volume;
+    result["upper_log_volume"] = evaluation.upper_log_volume;
     result["scan_points"] = std::move(points);
     result["intervals"] = std::move(intervals);
     result["roots"] = std::move(roots);
@@ -1674,6 +1769,15 @@ py::dict held2_stage_i_reduced_evaluation_to_dict(
     );
     result["root_completeness"] =
         evaluation.pressure_envelope.root_completeness;
+    result["tpd_tolerance_audit"] = py::none();
+    if (std::isfinite(evaluation.tpd)) {
+        result["tpd_tolerance_audit"] = held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2TpdNegativeMargin,
+                evaluation.tpd
+            )
+        );
+    }
     result["pressure_certified"] = false;
     result["mechanical_class"] = py::none();
     result["root_origin"] = py::none();
@@ -1684,7 +1788,11 @@ py::dict held2_stage_i_reduced_evaluation_to_dict(
             < evaluation.pressure_envelope.roots.size()) {
         const epcsaft_equilibrium::Held2PressureRoot& root =
             evaluation.pressure_envelope.roots[static_cast<std::size_t>(selected)];
-        result["pressure_certified"] = std::abs(root.pressure_residual) <= 1.0e-8;
+        result["pressure_certified"] =
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2RootPressure,
+                root.pressure_residual
+            ).passed;
         result["mechanical_class"] = root.mechanical_class;
         result["root_origin"] = root.origin;
         result["selected_root_log_volume"] = root.log_volume;
@@ -2369,7 +2477,40 @@ py::dict held2_stage_ii_to_dict(
         item["upper_primal_feasible"] = bound.upper_primal_feasible;
         item["upper_dual_feasible"] = bound.upper_dual_feasible;
         item["upper_primal_residual_inf"] = bound.upper_primal_residual_inf;
+        item["upper_primal_scale"] = bound.upper_primal_scale;
         item["upper_dual_residual_inf"] = bound.upper_dual_residual_inf;
+        item["upper_dual_scale"] = bound.upper_dual_scale;
+        item["upper_complementarity_inf"] = bound.upper_complementarity_inf;
+        py::list tolerance_audits;
+        if (std::isfinite(bound.upper_primal_residual_inf)
+            && std::isfinite(bound.upper_primal_scale)) {
+            tolerance_audits.append(held2_tolerance_audit_to_dict(
+                epcsaft_equilibrium::audit_held2_tolerance(
+                    epcsaft_equilibrium::kHeld2LpPrimal,
+                    bound.upper_primal_residual_inf,
+                    bound.upper_primal_scale
+                )
+            ));
+        }
+        if (std::isfinite(bound.upper_dual_residual_inf)
+            && std::isfinite(bound.upper_dual_scale)) {
+            tolerance_audits.append(held2_tolerance_audit_to_dict(
+                epcsaft_equilibrium::audit_held2_tolerance(
+                    epcsaft_equilibrium::kHeld2LpDual,
+                    bound.upper_dual_residual_inf,
+                    bound.upper_dual_scale
+                )
+            ));
+        }
+        if (std::isfinite(bound.upper_complementarity_inf)) {
+            tolerance_audits.append(held2_tolerance_audit_to_dict(
+                epcsaft_equilibrium::audit_held2_tolerance(
+                    epcsaft_equilibrium::kHeld2LpComplementarity,
+                    bound.upper_complementarity_inf
+                )
+            ));
+        }
+        item["tolerance_audits"] = std::move(tolerance_audits);
         item["cut_slacks"] = bound.cut_slacks;
         item["cut_duals"] = bound.cut_duals;
         item["active_cut_ids"] = bound.active_cut_ids;
@@ -2404,6 +2545,10 @@ py::dict held2_stage_ii_to_dict(
         item["upper_bound_multipliers"] = attempt.upper_bound_multipliers;
         item["chart_jacobian_condition"] = attempt.chart_jacobian_condition;
         item["dual_pullback_inf_norm"] = attempt.dual_pullback_inf_norm;
+        item["dual_pullback_scale"] = attempt.dual_pullback_scale;
+        item["primal_inf_norm"] = attempt.primal_inf_norm;
+        item["dual_sign_violation_inf_norm"] =
+            attempt.dual_sign_violation_inf_norm;
         item["chart_kkt_inf_norm"] = attempt.chart_kkt_inf_norm;
         item["physical_kkt_inf_norm"] = attempt.physical_kkt_inf_norm;
         item["complementarity_inf_norm"] = attempt.complementarity_inf_norm;
@@ -2412,6 +2557,91 @@ py::dict held2_stage_ii_to_dict(
         item["physical_kkt_passed"] = attempt.physical_kkt_passed;
         item["cut_eligible"] = attempt.cut_eligible;
         item["step6_eligible"] = attempt.step6_eligible;
+        item["step6_gap"] = attempt.step6_gap;
+        item["fixed_volume_gradient_inf_norm"] =
+            attempt.fixed_volume_gradient_inf_norm;
+        item["fixed_volume_gradient_scale"] =
+            attempt.fixed_volume_gradient_scale;
+        py::list tolerance_audits;
+        const bool certificate_evaluated =
+            attempt.provider_status == "provider_exact"
+            || attempt.provider_status == "manufactured_oracle";
+        if (certificate_evaluated
+            && std::isfinite(attempt.pressure_residual)) {
+            tolerance_audits.append(held2_tolerance_audit_to_dict(
+                epcsaft_equilibrium::audit_held2_tolerance(
+                    epcsaft_equilibrium::kHeld2RootPressure,
+                    attempt.pressure_residual
+                )
+            ));
+        }
+        if (certificate_evaluated
+            && std::isfinite(attempt.primal_inf_norm)) {
+            tolerance_audits.append(held2_tolerance_audit_to_dict(
+                epcsaft_equilibrium::audit_held2_tolerance(
+                    epcsaft_equilibrium::kHeld2Stage2Primal,
+                    attempt.primal_inf_norm
+                )
+            ));
+        }
+        if (certificate_evaluated
+            && std::isfinite(attempt.dual_sign_violation_inf_norm)) {
+            tolerance_audits.append(held2_tolerance_audit_to_dict(
+                epcsaft_equilibrium::audit_held2_tolerance(
+                    epcsaft_equilibrium::kHeld2Stage2DualSign,
+                    attempt.dual_sign_violation_inf_norm
+                )
+            ));
+        }
+        if (certificate_evaluated
+            && std::isfinite(attempt.dual_pullback_inf_norm)
+            && std::isfinite(attempt.dual_pullback_scale)) {
+            tolerance_audits.append(held2_tolerance_audit_to_dict(
+                epcsaft_equilibrium::audit_held2_tolerance(
+                    epcsaft_equilibrium::kHeld2Stage2DualPullback,
+                    attempt.dual_pullback_inf_norm,
+                    attempt.dual_pullback_scale
+                )
+            ));
+        }
+        if (certificate_evaluated
+            && std::isfinite(attempt.physical_kkt_inf_norm)) {
+            tolerance_audits.append(held2_tolerance_audit_to_dict(
+                epcsaft_equilibrium::audit_held2_tolerance(
+                    epcsaft_equilibrium::kHeld2Stage2Stationarity,
+                    attempt.physical_kkt_inf_norm
+                )
+            ));
+        }
+        if (certificate_evaluated
+            && std::isfinite(attempt.complementarity_inf_norm)) {
+            tolerance_audits.append(held2_tolerance_audit_to_dict(
+                epcsaft_equilibrium::audit_held2_tolerance(
+                    epcsaft_equilibrium::kHeld2Stage2Complementarity,
+                    attempt.complementarity_inf_norm
+                )
+            ));
+        }
+        if (certificate_evaluated && std::isfinite(attempt.step6_gap)) {
+            tolerance_audits.append(held2_tolerance_audit_to_dict(
+                epcsaft_equilibrium::audit_held2_tolerance(
+                    epcsaft_equilibrium::kHeld2Step6Gap,
+                    attempt.step6_gap
+                )
+            ));
+        }
+        if (certificate_evaluated
+            && std::isfinite(attempt.fixed_volume_gradient_inf_norm)
+            && std::isfinite(attempt.fixed_volume_gradient_scale)) {
+            tolerance_audits.append(held2_tolerance_audit_to_dict(
+                epcsaft_equilibrium::audit_held2_tolerance(
+                    epcsaft_equilibrium::kHeld2Step6Gradient,
+                    attempt.fixed_volume_gradient_inf_norm,
+                    attempt.fixed_volume_gradient_scale
+                )
+            ));
+        }
+        item["tolerance_audits"] = std::move(tolerance_audits);
         item["basin_id"] = attempt.basin_id;
         item["same_major_upper_bound"] = attempt.same_major_upper_bound;
         item["same_major_multipliers"] = attempt.same_major_multipliers;
@@ -2470,6 +2700,8 @@ py::dict held2_stage_ii_to_dict(
         evaluation.duplicate_representative_count;
     result["duplicate_terminal_count"] = evaluation.duplicate_terminal_count;
     result["distinct_basin_count"] = evaluation.distinct_basin_count;
+    result["unresolved_candidate_identity_count"] =
+        evaluation.unresolved_candidate_identity_count;
     result["local_attempt_cap_per_major"] =
         evaluation.local_attempt_cap_per_major;
     result["local_attempts_truncated"] = evaluation.local_attempts_truncated;
@@ -2539,11 +2771,14 @@ py::dict held2_stage_iii_to_dict(
     result["modified_balance_inf_norm"] = evaluation.modified_balance_inf_norm;
     result["ordinary_balance_inf_norm"] = evaluation.ordinary_balance_inf_norm;
     result["phase_charge_inf_norm"] = evaluation.phase_charge_inf_norm;
+    result["phase_charge_scale"] = evaluation.phase_charge_scale;
     result["pressure_stationarity_inf_norm"] =
         evaluation.pressure_stationarity_inf_norm;
     result["modified_potential_mixed_gap"] =
         evaluation.modified_potential_mixed_gap;
+    result["modified_potential_scale"] = evaluation.modified_potential_scale;
     result["minimum_phase_distance"] = evaluation.minimum_phase_distance;
+    result["phase_identity_status"] = evaluation.phase_identity_status;
     result["kkt_stationarity_inf_norm"] =
         evaluation.kkt_stationarity_inf_norm;
     result["dual_sign_violation_inf_norm"] =
@@ -2552,6 +2787,89 @@ py::dict held2_stage_iii_to_dict(
         evaluation.bound_complementarity_inf_norm;
     result["minimum_phase_fraction"] = evaluation.minimum_phase_fraction;
     result["enumeration_objective_gap"] = evaluation.enumeration_objective_gap;
+    result["kkt_evidence_available"] = evaluation.kkt_evidence_available;
+    result["physical_evidence_available"] = evaluation.physical_evidence_available;
+    result["phase_identity_evidence_available"] =
+        evaluation.phase_identity_evidence_available;
+    result["free_energy_gap_available"] = evaluation.free_energy_gap_available;
+    py::list tolerance_audits;
+    if (evaluation.physical_evidence_available) {
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2Stage3ModifiedBalance,
+                evaluation.modified_balance_inf_norm
+            )
+        ));
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2Stage3ExplicitBalance,
+                evaluation.ordinary_balance_inf_norm
+            )
+        ));
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2Stage3Charge,
+                evaluation.phase_charge_inf_norm,
+                evaluation.phase_charge_scale
+            )
+        ));
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2Stage3Pressure,
+                evaluation.pressure_stationarity_inf_norm
+            )
+        ));
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2Stage3Potential,
+                evaluation.modified_potential_mixed_gap,
+                evaluation.modified_potential_scale
+            )
+        ));
+    }
+    if (evaluation.kkt_evidence_available) {
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2Stage3Stationarity,
+                evaluation.kkt_stationarity_inf_norm
+            )
+        ));
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2Stage3DualSign,
+                evaluation.dual_sign_violation_inf_norm
+            )
+        ));
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2Stage3Complementarity,
+                evaluation.bound_complementarity_inf_norm
+            )
+        ));
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2PhaseActivity,
+                evaluation.minimum_phase_fraction
+            )
+        ));
+    }
+    if (evaluation.phase_identity_evidence_available) {
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2PhaseDistinct,
+                evaluation.minimum_phase_distance
+            )
+        ));
+    }
+    if (evaluation.free_energy_gap_available) {
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2Stage3FreeEnergyGap,
+                evaluation.enumeration_objective_gap
+            )
+        ));
+    }
+    result["tolerance_audits"] = std::move(tolerance_audits);
     result["phases"] = std::move(phases);
     result["lifecycle"] = std::move(lifecycle);
     result["globality_certificate"] = "not_guaranteed";
@@ -2727,7 +3045,40 @@ py::dict held2_stage_ii_upper_lp(
     result["cut_duals"] = evaluation.cut_duals;
     result["active_cut_ids"] = evaluation.active_cut_ids;
     result["primal_residual_inf"] = evaluation.primal_residual_inf;
+    result["primal_scale"] = evaluation.primal_scale;
     result["dual_residual_inf"] = evaluation.dual_residual_inf;
+    result["dual_scale"] = evaluation.dual_scale;
+    result["complementarity_inf"] = evaluation.complementarity_inf;
+    py::list tolerance_audits;
+    if (std::isfinite(evaluation.primal_residual_inf)
+        && std::isfinite(evaluation.primal_scale)) {
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2LpPrimal,
+                evaluation.primal_residual_inf,
+                evaluation.primal_scale
+            )
+        ));
+    }
+    if (std::isfinite(evaluation.dual_residual_inf)
+        && std::isfinite(evaluation.dual_scale)) {
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2LpDual,
+                evaluation.dual_residual_inf,
+                evaluation.dual_scale
+            )
+        ));
+    }
+    if (std::isfinite(evaluation.complementarity_inf)) {
+        tolerance_audits.append(held2_tolerance_audit_to_dict(
+            epcsaft_equilibrium::audit_held2_tolerance(
+                epcsaft_equilibrium::kHeld2LpComplementarity,
+                evaluation.complementarity_inf
+            )
+        ));
+    }
+    result["tolerance_audits"] = std::move(tolerance_audits);
     return result;
 }
 
@@ -3002,6 +3353,17 @@ PYBIND11_MODULE(_equilibrium, module) {
         &held2_stage_ii_chart_coordinate_evidence,
         py::arg("raw_coordinate"),
         py::arg("stage")
+    );
+    module.def(
+        "_held2_tolerance_contract",
+        &held2_tolerance_contract_evidence
+    );
+    module.def(
+        "_held2_tolerance_audit",
+        &held2_tolerance_audit_evidence,
+        py::arg("name"),
+        py::arg("residual"),
+        py::arg("scale") = 0.0
     );
     module.def(
         "_held2_adapter",

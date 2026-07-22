@@ -40,9 +40,9 @@ SHA-256 and links them into the private extension.
 **Cutover:** Stage-I/II private routing has completed its guarded cutover. Public electrolyte dispatch still requires every remaining checkpoint and exact artifact gate.
 **Replaced Path:** The fixed-start Stage-I Ipopt route, analytic Stage-II upper envelope, pre-exploration Stage-II controller, and their legacy baseline fixture are removed. Focused manufactured formulation oracles remain.
 **Evidence:** Manufactured root and basin topologies, derivative parity, LP oracle parity, complete search traces, Stage-III certificates, and one immutable installed Khudaida tracer.
-**Acceptance Proof:** The target owner map is visible in diagnostics, all hard gates pass without tolerance changes, displaced production paths are unreachable, and finite-search globality remains `not_guaranteed`.
+**Acceptance Proof:** The target owner map is visible in diagnostics, all hard gates pass under the categorized contract in `docs/phase-equilibrium.md`, displaced production paths are unreachable, and finite-search globality remains `not_guaranteed`.
 **Stop Criteria:** Stop on missing Provider correction, contradictory pre-change evidence, failed root or certificate accounting, unauthorized runtime scope, or inability to reproduce the frozen regression.
-**Avoid:** Do not use SLSQP as a policy substitute, copy EOS equations, return fake penalties, hard-code a chemistry, relax tolerances, or publish finite-search globality.
+**Avoid:** Do not use SLSQP as a policy substitute, copy EOS equations, return fake penalties, hard-code a chemistry, make ad hoc deviations from the governed tolerance contract, or publish finite-search globality.
 **Risk:** Solver migration can hide certificate regressions or leave dependency status stale unless each cutover preserves the frozen evaluator, diagnostics, and documentation.
 
 ## Implementation Boundaries
@@ -211,7 +211,8 @@ Keep the current deterministic Ipopt multistart strategy as a named regression
 oracle during migration. Do not silently substitute the new strategy under an
 old resource-profile label. The bounded implementation assignment must freeze
 the DIRECT-L evaluation budget and completion contract from evidence; this
-plan does not invent new numerical tolerances or resource values.
+plan consumes the categorized numerical tolerance contract and does not invent
+new resource values or case-specific gates.
 
 ## 5. Stage II Step 4: HiGHS upper LP
 
@@ -280,7 +281,7 @@ retained basin representative using:
 - the exact transformed objective gradient;
 - the complete exact transformed Lagrangian Hessian, including chart-curvature
   terms;
-- unchanged variable bounds and physical tolerances; and
+- unchanged variable bounds and the governed categorized physical tolerances; and
 - retained terminal bound and constraint multipliers.
 
 Every terminal then receives the independent original-coordinate certificate,

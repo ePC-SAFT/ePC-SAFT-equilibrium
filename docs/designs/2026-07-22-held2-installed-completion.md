@@ -40,18 +40,36 @@ set, a real Provider Stage-III solve, physical two-phase equilibrium, or
 predictive agreement with Khudaida. Its root-completeness and globality claims
 remain `not_proven` and `not_guaranteed`, respectively.
 
-The subsequent issue-#27 replay classifies the retained chart failure as
+The subsequent issue-#27 replay classified the retained chart failure as
 solver-bound numerical contact, not a physical-simplex excursion. The earliest
 rejected trial was an `eval_f` request at `1.0000000000000002`, was not an
 accepted iterate, and exceeded the unit bound by one binary64 ULP. Continuing
 the same replay exposed only the second and fourth representable values above
 `1.0`; the maximum excursion was `8.881784197001252e-16`. Normalizing those
-four explicitly enumerated binary64 contacts to the exact unit boundary leaves
-the mapped physical state unchanged, removes the callback failure, and lets
-Ipopt terminate successfully. The fifth representable value and every larger
-or non-finite excursion remain invalid. The one-attempt controller is still
-Stage-II indeterminate because that diagnostic budget does not produce an
-eligible candidate set.
+contacts to the exact unit boundary left the mapped physical state unchanged,
+removed the callback failure, and let Ipopt terminate successfully. Issue #32
+supersedes that ULP-count runtime rule with the canonical named
+`chart_contact=1e-9` representation gate. Non-finite or materially larger
+excursions remain invalid. The one-attempt controller is still Stage-II
+indeterminate because that diagnostic budget does not produce an eligible
+candidate set.
+
+The issue-#32 exact-wheel replay records a Stage-II dual-pullback residual of
+`1.2304377718370303e-10`, original-coordinate stationarity of
+`1.862645149230957e-9`, complementarity of `9.090909078162636e-12`, and
+relative pressure residual of `-1.3307506742421539e-9`. Each independently
+passes its named gate. The same terminal remains ineligible under Step 6: its
+same-major gap is `132.54249236307797` and its fixed-volume gradient residual
+is `3853783.6445812103`. The categorized reconstruction allowance therefore
+does not convert this local KKT state into a candidate phase.
+
+An offline `0.1x/1x/10x` sensitivity replay of the same immutable raw evidence
+certifies `1/3/3` pressure roots and `0/0/0` Stage-II candidates. The tighter
+`0.1x` profile changes pressure-root certification because two root residuals
+lie between `1e-9` and `1e-8`; nominal and `10x` preserve the detected
+stable--unstable--stable topology. No profile changes the accepted candidate
+or phase count. This sensitivity result is diagnostic evidence, not a runtime
+tuning mechanism.
 
 ## Completion invariants
 
@@ -59,8 +77,10 @@ The remaining implementation and evidence must preserve all of the following:
 
 1. No ePC-SAFT equation, density implementation, or model parameter is copied
    into Equilibrium.
-2. The pressure certificate remains `1e-8` relative, physical Stage-II KKT
-   tolerance remains `1e-7`, and complementarity remains `1e-8`.
+2. Every numerical and physical gate uses the categorized contract indexed in
+   `docs/phase-equilibrium.md`; no leaf may tune or substitute those values.
+   Pressure remains `1e-8` relative, Stage-II stationarity remains `1e-7`,
+   complementarity remains `1e-8`, and dual pullback is independently scaled.
 3. Fixed-physical-volume Step-6 derivatives and same-major `UBD/lambda` data
    remain authoritative.
 4. A chart, Provider, root, solver, resource, certificate, or trace-refinement
@@ -94,14 +114,15 @@ begins. Its solver/version, primal and dual feasibility, residuals, cut slacks,
 cut duals, active cuts, upper bound, and multipliers must survive any later
 lower-search failure or resource exit.
 
-The implemented coordinate policy is
-`binary64_four_ulp_unit_boundary_v1`. It is a representational rule expressed
-by repeated `nextafter` calls, not a physical tolerance and not an Ipopt bound
-relaxation. Ordered local evidence retains raw coordinates, callback owner,
-trial-versus-accepted status, maximum violation, mapped physical coordinates,
-and the last valid physical state. Problem-(64) evidence is committed to the
-major history before Problem (65) starts and marks its lower value unavailable
-until a certifiable lower terminal exists.
+The implemented coordinate policy is `held2_chart_contact_abs_v2`. It applies
+only the named `1e-9` representation allowance to a finite solver iterate next
+to the closed unit chart; it is not an Ipopt bound relaxation and it cannot
+make an invalid direct user composition valid. Ordered local evidence retains
+the tolerance audit, raw coordinates, callback owner, trial-versus-accepted
+status, maximum violation, mapped physical coordinates, and the last valid
+physical state. Problem-(64) evidence is committed to the major history before
+Problem (65) starts and marks its lower value unavailable until a certifiable
+lower terminal exists.
 
 ## Full installed Stage-II candidate contract
 

@@ -1,4 +1,5 @@
 #include "held2_stage_ii_basin.hpp"
+#include "held2_tolerances.hpp"
 
 #include <nlopt.hpp>
 
@@ -10,9 +11,6 @@
 
 namespace epcsaft_equilibrium {
 namespace {
-
-constexpr double kCompositionDeduplicationTolerance = 1.0e-7;
-constexpr double kLogVolumeDeduplicationTolerance = 1.0e-7;
 
 std::string nlopt_version_string() {
     int major = 0;
@@ -42,7 +40,7 @@ bool same_composition(
     const std::vector<double>& right
 ) {
     return maximum_abs_difference(left, right)
-        <= kCompositionDeduplicationTolerance;
+        <= kHeld2BasinDuplicateComposition.atol;
 }
 
 bool same_physical_start(
@@ -54,7 +52,7 @@ bool same_physical_start(
                right.independent_modified_fractions
            )
         && std::abs(left.log_volume - right.log_volume)
-            <= kLogVolumeDeduplicationTolerance;
+            <= kHeld2BasinDuplicateLogVolume.atol;
 }
 
 Held2StageIIBasinEvaluation evaluate_fail_closed(

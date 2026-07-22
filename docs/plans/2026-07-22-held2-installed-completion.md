@@ -13,7 +13,7 @@
 **Evidence:** Exact-wheel hashes, deterministic reproduction, complete Stage-II and Stage-III traces, derivative checks, analytic/manufactured oracles, physical certificates, and gated Khudaida comparison.
 **Acceptance Proof:** Two fresh non-editable installations reproduce a physically accepted private result or the same explicitly bounded scientific outcome, with every resource and certificate accounted for and no predictive comparison before physical acceptance.
 **Stop Criteria:** Stop on missing exact artifacts, unexplained chart excursions, failed derivative parity, incomplete resource accounting, unavailable free-energy-gap evidence, Provider contract conflict, or any need for new authority.
-**Avoid:** Do not relax tolerances, clamp meaningful bound violations, copy Provider equations, hard-code Khudaida, treat Ipopt as global, hide failures behind penalties, mutate Validation, or claim capability admission.
+**Avoid:** Do not tune outside the governed categorized tolerance contract, clamp meaningful bound violations, copy Provider equations, hard-code Khudaida, treat Ipopt as global, hide failures behind penalties, mutate Validation, or claim capability admission.
 **Risk:** The exact Provider topology may not yield a certifiable two-liquid candidate even after numerical defects are removed; that outcome must remain a model/topology finding rather than be tuned away.
 
 ## Implementation Boundaries
@@ -58,7 +58,9 @@ claimed.
 
 - Reproduce the retained Sobol start and make the earliest chart-boundary divergence visible before changing solver behavior.
 - Preserve a successful upper-LP record when the lower search fails, truncates, or returns indeterminate.
-- Retire the ambiguous callback failure only through a tested coordinate policy; do not redirect it through a penalty or tolerance relaxation.
+- Retire the ambiguous callback failure only through the tested named
+  chart-contact policy; do not redirect it through a penalty or an ad hoc
+  tolerance change.
 
 Implement evaluation-order diagnostics around the Stage-II Ipopt adapter. Record
 trial versus accepted iterates, raw chart coordinates, bound violation, mapping

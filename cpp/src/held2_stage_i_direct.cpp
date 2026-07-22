@@ -1,4 +1,5 @@
 #include "held2_stage_i_direct.hpp"
+#include "held2_tolerances.hpp"
 
 #include <nlopt.hpp>
 
@@ -8,8 +9,6 @@
 
 namespace epcsaft_equilibrium {
 namespace {
-
-constexpr double kNegativeTpdThreshold = -1.0e-8;
 
 std::string nlopt_version_string() {
     int major = 0;
@@ -61,7 +60,7 @@ double direct_objective(
         context.result->minimum_tpd,
         retained.tpd
     );
-    if (retained.tpd < kNegativeTpdThreshold) {
+    if (audit_held2_tolerance(kHeld2TpdNegativeMargin, retained.tpd).passed) {
         context.result->negative_witness_index = evaluation_index;
         context.result->termination_reason = "certified_negative_tpd";
         context.stop_requested = true;
@@ -123,7 +122,7 @@ Held2StageIDirectResult solve_held2_stage_i_direct(
 ) {
     if (composition_dimension == 0 || evaluation_budget < 1
         || !std::isfinite(negative_tpd_threshold)
-        || negative_tpd_threshold != kNegativeTpdThreshold) {
+        || negative_tpd_threshold != -kHeld2TpdNegativeMargin.atol) {
         throw std::invalid_argument("HELD2 DIRECT-L search policy is invalid");
     }
     Held2StageIDirectResult result;
@@ -256,7 +255,7 @@ Held2StageIDirectResult solve_held2_manufactured_stage_i_direct(
     return solve_held2_stage_i_direct(
         coordinates.independent_indices.size(),
         evaluation_budget,
-        kNegativeTpdThreshold,
+        -kHeld2TpdNegativeMargin.atol,
         evaluator
     );
 }

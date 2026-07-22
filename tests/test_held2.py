@@ -606,6 +606,44 @@ def test_held2_integrated_controller_is_fail_closed_at_declared_stage_ii_budget(
     assert upper["cut_slacks"] == pytest.approx([0.0, 0.0, 0.10764612291119935, 0.0, 0.0])
     assert upper["cut_duals"] == pytest.approx([1.0, 0.0, 0.0, 0.0, 0.0])
     assert upper["active_cut_ids"] == [0, 1, 3, 4]
+    audits = {audit["name"]: audit for audit in attempt["tolerance_audits"]}
+    assert attempt["dual_pullback_inf_norm"] == pytest.approx(1.23e-10, rel=0.01)
+    assert audits["stage2_dual_pullback"]["passed"] is True
+    assert audits["root_pressure"]["passed"] is True
+    assert audits["stage2_primal"]["passed"] is True
+    assert audits["stage2_dual_sign"]["passed"] is True
+    assert audits["stage2_stationarity"]["passed"] is True
+    assert audits["stage2_complementarity"]["passed"] is True
+    assert attempt["physical_kkt_passed"] is True
+    assert audits["step6_gap"]["passed"] is False
+    assert audits["step6_gradient"]["passed"] is False
+    assert attempt["step6_eligible"] is False
+
+    reference_roots = result["reference_pressure_envelope"]["roots"]
+    sensitivity = {}
+    for multiplier in (0.1, 1.0, 10.0):
+        certified_root_count = sum(
+            abs(root["pressure_residual"]) <= multiplier * 1.0e-8
+            and abs(root["pressure_derivative_log_volume"]) > multiplier * 1.0e-6
+            and abs(root["objective_curvature_log_volume"]) > multiplier * 1.0e-6
+            for root in reference_roots
+        )
+        candidate_count = int(
+            abs(attempt["step6_gap"]) <= multiplier * 1.0e-8
+            and attempt["fixed_volume_gradient_inf_norm"]
+            <= multiplier
+            * (
+                1.0e-8
+                + 1.0e-7 * attempt["fixed_volume_gradient_scale"]
+            )
+        )
+        sensitivity[multiplier] = (certified_root_count, candidate_count)
+
+    assert sensitivity == {
+        0.1: (1, 0),
+        1.0: (3, 0),
+        10.0: (3, 0),
+    }
     assert result["stage_iii"] is None
     assert result["predictive_comparison_status"] == ("not_allowed_before_physical_acceptance")
     assert result["globality_certificate"] == "not_guaranteed"
@@ -681,16 +719,185 @@ def test_held2_solver_neutral_search_objective_fails_closed() -> None:
         )
 
 
+def test_held2_tolerance_contract_has_one_named_scale_per_gate() -> None:
+    contract = {
+        gate["name"]: gate for gate in _equilibrium._held2_tolerance_contract()
+    }
+
+    expected = {
+        "chart_contact": ("representation", 1.0e-9, 0.0),
+        "composition_sum": ("representation", 1.0e-9, 0.0),
+        "charge_balance": ("representation", 1.0e-9, 0.0),
+        "reconstructed_ion": ("representation", 1.0e-9, 0.0),
+        "bound_activity": ("representation", 1.0e-8, 0.0),
+        "root_pressure": ("root", 1.0e-8, 0.0),
+        "root_log_volume_width": ("root", 1.0e-9, 0.0),
+        "root_stationary": ("root", 1.0e-9, 0.0),
+        "root_boundary": ("root", 1.0e-8, 0.0),
+        "root_duplicate": ("root", 1.0e-8, 0.0),
+        "mechanical_margin": ("topology", 1.0e-6, 0.0),
+        "stable_objective_tie": ("topology", 1.0e-8, 1.0e-9),
+        "tpd_negative_margin": ("stage_i", 1.0e-8, 0.0),
+        "lp_primal": ("stage_ii_lp", 1.0e-9, 1.0e-8),
+        "lp_dual": ("stage_ii_lp", 1.0e-9, 1.0e-8),
+        "lp_complementarity": ("stage_ii_lp", 1.0e-8, 0.0),
+        "lp_active_cut": ("stage_ii_lp_diagnostic", 1.0e-7, 0.0),
+        "stage2_primal": ("stage_ii_kkt", 1.0e-8, 0.0),
+        "stage2_dual_sign": ("stage_ii_kkt", 1.0e-9, 0.0),
+        "stage2_dual_pullback": ("stage_ii_kkt", 1.0e-9, 1.0e-9),
+        "stage2_stationarity": ("stage_ii_kkt", 1.0e-7, 0.0),
+        "stage2_complementarity": ("stage_ii_kkt", 1.0e-8, 0.0),
+        "step6_gap": ("stage_ii_step6", 1.0e-8, 0.0),
+        "step6_gradient": ("stage_ii_step6", 1.0e-8, 1.0e-7),
+        "basin_duplicate_composition": ("numerical_identity", 1.0e-7, 0.0),
+        "basin_duplicate_log_volume": ("numerical_identity", 1.0e-7, 0.0),
+        "candidate_distinct_composition": ("phase_identity", 1.0e-5, 0.0),
+        "candidate_distinct_log_volume": ("phase_identity", 1.0e-5, 0.0),
+        "stage3_modified_balance": ("stage_iii_physical", 1.0e-8, 0.0),
+        "stage3_explicit_balance": ("stage_iii_physical", 1.0e-8, 0.0),
+        "stage3_charge": ("stage_iii_physical", 1.0e-9, 0.0),
+        "stage3_pressure": ("stage_iii_physical", 1.0e-8, 0.0),
+        "stage3_potential": ("stage_iii_physical", 1.0e-8, 1.0e-7),
+        "stage3_stationarity": ("stage_iii_kkt", 1.0e-7, 0.0),
+        "stage3_dual_sign": ("stage_iii_kkt", 1.0e-9, 0.0),
+        "stage3_complementarity": ("stage_iii_kkt", 1.0e-8, 0.0),
+        "stage3_free_energy_gap": ("stage_iii_physical", 1.0e-8, 0.0),
+        "phase_activity": ("phase_identity", 1.0e-8, 0.0),
+        "phase_retirement_margin": ("stage_iii_kkt", 1.0e-8, 0.0),
+        "phase_merge": ("phase_identity", 1.0e-6, 0.0),
+        "phase_distinct": ("phase_identity", 1.0e-4, 0.0),
+        "ipopt_target": ("solver", 1.0e-10, 0.0),
+        "ipopt_acceptable": ("solver", 1.0e-9, 0.0),
+        "ipopt_constraint": ("solver", 1.0e-10, 0.0),
+    }
+
+    assert {
+        name: (gate["category"], gate["atol"], gate["rtol"])
+        for name, gate in contract.items()
+    } == expected
+    assert all(gate["failure_meaning"] for gate in contract.values())
+    assert all(gate["relation"] for gate in contract.values())
+
+
+@pytest.mark.parametrize("scale", [0.1, 1.0, 10.0])
+def test_held2_scaled_tolerance_audit_reports_boundary_semantics(scale: float) -> None:
+    threshold = 1.0e-9 + 1.0e-9 * scale
+
+    on_gate = _equilibrium._held2_tolerance_audit(
+        "stage2_dual_pullback", threshold, scale
+    )
+    outside = _equilibrium._held2_tolerance_audit(
+        "stage2_dual_pullback", math.nextafter(threshold, math.inf), scale
+    )
+
+    assert on_gate == {
+        "name": "stage2_dual_pullback",
+        "category": "stage_ii_kkt",
+        "failure_meaning": "physical dual reconstruction unresolved",
+        "relation": "abs_at_most",
+        "residual": threshold,
+        "scale": scale,
+        "atol": 1.0e-9,
+        "rtol": 1.0e-9,
+        "threshold": threshold,
+        "passed": True,
+    }
+    assert outside["passed"] is False
+
+    zero_multiplier = _equilibrium._held2_tolerance_audit(
+        "step6_gradient", 1.0e-8, 0.0
+    )
+    assert zero_multiplier["threshold"] == 1.0e-8
+    assert zero_multiplier["passed"] is True
+
+
+def test_held2_topology_and_identity_gates_are_conservative_at_boundaries() -> None:
+    negative_boundary = _equilibrium._held2_tolerance_audit(
+        "tpd_negative_margin", -1.0e-8, 0.0
+    )
+    negative_beyond = _equilibrium._held2_tolerance_audit(
+        "tpd_negative_margin", math.nextafter(-1.0e-8, -math.inf), 0.0
+    )
+    mechanical_boundary = _equilibrium._held2_tolerance_audit(
+        "mechanical_margin", 1.0e-6, 0.0
+    )
+    mechanical_beyond = _equilibrium._held2_tolerance_audit(
+        "mechanical_margin", math.nextafter(1.0e-6, math.inf), 0.0
+    )
+    merge_boundary = _equilibrium._held2_tolerance_audit(
+        "phase_merge", 1.0e-6, 0.0
+    )
+    distinct_boundary = _equilibrium._held2_tolerance_audit(
+        "phase_distinct", 1.0e-4, 0.0
+    )
+    distinct_beyond = _equilibrium._held2_tolerance_audit(
+        "phase_distinct", math.nextafter(1.0e-4, math.inf), 0.0
+    )
+
+    assert negative_boundary["passed"] is False
+    assert negative_beyond["passed"] is True
+    assert mechanical_boundary["passed"] is False
+    assert mechanical_beyond["passed"] is True
+    assert merge_boundary["passed"] is True
+    assert distinct_boundary["passed"] is False
+    assert distinct_beyond["passed"] is True
+    assert _equilibrium._held2_tolerance_audit(
+        "phase_merge", 5.0e-5, 0.0
+    )["passed"] is False
+    assert _equilibrium._held2_tolerance_audit(
+        "phase_distinct", 5.0e-5, 0.0
+    )["passed"] is False
+
+
+@pytest.mark.parametrize("scale", [0.1, 1.0, 10.0])
+def test_every_held2_tolerance_declares_exact_boundary_semantics(scale: float) -> None:
+    for gate in _equilibrium._held2_tolerance_contract():
+        threshold = gate["atol"] + gate["rtol"] * scale
+        relation = gate["relation"]
+
+        if relation in {"abs_at_most", "solver_target"}:
+            on_gate = threshold
+            inside = math.nextafter(threshold, 0.0)
+            outside = math.nextafter(threshold, math.inf)
+            expected = (True, True, False)
+        elif relation == "greater_than":
+            on_gate = threshold
+            inside = math.nextafter(threshold, math.inf)
+            outside = math.nextafter(threshold, 0.0)
+            expected = (False, True, False)
+        elif relation == "less_than_negative":
+            on_gate = -threshold
+            inside = math.nextafter(-threshold, -math.inf)
+            outside = math.nextafter(-threshold, math.inf)
+            expected = (False, True, False)
+        elif relation == "at_least":
+            on_gate = threshold
+            inside = math.nextafter(threshold, math.inf)
+            outside = math.nextafter(threshold, 0.0)
+            expected = (True, True, False)
+        else:  # pragma: no cover - the contract test reports the unknown relation
+            raise AssertionError(f"unknown tolerance relation {relation!r}")
+
+        observed = tuple(
+            _equilibrium._held2_tolerance_audit(gate["name"], residual, scale)[
+                "passed"
+            ]
+            for residual in (on_gate, inside, outside)
+        )
+        assert observed == expected, gate["name"]
+
+
 @pytest.mark.parametrize(
     ("raw", "expected", "normalized"),
     [
         (0.25, 0.25, False),
         (math.nextafter(0.0, -math.inf), 0.0, True),
         (math.nextafter(1.0, math.inf), 1.0, True),
-        (1.0000000000000009, 1.0, True),
+        (-1.0e-9, 0.0, True),
+        (math.nextafter(1.0 + 1.0e-9, -math.inf), 1.0, True),
     ],
 )
-def test_held2_stage_ii_chart_policy_normalizes_only_adjacent_binary64_contact(
+def test_held2_stage_ii_chart_policy_uses_named_representation_gate(
     raw: float,
     expected: float,
     normalized: bool,
@@ -700,16 +907,16 @@ def test_held2_stage_ii_chart_policy_normalizes_only_adjacent_binary64_contact(
     assert evidence["raw_coordinate"] == raw
     assert evidence["normalized_coordinate"] == expected
     assert evidence["normalized_boundary_contact"] is normalized
-    assert evidence["policy"] == "binary64_four_ulp_unit_boundary_v1"
+    assert evidence["policy"] == "held2_chart_contact_abs_v2"
+    assert evidence["tolerance_audit"]["name"] == "chart_contact"
+    assert evidence["tolerance_audit"]["passed"] is True
 
 
 @pytest.mark.parametrize(
     "raw",
     [
-        -2.5e-323,
-        1.000000000000001,
-        -1.0e-12,
-        1.0 + 1.0e-12,
+        math.nextafter(-1.0e-9, -math.inf),
+        math.nextafter(1.0 + 1.0e-9, math.inf),
         math.inf,
     ],
 )
@@ -796,6 +1003,16 @@ def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
             assert attempt["chart_kkt_inf_norm"] >= 0.0
             assert attempt["physical_kkt_inf_norm"] >= 0.0
             assert attempt["complementarity_inf_norm"] >= 0.0
+            assert {audit["name"] for audit in attempt["tolerance_audits"]} == {
+                "root_pressure",
+                "stage2_primal",
+                "stage2_dual_sign",
+                "stage2_dual_pullback",
+                "stage2_stationarity",
+                "stage2_complementarity",
+                "step6_gap",
+                "step6_gradient",
+            }
             assert attempt["pressure_passed"] is True
             assert attempt["dual_signs_valid"] is True
             assert attempt["basin_id"] >= 0
@@ -949,6 +1166,12 @@ def test_held2_stage_ii_highs_upper_lp_matches_analytic_envelope() -> None:
     assert result["dual_feasible"] is True
     assert result["primal_residual_inf"] <= 1.0e-8
     assert result["dual_residual_inf"] <= 1.0e-8
+    assert {audit["name"] for audit in result["tolerance_audits"]} == {
+        "lp_primal",
+        "lp_dual",
+        "lp_complementarity",
+    }
+    assert all(audit["passed"] for audit in result["tolerance_audits"])
     assert result["cut_slacks"] == pytest.approx((0.0, 0.0), abs=1.0e-8)
     assert result["active_cut_ids"] == [0, 1]
 
@@ -1021,6 +1244,11 @@ def test_held2_pressure_envelope_classifies_three_root_topology() -> None:
         [-1.0, -0.2, 1.0], abs=1.0e-8
     )
     assert result["selected_root_index"] in {0, 2}
+    assert all(
+        {audit["name"] for audit in root["tolerance_audits"]}
+        == {"root_pressure", "mechanical_margin", "root_boundary"}
+        for root in result["roots"]
+    )
     assert len(result["scan_points"]) > 64
     assert len(result["intervals"]) >= 64
     assert all(interval["status"] for interval in result["intervals"])
@@ -1255,11 +1483,28 @@ def test_held2_general_mp_stage_iii_refines_then_merges_duplicate_phases() -> No
     assert result["trace_component_count"] == 0
     assert result["trace_refinement_status"] == "not_required"
     assert result["minimum_phase_distance"] > 1.0e-3
+    assert result["phase_identity_status"] == "confidently_distinct"
     assert result["kkt_stationarity_inf_norm"] < 1.0e-7
     assert result["dual_sign_violation_inf_norm"] < 1.0e-8
     assert result["bound_complementarity_inf_norm"] < 1.0e-8
     assert result["minimum_phase_fraction"] > 1.0e-10
     assert abs(result["enumeration_objective_gap"]) < 1.0e-9
+    assert result["free_energy_gap_available"] is False
+    assert result["kkt_evidence_available"] is True
+    assert result["physical_evidence_available"] is True
+    assert result["phase_identity_evidence_available"] is True
+    assert {audit["name"] for audit in result["tolerance_audits"]} == {
+        "stage3_modified_balance",
+        "stage3_explicit_balance",
+        "stage3_charge",
+        "stage3_pressure",
+        "stage3_potential",
+        "stage3_stationarity",
+        "stage3_dual_sign",
+        "stage3_complementarity",
+        "phase_activity",
+        "phase_distinct",
+    }
 
 
 def test_held2_stage_iii_retires_only_kkt_inactive_phases_one_at_a_time() -> None:
@@ -1372,6 +1617,10 @@ def test_held2_general_mp_stage_iii_returns_infeasible_set_to_stage_ii() -> None
     assert result["feedback"] == "return_to_stage_ii"
     assert result["failure_reason"] == "stage_iii_solver_not_converged"
     assert result["globality_certificate"] == "not_guaranteed"
+    assert result["kkt_evidence_available"] is False
+    assert result["physical_evidence_available"] is False
+    assert result["phase_identity_evidence_available"] is False
+    assert result["tolerance_audits"] == []
     assert result["lifecycle"] == [
         {
             "solve_index": 1,
