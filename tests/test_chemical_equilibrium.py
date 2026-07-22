@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import ctypes
 import json
 import math
 from collections.abc import Callable
@@ -13,99 +12,12 @@ import pytest
 from epcsaft_equilibrium import _equilibrium
 
 
-class _StandardReferenceSdk(ctypes.Structure):
-    _fields_ = (
-        ("abi_version", ctypes.c_uint32),
-        ("table_size", ctypes.c_size_t),
-        ("result_size", ctypes.c_size_t),
-        ("model_context", ctypes.c_void_p),
-        ("evaluate_pure_phase", ctypes.c_void_p),
-        ("parameterized_result_size", ctypes.c_size_t),
-        ("evaluate_pure_phase_parameters", ctypes.c_void_p),
-        ("component_count", ctypes.c_size_t),
-        ("mixture_result_size", ctypes.c_size_t),
-        ("evaluate_mixture_phase", ctypes.c_void_p),
-        ("evaluate_mixture_phase_kij", ctypes.c_void_p),
-        ("component_ids", ctypes.POINTER(ctypes.c_char_p)),
-        ("component_charges", ctypes.POINTER(ctypes.c_int32)),
-        ("evaluate_electrolyte_phase", ctypes.c_void_p),
-        ("evaluate_molar_volume_bounds", ctypes.c_void_p),
-        ("evaluate_packing_fraction", ctypes.c_void_p),
-        ("source_temperature_min_k", ctypes.c_double),
-        ("source_temperature_max_k", ctypes.c_double),
-        ("total_ion_mole_fraction_max", ctypes.c_double),
-        ("ion_solvation_born_result_size", ctypes.c_size_t),
-        ("evaluate_ion_solvation_born", ctypes.c_void_p),
-        ("helmholtz_basis_id", ctypes.c_char_p),
-        ("reference_amount_mol", ctypes.c_double),
-        ("reference_number_density_mol_per_m3", ctypes.c_double),
-        ("source_pressure_min_pa", ctypes.c_double),
-        ("source_pressure_max_pa", ctypes.c_double),
-        ("electrolyte_standard_reference_result_size", ctypes.c_size_t),
-        ("evaluate_electrolyte_standard_reference", ctypes.c_void_p),
-    )
-
-def _held_water_ionization_model() -> epcsaft.EPCSAFT:
-    parameters = epcsaft.ParameterBundle.from_catalog(
-        "held-2008-water-self-ionization", version=1
-    ).select(("water", "hydronium-cation", "hydroxide-anion"))
-    return epcsaft.EPCSAFT(parameters)
-
-
 def _water_ionization_reference_record() -> dict[str, object]:
     path = (
         Path(__file__).parents[1]
         / "data/reference/water_self_ionization_iapws_r11_24.yaml"
     )
     return json.loads(path.read_text())
-
-
-def _manufactured_water_standard_reference() -> dict[str, object]:
-    return {
-        "formula_unit_log_fugacity": -1.75,
-        "pure_solvent_log_fugacity": -0.125,
-        "solvent_molar_mass_kg_per_mol": 0.01801528,
-        "reference_molality_mol_per_kg": 1.0e-12,
-        "convergence_error": 2.0e-6,
-        "pure_solvent_molar_volume_m3_per_mol": 1.8e-5,
-        "basis_id": "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3",
-        "parameter_fingerprint": "sha256:manufactured-water-reference",
-        "component_ids": ["water", "hydronium-cation", "hydroxide-anion"],
-        "charges": [0, 1, -1],
-        "temperature_k": 298.15,
-        "pressure_pa": 100_000.0,
-    }
-
-
-def _water_self_ionization_spec(
-    model: epcsaft.EPCSAFT, *, feed_scale: float = 1.0
-) -> dict[str, object]:
-    return {
-        "species_ids": ("water", "hydronium-cation", "hydroxide-anion"),
-        "charges": (0, 1, -1),
-        "provider_component_ids": (
-            "water",
-            "hydronium-cation",
-            "hydroxide-anion",
-        ),
-        "provider_charges": (0, 1, -1),
-        "provider_fingerprint": model.parameter_fingerprint,
-        "expected_provider_component_ids": (
-            "water",
-            "hydronium-cation",
-            "hydroxide-anion",
-        ),
-        "expected_provider_charges": (0, 1, -1),
-        "expected_provider_fingerprint": model.parameter_fingerprint,
-        "balance_matrix": ((2.0, 3.0, 1.0), (1.0, 1.0, 1.0)),
-        "declared_balance_rank": 2,
-        "reaction_matrix": ((-2.0, 1.0, 1.0),),
-        "feed_amounts": (feed_scale, 0.0, 0.0),
-        "temperature_k": 298.15,
-        "pressure_pa": 100_000.0,
-        "complete_closed_system": True,
-        "water_self_ionization_reference": _water_ionization_reference_record(),
-    }
 
 
 def _iapws_p_kw(record: dict[str, object], temperature_k: float, density: float) -> float:
@@ -141,25 +53,6 @@ def _iapws_p_kw(record: dict[str, object], temperature_k: float, density: float)
         + p_kw_ideal
         + 2.0 * math.log10(molar_mass / 1000.0)
     )
-
-
-def _copied_sdk_capsule(
-    model: epcsaft.EPCSAFT,
-) -> tuple[object, _StandardReferenceSdk, tuple[object, ...]]:
-    provider_capsule = epcsaft.native_sdk(model)
-    get_pointer = ctypes.pythonapi.PyCapsule_GetPointer
-    get_pointer.argtypes = (ctypes.py_object, ctypes.c_char_p)
-    get_pointer.restype = ctypes.c_void_p
-    source = get_pointer(provider_capsule, b"epcsaft.native_sdk.v1")
-    assert source
-    table = _StandardReferenceSdk()
-    ctypes.memmove(ctypes.addressof(table), source, ctypes.sizeof(table))
-    name = ctypes.create_string_buffer(b"epcsaft.native_sdk.v1")
-    new_capsule = ctypes.pythonapi.PyCapsule_New
-    new_capsule.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p)
-    new_capsule.restype = ctypes.py_object
-    capsule = new_capsule(ctypes.addressof(table), name, None)
-    return capsule, table, (provider_capsule, name)
 
 
 def _base_system() -> dict[str, object]:
@@ -801,184 +694,344 @@ def test_retained_iapws_record_reproduces_source_equations() -> None:
     )
 
 
-def test_iapws_mixed_standard_state_transform_uses_thermodynamic_standard_molality() -> None:
-    record = _water_ionization_reference_record()
-    reference = _manufactured_water_standard_reference()
-
-    transformed = _equilibrium._chemical_transform_water_self_ionization_standard_state(
-        record, reference
-    )
-
-    standard_state = record["standard_state"]
-    values = record["values"]
-    assert isinstance(standard_state, dict)
-    assert isinstance(values, dict)
-    expected_delta = (
-        2.0
-        * math.log(
-            reference["solvent_molar_mass_kg_per_mol"]
-            * standard_state["standard_molality_mol_per_kg"]
-        )
-        + reference["formula_unit_log_fugacity"]
-        - 2.0 * reference["pure_solvent_log_fugacity"]
-    )
-    wrong_terminal_delta = (
-        2.0
-        * math.log(
-            reference["solvent_molar_mass_kg_per_mol"]
-            * reference["reference_molality_mol_per_kg"]
-        )
-        + reference["formula_unit_log_fugacity"]
-        - 2.0 * reference["pure_solvent_log_fugacity"]
-    )
-    assert transformed["delta_standard_offset"] == pytest.approx(
-        expected_delta, abs=2.0e-15
-    )
-    assert transformed["delta_standard_offset"] != pytest.approx(wrong_terminal_delta)
-    assert transformed["ln_k_provider_basis"] == pytest.approx(
-        values["ln_kw"] + expected_delta, abs=5.0e-15
-    )
-    assert transformed["transformation_residual"] <= 2.0e-15
-    assert transformed["provider_basis_id"] == reference["basis_id"]
-    assert transformed["source_id"] == "iapws-r11-24"
-
-
-def test_iapws_transform_rejects_each_unbound_or_inconsistent_input() -> None:
-    mutations = (
-        ("source identity", "record", "source", "id", "wrong-source"),
-        ("temperature", "record", "state", "temperature_k", 299.0),
-        ("pressure", "record", "state", "pressure_binding", "temperature_only"),
-        ("phase", "record", "state", "phase", "vapor"),
-        ("molar-mass unit", "record", "standard_state", "solvent_molar_mass_unit", "g/mol"),
-        ("standard molality", "record", "standard_state", "standard_molality_mol_per_kg", 1.0e-12),
-        (
-            "transformation sign",
-            "record",
-            "standard_state",
-            "transformation_sign",
-            "lnK_provider=lnKw_mixed-delta_standard_offset",
-        ),
-        (
-            "reaction identity",
-            "record",
-            "provider_binding",
-            "reaction_stoichiometry",
-            (-1.0, 1.0, 1.0),
-        ),
-        ("basis identity", "record", "provider_binding", "basis_id", "wrong-basis"),
-        ("reconstruction", "record", "values", "ln_kw", 32.2231929374538),
-        ("reference convergence", "reference", None, "convergence_error", 1.0),
-    )
-
-    for claim, target, section, field, value in mutations:
-        record = _water_ionization_reference_record()
-        reference = _manufactured_water_standard_reference()
-        container = record if target == "record" else reference
-        if section is not None:
-            nested = container[section]
-            assert isinstance(nested, dict)
-            container = nested
-        container[field] = value
-
-        try:
-            _equilibrium._chemical_transform_water_self_ionization_standard_state(
-                record, reference
-            )
-        except ValueError:
-            continue
-        pytest.fail(f"{claim} mutation was accepted")
-
-
-def test_source_complete_water_self_ionization_solves_and_recomputes_iapws_activity() -> None:
-    model = _held_water_ionization_model()
-    capsule = epcsaft.native_sdk(model)
-    spec = _water_self_ionization_spec(model)
-
-    result = _equilibrium._chemical_solve_provider_water_self_ionization(
-        capsule,
-        spec,
-        {"packing_fraction_bounds": (1.0e-6, 0.74), "trace_floor": 1.0e-12},
-    )
-
-    assert result["profile"] == "installed_provider_source_complete_consistency"
-    assert result["accepted"] is True
-    assert result["max_min_solve_count"] == 1
-    assert result["solver_status"] == "solve_succeeded"
-    assert result["artifact_input_status"] == "passed"
-    assert result["numerical_status"] == "passed"
-    assert result["physical_status"] == "passed"
-    assert result["provider_domain_status"] == "passed"
-    assert result["local_minimum_status"] == "passed"
-    assert result["trace_status"] == "interior"
-    assert result["predictive_status"] == "not_adjudicated"
-    assert result["globality_certificate"] == "not_guaranteed"
-    assert result["final_lambda"] == 1.0
-    assert result["balance_inf_norm"] <= 1.0e-9
-    assert result["charge_inf_norm"] <= 1.0e-9
-    assert result["pressure_relative_residual"] <= 1.0e-8
-    assert result["reaction_affinity_inf_norm"] <= 1.0e-7
-    assert result["kkt_stationarity_inf_norm"] <= 1.0e-7
-    assert result["complementarity_inf_norm"] <= 1.0e-7
-    assert result["reference_reconstruction_inf_norm"] <= 1.0e-12
-    assert result["standard_state_transformation_residual"] <= 2.0e-15
-
-    provider_reference = _equilibrium._chemical_evaluate_provider_standard_reference(
-        capsule, 298.15, 100_000.0, model.parameter_fingerprint
-    )
-    phase = _equilibrium._chemical_evaluate_provider_block(
-        capsule,
-        298.15,
-        result["amounts"],
-        result["volume_m3"],
-        model.parameter_fingerprint,
-    )
-    total_amount = math.fsum(result["amounts"])
-    mole_fractions = tuple(amount / total_amount for amount in result["amounts"])
-    log_fugacity = tuple(
-        phase["gradient"][index]
-        - math.log(mole_fractions[index] * 100_000.0 / (8.31446261815324 * 298.15))
-        for index in range(3)
-    )
-    water_amount, hydronium_amount, hydroxide_amount = result["amounts"]
-    water_mass_kg = water_amount * provider_reference["solvent_molar_mass_kg_per_mol"]
-    log_hydronium_molality = math.log(hydronium_amount / water_mass_kg)
-    log_hydroxide_molality = math.log(hydroxide_amount / water_mass_kg)
-    ion_activity_sum = (
-        log_hydronium_molality
-        + log_hydroxide_molality
-        + log_fugacity[1]
-        + log_fugacity[2]
-        - provider_reference["formula_unit_log_fugacity"]
-    )
-    log_water_activity = (
-        math.log(mole_fractions[0])
-        + log_fugacity[0]
-        - provider_reference["pure_solvent_log_fugacity"]
-    )
-    reference_record = spec["water_self_ionization_reference"]
-    assert isinstance(reference_record, dict)
-    values = reference_record["values"]
-    assert isinstance(values, dict)
-    independently_recomputed = ion_activity_sum - 2.0 * log_water_activity
-    assert independently_recomputed == pytest.approx(values["ln_kw"], abs=1.0e-8)
-
-
-def test_provider_standard_reference_tail_rejects_incomplete_sdk() -> None:
-    model = _held_water_ionization_model()
-    capsule, table, owners = _copied_sdk_capsule(model)
-    assert owners
-    table.evaluate_electrolyte_standard_reference = None
-    with pytest.raises(ValueError):
-        _equilibrium._chemical_evaluate_provider_standard_reference(
-            capsule, 298.15, 100_000.0, model.parameter_fingerprint
-        )
-
-
 def _figiel_provider_model() -> epcsaft.EPCSAFT:
     parameters = epcsaft.ParameterBundle.from_catalog(
         "figiel-2025-reference-electrolytes", version=1
     ).select(("water", "sodium-cation", "chloride-anion"))
     return epcsaft.EPCSAFT(parameters)
+
+
+def _analytic_charged_reference(model: epcsaft.EPCSAFT) -> dict[str, object]:
+    return {
+        "component_count": 5,
+        "neutral_basis_row_count": 3,
+        "neutral_basis": [
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 1.0],
+        ],
+        "log_fugacity_contractions": [1.25, -2.5, 0.75],
+        "reference_composition": [1.0, 0.0, 0.0, 0.0, 0.0],
+        "derivative_availability": 0,
+        "temperature_k": 298.15,
+        "pressure_pa": 100_000.0,
+        "solvent_molar_mass_kg_per_mol": 0.0180153,
+        "reference_amount_mol": 1.0,
+        "reference_number_density_mol_per_m3": 1.0,
+        "reference_molality_mol_per_kg": 1.0e-12,
+        "reference_convergence_error": 1.0e-8,
+        "basis_id": "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3",
+        "parameter_fingerprint": model.parameter_fingerprint,
+        "component_ids": [
+            "water", "sodium-cation", "chloride-anion", "calcium-cation", "sulfate-anion"
+        ],
+        "charges": [0, 1, -1, 2, -2],
+    }
+
+
+def _analytic_charged_source(
+    model: epcsaft.EPCSAFT,
+    reference: dict[str, object],
+) -> dict[str, object]:
+    component_ids = reference["component_ids"]
+    charges = reference["charges"]
+    records = tuple(
+        {
+            "source_id": f"analytic-reaction-{index}",
+            "source_standard_state_id": "analytic-molality-v1",
+            "reference_id": reference["basis_id"],
+            "dimensionless": True,
+            "temperature_k": 298.15,
+            "pressure_pa": 100_000.0,
+            "pressure_binding": "fixed",
+        }
+        for index in range(3)
+    )
+    return {
+        "component_ids": component_ids,
+        "charges": charges,
+        "provider_fingerprint": model.parameter_fingerprint,
+        "temperature_k": 298.15,
+        "pressure_pa": 100_000.0,
+        "dimensionless": True,
+        "reaction_matrix": [
+            [-2.0, 1.0, 1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0, 1.0, 1.0],
+            [0.0, 2.0, 2.0, -1.0, -1.0],
+        ],
+        "ln_k": [2.0, -0.25, 1.7],
+        "log_activity_scale_factors": [0.4, -0.2, 0.3, 0.1, -0.5],
+        "equilibrium_constant_records": records,
+        "reference": reference,
+    }
+
+
+def test_installed_provider_neutral_reference_is_exactly_bound() -> None:
+    model = _figiel_provider_model()
+    reference = _equilibrium._chemical_evaluate_provider_neutral_reference(
+        epcsaft.native_sdk(model), 298.15, 100_000.0, model.parameter_fingerprint
+    )
+
+    assert reference["component_ids"] == ["water", "sodium-cation", "chloride-anion"]
+    assert reference["charges"] == [0, 1, -1]
+    assert reference["neutral_basis_row_count"] == 2
+    assert reference["neutral_basis"] == [[1.0, 0.0, 0.0], [0.0, 1.0, 1.0]]
+    assert reference["log_fugacity_contractions"] == pytest.approx(
+        [-3.458429227332978, -281.14485522775044], rel=2.0e-12
+    )
+    assert reference["reference_composition"] == pytest.approx([1.0, 0.0, 0.0], abs=0.0)
+    assert reference["basis_id"] == (
+        "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3"
+    )
+    assert reference["parameter_fingerprint"] == model.parameter_fingerprint
+    assert reference["temperature_k"] == 298.15
+    assert reference["pressure_pa"] == 100_000.0
+    assert reference["reference_amount_mol"] == 1.0
+    assert reference["reference_number_density_mol_per_m3"] == 1.0
+    assert reference["solvent_molar_mass_kg_per_mol"] == pytest.approx(0.0180153)
+    assert reference["reference_molality_mol_per_kg"] == pytest.approx(1.0e-12)
+    assert 0.0 <= reference["reference_convergence_error"] <= 5.0e-5
+    assert reference["derivative_availability"] == 0
+
+
+def test_generic_standard_state_transform_is_basis_and_species_order_invariant() -> None:
+    model = _figiel_provider_model()
+    reference = _analytic_charged_reference(model)
+    source = _analytic_charged_source(model, reference)
+    transformed = _equilibrium._chemical_transform_source_standard_state(source)
+
+    contractions = reference["log_fugacity_contractions"]
+    expected_offsets = [
+        -0.7 - 2.0 * contractions[0] + contractions[1],
+        -0.8 - contractions[0] + contractions[2],
+        0.6 + 2.0 * contractions[1] - contractions[2],
+    ]
+    assert transformed["ln_k_provider_basis"] == pytest.approx(
+        [source["ln_k"][i] + expected_offsets[i] for i in range(3)]
+    )
+    assert transformed["standard_offsets"] == pytest.approx(expected_offsets)
+    for actual, expected in zip(
+        transformed["reaction_to_neutral_basis"],
+        [[-2.0, 1.0, 0.0], [-1.0, 0.0, 1.0], [0.0, 2.0, -1.0]],
+        strict=True,
+    ):
+        assert actual == pytest.approx(expected)
+    assert transformed["representation_residual_inf_norm"] <= 1.0e-12
+    assert transformed["basis_condition_ratio"] > 1.0e-10
+    assert transformed["derivative_availability"] == 0
+
+    permuted = copy.deepcopy(source)
+    permuted["reference"] = copy.deepcopy(reference)
+    permutation = [4, 1, 0, 3, 2]
+    permuted["reference"]["component_ids"] = [
+        reference["component_ids"][index] for index in permutation
+    ]
+    permuted["reference"]["charges"] = [reference["charges"][index] for index in permutation]
+    permuted["reference"]["neutral_basis"] = [
+        [row[index] for index in permutation] for row in reference["neutral_basis"]
+    ]
+    permuted["reference"]["reference_composition"] = [
+        reference["reference_composition"][index] for index in permutation
+    ]
+    permuted["component_ids"] = permuted["reference"]["component_ids"]
+    permuted["charges"] = permuted["reference"]["charges"]
+    permuted["reaction_matrix"] = [
+        [row[index] for index in permutation] for row in source["reaction_matrix"]
+    ]
+    permuted["log_activity_scale_factors"] = [
+        source["log_activity_scale_factors"][index] for index in permutation
+    ]
+    assert _equilibrium._chemical_transform_source_standard_state(permuted) == transformed
+
+    basis_variant = copy.deepcopy(source)
+    basis_variant["reference"] = copy.deepcopy(reference)
+    basis_variant["reference"]["neutral_basis"] = [
+        [0.0, 2.0, 2.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 3.0, 3.0],
+        [3.0, 0.0, 0.0, 0.0, 0.0],
+    ]
+    basis_variant["reference"]["log_fugacity_contractions"] = [
+        2.0 * reference["log_fugacity_contractions"][1],
+        3.0 * reference["log_fugacity_contractions"][2],
+        3.0 * reference["log_fugacity_contractions"][0],
+    ]
+    basis_transformed = _equilibrium._chemical_transform_source_standard_state(basis_variant)
+    assert basis_transformed["standard_offsets"] == pytest.approx(
+        transformed["standard_offsets"]
+    )
+    assert basis_transformed["ln_k_provider_basis"] == pytest.approx(
+        transformed["ln_k_provider_basis"]
+    )
+
+    # This basis is deliberately non-orthogonal.  Its largest row is last, and
+    # the second QR pivot occurs only after a nonzero first-row projection.
+    # It therefore exercises the prior-R bookkeeping required by column pivoting.
+    nonorthogonal_basis = copy.deepcopy(source)
+    nonorthogonal_basis["reference"] = copy.deepcopy(reference)
+    nonorthogonal_basis["reference"]["neutral_basis"] = [
+        [1.0, -1.0, -1.0, 0.0, 0.0],
+        [9.0, 9.0, 9.0, 1.0, 1.0],
+        [10.0, 10.0, 10.0, 1.0, 1.0],
+    ]
+    nonorthogonal_basis["reference"]["log_fugacity_contractions"] = [
+        contractions[0] - contractions[1],
+        9.0 * contractions[0] + 9.0 * contractions[1] + contractions[2],
+        10.0 * contractions[0] + 10.0 * contractions[1] + contractions[2],
+    ]
+    nonorthogonal_transformed = _equilibrium._chemical_transform_source_standard_state(
+        nonorthogonal_basis
+    )
+    assert nonorthogonal_transformed["standard_offsets"] == pytest.approx(
+        transformed["standard_offsets"], abs=2.0e-12
+    )
+    assert nonorthogonal_transformed["ln_k_provider_basis"] == pytest.approx(
+        transformed["ln_k_provider_basis"], abs=2.0e-12
+    )
+
+    # A component-reference gauge delta can be moved between the source
+    # activity scales and Provider neutral contractions.  Since nu = alpha B,
+    # nu.(s + delta) + alpha.(c - B delta) = nu.s + alpha.c.
+    gauge = [0.7, -0.4, 0.2, 0.9, -0.3]
+    gauged = copy.deepcopy(source)
+    gauged["reference"] = copy.deepcopy(reference)
+    gauged["log_activity_scale_factors"] = [
+        value + shift
+        for value, shift in zip(source["log_activity_scale_factors"], gauge, strict=True)
+    ]
+    gauged["reference"]["log_fugacity_contractions"] = [
+        contraction - sum(row[i] * gauge[i] for i in range(len(gauge)))
+        for row, contraction in zip(
+            reference["neutral_basis"], contractions, strict=True
+        )
+    ]
+    gauged_transformed = _equilibrium._chemical_transform_source_standard_state(gauged)
+    assert gauged_transformed["standard_offsets"] == pytest.approx(
+        transformed["standard_offsets"]
+    )
+    assert gauged_transformed["ln_k_provider_basis"] == pytest.approx(
+        transformed["ln_k_provider_basis"]
+    )
+
+    small_basis = copy.deepcopy(source)
+    small_basis["reference"] = copy.deepcopy(reference)
+    small_basis["reference"]["neutral_basis"] = [
+        [1.0e-12 * value for value in row] for row in reference["neutral_basis"]
+    ]
+    small_basis["reference"]["log_fugacity_contractions"] = [
+        1.0e-12 * value for value in reference["log_fugacity_contractions"]
+    ]
+    small_transformed = _equilibrium._chemical_transform_source_standard_state(small_basis)
+    assert small_transformed["ln_k_provider_basis"] == pytest.approx(
+        transformed["ln_k_provider_basis"]
+    )
+
+
+def test_generic_standard_state_transform_rejects_unsupported_records() -> None:
+    model = _figiel_provider_model()
+    reference = _analytic_charged_reference(model)
+    source = _analytic_charged_source(model, reference)
+    mutations = (
+        (
+            "non-neutral reaction",
+            {"reaction_matrix": [[-2.0, 1.0, 0.0, 0.0, 0.0], *source["reaction_matrix"][1:]]},
+        ),
+        (
+            "full-rank nonrepresentable basis",
+            {
+                "reference": {
+                    **reference,
+                    "neutral_basis_row_count": 1,
+                    "neutral_basis": [[1.0, 0.0, 0.0, 0.0, 0.0]],
+                    "log_fugacity_contractions": [1.25],
+                }
+            },
+        ),
+        (
+            "ill-conditioned basis",
+            {
+                "reference": {
+                    **reference,
+                    "neutral_basis": [
+                        [1.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 1.0, 0.0, 0.0],
+                        [1.0e-12, 1.0e-12, 1.0e-12, 1.0e-12, 1.0e-12],
+                    ],
+                }
+            },
+        ),
+        ("fingerprint", {"provider_fingerprint": "sha256:wrong"}),
+        (
+            "reference identity",
+            {
+                "reference": {
+                    **reference,
+                    "component_ids": ["water", "chloride-anion", "sodium-cation"],
+                }
+            },
+        ),
+        (
+            "salt-free composition",
+            {
+                "reference": {
+                    **reference,
+                    "reference_composition": [0.8, 0.1, 0.1, 0.0, 0.0],
+                }
+            },
+        ),
+        ("nonpositive reference temperature", {"reference": {**reference, "temperature_k": 0.0}}),
+        (
+            "source identity",
+            {
+                "equilibrium_constant_records": [
+                    {**source["equilibrium_constant_records"][0], "source_id": ""},
+                    *source["equilibrium_constant_records"][1:],
+                ]
+            },
+        ),
+        (
+            "reference identity",
+            {
+                "equilibrium_constant_records": [
+                    {
+                        **source["equilibrium_constant_records"][0],
+                        "reference_id": "wrong-reference",
+                    },
+                    *source["equilibrium_constant_records"][1:],
+                ]
+            },
+        ),
+        (
+            "pressure binding",
+            {
+                "equilibrium_constant_records": [
+                    {
+                        **source["equilibrium_constant_records"][0],
+                        "pressure_binding": "temperature_only",
+                    },
+                    *source["equilibrium_constant_records"][1:],
+                ]
+            },
+        ),
+        ("nonfinite scale", {"log_activity_scale_factors": [math.nan, 0.0, 0.0]}),
+        (
+            "finite input overflow",
+            {
+                "reference": {
+                    **reference,
+                    "log_fugacity_contractions": [1.0e308, 1.0e308, 1.0e308],
+                }
+            },
+        ),
+        ("derivative claim", {"reference": {**reference, "derivative_availability": 1}}),
+    )
+    for _claim, mutation in mutations:
+        candidate = copy.deepcopy(source)
+        candidate.update(mutation)
+        with pytest.raises(
+            ValueError,
+            match=r"Provider|reaction|derivative|finite|bound|identity|dimensions|conditioning|span",
+        ):
+            _equilibrium._chemical_transform_source_standard_state(candidate)
 
 
 def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domain_blocks() -> None:

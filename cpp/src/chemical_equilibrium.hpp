@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -144,13 +145,19 @@ struct ProviderPhaseBlockEvidence {
     std::string parameter_fingerprint;
 };
 
-struct MixedStandardStateResult {
-    double delta_standard_offset = 0.0;
-    double ln_k_provider_basis = 0.0;
+struct SourceStandardStateResult {
+    std::vector<double> standard_offsets;
+    std::vector<double> ln_k_provider_basis;
+    DenseMatrix reaction_to_neutral_basis;
+    double representation_residual_inf_norm = 0.0;
+    double basis_condition_ratio = 0.0;
+    std::uint32_t derivative_availability = 0;
+    std::string basis_id;
+    std::string parameter_fingerprint;
 };
 
 class ProviderContext;
-struct StandardReferenceEvaluation;
+struct NeutralReferenceEvaluation;
 
 [[nodiscard]] CompiledReactionSystem compile_reaction_system(
     const ReactionSystemInput& input
@@ -201,9 +208,16 @@ struct StandardReferenceEvaluation;
     double volume_m3
 );
 
-[[nodiscard]] MixedStandardStateResult transform_water_self_ionization_standard_state(
-    double ln_kw_mixed_standard,
-    const StandardReferenceEvaluation& reference
+[[nodiscard]] SourceStandardStateResult transform_source_standard_state(
+    const DenseMatrix& reaction_matrix,
+    const std::vector<double>& source_ln_k,
+    const std::vector<double>& log_activity_scale_factors,
+    const std::vector<int>& charges,
+    const std::vector<std::string>& component_ids,
+    const std::string& provider_fingerprint,
+    double temperature_k,
+    double pressure_pa,
+    const NeutralReferenceEvaluation& reference
 );
 
 [[nodiscard]] ChemicalSolveResult solve_provider_reaction(
