@@ -4,9 +4,9 @@
       "filename": "epcsaft_equilibrium-0.1.0.dev0-cp313-cp313-linux_x86_64.whl",
       "installed_payload_origin": "site-packages/epcsaft_equilibrium/_equilibrium.cpython-313-x86_64-linux-gnu.so",
       "member": "epcsaft_equilibrium/_equilibrium.cpython-313-x86_64-linux-gnu.so",
-      "payload_sha256": "004023178d729de721d0a2ac2eb9242d3c1cbc9f71e3cd2140d7f4fd01244146",
-      "sha256": "f96c779661abf8ce708d3d013973721620211309b269d1967a6f5f2e88cf4cfd",
-      "size_bytes": 334630
+      "payload_sha256": "efaa6b9b3a42c97fe181ab18c43c972e32b6c7fd81d323a24869e9add55057e0",
+      "sha256": "9910205c9f4c90760c3e6c751e98275e93637230dc370170bf032dd679dee04e",
+      "size_bytes": 3114375
     },
     "provider_wheel": {
       "filename": "epcsaft-0.1.0.dev0-cp313-cp313-linux_x86_64.whl",
@@ -288,44 +288,148 @@
       "profile": "perdomo-held2-stage-ii-manufactured-v1"
     },
     "stage_iii": {
+      "active_set_resolve_count": 1,
+      "bound_complementarity_inf_norm": 9.093277368494934e-12,
       "certified_modified_potential_count": 2,
-      "enumeration_objective_gap": -3.3306690738754696e-16,
+      "dual_sign_violation_inf_norm": 0.0,
+      "enumeration_objective_gap": 0.0,
       "failure_reason": "",
       "feedback": "none",
       "globality_certificate": "not_guaranteed",
       "input_candidate_count": 3,
-      "kkt_stationarity_inf_norm": 2.8668172651857065e-15,
-      "minimum_phase_distance": 0.5999999999999862,
+      "kkt_stationarity_inf_norm": 2.688451418000197e-15,
+      "lifecycle": [
+        {
+          "action": "retain_phase",
+          "active_candidate_count": 3,
+          "candidate_composition": 0.2,
+          "candidate_volume": 1.0,
+          "complementarity_inf_norm": 9.09092216372553e-12,
+          "decision_reason": "phase_amount_active",
+          "lower_bound_multiplier": 3.6363689391224604e-11,
+          "phase_fraction": 0.24999999493779027,
+          "reduced_derivative": 2.4242232480707933e-11,
+          "removed_candidate_index": 0,
+          "solve_index": 1,
+          "solver_status": "solve_succeeded"
+        },
+        {
+          "action": "retain_phase",
+          "active_candidate_count": 3,
+          "candidate_composition": 0.20000002,
+          "candidate_volume": 1.0,
+          "complementarity_inf_norm": 9.090912937322562e-12,
+          "decision_reason": "phase_amount_active",
+          "lower_bound_multiplier": 3.636358947027326e-11,
+          "phase_fraction": 0.2500000050627879,
+          "reduced_derivative": 2.4242454525312354e-11,
+          "removed_candidate_index": 1,
+          "solve_index": 1,
+          "solver_status": "solve_succeeded"
+        },
+        {
+          "action": "retain_phase",
+          "active_candidate_count": 3,
+          "candidate_composition": 0.8,
+          "candidate_volume": 1.0,
+          "complementarity_inf_norm": 9.090909857697125e-12,
+          "decision_reason": "phase_amount_active",
+          "lower_bound_multiplier": 1.8181816648263614e-11,
+          "phase_fraction": 0.4999999999994218,
+          "reduced_derivative": -3.915385411782958e-16,
+          "removed_candidate_index": 2,
+          "solve_index": 1,
+          "solver_status": "solve_succeeded"
+        },
+        {
+          "action": "merge_duplicate",
+          "active_candidate_count": 3,
+          "candidate_composition": 0.2,
+          "candidate_volume": 1.0,
+          "complementarity_inf_norm": 9.09092216372553e-12,
+          "decision_reason": "duplicate_state_certified",
+          "lower_bound_multiplier": 3.6363689391224604e-11,
+          "phase_fraction": 0.24999999493779027,
+          "reduced_derivative": 2.4242232480707933e-11,
+          "removed_candidate_index": 0,
+          "solve_index": 1,
+          "solver_status": "solve_succeeded"
+        },
+        {
+          "action": "retain_phase",
+          "active_candidate_count": 2,
+          "candidate_composition": 0.20000002,
+          "candidate_volume": 1.0,
+          "complementarity_inf_norm": 9.090912993543634e-12,
+          "decision_reason": "phase_amount_active",
+          "lower_bound_multiplier": 1.8181825987084754e-11,
+          "phase_fraction": 0.5000000000000692,
+          "reduced_derivative": 1.0537201093931658e-16,
+          "removed_candidate_index": 0,
+          "solve_index": 2,
+          "solver_status": "solve_succeeded"
+        },
+        {
+          "action": "retain_phase",
+          "active_candidate_count": 2,
+          "candidate_composition": 0.8,
+          "candidate_volume": 1.0,
+          "complementarity_inf_norm": 9.090912993543637e-12,
+          "decision_reason": "phase_amount_active",
+          "lower_bound_multiplier": 1.8181810376848217e-11,
+          "phase_fraction": 0.4999999999999308,
+          "reduced_derivative": 3.104657412947601e-16,
+          "removed_candidate_index": 1,
+          "solve_index": 2,
+          "solver_status": "solve_succeeded"
+        },
+        {
+          "action": "accept_active_set",
+          "active_candidate_count": 2,
+          "candidate_composition": 0.0,
+          "candidate_volume": 0.0,
+          "complementarity_inf_norm": 0.0,
+          "decision_reason": "active_set_certified",
+          "lower_bound_multiplier": 0.0,
+          "phase_fraction": 0.0,
+          "reduced_derivative": 0.0,
+          "removed_candidate_index": -1,
+          "solve_index": 2,
+          "solver_status": "solve_succeeded"
+        }
+      ],
+      "minimum_phase_distance": 0.5999999999999168,
+      "minimum_phase_fraction": 0.4999999999999308,
       "modified_balance_inf_norm": 5.551115123125783e-17,
-      "modified_potential_mixed_gap": 1.340998392048049e-11,
+      "modified_potential_mixed_gap": 4.1446616573155805e-12,
       "numerical_status": "converged",
-      "objective": 0.9481249999999998,
-      "ordinary_balance_inf_norm": 5.551115123125783e-17,
+      "objective": 0.9481250000000001,
+      "ordinary_balance_inf_norm": 2.7755575615628914e-17,
       "phase_charge_inf_norm": 0.0,
       "phases": [
         {
           "modified_fractions": [
-            0.799999999999646,
-            0.20000000000035378
+            0.7999999999999169,
+            0.20000000000008308
           ],
-          "phase_fraction": 0.5000000000005782,
+          "phase_fraction": 0.5000000000000692,
           "physical_fractions": [
-            0.799999999999646,
-            0.10000000000017689,
-            0.10000000000017689
+            0.7999999999999169,
+            0.10000000000004154,
+            0.10000000000004154
           ],
           "volume": 1.0
         },
         {
           "modified_fractions": [
-            0.19999999999966,
-            0.80000000000034
+            0.20000000000000007,
+            0.7999999999999999
           ],
-          "phase_fraction": 0.4999999999994218,
+          "phase_fraction": 0.4999999999999308,
           "physical_fractions": [
-            0.19999999999966,
-            0.40000000000017,
-            0.40000000000017
+            0.20000000000000007,
+            0.39999999999999997,
+            0.39999999999999997
           ],
           "volume": 1.0
         }
@@ -334,7 +438,9 @@
       "pressure_stationarity_inf_norm": 2.220446049250313e-16,
       "profile": "perdomo-held2-stage-iii-manufactured-v1",
       "retired_duplicate_count": 1,
+      "retired_inactive_count": 0,
       "solver_status": "solve_succeeded",
+      "stage_iii_solve_count": 2,
       "trace_component_count": 0,
       "trace_refinement_status": "not_required"
     },
@@ -471,14 +577,34 @@
       ]
     },
     "stage_iii_failure": {
+      "active_set_resolve_count": 0,
+      "bound_complementarity_inf_norm": 0.0,
       "certified_modified_potential_count": 0,
+      "dual_sign_violation_inf_norm": 0.0,
       "enumeration_objective_gap": 0.0,
       "failure_reason": "candidate_set_does_not_bracket_feed",
       "feedback": "return_to_stage_ii",
       "globality_certificate": "not_guaranteed",
       "input_candidate_count": 3,
       "kkt_stationarity_inf_norm": 0.0,
+      "lifecycle": [
+        {
+          "action": "initialization_failed",
+          "active_candidate_count": 3,
+          "candidate_composition": 0.0,
+          "candidate_volume": 0.0,
+          "complementarity_inf_norm": 0.0,
+          "decision_reason": "candidate_set_does_not_bracket_feed",
+          "lower_bound_multiplier": 0.0,
+          "phase_fraction": 0.0,
+          "reduced_derivative": 0.0,
+          "removed_candidate_index": -1,
+          "solve_index": 1,
+          "solver_status": "not_run"
+        }
+      ],
       "minimum_phase_distance": 0.0,
+      "minimum_phase_fraction": 0.0,
       "modified_balance_inf_norm": 0.0,
       "modified_potential_mixed_gap": 0.0,
       "numerical_status": "not_adjudicated",
@@ -490,17 +616,19 @@
       "pressure_stationarity_inf_norm": 0.0,
       "profile": "perdomo-held2-stage-iii-manufactured-v1",
       "retired_duplicate_count": 0,
+      "retired_inactive_count": 0,
       "solver_status": "not_run",
+      "stage_iii_solve_count": 0,
       "trace_component_count": 0,
       "trace_refinement_status": "not_adjudicated"
     }
   },
-  "runtime_evidence_sha256": "79c978173129b20b2c6dbf5df220826a72375e095c2c103bdde28172cbe64a1a",
-  "schema": "perdomo-held2-manufactured-baseline-v1",
+  "runtime_evidence_sha256": "4e1c86f2df2cfda7b23c4c49bc9c62d987b2b3df09b422e9034bdb29c0df52c4",
+  "schema": "perdomo-held2-manufactured-baseline-v2",
   "source": {
     "artifact_build_worktree_clean": true,
-    "commit": "de28d47dbafa82cfbeabb636fb511ebe149f8c18",
-    "tree": "8e2e18da45a778eb789647fca38517294c769388"
+    "commit": "60b9b60e3150e4b295a9c95976449264a8b83907",
+    "tree": "7dd06a7b35c6394782d31f9b258fca10625396c0"
   },
   "start_terminal_exposure": {
     "available": {

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -205,6 +206,145 @@ struct StageIIIRun {
     std::vector<double> upper_bound_multipliers;
 };
 
+struct StageIIIInitialization {
+    bool feasible = false;
+    std::string failure;
+    std::vector<double> variables;
+};
+
+struct StageIIIBounds {
+    std::vector<double> lower;
+    std::vector<double> upper;
+};
+
+Held2StageIIILifecycleStep make_lifecycle_step(
+    int solve_index,
+    std::size_t active_candidate_count,
+    std::string action,
+    std::string solver_status,
+    std::string decision_reason,
+    int removed_candidate_index = -1,
+    double phase_fraction = 0.0,
+    double lower_bound_multiplier = 0.0,
+    double reduced_derivative = 0.0,
+    double complementarity_inf_norm = 0.0,
+    double candidate_composition = 0.0,
+    double candidate_volume = 0.0
+) {
+    return {
+        solve_index,
+        static_cast<int>(active_candidate_count),
+        removed_candidate_index,
+        std::move(action),
+        phase_fraction,
+        lower_bound_multiplier,
+        reduced_derivative,
+        complementarity_inf_norm,
+        candidate_composition,
+        candidate_volume,
+        std::move(solver_status),
+        std::move(decision_reason),
+    };
+}
+
+StageIIIBounds make_stage_iii_bounds(
+    const Held2Coordinates& coordinates,
+    const std::vector<std::array<double, 2>>& candidates
+) {
+    StageIIIBounds result;
+    result.lower.resize(3 * candidates.size());
+    result.upper.resize(3 * candidates.size());
+    for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+        const std::size_t offset = 3 * phase;
+        result.lower[offset] = 0.0;
+        result.upper[offset] = 1.0;
+        result.lower[offset + 1] = std::max(
+            coordinates.independent_lower_bounds.front(),
+            candidates[phase][0] - kCandidateRadius
+        );
+        result.upper[offset + 1] = std::min(
+            coordinates.independent_upper_bounds.front(),
+            candidates[phase][0] + kCandidateRadius
+        );
+        result.lower[offset + 2] = kVolumeLower;
+        result.upper[offset + 2] = kVolumeUpper;
+    }
+    return result;
+}
+
+StageIIIInitialization make_stage_iii_initialization(
+    double feed,
+    const std::vector<std::array<double, 2>>& candidates
+) {
+    StageIIIInitialization result;
+    if (candidates.size() < 2) {
+        result.failure = "candidate_set_incomplete";
+        return result;
+    }
+    const auto minimum = std::min_element(
+        candidates.begin(),
+        candidates.end(),
+        [](const auto& left, const auto& right) { return left[0] < right[0]; }
+    );
+    const auto maximum = std::max_element(
+        candidates.begin(),
+        candidates.end(),
+        [](const auto& left, const auto& right) { return left[0] < right[0]; }
+    );
+    if (minimum == candidates.end() || maximum == candidates.end()
+        || minimum->at(0) >= feed || maximum->at(0) <= feed) {
+        result.failure = "candidate_set_does_not_bracket_feed";
+        return result;
+    }
+    const std::size_t left_index = static_cast<std::size_t>(minimum - candidates.begin());
+    const std::size_t right_index = static_cast<std::size_t>(maximum - candidates.begin());
+    constexpr double trace_fraction = 1.0e-6;
+    result.variables.assign(3 * candidates.size(), 0.0);
+    double reserved_fraction = 0.0;
+    double reserved_balance = 0.0;
+    for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+        result.variables[3 * phase + 1] = candidates[phase][0];
+        result.variables[3 * phase + 2] = candidates[phase][1];
+        if (phase != left_index && phase != right_index) {
+            result.variables[3 * phase] = trace_fraction;
+            reserved_fraction += trace_fraction;
+            reserved_balance += trace_fraction * candidates[phase][0];
+        }
+    }
+    const double remaining_fraction = 1.0 - reserved_fraction;
+    const double remaining_balance = feed - reserved_balance;
+    const double separation = candidates[right_index][0] - candidates[left_index][0];
+    const double right_fraction =
+        (remaining_balance - remaining_fraction * candidates[left_index][0]) / separation;
+    const double left_fraction = remaining_fraction - right_fraction;
+    if (left_fraction < 0.0 || right_fraction < 0.0) {
+        result.failure = "candidate_set_initialization_infeasible";
+        return result;
+    }
+    result.variables[3 * left_index] = left_fraction;
+    result.variables[3 * right_index] = right_fraction;
+    result.feasible = true;
+    return result;
+}
+
+bool remaining_candidates_bracket_feed(
+    double feed,
+    const std::vector<std::array<double, 2>>& candidates,
+    std::size_t removed
+) {
+    if (removed >= candidates.size()) {
+        return false;
+    }
+    std::vector<std::array<double, 2>> remaining;
+    remaining.reserve(candidates.size() - 1);
+    for (std::size_t index = 0; index < candidates.size(); ++index) {
+        if (index != removed) {
+            remaining.push_back(candidates[index]);
+        }
+    }
+    return make_stage_iii_initialization(feed, remaining).feasible;
+}
+
 class Held2StageIIITnlp final : public Ipopt::TNLP {
 public:
     Held2StageIIITnlp(
@@ -244,21 +384,9 @@ public:
         if (n != static_cast<Ipopt::Index>(initial_.size()) || m != 2) {
             return false;
         }
-        for (std::size_t phase = 0; phase < candidates_.size(); ++phase) {
-            const std::size_t offset = 3 * phase;
-            x_l[offset] = 0.0;
-            x_u[offset] = 1.0;
-            x_l[offset + 1] = std::max(
-                coordinates_.independent_lower_bounds.front(),
-                candidates_[phase][0] - kCandidateRadius
-            );
-            x_u[offset + 1] = std::min(
-                coordinates_.independent_upper_bounds.front(),
-                candidates_[phase][0] + kCandidateRadius
-            );
-            x_l[offset + 2] = kVolumeLower;
-            x_u[offset + 2] = kVolumeUpper;
-        }
+        const StageIIIBounds bounds = make_stage_iii_bounds(coordinates_, candidates_);
+        std::copy(bounds.lower.begin(), bounds.lower.end(), x_l);
+        std::copy(bounds.upper.begin(), bounds.upper.end(), x_u);
         g_l[0] = 0.0;
         g_u[0] = 0.0;
         g_l[1] = 0.0;
@@ -521,6 +649,56 @@ StageIIIRun run_stage_iii(
 
 }  // namespace
 
+Held2StageIIIRetirementDecision held2_stage_iii_retirement_decision(
+    double phase_fraction,
+    double lower_bound_multiplier,
+    double upper_bound_multiplier,
+    double reduced_derivative,
+    bool remaining_balance_feasible
+) {
+    Held2StageIIIRetirementDecision result;
+    if (!std::isfinite(phase_fraction) || !std::isfinite(lower_bound_multiplier)
+        || !std::isfinite(upper_bound_multiplier) || !std::isfinite(reduced_derivative)) {
+        result.reason = "nonfinite_kkt_evidence";
+        return result;
+    }
+    result.complementarity_inf_norm = std::max(
+        std::abs(phase_fraction * lower_bound_multiplier),
+        std::abs((1.0 - phase_fraction) * upper_bound_multiplier)
+    );
+    result.stationarity_residual = std::abs(
+        reduced_derivative - lower_bound_multiplier + upper_bound_multiplier
+    );
+    if (phase_fraction > kActivePhaseTolerance) {
+        result.reason = "phase_amount_active";
+        return result;
+    }
+    if (!remaining_balance_feasible) {
+        result.reason = "remaining_balance_infeasible";
+        return result;
+    }
+    if (lower_bound_multiplier <= kNumericalTolerance
+        || reduced_derivative <= kNumericalTolerance) {
+        result.reason = "descent_or_marginal_phase";
+        return result;
+    }
+    if (lower_bound_multiplier < 0.0 || upper_bound_multiplier < 0.0) {
+        result.reason = "invalid_multiplier_sign";
+        return result;
+    }
+    if (result.complementarity_inf_norm > kNumericalTolerance) {
+        result.reason = "complementarity_failed";
+        return result;
+    }
+    if (result.stationarity_residual > kKktTolerance) {
+        result.reason = "reduced_derivative_inconsistent";
+        return result;
+    }
+    result.retire = true;
+    result.reason = "kkt_inactive";
+    return result;
+}
+
 Held2StageIIINlpEvaluation evaluate_held2_manufactured_stage_iii_nlp(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed,
@@ -561,90 +739,250 @@ Held2StageIIIResult solve_held2_manufactured_stage_iii(
     );
     const std::size_t independent_retained = independent_retained_index(coordinates);
     const double feed = modified_feed[independent_retained];
-    const auto minimum = std::min_element(
-        candidates.begin(),
-        candidates.end(),
-        [](const auto& left, const auto& right) { return left[0] < right[0]; }
-    );
-    const auto maximum = std::max_element(
-        candidates.begin(),
-        candidates.end(),
-        [](const auto& left, const auto& right) { return left[0] < right[0]; }
-    );
-    if (minimum == candidates.end() || maximum == candidates.end()
-        || minimum->at(0) >= feed || maximum->at(0) <= feed) {
-        result.failure_reason = "candidate_set_does_not_bracket_feed";
-        return result;
-    }
-    const std::size_t left_index = static_cast<std::size_t>(minimum - candidates.begin());
-    const std::size_t right_index = static_cast<std::size_t>(maximum - candidates.begin());
-    const double trace_fraction = 1.0e-6;
-    std::vector<double> initial(3 * candidates.size(), 0.0);
-    double reserved_fraction = 0.0;
-    double reserved_balance = 0.0;
-    for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
-        initial[3 * phase + 1] = candidates[phase][0];
-        initial[3 * phase + 2] = candidates[phase][1];
-        if (phase != left_index && phase != right_index) {
-            initial[3 * phase] = trace_fraction;
-            reserved_fraction += trace_fraction;
-            reserved_balance += trace_fraction * candidates[phase][0];
+    std::vector<std::array<double, 2>> active_candidates = candidates;
+    StageIIIRun run;
+    Held2StageIIINlpEvaluation nlp;
+    bool active_set_accepted = false;
+    for (std::size_t lifecycle = 0; lifecycle <= candidates.size(); ++lifecycle) {
+        const StageIIIInitialization initialization = make_stage_iii_initialization(
+            feed,
+            active_candidates
+        );
+        if (!initialization.feasible) {
+            result.failure_reason = initialization.failure;
+            result.lifecycle.push_back(make_lifecycle_step(
+                result.stage_iii_solve_count + 1,
+                active_candidates.size(),
+                "initialization_failed",
+                "not_run",
+                result.failure_reason
+            ));
+            return result;
         }
-    }
-    const double remaining_fraction = 1.0 - reserved_fraction;
-    const double remaining_balance = feed - reserved_balance;
-    const double separation = candidates[right_index][0] - candidates[left_index][0];
-    const double right_fraction =
-        (remaining_balance - remaining_fraction * candidates[left_index][0]) / separation;
-    const double left_fraction = remaining_fraction - right_fraction;
-    if (left_fraction < 0.0 || right_fraction < 0.0) {
-        result.failure_reason = "candidate_set_initialization_infeasible";
-        return result;
-    }
-    initial[3 * left_index] = left_fraction;
-    initial[3 * right_index] = right_fraction;
+        run = run_stage_iii(coordinates, feed, active_candidates, initialization.variables);
+        ++result.stage_iii_solve_count;
+        result.solver_status = run.solver_status;
+        if (!run.solver_converged || !run.callback_error.empty()
+            || run.variables.size() != initialization.variables.size()) {
+            result.numerical_status = "not_converged";
+            result.failure_reason = run.callback_error.empty()
+                ? "stage_iii_solver_not_converged"
+                : run.callback_error;
+            result.lifecycle.push_back(make_lifecycle_step(
+                result.stage_iii_solve_count,
+                active_candidates.size(),
+                "solve_failed",
+                run.solver_status,
+                result.failure_reason
+            ));
+            return result;
+        }
+        nlp = evaluate_stage_iii(
+            coordinates,
+            feed,
+            active_candidates.size(),
+            run.variables,
+            run.equality_multipliers,
+            1.0
+        );
+        std::vector<double> kkt = nlp.lagrangian_gradient;
+        if (run.lower_bound_multipliers.size() != kkt.size()
+            || run.upper_bound_multipliers.size() != kkt.size()) {
+            result.numerical_status = "not_converged";
+            result.failure_reason = "stage_iii_multiplier_evidence_missing";
+            result.lifecycle.push_back(make_lifecycle_step(
+                result.stage_iii_solve_count,
+                active_candidates.size(),
+                "numerical_certificate_failed",
+                run.solver_status,
+                result.failure_reason
+            ));
+            return result;
+        }
+        const StageIIIBounds bounds = make_stage_iii_bounds(coordinates, active_candidates);
+        result.dual_sign_violation_inf_norm = 0.0;
+        result.bound_complementarity_inf_norm = 0.0;
+        result.minimum_phase_fraction = std::numeric_limits<double>::infinity();
+        for (std::size_t index = 0; index < kkt.size(); ++index) {
+            kkt[index] -= run.lower_bound_multipliers[index];
+            kkt[index] += run.upper_bound_multipliers[index];
+            result.dual_sign_violation_inf_norm = std::max({
+                result.dual_sign_violation_inf_norm,
+                -run.lower_bound_multipliers[index],
+                -run.upper_bound_multipliers[index],
+            });
+            result.bound_complementarity_inf_norm = std::max({
+                result.bound_complementarity_inf_norm,
+                std::abs((run.variables[index] - bounds.lower[index])
+                    * run.lower_bound_multipliers[index]),
+                std::abs((bounds.upper[index] - run.variables[index])
+                    * run.upper_bound_multipliers[index]),
+            });
+            if (index % 3 == 0) {
+                result.minimum_phase_fraction = std::min(
+                    result.minimum_phase_fraction,
+                    run.variables[index]
+                );
+            }
+        }
+        result.kkt_stationarity_inf_norm = maximum_abs(kkt);
+        if (maximum_abs(nlp.constraints) > kNumericalTolerance
+            || result.kkt_stationarity_inf_norm > kKktTolerance
+            || result.dual_sign_violation_inf_norm > kNumericalTolerance
+            || result.bound_complementarity_inf_norm > kNumericalTolerance) {
+            result.numerical_status = "not_converged";
+            result.failure_reason = "stage_iii_numerical_certificate_failed";
+            result.lifecycle.push_back(make_lifecycle_step(
+                result.stage_iii_solve_count,
+                active_candidates.size(),
+                "numerical_certificate_failed",
+                run.solver_status,
+                result.failure_reason,
+                -1,
+                0.0,
+                0.0,
+                0.0,
+                result.bound_complementarity_inf_norm
+            ));
+            return result;
+        }
+        result.numerical_status = "converged";
 
-    const StageIIIRun run = run_stage_iii(coordinates, feed, candidates, initial);
-    result.solver_status = run.solver_status;
-    if (!run.solver_converged || !run.callback_error.empty()
-        || run.variables.size() != initial.size()) {
+        bool active_set_changed = false;
+        for (std::size_t phase = 0; phase < active_candidates.size(); ++phase) {
+            const std::size_t offset = 3 * phase;
+            const bool remaining_balance_feasible = remaining_candidates_bracket_feed(
+                feed,
+                active_candidates,
+                phase
+            );
+            const Held2StageIIIRetirementDecision decision =
+                held2_stage_iii_retirement_decision(
+                    run.variables[offset],
+                    run.lower_bound_multipliers[offset],
+                    run.upper_bound_multipliers[offset],
+                    nlp.lagrangian_gradient[offset],
+                    remaining_balance_feasible
+                );
+            if (!decision.retire) {
+                result.lifecycle.push_back(make_lifecycle_step(
+                    result.stage_iii_solve_count,
+                    active_candidates.size(),
+                    "retain_phase",
+                    run.solver_status,
+                    decision.reason,
+                    static_cast<int>(phase),
+                    run.variables[offset],
+                    run.lower_bound_multipliers[offset],
+                    nlp.lagrangian_gradient[offset],
+                    decision.complementarity_inf_norm,
+                    active_candidates[phase][0],
+                    active_candidates[phase][1]
+                ));
+                continue;
+            }
+            result.lifecycle.push_back(make_lifecycle_step(
+                result.stage_iii_solve_count,
+                active_candidates.size(),
+                "retire_kkt_inactive",
+                run.solver_status,
+                decision.reason,
+                static_cast<int>(phase),
+                run.variables[offset],
+                run.lower_bound_multipliers[offset],
+                nlp.lagrangian_gradient[offset],
+                decision.complementarity_inf_norm,
+                active_candidates[phase][0],
+                active_candidates[phase][1]
+            ));
+            active_candidates.erase(active_candidates.begin() + static_cast<std::ptrdiff_t>(phase));
+            ++result.retired_inactive_count;
+            ++result.active_set_resolve_count;
+            active_set_changed = true;
+            break;
+        }
+        if (active_set_changed) {
+            continue;
+        }
+
+        std::vector<Held2StateEvaluation> states;
+        states.reserve(active_candidates.size());
+        for (std::size_t phase = 0; phase < active_candidates.size(); ++phase) {
+            states.push_back(evaluate_held2_manufactured_state(
+                coordinates,
+                {run.variables[3 * phase + 1]},
+                std::log(run.variables[3 * phase + 2])
+            ));
+        }
+        for (std::size_t left = 0; left < active_candidates.size() && !active_set_changed; ++left) {
+            for (std::size_t right = left + 1; right < active_candidates.size(); ++right) {
+                if (maximum_abs_difference(
+                        states[left].modified_fractions,
+                        states[right].modified_fractions
+                    ) > kMergeTolerance
+                    || std::abs(states[left].volume - states[right].volume) > kMergeTolerance) {
+                    continue;
+                }
+                const std::size_t removed = run.variables[3 * left] <= run.variables[3 * right]
+                    ? left
+                    : right;
+                if (!remaining_candidates_bracket_feed(
+                        feed,
+                        active_candidates,
+                        removed
+                    )) {
+                    continue;
+                }
+                result.lifecycle.push_back(make_lifecycle_step(
+                    result.stage_iii_solve_count,
+                    active_candidates.size(),
+                    "merge_duplicate",
+                    run.solver_status,
+                    "duplicate_state_certified",
+                    static_cast<int>(removed),
+                    run.variables[3 * removed],
+                    run.lower_bound_multipliers[3 * removed],
+                    nlp.lagrangian_gradient[3 * removed],
+                    std::max(
+                        std::abs(run.variables[3 * removed]
+                            * run.lower_bound_multipliers[3 * removed]),
+                        std::abs((1.0 - run.variables[3 * removed])
+                            * run.upper_bound_multipliers[3 * removed])
+                    ),
+                    active_candidates[removed][0],
+                    active_candidates[removed][1]
+                ));
+                active_candidates.erase(
+                    active_candidates.begin() + static_cast<std::ptrdiff_t>(removed)
+                );
+                ++result.retired_duplicate_count;
+                ++result.active_set_resolve_count;
+                active_set_changed = true;
+                break;
+            }
+        }
+        if (active_set_changed) {
+            continue;
+        }
+        result.lifecycle.push_back(make_lifecycle_step(
+            result.stage_iii_solve_count,
+            active_candidates.size(),
+            "accept_active_set",
+            run.solver_status,
+            "active_set_certified"
+        ));
+        active_set_accepted = true;
+        break;
+    }
+    if (!active_set_accepted) {
         result.numerical_status = "not_converged";
-        result.failure_reason = run.callback_error.empty()
-            ? "stage_iii_solver_not_converged"
-            : run.callback_error;
+        result.failure_reason = "stage_iii_active_set_lifecycle_exhausted";
         return result;
     }
-    const Held2StageIIINlpEvaluation nlp = evaluate_stage_iii(
-        coordinates,
-        feed,
-        candidates.size(),
-        run.variables,
-        run.equality_multipliers,
-        1.0
-    );
-    std::vector<double> kkt = nlp.lagrangian_gradient;
-    if (run.lower_bound_multipliers.size() != kkt.size()
-        || run.upper_bound_multipliers.size() != kkt.size()) {
-        result.numerical_status = "not_converged";
-        result.failure_reason = "stage_iii_multiplier_evidence_missing";
-        return result;
-    }
-    for (std::size_t index = 0; index < kkt.size(); ++index) {
-        kkt[index] -= run.lower_bound_multipliers[index];
-        kkt[index] += run.upper_bound_multipliers[index];
-    }
-    result.kkt_stationarity_inf_norm = maximum_abs(kkt);
-    if (maximum_abs(nlp.constraints) > kNumericalTolerance
-        || result.kkt_stationarity_inf_norm > kKktTolerance) {
-        result.numerical_status = "not_converged";
-        result.failure_reason = "stage_iii_numerical_certificate_failed";
-        return result;
-    }
-    result.numerical_status = "converged";
 
     std::vector<Held2StageIIIPhase> refined;
-    refined.reserve(candidates.size());
-    for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+    refined.reserve(active_candidates.size());
+    for (std::size_t phase = 0; phase < active_candidates.size(); ++phase) {
         const double fraction = run.variables[3 * phase];
         const double composition = run.variables[3 * phase + 1];
         const double volume = run.variables[3 * phase + 2];
@@ -653,53 +991,13 @@ Held2StageIIIResult solve_held2_manufactured_stage_iii(
             {composition},
             std::log(volume)
         );
-        bool merged = false;
-        for (Held2StageIIIPhase& existing : refined) {
-            if (maximum_abs_difference(existing.modified_fractions, state.modified_fractions)
-                    <= kMergeTolerance
-                && std::abs(existing.volume - volume) <= kMergeTolerance) {
-                const double combined = existing.phase_fraction + fraction;
-                if (combined > 0.0) {
-                    for (std::size_t index = 0; index < existing.modified_fractions.size(); ++index) {
-                        existing.modified_fractions[index] =
-                            (existing.phase_fraction * existing.modified_fractions[index]
-                             + fraction * state.modified_fractions[index])
-                            / combined;
-                    }
-                    for (std::size_t index = 0; index < existing.physical_fractions.size(); ++index) {
-                        existing.physical_fractions[index] =
-                            (existing.phase_fraction * existing.physical_fractions[index]
-                             + fraction * state.physical_amounts[index])
-                            / combined;
-                    }
-                    existing.volume =
-                        (existing.phase_fraction * existing.volume + fraction * volume) / combined;
-                }
-                existing.phase_fraction = combined;
-                ++result.retired_duplicate_count;
-                merged = true;
-                break;
-            }
-        }
-        if (!merged) {
-            refined.push_back({
-                fraction,
-                state.modified_fractions,
-                state.physical_amounts,
-                volume,
-            });
-        }
+        refined.push_back({
+            fraction,
+            state.modified_fractions,
+            state.physical_amounts,
+            volume,
+        });
     }
-    refined.erase(
-        std::remove_if(
-            refined.begin(),
-            refined.end(),
-            [](const Held2StageIIIPhase& phase) {
-                return phase.phase_fraction <= kActivePhaseTolerance;
-            }
-        ),
-        refined.end()
-    );
     if (refined.size() < 2) {
         result.physical_status = "rejected";
         result.failure_reason = "collapsed_phase_set";
@@ -749,12 +1047,16 @@ Held2StageIIIResult solve_held2_manufactured_stage_iii(
     }
     for (std::size_t left = 0; left < refined.size(); ++left) {
         for (std::size_t right = left + 1; right < refined.size(); ++right) {
+            const double composition_distance = maximum_abs_difference(
+                refined[left].modified_fractions,
+                refined[right].modified_fractions
+            );
+            const double volume_distance = std::abs(
+                refined[left].volume - refined[right].volume
+            );
             result.minimum_phase_distance = std::min(
                 result.minimum_phase_distance,
-                maximum_abs_difference(
-                    refined[left].modified_fractions,
-                    refined[right].modified_fractions
-                )
+                std::max(composition_distance, volume_distance)
             );
         }
     }
@@ -799,6 +1101,9 @@ Held2StageIIIResult solve_held2_manufactured_stage_iii(
         && result.phase_charge_inf_norm < kNumericalTolerance
         && result.pressure_stationarity_inf_norm < kNumericalTolerance
         && result.modified_potential_mixed_gap < kNumericalTolerance
+        && result.dual_sign_violation_inf_norm < kNumericalTolerance
+        && result.bound_complementarity_inf_norm < kNumericalTolerance
+        && result.minimum_phase_fraction > kActivePhaseTolerance
         && result.minimum_phase_distance > kDistinctPhaseTolerance
         && std::abs(result.enumeration_objective_gap) < kNumericalTolerance;
     if (!physical) {

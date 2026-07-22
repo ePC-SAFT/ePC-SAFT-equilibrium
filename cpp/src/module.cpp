@@ -2497,6 +2497,23 @@ py::dict held2_manufactured_stage_iii(
         item["volume"] = phase.volume;
         phases.append(std::move(item));
     }
+    py::list lifecycle;
+    for (const epcsaft_equilibrium::Held2StageIIILifecycleStep& step : evaluation.lifecycle) {
+        py::dict item;
+        item["solve_index"] = step.solve_index;
+        item["active_candidate_count"] = step.active_candidate_count;
+        item["removed_candidate_index"] = step.removed_candidate_index;
+        item["action"] = step.action;
+        item["phase_fraction"] = step.phase_fraction;
+        item["lower_bound_multiplier"] = step.lower_bound_multiplier;
+        item["reduced_derivative"] = step.reduced_derivative;
+        item["complementarity_inf_norm"] = step.complementarity_inf_norm;
+        item["candidate_composition"] = step.candidate_composition;
+        item["candidate_volume"] = step.candidate_volume;
+        item["solver_status"] = step.solver_status;
+        item["decision_reason"] = step.decision_reason;
+        lifecycle.append(std::move(item));
+    }
     py::dict result;
     result["profile"] = "perdomo-held2-stage-iii-manufactured-v1";
     result["solver_status"] = evaluation.solver_status;
@@ -2508,6 +2525,9 @@ py::dict held2_manufactured_stage_iii(
     result["trace_refinement_status"] = evaluation.trace_refinement_status;
     result["input_candidate_count"] = evaluation.input_candidate_count;
     result["retired_duplicate_count"] = evaluation.retired_duplicate_count;
+    result["retired_inactive_count"] = evaluation.retired_inactive_count;
+    result["stage_iii_solve_count"] = evaluation.stage_iii_solve_count;
+    result["active_set_resolve_count"] = evaluation.active_set_resolve_count;
     result["trace_component_count"] = evaluation.trace_component_count;
     result["certified_modified_potential_count"] =
         evaluation.certified_modified_potential_count;
@@ -2521,8 +2541,36 @@ py::dict held2_manufactured_stage_iii(
         evaluation.modified_potential_mixed_gap;
     result["minimum_phase_distance"] = evaluation.minimum_phase_distance;
     result["kkt_stationarity_inf_norm"] = evaluation.kkt_stationarity_inf_norm;
+    result["dual_sign_violation_inf_norm"] = evaluation.dual_sign_violation_inf_norm;
+    result["bound_complementarity_inf_norm"] =
+        evaluation.bound_complementarity_inf_norm;
+    result["minimum_phase_fraction"] = evaluation.minimum_phase_fraction;
     result["enumeration_objective_gap"] = evaluation.enumeration_objective_gap;
     result["phases"] = std::move(phases);
+    result["lifecycle"] = std::move(lifecycle);
+    return result;
+}
+
+py::dict held2_stage_iii_retirement_decision(
+    double phase_fraction,
+    double lower_bound_multiplier,
+    double upper_bound_multiplier,
+    double reduced_derivative,
+    bool remaining_balance_feasible
+) {
+    const epcsaft_equilibrium::Held2StageIIIRetirementDecision decision =
+        epcsaft_equilibrium::held2_stage_iii_retirement_decision(
+            phase_fraction,
+            lower_bound_multiplier,
+            upper_bound_multiplier,
+            reduced_derivative,
+            remaining_balance_feasible
+        );
+    py::dict result;
+    result["retire"] = decision.retire;
+    result["reason"] = decision.reason;
+    result["complementarity_inf_norm"] = decision.complementarity_inf_norm;
+    result["stationarity_residual"] = decision.stationarity_residual;
     return result;
 }
 
@@ -2805,6 +2853,15 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("physical_feed"),
         py::arg("candidates"),
         py::arg("stage")
+    );
+    module.def(
+        "_held2_stage_iii_retirement_decision",
+        &held2_stage_iii_retirement_decision,
+        py::arg("phase_fraction"),
+        py::arg("lower_bound_multiplier"),
+        py::arg("upper_bound_multiplier"),
+        py::arg("reduced_derivative"),
+        py::arg("remaining_balance_feasible")
     );
     module.def(
         "_held2_adapter",

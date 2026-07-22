@@ -274,6 +274,28 @@ struct Held2StageIIIPhase {
     double volume = 0.0;
 };
 
+struct Held2StageIIIRetirementDecision {
+    bool retire = false;
+    std::string reason = "not_adjudicated";
+    double complementarity_inf_norm = 0.0;
+    double stationarity_residual = 0.0;
+};
+
+struct Held2StageIIILifecycleStep {
+    int solve_index = 0;
+    int active_candidate_count = 0;
+    int removed_candidate_index = -1;
+    std::string action;
+    double phase_fraction = 0.0;
+    double lower_bound_multiplier = 0.0;
+    double reduced_derivative = 0.0;
+    double complementarity_inf_norm = 0.0;
+    double candidate_composition = 0.0;
+    double candidate_volume = 0.0;
+    std::string solver_status;
+    std::string decision_reason;
+};
+
 struct Held2StageIIIResult {
     std::string solver_status = "not_run";
     std::string numerical_status = "not_adjudicated";
@@ -283,6 +305,9 @@ struct Held2StageIIIResult {
     std::string trace_refinement_status = "not_adjudicated";
     int input_candidate_count = 0;
     int retired_duplicate_count = 0;
+    int retired_inactive_count = 0;
+    int stage_iii_solve_count = 0;
+    int active_set_resolve_count = 0;
     int trace_component_count = 0;
     int certified_modified_potential_count = 0;
     double objective = 0.0;
@@ -293,9 +318,21 @@ struct Held2StageIIIResult {
     double modified_potential_mixed_gap = 0.0;
     double minimum_phase_distance = 0.0;
     double kkt_stationarity_inf_norm = 0.0;
+    double dual_sign_violation_inf_norm = 0.0;
+    double bound_complementarity_inf_norm = 0.0;
+    double minimum_phase_fraction = 0.0;
     double enumeration_objective_gap = 0.0;
     std::vector<Held2StageIIIPhase> phases;
+    std::vector<Held2StageIIILifecycleStep> lifecycle;
 };
+
+[[nodiscard]] Held2StageIIIRetirementDecision held2_stage_iii_retirement_decision(
+    double phase_fraction,
+    double lower_bound_multiplier,
+    double upper_bound_multiplier,
+    double reduced_derivative,
+    bool remaining_balance_feasible
+);
 
 [[nodiscard]] Held2StateEvaluation evaluate_held2_phase_block(
     const Held2Coordinates& coordinates,

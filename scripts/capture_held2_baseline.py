@@ -19,7 +19,7 @@ import epcsaft
 
 from epcsaft_equilibrium import _equilibrium
 
-SCHEMA = "perdomo-held2-manufactured-baseline-v1"
+SCHEMA = "perdomo-held2-manufactured-baseline-v2"
 CHARGES = (0.0, 1.0, -1.0)
 PHYSICAL_FEED = (0.5, 0.25, 0.25)
 CHEMICAL_POTENTIALS = (3.0, -2.0, 4.0)
@@ -124,8 +124,8 @@ def _runtime_evidence() -> dict[str, Any]:
     stage_ii = _equilibrium._held2_adapter(
         CHARGES, PHYSICAL_FEED, "stage_ii_legacy"
     )
-    # Schema v1 was captured before per-attempt Stage-II observability existed.
-    # Keep its immutable artifact payload comparable while newer tests freeze
+    # The Stage-II checkpoint payload predates per-attempt observability.
+    # Keep that payload comparable while newer tests freeze
     # the complete deterministic attempt trace independently.
     stage_ii = {
         key: value
@@ -177,8 +177,6 @@ def _runtime_evidence() -> dict[str, Any]:
         "stage_iii_derivatives": stage_iii_derivatives,
         "stage_iii_failure": stage_iii_failure,
     }
-
-
 def _artifact_record(wheel: Path, member_suffix: str, installed_path: Path) -> dict[str, Any]:
     member, member_sha256 = _wheel_payload(wheel, member_suffix)
     installed_sha256 = _sha256_path(installed_path)
