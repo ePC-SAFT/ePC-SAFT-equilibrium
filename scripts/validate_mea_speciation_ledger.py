@@ -189,15 +189,16 @@ def validate_blockers(document: dict[str, Any]) -> None:
     blockers = {record["identity"] for record in document["blockers"]}
     referenced: set[str] = set()
     for species in document["species"]:
-        referenced.add(species["blocker"])
-    referenced.update(
-        {
-            document["feed"]["blocker"],
-            document["state_grid"]["blocker"],
-            document["equilibrium_constant_formula"]["blocker"],
-            document["provider"]["blocker"],
-        }
-    )
+        if blocker := species.get("blocker"):
+            referenced.add(blocker)
+    for record in (
+        document["feed"],
+        document["state_grid"],
+        document["equilibrium_constant_formula"],
+        document["provider"],
+    ):
+        if blocker := record.get("blocker"):
+            referenced.add(blocker)
     for observation in document["observation_sets"]:
         referenced.update(observation.get("blockers", []))
     unknown = referenced - blockers

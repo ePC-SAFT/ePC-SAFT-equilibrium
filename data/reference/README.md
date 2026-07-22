@@ -56,12 +56,14 @@ the identical capability-level values are recorded in `ARCHITECTURE.yaml`.
 `mea_speciation_input_ledger.json` is a private, non-executable evidence
 inventory for the intended nine-species, five-reaction aqueous MEA problem. It
 records exact stoichiometry, source-file hashes, candidate equilibrium-constant
-conventions, observation roles, the installed Provider identity, and every
-known blocker. It does not provide application chemistry to the package or
-claim that source-complete nonideal MEA inputs exist.
+conventions, observation roles, the exact merged diagnostic MEA bundle and
+Provider identities, and every known blocker. The bundle supplies ordered
+component IDs, charges, and molar masses, but its provisional parameters and
+unknown applicability remain non-source-complete. The ledger does not provide
+application chemistry to the package or make the artifact predictive.
 
 Run `python scripts/validate_mea_speciation_ledger.py` to verify provenance
 fields, exact conservation, charge, and ranks. The stricter
-`--require-executable` mode intentionally fails until the declared Provider,
-reference-state, source-conflict, domain, feed, pressure, and species-completeness
-blockers are resolved.
+`--require-executable` mode intentionally fails until the declared Provider
+source-completeness, reference-state, source-conflict, reaction-constant domain,
+pressure, and species-completeness blockers are resolved.
