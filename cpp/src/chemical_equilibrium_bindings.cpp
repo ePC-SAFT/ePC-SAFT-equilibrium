@@ -254,6 +254,7 @@ py::dict chemical_result(
         ? py::cast(evaluation.final_lambda)
         : py::none();
     result["continuation_used"] = evaluation.continuation_used;
+    result["max_min_solve_count"] = evaluation.max_min_solve_count;
     result["active_balance_constraint_count"] =
         evaluation.active_balance_constraint_count;
     result["kkt_residual"] = evaluation.kkt_residual;
