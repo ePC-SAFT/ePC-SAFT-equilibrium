@@ -1,6 +1,6 @@
 # Perdomo HELD2 Strong-Electrolyte Phase Equilibrium
 
-Status: canonical design with archived non-production development evidence
+Status: canonical design with private Stage-I/II development implementation
 
 Authority effect: none
 
@@ -8,13 +8,13 @@ Authority effect: none
 
 This document is the package-local scientific and numerical owner for the
 Perdomo HELD2 strong-electrolyte formulation. Current `main` retains its private
-manufactured Stage-I/II/III foundation. The later installed public-dispatch and
-reference-hardening runtime is archived at
+Stage-I/II implementation and manufactured Stage-III foundation. The later
+installed public-dispatch and reference-hardening runtime is archived at
 `archive/held2-pre-strategy-2026-07-21` as non-production evidence.
 Organization doctrine revision 3 and
 [the package authority map](../phase-equilibrium.md) govern ownership and the
-claim boundary. The canonical future numerical decomposition and guarded
-execution order are in the
+claim boundary. The canonical numerical decomposition, landed task state, and
+guarded execution order are in the
 [HELD2 solver-strategy implementation plan](../plans/2026-07-21-perdomo-held2-solver-strategy.md).
 
 The archived subject exposed the controller through the existing public
@@ -49,8 +49,8 @@ Any resumed public implementation must reuse `tp_flash`, `TpFlashResult`,
 `HeldDiagnostics`, and `FlashError`. It must also reuse the existing native
 module, target, `ProviderContext`, HELD2 result/diagnostic owner, and the
 Stage-II/III Ipopt adapters where the solver-strategy plan assigns Ipopt.
-NLopt and HiGHS are approved future internal dependencies only for their named
-stage responsibilities; they are not current-main dependencies or public
+Current `main` uses pinned NLopt 2.11.0 for DIRECT-L and pinned HiGHS 1.15.1
+for Problem (64). They remain private implementation dependencies, not public
 solver choices.
 
 ## Scientific sources and notation
@@ -253,8 +253,8 @@ reference state has zero TPD by construction. Trial states must satisfy the
 Provider source, composition, charge, packing, and volume domains.
 
 The archived WIP used a declared deterministic finite Ipopt multistart in
-modified composition and volume. That remains regression evidence, not the
-canonical target search. The approved implementation reduces volume at each
+modified composition and volume. Current `main` retains it as a regression
+oracle. The implemented Stage-I strategy reduces volume at each
 trial composition through the deterministic pressure-root service and defines
 the lower TPD envelope over eligible strict-stable pressure roots. It then uses
 NLopt `NLOPT_GN_DIRECT_L` over the bounded `C - 2` modified-composition chart.
@@ -262,11 +262,10 @@ The lower envelope may be nonsmooth where the selected density branch changes,
 so Stage I does not require a global derivative or a local NLP polish to accept
 an independently certified negative witness.
 
-The DIRECT-L evaluation budget and completion contract must be frozen from a
-bounded implementation assignment and measured evidence. They must not be
-silently inherited from the archived 50-start profile or used to change a
-physical tolerance. The archived Ipopt multistart remains a named regression
-oracle until the replacement has parity evidence.
+The private strategy retains its declared DIRECT-L evaluation budget and
+completion accounting separately from the archived 50-start profile. The
+implementation did not change a physical tolerance. The archived Ipopt
+multistart remains a named regression oracle.
 
 Terminal precedence is asymmetric:
 
@@ -296,9 +295,8 @@ Stage II implements the Perdomo semi-infinite dual strategy. The upper problem
 is a finite linear program in the modified multipliers over the complete
 retained cut pool. The canonical production owner for this Problem-(64) LP is
 HiGHS, with Equilibrium independently recomputing its objective, row
-activities, primal residual, and dual residual. The current analytic envelope
-implementation remains a manufactured test oracle, not the future general
-production solver.
+activities, primal residual, and dual residual. The analytic envelope
+implementation remains a manufactured test oracle.
 
 Each nonconvex lower Problem-(65) minimizes the reduced phase function in
 modified composition and packing/volume at the current multiplier. Its
@@ -483,10 +481,11 @@ The resulting source-topology disagreement is evidence, not an electrolyte-LLE
 admission or a Perdomo numerical reproduction.
 
 D-026 identified one source-complete, installed, public, genuinely two-liquid
-ePC-SAFT case as the next critical gate. The solver strategy is now canonized,
-but no runtime implementation is authorized or started. A new bounded
-assignment and compatible corrected Provider artifact must rebind that gate.
-Any resumed generic controller must, without a chemistry-specific branch or
+ePC-SAFT case as the next critical gate. The private Stage-I/II strategy now
+exists on `main`; that work does not authorize public electrolyte dispatch,
+Stage-III completion, Validation, or promotion. A separate bounded assignment
+and compatible corrected Provider artifact must rebind the installed gate.
+Any resumed public controller must, without a chemistry-specific branch or
 retuning:
 
 1. establish Stage-I instability;

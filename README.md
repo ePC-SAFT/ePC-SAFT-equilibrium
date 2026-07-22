@@ -75,8 +75,11 @@ An archived non-production WIP subject extended the same public `tp_flash`
 operation to qualifying installed Provider electrolyte SDKs and the Perdomo
 HELD2 Stage-I/II/III controller. That dispatch was capability-driven rather
 than case- or component-name-driven, but it is not part of current `main`.
-Current `main` retains the private manufactured HELD2 foundation while the
-experimental runtime is preserved by tag
+Current `main` retains a private HELD2 development implementation. It includes
+the deterministic pressure-root envelope, DIRECT-L Stage I, HiGHS Stage-II
+Problem (64), and deterministic Stage-II basin discovery followed by
+exact-Hessian Ipopt refinement. The experimental public runtime is preserved
+by tag
 `archive/held2-pre-strategy-2026-07-21` for strategy review.
 
 The archived homogeneous reference search reports detected pressure-root
@@ -94,15 +97,17 @@ and passes Stage II and Stage III with two distinct liquids. It requires a new
 bounded implementation assignment and exact corrected Provider artifact before
 runtime work resumes.
 
-The future HELD2 solver strategy is now canonized in
+The HELD2 solver strategy is canonized in
 `docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. It assigns
 deterministic pressure-root enumeration to homogeneous and trial-composition
 density topology, NLopt DIRECT-L to the reduced Stage-I TPD search, HiGHS to
 the Stage-II upper LP, global basin discovery plus exact-Hessian Ipopt to the
 Stage-II lower problem, and exact-Hessian Ipopt to Stage III. SLSQP is not the
-default replacement for Ipopt. This is a plan, not current runtime behavior:
-current `main` still links only Ipopt, exposes no electrolyte public dispatch,
-and admits no electrolyte capability.
+default replacement for Ipopt. Current `main` implements the Stage-I and
+Stage-II assignments as private development routes and links pinned NLopt
+2.11.0 and HiGHS 1.15.1 with Ipopt. Stage-III hardening, installed two-liquid
+evidence, public electrolyte dispatch, and capability admission remain outside
+that landed scope.
 
 The earlier fixed-two-phase campaign remains `NON_ADMISSION` under the frozen
 May `3*u_c` composition contract: 12 of 17 rows passed, rows 002/009/010/011
@@ -114,21 +119,26 @@ searches, so no two-phase composition comparison was evaluable. Permanent-lab
 review requires a focused controller-lifecycle redesign before another runtime
 candidate. The current wheel remains immutable and unpromoted; the design-only
 delta changes no runtime, tolerance, resource, public type, or globality claim.
-That neutral redesign and the archived Perdomo HELD2 WIP are retained as
-provenance while the next HELD2 implementation strategy is selected.
+That neutral redesign and the archived Perdomo HELD2 WIP remain provenance
+while Stage-III hardening and installed two-liquid evidence await separate
+assignments.
 
 ## Native boundary
 
 The extension calls `epcsaft.native_sdk(model)` and retains one model-bound
-`epcsaft.native_sdk.v1` capsule while Ipopt evaluates the phase contexts. The
-HELD candidate consumes the reviewed mixture value/gradient/Hessian tail;
+`epcsaft.native_sdk.v1` capsule while Equilibrium evaluates phase contexts.
+DIRECT-L explores the reduced HELD2 envelopes, HiGHS solves Problem (64), and
+Ipopt refines smooth Stage-II and Stage-III NLPs. The HELD candidate consumes
+the reviewed mixture value/gradient/Hessian tail;
 the pure route continues to consume the accepted prefix. The extension
 compiles against the declaration header installed by the provider wheel. It
 does not link provider implementation symbols, compile provider sources, or
 import private provider modules.
 
 Source builds require Python 3.13, CMake, a C++17 compiler, pkg-config, Ipopt,
-and the non-editable provider wheel installed in the build environment. The
+network or populated FetchContent caches for the pinned NLopt 2.11.0 and
+HiGHS 1.15.1 archives, and the non-editable provider wheel installed in the
+build environment. The
 local candidate gate hashes the exact provider wheel before creating an
 isolated build environment. Candidate wheels are retained as read-only files
 under a commit-bound `artifacts/equilibrium-neutral-held-v1/<commit>/`
@@ -158,8 +168,8 @@ The canonical documentation map is `docs/phase-equilibrium.md`. Detailed
 formulation owners are
 `docs/designs/2026-07-17-pure-saturation-slice.md`,
 `docs/designs/2026-07-17-neutral-held-v1.md`, and
-`docs/designs/2026-07-21-perdomo-held2.md`; the canonical future HELD2
-execution plan is
+`docs/designs/2026-07-21-perdomo-held2.md`; the canonical HELD2 execution plan
+and landed task record is
 `docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
