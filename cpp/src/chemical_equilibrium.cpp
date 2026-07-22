@@ -1,4 +1,5 @@
 #include "chemical_equilibrium.hpp"
+#include "provider.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -6,6 +7,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
@@ -251,6 +253,39 @@ void validate_reference_records(const ReactionSystemInput& input) {
             }
         } else if (record.pressure_binding != "temperature_only") {
             throw std::invalid_argument("equilibrium constant pressure binding is incomplete");
+        }
+    }
+    if (!input.has_standard_state_transformation) {
+        if (!input.provider_basis_id.empty()
+            || input.standard_state_transformation_residual != 0.0) {
+            throw std::invalid_argument(
+                "standard-state transformation evidence is inconsistent"
+            );
+        }
+        return;
+    }
+    if (input.provider_basis_id.empty()) {
+        throw std::invalid_argument("standard-state Provider basis identity is incomplete");
+    }
+    require_finite(
+        input.standard_state_transformation_residual,
+        "standard-state transformation residual"
+    );
+    double ln_k_scale = 0.0;
+    for (double value : input.ln_k) {
+        ln_k_scale = std::max(ln_k_scale, std::abs(value));
+    }
+    const double residual_tolerance = numerical_tolerance(
+        ln_k_scale, input.species_ids.size()
+    );
+    if (std::abs(input.standard_state_transformation_residual) > residual_tolerance) {
+        throw std::invalid_argument("standard-state transformation residual is inconsistent");
+    }
+    for (const EquilibriumConstantRecord& record : input.equilibrium_constant_records) {
+        if (record.reference_id != input.provider_basis_id) {
+            throw std::invalid_argument(
+                "equilibrium constant Provider basis identity does not match transformation"
+            );
         }
     }
 }
@@ -648,12 +683,62 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
         input.ln_k,
         std::move(reference),
         input.provider_fingerprint,
+        input.has_standard_state_transformation,
+        input.provider_basis_id,
+        input.standard_state_transformation_residual,
         balance_rank,
         reaction_rank,
         reference_residual,
         conservation_norm,
         reaction_charge_norm,
     };
+}
+
+MixedStandardStateResult transform_water_self_ionization_standard_state(
+    double ln_kw_mixed_standard,
+    const StandardReferenceEvaluation& reference
+) {
+    constexpr std::string_view kProviderBasis =
+        "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3";
+    if (!std::isfinite(ln_kw_mixed_standard)) {
+        throw std::invalid_argument("mixed-standard lnKw must be finite");
+    }
+    if (reference.basis_id != kProviderBasis) {
+        throw std::invalid_argument("Provider standard-reference basis identity mismatch");
+    }
+    if (reference.parameter_fingerprint.empty()) {
+        throw std::invalid_argument("Provider standard-reference fingerprint is incomplete");
+    }
+    for (double value : {
+             reference.formula_unit_log_fugacity,
+             reference.pure_solvent_log_fugacity,
+             reference.solvent_molar_mass_kg_per_mol,
+             reference.reference_molality_mol_per_kg,
+             reference.convergence_error,
+         }) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument("Provider standard-reference scalar is not finite");
+        }
+    }
+    if (reference.solvent_molar_mass_kg_per_mol <= 0.0
+        || reference.solvent_molar_mass_kg_per_mol >= 1.0) {
+        throw std::invalid_argument("Provider solvent molar mass must be in kg/mol");
+    }
+    if (reference.reference_molality_mol_per_kg <= 0.0) {
+        throw std::invalid_argument("Provider terminal molality must be positive");
+    }
+    if (reference.convergence_error < 0.0) {
+        throw std::invalid_argument("Provider reference convergence error must be nonnegative");
+    }
+
+    // This is the IAPWS thermodynamic standard molality, not Provider's
+    // terminal infinite-dilution evaluation coordinate.
+    constexpr double kStandardMolalityMolPerKg = 1.0;
+    const double delta = 2.0 * std::log(
+        reference.solvent_molar_mass_kg_per_mol * kStandardMolalityMolPerKg
+    ) + reference.formula_unit_log_fugacity
+        - 2.0 * reference.pure_solvent_log_fugacity;
+    return {delta, ln_kw_mixed_standard + delta};
 }
 
 }  // namespace epcsaft_equilibrium

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import copy
 import ctypes
+import json
 import math
 from collections.abc import Callable
+from pathlib import Path
 
 import epcsaft
 import pytest
@@ -75,6 +77,65 @@ def _held_water_ionization_model() -> epcsaft.EPCSAFT:
         "held-2008-water-self-ionization", version=1
     ).select(("water", "hydronium-cation", "hydroxide-anion"))
     return epcsaft.EPCSAFT(parameters)
+
+
+def _water_ionization_reference_record() -> dict[str, object]:
+    path = (
+        Path(__file__).parents[1]
+        / "data/reference/water_self_ionization_iapws_r11_24.yaml"
+    )
+    return json.loads(path.read_text())
+
+
+def _manufactured_water_standard_reference() -> dict[str, object]:
+    return {
+        "formula_unit_log_fugacity": -1.75,
+        "pure_solvent_log_fugacity": -0.125,
+        "solvent_molar_mass_kg_per_mol": 0.01801528,
+        "reference_molality_mol_per_kg": 1.0e-12,
+        "convergence_error": 2.0e-6,
+        "basis_id": "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3",
+        "parameter_fingerprint": "sha256:manufactured-water-reference",
+        "component_ids": ["water", "hydronium-cation", "hydroxide-anion"],
+        "charges": [0, 1, -1],
+        "temperature_k": 298.15,
+        "pressure_pa": 100_000.0,
+    }
+
+
+def _iapws_p_kw(record: dict[str, object], temperature_k: float, density: float) -> float:
+    correlation = record["correlation"]
+    assert isinstance(correlation, dict)
+    alpha = correlation["alpha"]
+    beta = correlation["beta"]
+    ideal = correlation["ideal_gas_p_kw_coefficients"]
+    assert isinstance(alpha, list)
+    assert isinstance(beta, list)
+    assert isinstance(ideal, list)
+    z_value = density * math.exp(
+        alpha[0]
+        + alpha[1] / temperature_k
+        + alpha[2] * density ** (2.0 / 3.0) / temperature_k**2
+    )
+    p_kw_ideal = (
+        ideal[0]
+        + ideal[1] / temperature_k
+        + ideal[2] / temperature_k**2
+        + ideal[3] / temperature_k**3
+    )
+    coordination = correlation["ion_coordination_number"]
+    molar_mass = correlation["water_molar_mass_g_per_mol"]
+    return (
+        -2.0
+        * coordination
+        * (
+            math.log10(1.0 + z_value)
+            - z_value / (z_value + 1.0) * density
+            * (beta[0] + beta[1] / temperature_k + beta[2] * density)
+        )
+        + p_kw_ideal
+        + 2.0 * math.log10(molar_mass / 1000.0)
+    )
 
 
 def _copied_sdk_capsule(
@@ -690,6 +751,182 @@ def test_installed_provider_standard_reference_tail_is_consumed_once() -> None:
     assert result["parameter_fingerprint"] == model.parameter_fingerprint
     assert result["component_ids"] == ["water", "hydronium-cation", "hydroxide-anion"]
     assert result["charges"] == [0, 1, -1]
+
+
+def test_retained_iapws_record_reproduces_source_equations() -> None:
+    record = _water_ionization_reference_record()
+    state = record["state"]
+    values = record["values"]
+    assert isinstance(state, dict)
+    assert isinstance(values, dict)
+
+    assert _iapws_p_kw(record, 300.0, 1.0) == pytest.approx(13.906672, abs=5.0e-7)
+    retained_p_kw = _iapws_p_kw(
+        record,
+        state["temperature_k"],
+        state["density_kg_per_m3"] / 1000.0,
+    )
+    assert retained_p_kw == pytest.approx(values["p_kw"], abs=5.0e-13)
+    assert -math.log(10.0) * retained_p_kw == pytest.approx(
+        values["ln_kw"], abs=1.0e-13
+    )
+
+
+def test_iapws_mixed_standard_state_transform_uses_thermodynamic_standard_molality() -> None:
+    record = _water_ionization_reference_record()
+    reference = _manufactured_water_standard_reference()
+
+    transformed = _equilibrium._chemical_transform_water_self_ionization_standard_state(
+        record, reference
+    )
+
+    standard_state = record["standard_state"]
+    values = record["values"]
+    assert isinstance(standard_state, dict)
+    assert isinstance(values, dict)
+    expected_delta = (
+        2.0
+        * math.log(
+            reference["solvent_molar_mass_kg_per_mol"]
+            * standard_state["standard_molality_mol_per_kg"]
+        )
+        + reference["formula_unit_log_fugacity"]
+        - 2.0 * reference["pure_solvent_log_fugacity"]
+    )
+    wrong_terminal_delta = (
+        2.0
+        * math.log(
+            reference["solvent_molar_mass_kg_per_mol"]
+            * reference["reference_molality_mol_per_kg"]
+        )
+        + reference["formula_unit_log_fugacity"]
+        - 2.0 * reference["pure_solvent_log_fugacity"]
+    )
+    assert transformed["delta_standard_offset"] == pytest.approx(
+        expected_delta, abs=2.0e-15
+    )
+    assert transformed["delta_standard_offset"] != pytest.approx(wrong_terminal_delta)
+    assert transformed["ln_k_provider_basis"] == pytest.approx(
+        values["ln_kw"] + expected_delta, abs=5.0e-15
+    )
+    assert transformed["transformation_residual"] <= 2.0e-15
+    assert transformed["provider_basis_id"] == reference["basis_id"]
+    assert transformed["source_id"] == "iapws-r11-24"
+
+    spec = _base_system()
+    source_records = [dict(item) for item in spec["equilibrium_constant_records"]]
+    source_records[0]["reference_id"] = transformed["provider_basis_id"]
+    spec["equilibrium_constant_records"] = tuple(source_records)
+    spec["has_standard_state_transformation"] = True
+    spec["provider_basis_id"] = transformed["provider_basis_id"]
+    spec["standard_state_transformation_residual"] = transformed[
+        "transformation_residual"
+    ]
+    compiled = _equilibrium._chemical_compile_system(spec)
+    assert compiled["has_standard_state_transformation"] is True
+    assert compiled["provider_basis_id"] == transformed["provider_basis_id"]
+    assert compiled["standard_state_transformation_residual"] <= 2.0e-15
+
+    inconsistent = copy.deepcopy(spec)
+    inconsistent["standard_state_transformation_residual"] = 1.0e-3
+    with pytest.raises(ValueError, match="transformation residual"):
+        _equilibrium._chemical_compile_system(inconsistent)
+
+
+def test_installed_provider_reference_transforms_iapws_ln_kw_in_exact_basis() -> None:
+    model = _held_water_ionization_model()
+    provider_reference = _equilibrium._chemical_evaluate_provider_standard_reference(
+        epcsaft.native_sdk(model),
+        298.15,
+        100_000.0,
+        model.parameter_fingerprint,
+    )
+    record = _water_ionization_reference_record()
+
+    transformed = _equilibrium._chemical_transform_water_self_ionization_standard_state(
+        record, provider_reference
+    )
+
+    standard_state = record["standard_state"]
+    values = record["values"]
+    assert isinstance(standard_state, dict)
+    assert isinstance(values, dict)
+    expected_delta = (
+        2.0
+        * math.log(
+            provider_reference["solvent_molar_mass_kg_per_mol"]
+            * standard_state["standard_molality_mol_per_kg"]
+        )
+        + provider_reference["formula_unit_log_fugacity"]
+        - 2.0 * provider_reference["pure_solvent_log_fugacity"]
+    )
+    assert transformed["delta_standard_offset"] == pytest.approx(
+        expected_delta, abs=2.0e-15
+    )
+    assert transformed["ln_k_provider_basis"] == pytest.approx(
+        values["ln_kw"] + expected_delta, abs=5.0e-15
+    )
+    assert transformed["provider_basis_id"] == provider_reference["basis_id"]
+    assert transformed["parameter_fingerprint"] == model.parameter_fingerprint
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value", "message"),
+    (
+        ("standard_state", "solvent_molar_mass_unit", "g/mol", "molar-mass unit"),
+        (
+            "standard_state",
+            "transformation_sign",
+            "lnK_provider=lnKw_mixed-delta_standard_offset",
+            "transformation sign",
+        ),
+        ("standard_state", "standard_molality_mol_per_kg", 1.0e-12, "standard molality"),
+        ("provider_binding", "basis_id", "wrong-basis", "basis identity"),
+        ("provider_binding", "reaction_stoichiometry", (-1.0, 1.0, 1.0), "1:1"),
+        ("state", "phase", "vapor", "state identity"),
+        ("state", "pressure_binding", "temperature_only", "pressure binding"),
+        ("source", "id", "unidentified", "source identity"),
+        ("values", "ln_kw", 32.2231929374538, "pKw and lnKw"),
+    ),
+)
+def test_iapws_mixed_standard_state_transform_rejects_record_mutations(
+    section: str, field: str, value: object, message: str
+) -> None:
+    record = _water_ionization_reference_record()
+    nested = record[section]
+    assert isinstance(nested, dict)
+    nested[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        _equilibrium._chemical_transform_water_self_ionization_standard_state(
+            record, _manufactured_water_standard_reference()
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("basis_id", "wrong-basis", "basis identity"),
+        ("component_ids", ("hydronium-cation", "water", "hydroxide-anion"), "order"),
+        ("charges", (0, -1, 1), "charges"),
+        ("temperature_k", 299.0, "temperature binding"),
+        ("pressure_pa", 101_325.0, "pressure binding"),
+        ("solvent_molar_mass_kg_per_mol", 18.01528, "molar mass"),
+        ("reference_molality_mol_per_kg", 0.0, "terminal molality"),
+        ("convergence_error", 1.0e-3, "convergence"),
+        ("parameter_fingerprint", "", "fingerprint"),
+    ),
+)
+def test_iapws_mixed_standard_state_transform_rejects_provider_reference_mutations(
+    field: str, value: object, message: str
+) -> None:
+    reference = _manufactured_water_standard_reference()
+    reference[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        _equilibrium._chemical_transform_water_self_ionization_standard_state(
+            _water_ionization_reference_record(), reference
+        )
 
 
 def test_provider_standard_reference_tail_rejects_abi_identity_and_domain_mutations() -> None:

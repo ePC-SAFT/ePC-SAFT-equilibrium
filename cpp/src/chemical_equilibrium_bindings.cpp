@@ -20,6 +20,8 @@ namespace py = pybind11;
 namespace epcsaft_equilibrium {
 namespace {
 
+constexpr std::string_view kWaterReferenceBasis =
+    "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3";
 constexpr std::size_t kChemicalSourceDomainSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, total_ion_mole_fraction_max) + sizeof(double);
 
@@ -143,6 +145,15 @@ ReactionSystemInput reaction_system_input(const py::dict& spec) {
     input.temperature_k = py::cast<double>(spec["temperature_k"]);
     input.pressure_pa = py::cast<double>(spec["pressure_pa"]);
     input.complete_closed_system = py::cast<bool>(spec["complete_closed_system"]);
+    input.has_standard_state_transformation =
+        spec.contains("has_standard_state_transformation")
+        && py::cast<bool>(spec["has_standard_state_transformation"]);
+    if (input.has_standard_state_transformation) {
+        input.provider_basis_id = py::cast<std::string>(spec["provider_basis_id"]);
+        input.standard_state_transformation_residual = py::cast<double>(
+            spec["standard_state_transformation_residual"]
+        );
+    }
     return input;
 }
 
@@ -163,6 +174,11 @@ py::dict compile_system(const py::dict& spec) {
         compiled.conservation_reaction_inf_norm;
     result["charge_reaction_inf_norm"] = compiled.charge_reaction_inf_norm;
     result["provider_fingerprint"] = compiled.provider_fingerprint;
+    result["has_standard_state_transformation"] =
+        compiled.has_standard_state_transformation;
+    result["provider_basis_id"] = compiled.provider_basis_id;
+    result["standard_state_transformation_residual"] =
+        compiled.standard_state_transformation_residual;
     return result;
 }
 
@@ -351,6 +367,179 @@ py::dict provider_standard_reference_evidence(
     result["parameter_fingerprint"] = evaluation.parameter_fingerprint;
     result["component_ids"] = metadata.component_ids;
     result["charges"] = metadata.charges;
+    result["temperature_k"] = temperature_k;
+    result["pressure_pa"] = pressure_pa;
+    return result;
+}
+
+py::dict transform_water_self_ionization_standard_state_evidence(
+    const py::dict& record,
+    const py::dict& reference_record
+) {
+    if (py::cast<int>(record["schema_version"]) != 1
+        || py::cast<std::string>(record["capability"])
+            != "private-water-self-ionization-reference-v1") {
+        throw py::value_error("IAPWS source identity is incomplete");
+    }
+    const py::dict source = py::cast<py::dict>(record["source"]);
+    if (py::cast<std::string>(source["id"]) != "iapws-r11-24"
+        || py::cast<std::string>(source["url"])
+            != "https://iapws.org/documents/release/Ionization.download"
+        || py::cast<std::string>(source["equation_locator"])
+            != "equations-1-through-4-and-table-1"
+        || py::cast<std::string>(source["reaction"])
+            != "2 H2O = H3O+ + OH-") {
+        throw py::value_error("IAPWS source identity is incomplete");
+    }
+
+    const py::dict state = py::cast<py::dict>(record["state"]);
+    const double temperature_k = py::cast<double>(state["temperature_k"]);
+    const double pressure_pa = py::cast<double>(state["pressure_pa"]);
+    if (temperature_k != 298.15) {
+        throw py::value_error("IAPWS temperature binding does not match");
+    }
+    if (pressure_pa != 100000.0
+        || py::cast<std::string>(state["pressure_binding"]) != "fixed") {
+        throw py::value_error("IAPWS pressure binding does not match");
+    }
+    if (py::cast<std::string>(state["phase"]) != "ordinary-liquid-water") {
+        throw py::value_error("IAPWS state identity does not match");
+    }
+    if (py::cast<double>(state["density_kg_per_m3"]) != 997.047039) {
+        throw py::value_error("independent density record does not match");
+    }
+    const py::dict density_source = py::cast<py::dict>(state["density_source"]);
+    if (py::cast<std::string>(density_source["id"]) != "llnl-tr-805304"
+        || py::cast<std::string>(density_source["url"])
+            != "https://www.osti.gov/servlets/purl/1630404"
+        || py::cast<std::string>(density_source["locator"])
+            != "section-4.2.3-page-35-high-density-solution") {
+        throw py::value_error("independent density source identity is incomplete");
+    }
+
+    const py::dict standard_state = py::cast<py::dict>(record["standard_state"]);
+    if (!py::cast<bool>(standard_state["equilibrium_constant_dimensionless"])) {
+        throw py::value_error("IAPWS lnKw must be explicitly dimensionless");
+    }
+    if (py::cast<std::string>(standard_state["ionic_basis"]) != "molality"
+        || py::cast<std::string>(standard_state["solvent_basis"]) != "mole-fraction") {
+        throw py::value_error("IAPWS mixed standard-state identity does not match");
+    }
+    if (py::cast<double>(standard_state["standard_molality_mol_per_kg"]) != 1.0) {
+        throw py::value_error("IAPWS thermodynamic standard molality must be 1 mol/kg");
+    }
+    if (py::cast<std::string>(standard_state["solvent_molar_mass_unit"])
+        != "kg/mol") {
+        throw py::value_error("standard-state molar-mass unit must be kg/mol");
+    }
+    if (py::cast<std::string>(standard_state["transformation_sign"])
+        != "lnK_provider=lnKw_mixed+delta_standard_offset") {
+        throw py::value_error("standard-state transformation sign does not match");
+    }
+
+    const py::dict provider_binding = py::cast<py::dict>(record["provider_binding"]);
+    const std::string provider_basis_id = py::cast<std::string>(
+        provider_binding["basis_id"]
+    );
+    if (provider_basis_id != kWaterReferenceBasis) {
+        throw py::value_error("Provider basis identity does not match");
+    }
+    const std::vector<std::string> component_ids = py::cast<std::vector<std::string>>(
+        provider_binding["component_ids"]
+    );
+    const std::vector<int> charges = py::cast<std::vector<int>>(
+        provider_binding["charges"]
+    );
+    if (component_ids
+        != std::vector<std::string>{"water", "hydronium-cation", "hydroxide-anion"}) {
+        throw py::value_error("Provider component order does not match");
+    }
+    if (charges != std::vector<int>{0, 1, -1}) {
+        throw py::value_error("Provider charges do not match");
+    }
+    if (py::cast<std::vector<double>>(provider_binding["reaction_stoichiometry"])
+        != std::vector<double>{-2.0, 1.0, 1.0}) {
+        throw py::value_error("water self-ionization requires the exact 1:1 ionic reaction");
+    }
+    const double maximum_convergence_error = py::cast<double>(
+        provider_binding["maximum_reference_convergence_error"]
+    );
+    if (!std::isfinite(maximum_convergence_error)
+        || maximum_convergence_error < 0.0) {
+        throw py::value_error("reference convergence bound is invalid");
+    }
+
+    const py::dict values = py::cast<py::dict>(record["values"]);
+    const double p_kw = py::cast<double>(values["p_kw"]);
+    const double ln_kw = py::cast<double>(values["ln_kw"]);
+    if (!std::isfinite(p_kw) || !std::isfinite(ln_kw)
+        || std::abs(ln_kw + std::log(10.0) * p_kw) > 1.0e-12) {
+        throw py::value_error("IAPWS pKw and lnKw are inconsistent");
+    }
+
+    if (py::cast<std::string>(reference_record["basis_id"]) != provider_basis_id) {
+        throw py::value_error("Provider standard-reference basis identity mismatch");
+    }
+    if (py::cast<std::vector<std::string>>(reference_record["component_ids"])
+        != component_ids) {
+        throw py::value_error("Provider standard-reference component order mismatch");
+    }
+    if (py::cast<std::vector<int>>(reference_record["charges"]) != charges) {
+        throw py::value_error("Provider standard-reference charges mismatch");
+    }
+    if (py::cast<double>(reference_record["temperature_k"]) != temperature_k) {
+        throw py::value_error("Provider standard-reference temperature binding mismatch");
+    }
+    if (py::cast<double>(reference_record["pressure_pa"]) != pressure_pa) {
+        throw py::value_error("Provider standard-reference pressure binding mismatch");
+    }
+
+    StandardReferenceEvaluation reference;
+    reference.formula_unit_log_fugacity = py::cast<double>(
+        reference_record["formula_unit_log_fugacity"]
+    );
+    reference.pure_solvent_log_fugacity = py::cast<double>(
+        reference_record["pure_solvent_log_fugacity"]
+    );
+    reference.solvent_molar_mass_kg_per_mol = py::cast<double>(
+        reference_record["solvent_molar_mass_kg_per_mol"]
+    );
+    reference.reference_molality_mol_per_kg = py::cast<double>(
+        reference_record["reference_molality_mol_per_kg"]
+    );
+    reference.convergence_error = py::cast<double>(reference_record["convergence_error"]);
+    reference.basis_id = py::cast<std::string>(reference_record["basis_id"]);
+    reference.parameter_fingerprint = py::cast<std::string>(
+        reference_record["parameter_fingerprint"]
+    );
+    if (std::abs(reference.solvent_molar_mass_kg_per_mol - 0.01801528) > 1.0e-12) {
+        throw py::value_error("Provider water molar mass does not match kg/mol identity");
+    }
+    if (!std::isfinite(reference.reference_molality_mol_per_kg)
+        || reference.reference_molality_mol_per_kg <= 0.0) {
+        throw py::value_error("Provider terminal molality must be finite and positive");
+    }
+    if (!std::isfinite(reference.convergence_error)
+        || reference.convergence_error < 0.0
+        || reference.convergence_error > maximum_convergence_error) {
+        throw py::value_error("Provider standard-reference convergence is unacceptable");
+    }
+
+    const MixedStandardStateResult transformed =
+        transform_water_self_ionization_standard_state(ln_kw, reference);
+    const double independently_reconstructed = ln_kw
+        + 2.0 * std::log(reference.solvent_molar_mass_kg_per_mol)
+        + reference.formula_unit_log_fugacity
+        - 2.0 * reference.pure_solvent_log_fugacity;
+    const double transformation_residual = transformed.ln_k_provider_basis
+        - independently_reconstructed;
+    py::dict result;
+    result["delta_standard_offset"] = transformed.delta_standard_offset;
+    result["ln_k_provider_basis"] = transformed.ln_k_provider_basis;
+    result["transformation_residual"] = transformation_residual;
+    result["provider_basis_id"] = provider_basis_id;
+    result["source_id"] = py::cast<std::string>(source["id"]);
+    result["parameter_fingerprint"] = reference.parameter_fingerprint;
     return result;
 }
 
@@ -496,6 +685,12 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("temperature_k"),
         py::arg("pressure_pa"),
         py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_chemical_transform_water_self_ionization_standard_state",
+        &transform_water_self_ionization_standard_state_evidence,
+        py::arg("record"),
+        py::arg("provider_reference")
     );
     module.def(
         "_chemical_solve_provider_manufactured",

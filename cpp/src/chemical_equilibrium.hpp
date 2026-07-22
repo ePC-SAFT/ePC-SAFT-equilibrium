@@ -42,6 +42,9 @@ struct ReactionSystemInput {
     double temperature_k = 0.0;
     double pressure_pa = 0.0;
     bool complete_closed_system = false;
+    bool has_standard_state_transformation = false;
+    std::string provider_basis_id;
+    double standard_state_transformation_residual = 0.0;
 };
 
 struct CompiledReactionSystem {
@@ -54,6 +57,9 @@ struct CompiledReactionSystem {
     std::vector<double> ln_k;
     std::vector<double> g_ref;
     std::string provider_fingerprint;
+    bool has_standard_state_transformation = false;
+    std::string provider_basis_id;
+    double standard_state_transformation_residual = 0.0;
     std::size_t balance_rank = 0;
     std::size_t reaction_rank = 0;
     double reference_reconstruction_inf_norm = 0.0;
@@ -142,7 +148,13 @@ struct ProviderPhaseBlockEvidence {
     std::string parameter_fingerprint;
 };
 
+struct MixedStandardStateResult {
+    double delta_standard_offset = 0.0;
+    double ln_k_provider_basis = 0.0;
+};
+
 class ProviderContext;
+struct StandardReferenceEvaluation;
 
 [[nodiscard]] CompiledReactionSystem compile_reaction_system(
     const ReactionSystemInput& input
@@ -191,6 +203,11 @@ class ProviderContext;
     double temperature_k,
     const std::vector<double>& amounts,
     double volume_m3
+);
+
+[[nodiscard]] MixedStandardStateResult transform_water_self_ionization_standard_state(
+    double ln_kw_mixed_standard,
+    const StandardReferenceEvaluation& reference
 );
 
 [[nodiscard]] ChemicalSolveResult solve_provider_manufactured_reaction(

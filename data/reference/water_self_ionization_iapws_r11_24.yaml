@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "capability": "private-water-self-ionization-reference-v1",
+  "source": {
+    "id": "iapws-r11-24",
+    "title": "Revised Release on the Ionization Constant of H2O",
+    "url": "https://iapws.org/documents/release/Ionization.download",
+    "equation_locator": "equations-1-through-4-and-table-1",
+    "reaction": "2 H2O = H3O+ + OH-"
+  },
+  "state": {
+    "temperature_k": 298.15,
+    "pressure_pa": 100000.0,
+    "pressure_binding": "fixed",
+    "phase": "ordinary-liquid-water",
+    "density_kg_per_m3": 997.047039,
+    "density_source": {
+      "id": "llnl-tr-805304",
+      "title": "H2OI95: A Stand-Alone Fortran Code for Evaluating the IAPWS-95 Equation-of-State Model for Water (Rev. 1)",
+      "url": "https://www.osti.gov/servlets/purl/1630404",
+      "locator": "section-4.2.3-page-35-high-density-solution"
+    }
+  },
+  "standard_state": {
+    "equilibrium_constant_dimensionless": true,
+    "ionic_basis": "molality",
+    "solvent_basis": "mole-fraction",
+    "standard_molality_mol_per_kg": 1.0,
+    "solvent_molar_mass_unit": "kg/mol",
+    "transformation_sign": "lnK_provider=lnKw_mixed+delta_standard_offset"
+  },
+  "correlation": {
+    "temperature_unit": "K",
+    "density_unit": "g/cm3",
+    "water_molar_mass_g_per_mol": 18.015268,
+    "ion_coordination_number": 6.0,
+    "alpha": [-0.702132, 8681.05, -24145.1],
+    "beta": [0.813876, -51.4471, -0.469920],
+    "ideal_gas_p_kw_coefficients": [0.61415, 48251.33, -67707.93, 10102100.0]
+  },
+  "values": {
+    "p_kw": 13.99435488204,
+    "ln_kw": -32.2231929374538
+  },
+  "provider_binding": {
+    "basis_id": "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3",
+    "component_ids": ["water", "hydronium-cation", "hydroxide-anion"],
+    "charges": [0, 1, -1],
+    "reaction_stoichiometry": [-2.0, 1.0, 1.0],
+    "maximum_reference_convergence_error": 0.00005
+  },
+  "authority_effect": "none",
+  "claim": "source-complete-input-record-only"
+}
