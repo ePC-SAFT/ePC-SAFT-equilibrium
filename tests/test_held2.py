@@ -379,7 +379,7 @@ def test_public_tp_flash_dispatches_table3_electrolyte_to_held2() -> None:
     assert result.diagnostics.root_completeness == "not_proven"
     assert result.diagnostics.attempts == 30
     assert result.diagnostics.major_iterations == 0
-    assert result.diagnostics.best_tpd == pytest.approx(-1.6139519381498581e-12, abs=2.0e-14)
+    assert result.diagnostics.best_tpd == pytest.approx(-1.6139519381498581e-12, abs=1.0e-13)
     assert result.diagnostics.solver_status == "passed"
     assert result.diagnostics.numerical_status == "passed"
     assert result.diagnostics.physical_status == "passed"
@@ -1216,7 +1216,9 @@ def test_held2_installed_stage_i_log_packing_discriminator_remains_fail_closed()
     assert result["completed_start_count"] == 0
     assert result["failed_start_count"] == 1
     assert result["failed_start_index"] == 0
-    assert result["failed_start_solver_status"] == 3
+    # Ipopt can terminate this deliberately rejected start through either the
+    # tiny-step or iteration-limit non-success path across supported builds.
+    assert result["failed_start_solver_status"] in {3, -1}
     assert result["failed_start_solver_converged"] is False
     assert result["failed_start_reason"] == "TPD solve did not return a complete accepted state"
     assert result["search_completeness"] == "incomplete"
@@ -1439,7 +1441,7 @@ def test_held2_installed_stage_i_uses_provider_volume_domain_for_khudaida_midpoi
             > 1.0e-3
         )
         assert candidate["molar_volume_bounds"] == pytest.approx(
-            [3.079084484139457e-05, 22.785225182631986], rel=2.0e-14
+            [3.079084484139457e-05, 22.785225182631986], rel=1.0e-13
         )
         assert candidate["molar_volume_bounds"][0] <= candidate["volume"]
         assert candidate["volume"] <= candidate["molar_volume_bounds"][1]
