@@ -19,7 +19,7 @@ import epcsaft
 
 from epcsaft_equilibrium import _equilibrium
 
-SCHEMA = "perdomo-held2-manufactured-baseline-v1"
+SCHEMA = "perdomo-held2-manufactured-baseline-v2"
 CHARGES = (0.0, 1.0, -1.0)
 PHYSICAL_FEED = (0.5, 0.25, 0.25)
 CHEMICAL_POTENTIALS = (3.0, -2.0, 4.0)
@@ -124,8 +124,8 @@ def _runtime_evidence() -> dict[str, Any]:
     stage_ii = _equilibrium._held2_adapter(
         CHARGES, PHYSICAL_FEED, "stage_ii_legacy"
     )
-    # Schema v1 was captured before per-attempt Stage-II observability existed.
-    # Keep its immutable artifact payload comparable while newer tests freeze
+    # The Stage-II checkpoint payload predates per-attempt observability.
+    # Keep that payload comparable while newer tests freeze
     # the complete deterministic attempt trace independently.
     stage_ii = {
         key: value
@@ -149,33 +149,14 @@ def _runtime_evidence() -> dict[str, Any]:
         CHARGES,
         PHYSICAL_FEED,
         candidates,
-        "stage_iii_legacy_baseline",
+        "stage_iii",
     )
     stage_iii_failure = _equilibrium._held2_adapter(
         CHARGES,
         PHYSICAL_FEED,
         ((0.1, 1.0), (0.2, 1.0), (0.3, 1.0)),
-        "stage_iii_legacy_baseline",
+        "stage_iii",
     )
-    # Schema v1 predates the active-set lifecycle. Replay its exact private
-    # numerical route and omit only fields that did not exist in that schema.
-    new_stage_iii_fields = {
-        "active_set_resolve_count",
-        "bound_complementarity_inf_norm",
-        "dual_sign_violation_inf_norm",
-        "lifecycle",
-        "minimum_phase_fraction",
-        "retired_inactive_count",
-        "stage_iii_solve_count",
-    }
-    stage_iii = {
-        key: value for key, value in stage_iii.items() if key not in new_stage_iii_fields
-    }
-    stage_iii_failure = {
-        key: value
-        for key, value in stage_iii_failure.items()
-        if key not in new_stage_iii_fields
-    }
     stage_iii_derivatives = _equilibrium._held2_adapter(
         CHARGES,
         PHYSICAL_FEED,
