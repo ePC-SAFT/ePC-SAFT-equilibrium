@@ -56,6 +56,7 @@ struct CompiledReactionSystem {
     std::string provider_fingerprint;
     std::size_t balance_rank = 0;
     std::size_t reaction_rank = 0;
+    double reaction_qr_diagonal_ratio = 0.0;
     double reference_reconstruction_inf_norm = 0.0;
     double conservation_reaction_inf_norm = 0.0;
     double charge_reaction_inf_norm = 0.0;
