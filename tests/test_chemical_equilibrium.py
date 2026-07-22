@@ -1075,6 +1075,7 @@ def test_source_complete_water_self_ionization_rejects_indeterminate_and_false_s
     assert false_success["accepted"] is False
     assert false_success["physical_status"] == "failed"
     assert false_success["trace_status"] == "at_or_below_floor"
+    assert false_success["max_min_solve_count"] == 1
 
 
 def test_provider_standard_reference_tail_rejects_abi_identity_and_domain_mutations() -> None:
@@ -1200,6 +1201,7 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
 
     assert result["profile"] == "installed_provider_manufactured_nonpredictive"
     assert result["accepted"] is True
+    assert result["max_min_solve_count"] == 1
     final = _equilibrium._chemical_evaluate_provider_block(
         capsule,
         temperature_k,
