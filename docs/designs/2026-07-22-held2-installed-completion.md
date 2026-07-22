@@ -40,6 +40,19 @@ set, a real Provider Stage-III solve, physical two-phase equilibrium, or
 predictive agreement with Khudaida. Its root-completeness and globality claims
 remain `not_proven` and `not_guaranteed`, respectively.
 
+The subsequent issue-#27 replay classifies the retained chart failure as
+solver-bound numerical contact, not a physical-simplex excursion. The earliest
+rejected trial was an `eval_f` request at `1.0000000000000002`, was not an
+accepted iterate, and exceeded the unit bound by one binary64 ULP. Continuing
+the same replay exposed only the second and fourth representable values above
+`1.0`; the maximum excursion was `8.881784197001252e-16`. Normalizing those
+four explicitly enumerated binary64 contacts to the exact unit boundary leaves
+the mapped physical state unchanged, removes the callback failure, and lets
+Ipopt terminate successfully. The fifth representable value and every larger
+or non-finite excursion remain invalid. The one-attempt controller is still
+Stage-II indeterminate because that diagnostic budget does not produce an
+eligible candidate set.
+
 ## Completion invariants
 
 The remaining implementation and evidence must preserve all of the following:
@@ -80,6 +93,15 @@ Every successful Stage-II upper LP must be recorded before the lower search
 begins. Its solver/version, primal and dual feasibility, residuals, cut slacks,
 cut duals, active cuts, upper bound, and multipliers must survive any later
 lower-search failure or resource exit.
+
+The implemented coordinate policy is
+`binary64_four_ulp_unit_boundary_v1`. It is a representational rule expressed
+by repeated `nextafter` calls, not a physical tolerance and not an Ipopt bound
+relaxation. Ordered local evidence retains raw coordinates, callback owner,
+trial-versus-accepted status, maximum violation, mapped physical coordinates,
+and the last valid physical state. Problem-(64) evidence is committed to the
+major history before Problem (65) starts and marks its lower value unavailable
+until a certifiable lower terminal exists.
 
 ## Full installed Stage-II candidate contract
 

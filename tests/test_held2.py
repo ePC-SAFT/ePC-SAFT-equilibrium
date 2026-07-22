@@ -567,6 +567,45 @@ def test_held2_integrated_controller_is_fail_closed_at_declared_stage_ii_budget(
     }
     assert result["stage_ii"]["local_attempts_truncated"] is True
     assert len(result["stage_ii"]["attempt_trace"]) == 1
+    attempt = result["stage_ii"]["attempt_trace"][0]
+    assert attempt["solver_converged"] is True
+    assert attempt["solver_status"] == "success"
+    assert attempt["callback_error"] == ""
+    normalized = [
+        evaluation
+        for evaluation in attempt["evaluation_trace"]
+        if evaluation["mapping_status"] == "normalized_boundary_contact"
+    ]
+    assert normalized
+    assert normalized[0]["callback"] == "eval_f"
+    assert normalized[0]["accepted_iterate"] is False
+    assert normalized[0]["raw_variables"][2] == math.nextafter(1.0, math.inf)
+    assert normalized[0]["maximum_bound_violation"] == math.ulp(1.0)
+    assert normalized[0]["physical_variables"] == pytest.approx(
+        [
+            4.553330337150642e-06,
+            1.0000123152940647e-10,
+            0.9999954464696617,
+            -9.391852068856018,
+        ]
+    )
+    assert max(item["maximum_bound_violation"] for item in normalized) == 4.0 * math.ulp(1.0)
+    assert any(item["accepted_iterate"] for item in normalized)
+    assert attempt["last_valid_physical_variables"] == pytest.approx(
+        attempt["internal_terminal"]
+    )
+    assert len(result["stage_ii"]["bound_history"]) == 1
+    upper = result["stage_ii"]["bound_history"][0]
+    assert upper["lower_bound_available"] is False
+    assert upper["upper_solver"] == "highs_lp"
+    assert upper["upper_solver_status"] == "Optimal"
+    assert upper["upper_primal_feasible"] is True
+    assert upper["upper_dual_feasible"] is True
+    assert upper["upper_primal_residual_inf"] == 0.0
+    assert upper["upper_dual_residual_inf"] == 0.0
+    assert upper["cut_slacks"] == pytest.approx([0.0, 0.0, 0.10764612291119935, 0.0, 0.0])
+    assert upper["cut_duals"] == pytest.approx([1.0, 0.0, 0.0, 0.0, 0.0])
+    assert upper["active_cut_ids"] == [0, 1, 3, 4]
     assert result["stage_iii"] is None
     assert result["predictive_comparison_status"] == ("not_allowed_before_physical_acceptance")
     assert result["globality_certificate"] == "not_guaranteed"
@@ -642,6 +681,45 @@ def test_held2_solver_neutral_search_objective_fails_closed() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected", "normalized"),
+    [
+        (0.25, 0.25, False),
+        (math.nextafter(0.0, -math.inf), 0.0, True),
+        (math.nextafter(1.0, math.inf), 1.0, True),
+        (1.0000000000000009, 1.0, True),
+    ],
+)
+def test_held2_stage_ii_chart_policy_normalizes_only_adjacent_binary64_contact(
+    raw: float,
+    expected: float,
+    normalized: bool,
+) -> None:
+    evidence = _equilibrium._held2_adapter(raw, "stage_ii_chart_coordinate")
+
+    assert evidence["raw_coordinate"] == raw
+    assert evidence["normalized_coordinate"] == expected
+    assert evidence["normalized_boundary_contact"] is normalized
+    assert evidence["policy"] == "binary64_four_ulp_unit_boundary_v1"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        -2.5e-323,
+        1.000000000000001,
+        -1.0e-12,
+        1.0 + 1.0e-12,
+        math.inf,
+    ],
+)
+def test_held2_stage_ii_chart_policy_rejects_meaningful_invalid_motion(
+    raw: float,
+) -> None:
+    with pytest.raises(ValueError, match=r"outside|not finite"):
+        _equilibrium._held2_adapter(raw, "stage_ii_chart_coordinate")
+
+
 def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
     result = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
 
@@ -658,6 +736,7 @@ def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
     assert result["major_iterations"] <= 100
     assert result["lower_starts_per_iteration"] > 0
     assert len(result["bound_history"]) == result["major_iterations"]
+    assert all(entry["lower_bound_available"] for entry in result["bound_history"])
     assert all(
         entry["lower_bound"] <= entry["upper_bound"] + 1.0e-10 for entry in result["bound_history"]
     )

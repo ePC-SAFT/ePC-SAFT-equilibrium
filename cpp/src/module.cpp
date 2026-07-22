@@ -1523,6 +1523,30 @@ py::dict held2_installed_phase_block(
     return result;
 }
 
+py::dict held2_stage_ii_chart_coordinate_evidence(
+    double raw_coordinate,
+    const std::string& stage
+) {
+    if (stage != "stage_ii_chart_coordinate") {
+        throw py::value_error("unsupported HELD2 chart-coordinate evidence request");
+    }
+    try {
+        const epcsaft_equilibrium::Held2StageIIChartCoordinate coordinate =
+            epcsaft_equilibrium::normalize_held2_stage_ii_chart_coordinate(
+                raw_coordinate
+            );
+        py::dict result;
+        result["raw_coordinate"] = coordinate.raw;
+        result["normalized_coordinate"] = coordinate.normalized;
+        result["normalized_boundary_contact"] =
+            coordinate.normalized_boundary_contact;
+        result["policy"] = "binary64_four_ulp_unit_boundary_v1";
+        return result;
+    } catch (const std::invalid_argument& error) {
+        throw py::value_error(error.what());
+    }
+}
+
 py::dict held2_manufactured_stage_i(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed,
@@ -2335,6 +2359,7 @@ py::dict held2_stage_ii_to_dict(
     for (const auto& bound : evaluation.bound_history) {
         py::dict item;
         item["lower_bound"] = bound.lower_bound;
+        item["lower_bound_available"] = bound.lower_bound_available;
         item["upper_bound"] = bound.upper_bound;
         item["multipliers"] = bound.multipliers;
         item["cut_count"] = bound.cut_count;
@@ -2390,6 +2415,25 @@ py::dict held2_stage_ii_to_dict(
         item["basin_id"] = attempt.basin_id;
         item["same_major_upper_bound"] = attempt.same_major_upper_bound;
         item["same_major_multipliers"] = attempt.same_major_multipliers;
+        py::list evaluations;
+        for (const auto& evaluation : attempt.evaluation_trace) {
+            py::dict trace;
+            trace["sequence"] = evaluation.sequence;
+            trace["callback"] = evaluation.callback;
+            trace["new_x"] = evaluation.new_x;
+            trace["callback_succeeded"] = evaluation.callback_succeeded;
+            trace["accepted_iterate"] = evaluation.accepted_iterate;
+            trace["raw_variables"] = evaluation.raw_variables;
+            trace["physical_variables"] = evaluation.physical_variables;
+            trace["maximum_bound_violation"] =
+                evaluation.maximum_bound_violation;
+            trace["mapping_status"] = evaluation.mapping_status;
+            trace["error"] = evaluation.error;
+            evaluations.append(std::move(trace));
+        }
+        item["evaluation_trace"] = std::move(evaluations);
+        item["last_valid_physical_variables"] =
+            attempt.last_valid_physical_variables;
         attempts.append(std::move(item));
         solver_converged_count += attempt.solver_converged ? 1 : 0;
         physical_kkt_passed_count += attempt.physical_kkt_passed ? 1 : 0;
@@ -2951,6 +2995,12 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("variables"),
         py::arg("reference_variables"),
         py::arg("use_tpd"),
+        py::arg("stage")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_stage_ii_chart_coordinate_evidence,
+        py::arg("raw_coordinate"),
         py::arg("stage")
     );
     module.def(

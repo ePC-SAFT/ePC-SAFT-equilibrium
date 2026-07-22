@@ -61,3 +61,11 @@ evidence for the Khudaida Table-3 tracer. The retained Stage-II callback
 failure and exhausted one-attempt bound remain indeterminate; Stage III and
 predictive comparison are not silently run. This file is development evidence
 only and has no capability or publication authority.
+
+That JSON remains immutable issue-#22 provenance. Current source replays the
+same retained Stage-II start with ordered callback and accepted-iterate
+evidence, classifies the excursion as one-to-four-ULP binary64 contact at the
+unit face, and preserves the successful upper-LP record before the lower solve.
+The replay reaches local Ipopt success but remains Stage-II indeterminate under
+the unchanged one-attempt candidate gates; it does not rewrite this historical
+artifact.

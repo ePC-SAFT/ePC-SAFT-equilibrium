@@ -184,6 +184,7 @@ struct Held2StageIResult {
 
 struct Held2StageIIBound {
     double lower_bound = 0.0;
+    bool lower_bound_available = false;
     double upper_bound = 0.0;
     std::vector<double> multipliers;
     int cut_count = 0;
@@ -198,6 +199,29 @@ struct Held2StageIIBound {
     std::vector<double> cut_duals;
     std::vector<int> active_cut_ids;
 };
+
+struct Held2StageIILocalEvaluation {
+    int sequence = 0;
+    std::string callback;
+    bool new_x = false;
+    bool callback_succeeded = false;
+    bool accepted_iterate = false;
+    std::vector<double> raw_variables;
+    std::vector<double> physical_variables;
+    double maximum_bound_violation = 0.0;
+    std::string mapping_status = "not_evaluated";
+    std::string error;
+};
+
+struct Held2StageIIChartCoordinate {
+    double raw = 0.0;
+    double normalized = 0.0;
+    bool normalized_boundary_contact = false;
+};
+
+[[nodiscard]] Held2StageIIChartCoordinate normalize_held2_stage_ii_chart_coordinate(
+    double coordinate
+);
 
 struct Held2StageIICandidate {
     std::vector<double> modified_fractions;
@@ -240,6 +264,8 @@ struct Held2StageIIAttempt {
     int basin_id = -1;
     double same_major_upper_bound = 0.0;
     std::vector<double> same_major_multipliers;
+    std::vector<Held2StageIILocalEvaluation> evaluation_trace;
+    std::vector<double> last_valid_physical_variables;
 };
 
 struct Held2StageIIResult {

@@ -3,7 +3,7 @@
 ## Outcome Proof
 
 **Intent:** Turn the private HELD2 controller from a Stage-II-indeterminate installed candidate into a reproducible, physically certified private electrolyte-LLE candidate.
-**Current Behavior:** The exact Khudaida artifact selects the dense reference and finds a negative Stage-I witness, then the single declared Stage-II local attempt fails at the unit-cube chart boundary; no installed candidate set or Stage-III result exists.
+**Current Behavior:** The exact Khudaida artifact selects the dense reference and finds a negative Stage-I witness. The issue-#27 replay classifies and safely normalizes the observed one-to-four-ULP unit-boundary contacts, retains the complete upper LP, and reaches successful local Ipopt termination; the single-attempt evidence profile still produces no certified Stage-II candidate set or Stage-III result.
 **Expected Outcome:** Full-budget installed Stage II produces at least two certified distinct candidates, generic Stage III computes every physical and free-energy certificate, and a repeatable private end-to-end artifact reaches an honest accepted or specifically bounded outcome.
 **Target Output:** Four sequential mergeable leaves, one canonical installed-completion specification, and one immutable private end-to-end evidence artifact ready for the separately authorized Validation campaign.
 **Owner:** Equilibrium owns HELD2 coordinates, controller behavior, numerical solvers, certificates, and evidence; the installed Provider owns EOS values, domains, pressure, and exact tensors.
@@ -66,6 +66,14 @@ status, last valid physical state, and callback ownership. Move upper-LP
 diagnostic retention before all lower-search exits. Add a regression reproducing
 the exact installed failure and manufactured edge cases distinguishing harmless
 floating-point boundary contact from invalid chart motion.
+
+Implemented policy: normalize only the first four binary64 values adjacent to
+either unit boundary, retain the raw value and physical mapping, and fail on the
+fifth value or any larger/non-finite motion. This bound is the measured replay
+envelope (`8.881784197001252e-16` at the upper face), not a thermodynamic
+tolerance. The exact retained start now terminates locally without a callback
+error while the unchanged physical candidate gates continue to reject the
+one-attempt result.
 
 ## Task 2: Produce a full-budget installed Stage-II candidate set
 
