@@ -6,7 +6,7 @@ saturation slice recorded by migration receipt
 local fixed-temperature methane, ethane, or propane saturation boundary over a
 compatible installed provider artifact.
 
-`governance_doctrine_revision: 3`
+`governance_doctrine_revision: 4`
 
 Canonical local doctrine: `../ePC-SAFT-organization/GOVERNANCE.md`.
 
