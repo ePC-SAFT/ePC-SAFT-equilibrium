@@ -606,8 +606,17 @@ def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
     assert result["profile"] == "perdomo-held2-stage-ii-manufactured-v1"
     assert result["outcome"] == "candidate_set"
     assert result["globality_certificate"] == "not_guaranteed"
+    assert result["search_strategy"] == "continuation_sobol_direct_l_ipopt_v1"
+    assert result["global_explorer"] == "continuation_sobol_direct_l"
+    assert result["local_solver"] == "ipopt_exact_hessian"
+    assert result["exploration_failure_count"] == 0
+    assert result["exploration_evaluation_count"] > 0
+    assert result["exploration_representative_count"] == len(
+        result["attempt_trace"]
+    )
+    assert result["distinct_basin_count"] >= 3
     assert result["major_iterations"] <= 100
-    assert result["lower_starts_per_iteration"] == 30
+    assert result["lower_starts_per_iteration"] > 0
     assert len(result["bound_history"]) == result["major_iterations"]
     assert all(
         entry["lower_bound"] <= entry["upper_bound"] + 1.0e-10 for entry in result["bound_history"]
@@ -635,15 +644,21 @@ def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
 
     assert first["historical_dual_pullback_fixture_status"] == "not_assigned"
     assert first["attempt_trace"] == second["attempt_trace"]
-    assert len(first["attempt_trace"]) == (
-        first["major_iterations"] * first["lower_starts_per_iteration"]
-    )
+    assert len(first["attempt_trace"]) >= first["lower_starts_per_iteration"]
 
     for expected_attempt_id, attempt in enumerate(first["attempt_trace"]):
         assert attempt["attempt_id"] == expected_attempt_id
         assert attempt["major_iteration"] < first["major_iterations"]
         assert attempt["start_index"] < first["lower_starts_per_iteration"]
-        assert attempt["start_source"] in {"phase_rich_seed", "frozen_random_v1"}
+        assert attempt["start_source"] in {
+            "continuation",
+            "cut_state",
+            "stage_i_witness",
+            "homogeneous_reference",
+            "boundary_aware_seed",
+            "sobol",
+            "direct_l",
+        }
         assert len(attempt["internal_start"]) == 2
         assert len(attempt["physical_start_modified_fractions"]) == len(CHARGES) - 1
         assert attempt["physical_start_volume"] > 0.0
@@ -667,19 +682,151 @@ def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
             assert attempt["chart_kkt_inf_norm"] >= 0.0
             assert attempt["physical_kkt_inf_norm"] >= 0.0
             assert attempt["complementarity_inf_norm"] >= 0.0
+            assert attempt["pressure_passed"] is True
+            assert attempt["dual_signs_valid"] is True
             assert attempt["basin_id"] >= 0
         else:
             assert attempt["cut_eligible"] is False
             assert attempt["step6_eligible"] is False
 
     classification = first["attempt_classification"]
-    assert classification == {
-        "declared": 120,
-        "solver_converged": 120,
-        "solver_failed": 0,
-        "physical_kkt_passed": 120,
-        "step6_eligible": 38,
-    }
+    assert classification["declared"] == len(first["attempt_trace"])
+    assert classification["solver_converged"] == classification["declared"]
+    assert classification["solver_failed"] == 0
+    assert classification["physical_kkt_passed"] == classification["declared"]
+    assert classification["step6_eligible"] > 1
+    assert any(
+        attempt["cut_eligible"] and not attempt["step6_eligible"]
+        for attempt in first["attempt_trace"]
+    )
+    for major in range(first["major_iterations"]):
+        certified_compositions = {
+            round(attempt["terminal_modified_fractions"][1], 6)
+            for attempt in first["attempt_trace"]
+            if attempt["major_iteration"] == major
+            and attempt["physical_kkt_passed"]
+        }
+        assert len(certified_compositions) == 3
+
+
+def test_held2_stage_ii_explorer_keeps_same_composition_density_branches_distinct() -> None:
+    result = _equilibrium._held2_stage_ii_basin_explorer(
+        "same_composition_different_density"
+    )
+
+    assert result["outcome"] == "representatives_found"
+    assert result["failed_evaluation_count"] == 0
+    assert len(result["representatives"]) == 2
+    assert {
+        tuple(start["independent_modified_fractions"])
+        for start in result["representatives"]
+    } == {(0.5,)}
+    assert len({round(start["log_volume"], 8) for start in result["representatives"]}) == 2
+    assert all(
+        start["root_completeness"] == "not_proven"
+        for start in result["representatives"]
+    )
+
+
+def test_held2_stage_ii_explorer_keeps_different_compositions_at_same_density() -> None:
+    result = _equilibrium._held2_stage_ii_basin_explorer(
+        "different_composition_same_density"
+    )
+
+    assert result["outcome"] == "representatives_found"
+    assert len(result["representatives"]) == 2
+    assert sorted(
+        start["independent_modified_fractions"][0]
+        for start in result["representatives"]
+    ) == pytest.approx([0.25, 0.75])
+    assert len({round(start["log_volume"], 8) for start in result["representatives"]}) == 1
+
+
+def test_held2_stage_ii_explorer_retains_tied_stable_density_branches() -> None:
+    result = _equilibrium._held2_stage_ii_basin_explorer(
+        "tied_density_branches"
+    )
+
+    assert result["outcome"] == "representatives_found"
+    assert len(result["representatives"]) == 2
+    assert result["evaluations"][0]["pressure_envelope"][
+        "failure_reason"
+    ] == "stable_objective_tie"
+
+
+def test_held2_stage_ii_explorer_deduplicates_physical_starts() -> None:
+    result = _equilibrium._held2_stage_ii_basin_explorer("duplicates")
+
+    assert result["outcome"] == "representatives_found"
+    assert len(result["representatives"]) == 1
+    assert result["duplicate_start_count"] >= 2
+
+
+def test_held2_stage_ii_explorer_fails_closed_on_provider_or_root_failure() -> None:
+    result = _equilibrium._held2_stage_ii_basin_explorer("provider_failure")
+
+    assert result["outcome"] == "indeterminate"
+    assert result["termination_reason"] == "required_envelope_evaluation_failed"
+    assert result["completed_evaluation_count"] == 0
+    assert result["failed_evaluation_count"] == 1
+    assert result["evaluations"][0]["failure_reason"] == "evaluation_failed"
+    assert result["representatives"] == []
+    assert result["globality_certificate"] == "not_guaranteed"
+
+
+def test_held2_stage_ii_direct_escalation_is_deterministic_and_bounded() -> None:
+    first = _equilibrium._held2_stage_ii_basin_explorer("direct", True, 16)
+    second = _equilibrium._held2_stage_ii_basin_explorer("direct", True, 16)
+
+    assert first == second
+    assert first["outcome"] == "representatives_found"
+    assert first["termination_reason"] == "declared_direct_budget_exhausted"
+    assert first["direct_escalation_used"] is True
+    assert first["direct_solver"] == "nlopt_gn_direct_l"
+    assert first["direct_solver_version"] == "2.11.0"
+    assert first["declared_direct_budget"] == 16
+    assert first["globality_certificate"] == "not_guaranteed"
+
+
+def test_held2_stage_ii_explorer_uses_exact_installed_provider_envelopes() -> None:
+    model = _figiel_brine_model()
+    result = _equilibrium._held2_stage_ii_basin_explorer(
+        epcsaft.native_sdk(model),
+        298.15,
+        100_000.0,
+        ((0.02,),),
+        model.parameter_fingerprint,
+        0,
+    )
+
+    assert result["outcome"] == "representatives_found"
+    assert result["failed_evaluation_count"] == 0
+    assert result["completed_evaluation_count"] == 1
+    assert result["parameter_fingerprint"] == model.parameter_fingerprint
+    assert len(result["representatives"]) == 2
+    assert all(
+        start["source"] == "external_seed"
+        and start["root_completeness"] == "not_proven"
+        for start in result["representatives"]
+    )
+    assert sorted(
+        start["log_volume"] for start in result["representatives"]
+    ) == pytest.approx(
+        [-10.929425447212154, -3.78075692619037],
+        abs=1.0e-8,
+    )
+
+
+def test_held2_stage_ii_stall_exhaustion_is_indeterminate() -> None:
+    result = _equilibrium._held2_adapter(
+        CHARGES,
+        (0.9, 0.05, 0.05),
+        "stage_ii",
+    )
+
+    assert result["outcome"] == "indeterminate_finite_search_stalled"
+    assert result["direct_escalation_used"] is True
+    assert result["globality_certificate"] == "not_guaranteed"
 
 
 def test_held2_stage_ii_highs_upper_lp_matches_analytic_envelope() -> None:

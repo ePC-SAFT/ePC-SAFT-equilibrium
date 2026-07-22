@@ -1,4 +1,5 @@
 #include "held2.hpp"
+#include "held2_stage_ii_basin.hpp"
 #include "held2_stage_ii_upper.hpp"
 
 #include <algorithm>
@@ -1688,9 +1689,10 @@ Held2StageIResult solve_held2_manufactured_stage_i(
     return result;
 }
 
-Held2StageIIResult solve_held2_manufactured_stage_ii(
+Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
     const std::vector<double>& charges,
-    const std::vector<double>& physical_feed
+    const std::vector<double>& physical_feed,
+    bool use_basin_strategy
 ) {
     constexpr int major_iteration_cap = 100;
     constexpr double stage_ii_tolerance = 1.0e-8;
@@ -1736,8 +1738,17 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
     const std::vector<double> lower = {lower_composition, std::log(0.5)};
     const std::vector<double> upper = {upper_composition, std::log(1.5)};
     Held2StageIIResult result;
-    result.lower_starts_per_iteration = 10 * static_cast<int>(charges.size());
+    result.search_strategy = use_basin_strategy
+        ? "continuation_sobol_direct_l_ipopt_v1"
+        : "legacy_fixed_multistart_ipopt_v1";
+    result.global_explorer = use_basin_strategy
+        ? "continuation_sobol_direct_l"
+        : "none";
+    result.lower_starts_per_iteration = use_basin_strategy
+        ? 0
+        : 10 * static_cast<int>(charges.size());
     std::vector<Held2StateEvaluation> traced_basins;
+    bool request_direct_escalation = false;
 
     for (int major = 0; major < major_iteration_cap; ++major) {
         Held2StageIIUpperProblem upper_problem;
@@ -1776,21 +1787,144 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
         lower_reference.gradient = {multiplier, 0.0};
         lower_reference.hessian.assign(4, 0.0);
         const std::vector<double> lower_reference_variables = {feed, 0.0};
-        std::mt19937 generator(kStageISeed + static_cast<unsigned int>(major));
-        std::uniform_real_distribution<double> composition_distribution(
-            lower_composition,
-            upper_composition
-        );
-        std::uniform_real_distribution<double> log_volume_distribution(
-            lower.back(),
-            upper.back()
-        );
-        std::vector<std::vector<double>> starts = {{0.2, 0.0}, {0.8, 0.0}};
-        while (starts.size() < static_cast<std::size_t>(result.lower_starts_per_iteration)) {
-            starts.push_back({
-                composition_distribution(generator),
-                log_volume_distribution(generator),
+        std::vector<std::vector<double>> starts;
+        std::vector<std::string> start_sources;
+        if (!use_basin_strategy) {
+            std::mt19937 generator(kStageISeed + static_cast<unsigned int>(major));
+            std::uniform_real_distribution<double> composition_distribution(
+                lower_composition,
+                upper_composition
+            );
+            std::uniform_real_distribution<double> log_volume_distribution(
+                lower.back(),
+                upper.back()
+            );
+            starts = {{0.2, 0.0}, {0.8, 0.0}};
+            start_sources = {"phase_rich_seed", "phase_rich_seed"};
+            while (starts.size()
+                   < static_cast<std::size_t>(result.lower_starts_per_iteration)) {
+                starts.push_back({
+                    composition_distribution(generator),
+                    log_volume_distribution(generator),
+                });
+                start_sources.push_back("frozen_random_v1");
+            }
+        } else {
+            std::vector<Held2StageIIBasinSeed> seeds;
+            for (const Held2StateEvaluation& basin : traced_basins) {
+                seeds.push_back({
+                    {basin.modified_fractions[independent_retained]},
+                    "continuation",
+                });
+            }
+            for (const Held2StateEvaluation& cut : cuts) {
+                seeds.push_back({
+                    {cut.modified_fractions[independent_retained]},
+                    "cut_state",
+                });
+            }
+            seeds.push_back({{0.2}, "stage_i_witness"});
+            seeds.push_back({{0.8}, "stage_i_witness"});
+            seeds.push_back({{feed}, "homogeneous_reference"});
+            seeds.push_back({
+                {lower_composition + 0.05 * (upper_composition - lower_composition)},
+                "boundary_aware_seed",
             });
+            seeds.push_back({
+                {upper_composition - 0.05 * (upper_composition - lower_composition)},
+                "boundary_aware_seed",
+            });
+            const Held2StageIIBasinEvaluator basin_evaluator = [
+                &coordinates,
+                &evaluator,
+                multiplier,
+                feed,
+                independent_retained
+            ](const std::vector<double>& independent) {
+                Held2StageIIBasinEvaluation evaluation;
+                evaluation.independent_modified_fractions = independent;
+                const Held2StateEvaluator pressure_evaluator = [&evaluator](
+                    const std::vector<double>& composition,
+                    double log_volume
+                ) {
+                    Held2StateEvaluation state = evaluator(composition, log_volume);
+                    state.pressure_stationarity_relative *= -1.0;
+                    state.pressure_stationarity_derivative_log_volume *= -1.0;
+                    return state;
+                };
+                evaluation.pressure_envelope = evaluate_held2_pressure_envelope(
+                    independent,
+                    {0.5, 1.5},
+                    pressure_evaluator,
+                    64,
+                    8
+                );
+                if (evaluation.pressure_envelope.outcome != "selected"
+                    && evaluation.pressure_envelope.failure_reason
+                        != "stable_objective_tie") {
+                    evaluation.failure_reason =
+                        evaluation.pressure_envelope.failure_reason;
+                    return evaluation;
+                }
+                for (const Held2PressureRoot& root :
+                     evaluation.pressure_envelope.roots) {
+                    if (root.mechanical_class == "strict_stable"
+                        && !root.boundary) {
+                        evaluation.reduced_lower_value = std::min(
+                            evaluation.reduced_lower_value,
+                            root.objective + multiplier * (
+                                feed
+                                - root.state.modified_fractions[
+                                    independent_retained
+                                ]
+                            )
+                        );
+                    }
+                }
+                if (!std::isfinite(evaluation.reduced_lower_value)) {
+                    evaluation.failure_reason = "no_strict_stable_root";
+                    return evaluation;
+                }
+                evaluation.certified = true;
+                return evaluation;
+            };
+            const Held2StageIIBasinExplorationResult exploration =
+                explore_held2_stage_ii_basins(
+                    coordinates,
+                    seeds,
+                    12,
+                    request_direct_escalation,
+                    24,
+                    basin_evaluator
+                );
+            result.exploration_evaluation_count +=
+                exploration.completed_evaluation_count;
+            result.exploration_failure_count +=
+                exploration.failed_evaluation_count;
+            result.exploration_representative_count += static_cast<int>(
+                exploration.representatives.size()
+            );
+            result.duplicate_representative_count +=
+                exploration.duplicate_start_count;
+            result.direct_escalation_used = result.direct_escalation_used
+                || exploration.direct_escalation_used;
+            if (exploration.outcome != "representatives_found") {
+                result.outcome = "indeterminate_exploration_failure";
+                result.cut_count = static_cast<int>(cuts.size());
+                return result;
+            }
+            for (const Held2StageIIPhysicalStart& representative :
+                 exploration.representatives) {
+                starts.push_back({
+                    representative.independent_modified_fractions.front(),
+                    representative.log_volume,
+                });
+                start_sources.push_back(representative.source);
+            }
+            result.lower_starts_per_iteration = std::max(
+                result.lower_starts_per_iteration,
+                static_cast<int>(starts.size())
+            );
         }
         double lower_bound = std::numeric_limits<double>::infinity();
         Held2StateEvaluation best_state;
@@ -1801,9 +1935,7 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
             attempt.attempt_id = static_cast<int>(result.attempt_trace.size());
             attempt.major_iteration = major;
             attempt.start_index = static_cast<int>(start_index);
-            attempt.start_source = start_index < 2
-                ? "phase_rich_seed"
-                : "frozen_random_v1";
+            attempt.start_source = start_sources[start_index];
             attempt.internal_start = start;
             attempt.same_major_upper_bound = upper_bound;
             attempt.same_major_multiplier = multiplier;
@@ -1847,8 +1979,10 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
             attempt.objective = state.objective;
             attempt.lower_value = value;
             attempt.pressure_residual = state.pressure_stationarity_relative;
-            attempt.pressure_passed = std::abs(state.gradient.back())
-                <= stage_ii_tolerance;
+            attempt.pressure_passed = use_basin_strategy
+                ? std::abs(state.pressure_stationarity_relative)
+                    <= stage_ii_tolerance
+                : std::abs(state.gradient.back()) <= stage_ii_tolerance;
 
             if (run.lower_bound_multipliers.size() == run.variables.size()
                 && run.upper_bound_multipliers.size() == run.variables.size()) {
@@ -1858,7 +1992,13 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
                 };
                 double stationarity_inf = 0.0;
                 double complementarity_inf = 0.0;
+                bool dual_signs_valid = true;
                 for (std::size_t index = 0; index < run.variables.size(); ++index) {
+                    dual_signs_valid = dual_signs_valid
+                        && run.lower_bound_multipliers[index]
+                            >= -stage_ii_tolerance
+                        && run.upper_bound_multipliers[index]
+                            >= -stage_ii_tolerance;
                     stationarity_inf = std::max(
                         stationarity_inf,
                         std::abs(
@@ -1887,7 +2027,9 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
                 // physical coordinate itself, so the pullback is the identity.
                 attempt.physical_kkt_inf_norm = stationarity_inf;
                 attempt.complementarity_inf_norm = complementarity_inf;
+                attempt.dual_signs_valid = dual_signs_valid;
                 attempt.physical_kkt_passed = attempt.pressure_passed
+                    && (!use_basin_strategy || dual_signs_valid)
                     && stationarity_inf <= stage_ii_tolerance
                     && complementarity_inf <= stage_ii_tolerance;
             }
@@ -1914,6 +2056,9 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
                 attempt.basin_id = static_cast<int>(traced_basins.size());
                 traced_basins.push_back(state);
             } else {
+                if (use_basin_strategy) {
+                    ++result.duplicate_terminal_count;
+                }
                 attempt.basin_id = static_cast<int>(
                     std::distance(traced_basins.begin(), basin)
                 );
@@ -1968,27 +2113,71 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
             if (gap >= -stage_ii_tolerance && gap <= stage_ii_tolerance
                 && std::abs(cut.gradient.front() - multiplier) <= stage_ii_tolerance
                 && std::abs(cut.gradient.back()) <= stage_ii_tolerance) {
-                result.candidates.push_back({
-                    cut.modified_fractions,
-                    cut.volume,
-                    gap,
-                });
+                const bool duplicate_candidate = std::any_of(
+                    result.candidates.begin(),
+                    result.candidates.end(),
+                    [&cut](const Held2StageIICandidate& known) {
+                        return maximum_abs_difference(
+                                   known.modified_fractions,
+                                   cut.modified_fractions
+                               ) < 1.0e-7
+                            && std::abs(known.volume - cut.volume) < 1.0e-7;
+                    }
+                );
+                if (!duplicate_candidate) {
+                    result.candidates.push_back({
+                        cut.modified_fractions,
+                        cut.volume,
+                        gap,
+                    });
+                }
             }
         }
         if (result.candidates.size() > 1) {
             result.outcome = "candidate_set";
             result.cut_count = static_cast<int>(cuts.size());
+            result.distinct_basin_count = static_cast<int>(traced_basins.size());
             return result;
         }
         if (duplicate) {
-            result.outcome = "no_progress";
+            if (use_basin_strategy && !request_direct_escalation) {
+                request_direct_escalation = true;
+                continue;
+            }
+            result.outcome = use_basin_strategy
+                ? "indeterminate_finite_search_stalled"
+                : "no_progress";
             result.cut_count = static_cast<int>(cuts.size());
+            result.distinct_basin_count = static_cast<int>(traced_basins.size());
             return result;
         }
     }
     result.outcome = "resource_limit";
     result.cut_count = static_cast<int>(cuts.size());
+    result.distinct_basin_count = static_cast<int>(traced_basins.size());
     return result;
+}
+
+Held2StageIIResult solve_held2_manufactured_stage_ii(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed
+) {
+    return solve_held2_manufactured_stage_ii_impl(
+        charges,
+        physical_feed,
+        true
+    );
+}
+
+Held2StageIIResult solve_held2_manufactured_stage_ii_legacy(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed
+) {
+    return solve_held2_manufactured_stage_ii_impl(
+        charges,
+        physical_feed,
+        false
+    );
 }
 
 Held2ManufacturedEvaluation evaluate_held2_manufactured(
