@@ -76,9 +76,11 @@ next public Stage-I/II/III evidence gate. Current `main` now implements the
 private Stage-I/II numerical strategy: deterministic pressure-root
 enumeration, DIRECT-L reduced-envelope Stage I, HiGHS Stage-II upper LP, and
 deterministic physical basin discovery plus exact-Hessian Ipopt for the
-Stage-II lower problem. The legacy Stage-II controller remains a regression
-oracle. Stage-III hardening, a compatible installed two-liquid subject,
-Validation, and public admission require separate authority. No speculative
+Stage-II lower problem, and one exact-Hessian Stage-III owner with KKT-based
+phase retirement, duplicate merging, active-set re-solves, and hard physical
+certification. The private integrated controller is fail-closed under declared
+Stage-I and Stage-II resource budgets. A compatible installed two-liquid
+subject, Validation, and public admission require separate authority. No speculative
 case constants, route, tolerance, resource, or public runtime correction is
 active.
 

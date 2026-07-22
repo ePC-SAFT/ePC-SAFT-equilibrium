@@ -532,6 +532,46 @@ def test_held2_stage_i_direct_l_finds_khudaida_negative_witness() -> None:
     assert result["globality_certificate"] == "not_guaranteed"
 
 
+def test_held2_integrated_controller_is_fail_closed_at_declared_stage_ii_budget() -> None:
+    model = _khudaida_electrolyte_lle_model()
+    result = _equilibrium._held2_controller(
+        epcsaft.native_sdk(model),
+        293.15,
+        100_000.0,
+        (
+            0.6462224836985831,
+            0.04995832720498113,
+            0.2648918958670393,
+            0.01946364661469824,
+            0.01946364661469824,
+        ),
+        model.parameter_fingerprint,
+        50,
+        1,
+        1,
+    )
+
+    assert result["controller"] == "perdomo_held2_integrated_private_v1"
+    assert result["stage_order"] == (
+        "homogeneous_reference",
+        "stage_i",
+        "stage_ii",
+        "stage_iii",
+    )
+    assert result["stage_i"]["outcome"] == "negative_witness_found"
+    assert result["outcome"] == "indeterminate_stage_ii"
+    assert result["failure_stage"] == "stage_ii"
+    assert result["stage_ii"]["outcome"] in {
+        "resource_limit",
+        "indeterminate_lower_search",
+    }
+    assert result["stage_ii"]["local_attempts_truncated"] is True
+    assert len(result["stage_ii"]["attempt_trace"]) == 1
+    assert result["stage_iii"] is None
+    assert result["predictive_comparison_status"] == ("not_allowed_before_physical_acceptance")
+    assert result["globality_certificate"] == "not_guaranteed"
+
+
 def test_held2_solver_neutral_search_objective_matches_raw_and_tpd_modes() -> None:
     variables = (0.27, math.log(0.92))
     reference_variables = (0.5, math.log(1.2))
@@ -558,10 +598,14 @@ def test_held2_solver_neutral_search_objective_matches_raw_and_tpd_modes() -> No
         "search_objective",
     )
 
-    expected_tpd = raw["objective"] - reference["objective"] - sum(
-        reference_gradient * (value - reference_value)
-        for reference_gradient, value, reference_value in zip(
-            reference["gradient"], variables, reference_variables, strict=True
+    expected_tpd = (
+        raw["objective"]
+        - reference["objective"]
+        - sum(
+            reference_gradient * (value - reference_value)
+            for reference_gradient, value, reference_value in zip(
+                reference["gradient"], variables, reference_variables, strict=True
+            )
         )
     )
     assert raw["physical_amounts"] == pytest.approx([0.73, 0.135, 0.135])
@@ -571,9 +615,7 @@ def test_held2_solver_neutral_search_objective_matches_raw_and_tpd_modes() -> No
     assert tpd["gradient"] == pytest.approx(
         [
             value - reference_value
-            for value, reference_value in zip(
-                raw["gradient"], reference["gradient"], strict=True
-            )
+            for value, reference_value in zip(raw["gradient"], reference["gradient"], strict=True)
         ]
     )
     assert tpd["hessian"] == pytest.approx(raw["hessian"])
@@ -611,9 +653,7 @@ def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
     assert result["local_solver"] == "ipopt_exact_hessian"
     assert result["exploration_failure_count"] == 0
     assert result["exploration_evaluation_count"] > 0
-    assert result["exploration_representative_count"] == len(
-        result["attempt_trace"]
-    )
+    assert result["exploration_representative_count"] == len(result["attempt_trace"])
     assert result["distinct_basin_count"] >= 3
     assert result["major_iterations"] <= 100
     assert result["lower_starts_per_iteration"] > 0
@@ -625,12 +665,8 @@ def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
     assert all(entry["upper_solver_version"] == "1.15.1" for entry in result["bound_history"])
     assert all(entry["upper_primal_feasible"] for entry in result["bound_history"])
     assert all(entry["upper_dual_feasible"] for entry in result["bound_history"])
-    assert all(
-        entry["upper_primal_residual_inf"] <= 1.0e-8 for entry in result["bound_history"]
-    )
-    assert all(
-        entry["upper_dual_residual_inf"] <= 1.0e-8 for entry in result["bound_history"]
-    )
+    assert all(entry["upper_primal_residual_inf"] <= 1.0e-8 for entry in result["bound_history"])
+    assert all(entry["upper_dual_residual_inf"] <= 1.0e-8 for entry in result["bound_history"])
     assert result["cut_count"] >= 3
     assert sorted(
         candidate["modified_fractions"][1] for candidate in result["candidates"]
@@ -642,7 +678,6 @@ def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
     first = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
     second = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
 
-    assert first["historical_dual_pullback_fixture_status"] == "not_assigned"
     assert first["attempt_trace"] == second["attempt_trace"]
     assert len(first["attempt_trace"]) >= first["lower_starts_per_iteration"]
 
@@ -666,8 +701,8 @@ def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
         assert attempt["same_major_upper_bound"] == pytest.approx(
             first["bound_history"][attempt["major_iteration"]]["upper_bound"]
         )
-        assert attempt["same_major_multiplier"] == pytest.approx(
-            first["bound_history"][attempt["major_iteration"]]["multiplier"]
+        assert attempt["same_major_multipliers"] == pytest.approx(
+            first["bound_history"][attempt["major_iteration"]]["multipliers"]
         )
 
         if attempt["solver_converged"]:
@@ -703,55 +738,41 @@ def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
         certified_compositions = {
             round(attempt["terminal_modified_fractions"][1], 6)
             for attempt in first["attempt_trace"]
-            if attempt["major_iteration"] == major
-            and attempt["physical_kkt_passed"]
+            if attempt["major_iteration"] == major and attempt["physical_kkt_passed"]
         }
         assert len(certified_compositions) == 3
 
 
 def test_held2_stage_ii_explorer_keeps_same_composition_density_branches_distinct() -> None:
-    result = _equilibrium._held2_stage_ii_basin_explorer(
-        "same_composition_different_density"
-    )
+    result = _equilibrium._held2_stage_ii_basin_explorer("same_composition_different_density")
 
     assert result["outcome"] == "representatives_found"
     assert result["failed_evaluation_count"] == 0
     assert len(result["representatives"]) == 2
     assert {
-        tuple(start["independent_modified_fractions"])
-        for start in result["representatives"]
+        tuple(start["independent_modified_fractions"]) for start in result["representatives"]
     } == {(0.5,)}
     assert len({round(start["log_volume"], 8) for start in result["representatives"]}) == 2
-    assert all(
-        start["root_completeness"] == "not_proven"
-        for start in result["representatives"]
-    )
+    assert all(start["root_completeness"] == "not_proven" for start in result["representatives"])
 
 
 def test_held2_stage_ii_explorer_keeps_different_compositions_at_same_density() -> None:
-    result = _equilibrium._held2_stage_ii_basin_explorer(
-        "different_composition_same_density"
-    )
+    result = _equilibrium._held2_stage_ii_basin_explorer("different_composition_same_density")
 
     assert result["outcome"] == "representatives_found"
     assert len(result["representatives"]) == 2
     assert sorted(
-        start["independent_modified_fractions"][0]
-        for start in result["representatives"]
+        start["independent_modified_fractions"][0] for start in result["representatives"]
     ) == pytest.approx([0.25, 0.75])
     assert len({round(start["log_volume"], 8) for start in result["representatives"]}) == 1
 
 
 def test_held2_stage_ii_explorer_retains_tied_stable_density_branches() -> None:
-    result = _equilibrium._held2_stage_ii_basin_explorer(
-        "tied_density_branches"
-    )
+    result = _equilibrium._held2_stage_ii_basin_explorer("tied_density_branches")
 
     assert result["outcome"] == "representatives_found"
     assert len(result["representatives"]) == 2
-    assert result["evaluations"][0]["pressure_envelope"][
-        "failure_reason"
-    ] == "stable_objective_tie"
+    assert result["evaluations"][0]["pressure_envelope"]["failure_reason"] == "stable_objective_tie"
 
 
 def test_held2_stage_ii_explorer_deduplicates_physical_starts() -> None:
@@ -805,13 +826,10 @@ def test_held2_stage_ii_explorer_uses_exact_installed_provider_envelopes() -> No
     assert result["parameter_fingerprint"] == model.parameter_fingerprint
     assert len(result["representatives"]) == 2
     assert all(
-        start["source"] == "external_seed"
-        and start["root_completeness"] == "not_proven"
+        start["source"] == "external_seed" and start["root_completeness"] == "not_proven"
         for start in result["representatives"]
     )
-    assert sorted(
-        start["log_volume"] for start in result["representatives"]
-    ) == pytest.approx(
+    assert sorted(start["log_volume"] for start in result["representatives"]) == pytest.approx(
         [-10.929425447212154, -3.78075692619037],
         abs=1.0e-8,
     )
@@ -1056,8 +1074,7 @@ def test_held2_pressure_envelope_uses_provider_bounds_and_exact_derivatives() ->
         model.parameter_fingerprint,
     )
     finite_difference = (
-        upper["pressure_stationarity_relative"]
-        - lower["pressure_stationarity_relative"]
+        upper["pressure_stationarity_relative"] - lower["pressure_stationarity_relative"]
     ) / (2.0 * step)
     assert center["pressure_stationarity_derivative_log_volume"] == pytest.approx(
         finite_difference,
@@ -1068,8 +1085,8 @@ def test_held2_pressure_envelope_uses_provider_bounds_and_exact_derivatives() ->
 
 def test_held2_general_mp_stage_iii_exact_lagrangian_hessian() -> None:
     candidates = ((0.2, 1.0), (0.20000002, 1.0), (0.8, 1.0))
-    center = (0.25, 0.2, 1.0, 0.25, 0.21, 1.0, 0.5, 0.795, 1.0)
-    multipliers = (0.3, -0.2)
+    center = (0.25, 0.2, 0.0, 0.25, 0.21, 0.0, 0.5, 0.795, 0.0)
+    multipliers = (0.3, -0.2, 0.0, 0.0, 0.0)
     direction = (0.01, -0.02, 0.03, -0.01, 0.015, -0.02, 0.0, 0.005, 0.01)
 
     def evaluate(values: tuple[float, ...]) -> dict[str, object]:
@@ -1139,9 +1156,7 @@ def test_held2_general_mp_stage_iii_refines_then_merges_duplicate_phases() -> No
     assert result["retired_inactive_count"] == 0
     assert result["stage_iii_solve_count"] == 2
     assert result["active_set_resolve_count"] == 1
-    assert [
-        step["action"] for step in result["lifecycle"] if step["action"] != "retain_phase"
-    ] == [
+    assert [step["action"] for step in result["lifecycle"] if step["action"] != "retain_phase"] == [
         "merge_duplicate",
         "accept_active_set",
     ]
@@ -1211,9 +1226,7 @@ def test_held2_stage_iii_retires_only_kkt_inactive_phases_one_at_a_time() -> Non
     assert result["retired_inactive_count"] == 2
     assert result["stage_iii_solve_count"] == 3
     assert result["active_set_resolve_count"] == 2
-    state_changes = [
-        step for step in result["lifecycle"] if step["action"] != "retain_phase"
-    ]
+    state_changes = [step for step in result["lifecycle"] if step["action"] != "retain_phase"]
     assert [step["active_candidate_count"] for step in state_changes] == [4, 3, 2]
     assert [step["action"] for step in state_changes] == [
         "retire_kkt_inactive",
@@ -1230,14 +1243,11 @@ def test_held2_stage_iii_retires_only_kkt_inactive_phases_one_at_a_time() -> Non
         "active_set_certified",
     ]
     assert [
-        step["candidate_composition"] for step in state_changes[:-1]
+        step["candidate_independent_modified_fractions"][0] for step in state_changes[:-1]
     ] == pytest.approx([0.35, 0.65])
     retained = [step for step in result["lifecycle"] if step["action"] == "retain_phase"]
     assert len(retained) == 4
-    assert all(
-        step["decision_reason"] == "phase_amount_active"
-        for step in retained
-    )
+    assert all(step["decision_reason"] == "phase_amount_active" for step in retained)
 
     trace = _equilibrium._held2_adapter(
         CHARGES,
@@ -1277,24 +1287,25 @@ def test_held2_general_mp_stage_iii_returns_infeasible_set_to_stage_ii() -> None
         "stage_iii",
     )
 
-    assert result["numerical_status"] == "not_adjudicated"
+    assert result["solver_status"] == "infeasible_problem_detected"
+    assert result["numerical_status"] == "not_converged"
     assert result["physical_status"] == "not_adjudicated"
     assert result["feedback"] == "return_to_stage_ii"
-    assert result["failure_reason"] == "candidate_set_does_not_bracket_feed"
+    assert result["failure_reason"] == "stage_iii_solver_not_converged"
     assert result["globality_certificate"] == "not_guaranteed"
     assert result["lifecycle"] == [
         {
             "solve_index": 1,
             "active_candidate_count": 3,
             "removed_candidate_index": -1,
-            "action": "initialization_failed",
+            "action": "solve_failed",
             "phase_fraction": 0.0,
             "lower_bound_multiplier": 0.0,
             "reduced_derivative": 0.0,
             "complementarity_inf_norm": 0.0,
-            "candidate_composition": 0.0,
+            "candidate_independent_modified_fractions": [],
             "candidate_volume": 0.0,
-            "solver_status": "not_run",
-            "decision_reason": "candidate_set_does_not_bracket_feed",
+            "solver_status": "infeasible_problem_detected",
+            "decision_reason": "stage_iii_solver_not_converged",
         }
     ]

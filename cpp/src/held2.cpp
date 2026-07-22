@@ -26,6 +26,11 @@ constexpr double kModifiedLowerScale = 1.0e-10;
 // The approved manufactured oracle uses a strict 1e-8 direct certificate.
 constexpr double kCertificateTolerance = 1.0e-8;
 constexpr double kStageITpdThreshold = -1.0e-8;
+constexpr double kStageIIKktTolerance = 1.0e-7;
+constexpr double kStageIIStep6EpsilonB = 1.0e-8;
+constexpr double kStageIIStep6EpsilonLambda = 1.0e-7;
+constexpr double kStageIIStep6EpsilonX = 1.0e-7;
+constexpr double kStageIIStep6EpsilonVolume = 1.0e-7;
 constexpr int kStageIIpoptIterations = 300;
 constexpr unsigned int kStageISeed = 2025;
 
@@ -167,7 +172,64 @@ struct Held2SearchRun {
     std::vector<double> variables;
     std::vector<double> lower_bound_multipliers;
     std::vector<double> upper_bound_multipliers;
+    std::vector<double> coordinate_jacobian;
 };
+
+struct Held2StageIISimplexChart {
+    std::vector<double> physical_coordinates;
+    std::vector<double> chart_coordinates;
+    std::vector<double> jacobian;
+    std::vector<double> component_hessians;
+    bool singular = false;
+};
+
+struct Held2PhysicalKkt {
+    double stationarity_inf_norm = std::numeric_limits<double>::infinity();
+    double complementarity = std::numeric_limits<double>::infinity();
+    double reconstruction_inf_norm = std::numeric_limits<double>::infinity();
+    bool dual_signs_valid = false;
+};
+
+double lower_triangular_condition_inf(
+    const std::vector<double>& matrix,
+    std::size_t dimension
+) {
+    if (dimension == 0 || matrix.size() != dimension * dimension) {
+        return std::numeric_limits<double>::infinity();
+    }
+    double matrix_norm = 0.0;
+    for (std::size_t row = 0; row < dimension; ++row) {
+        double row_sum = 0.0;
+        for (std::size_t column = 0; column <= row; ++column) {
+            row_sum += std::abs(matrix[row * dimension + column]);
+        }
+        matrix_norm = std::max(matrix_norm, row_sum);
+    }
+    std::vector<double> inverse(dimension * dimension, 0.0);
+    for (std::size_t column = 0; column < dimension; ++column) {
+        for (std::size_t row = 0; row < dimension; ++row) {
+            double value = row == column ? 1.0 : 0.0;
+            for (std::size_t inner = 0; inner < row; ++inner) {
+                value -= matrix[row * dimension + inner]
+                    * inverse[inner * dimension + column];
+            }
+            const double diagonal = matrix[row * dimension + row];
+            if (std::abs(diagonal) <= std::numeric_limits<double>::epsilon()) {
+                return std::numeric_limits<double>::infinity();
+            }
+            inverse[row * dimension + column] = value / diagonal;
+        }
+    }
+    double inverse_norm = 0.0;
+    for (std::size_t row = 0; row < dimension; ++row) {
+        double row_sum = 0.0;
+        for (std::size_t column = 0; column < dimension; ++column) {
+            row_sum += std::abs(inverse[row * dimension + column]);
+        }
+        inverse_norm = std::max(inverse_norm, row_sum);
+    }
+    return matrix_norm * inverse_norm;
+}
 
 class Held2SearchObjectiveEvaluator {
 public:
@@ -424,6 +486,7 @@ public:
             variables_,
             lower_bound_multipliers_,
             upper_bound_multipliers_,
+            {},
         };
     }
 
@@ -475,6 +538,435 @@ Held2SearchRun solve_held2_search(
     }
     application->OptimizeTNLP(problem);
     return problem->result();
+}
+
+Held2StageIISimplexChart evaluate_stage_ii_simplex_chart(
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    double sum_upper,
+    const std::vector<double>& coordinates,
+    bool inverse
+) {
+    const std::size_t dimension = lower.size();
+    if (dimension == 0 || upper.size() != dimension
+        || coordinates.size() != dimension || !std::isfinite(sum_upper)) {
+        throw std::invalid_argument("HELD2 Stage II simplex chart dimensions are invalid");
+    }
+    require_finite_vector(lower, "HELD2 Stage II independent lower bounds");
+    require_finite_vector(upper, "HELD2 Stage II independent upper bounds");
+    require_finite_vector(coordinates, "HELD2 Stage II simplex coordinates");
+    const double lower_sum = std::accumulate(lower.begin(), lower.end(), 0.0);
+    const double free_scale = sum_upper - lower_sum;
+    if (!(free_scale > 0.0)) {
+        throw std::invalid_argument("HELD2 Stage II simplex chart has no feasible interior");
+    }
+    for (std::size_t index = 0; index < dimension; ++index) {
+        if (lower[index] < 0.0
+            || upper[index] < free_scale + lower[index]) {
+            throw std::invalid_argument(
+                "HELD2 Stage II simplex chart requires redundant upper bounds"
+            );
+        }
+    }
+
+    Held2StageIISimplexChart result;
+    result.chart_coordinates.assign(dimension, 0.0);
+    result.physical_coordinates.assign(dimension, 0.0);
+    if (inverse) {
+        double remaining = free_scale;
+        for (std::size_t index = 0; index < dimension; ++index) {
+            const double shifted = coordinates[index] - lower[index];
+            if (shifted < 0.0 || shifted > remaining || !(remaining > 0.0)) {
+                throw std::invalid_argument(
+                    "HELD2 Stage II physical start is outside the feasible simplex"
+                );
+            }
+            result.chart_coordinates[index] = shifted / remaining;
+            result.physical_coordinates[index] = coordinates[index];
+            remaining -= shifted;
+        }
+    } else {
+        result.chart_coordinates = coordinates;
+        for (double value : result.chart_coordinates) {
+            if (value < 0.0 || value > 1.0) {
+                throw std::invalid_argument(
+                    "HELD2 Stage II chart coordinate is outside [0, 1]"
+                );
+            }
+        }
+        for (std::size_t index = 0; index < dimension; ++index) {
+            double product = free_scale * result.chart_coordinates[index];
+            for (std::size_t previous = 0; previous < index; ++previous) {
+                product *= 1.0 - result.chart_coordinates[previous];
+            }
+            result.physical_coordinates[index] = lower[index] + product;
+        }
+    }
+
+    result.jacobian.assign(dimension * dimension, 0.0);
+    result.component_hessians.assign(dimension * dimension * dimension, 0.0);
+    for (std::size_t component = 0; component < dimension; ++component) {
+        for (std::size_t column = 0; column <= component; ++column) {
+            double derivative = free_scale;
+            if (column != component) {
+                derivative *= -result.chart_coordinates[component];
+            }
+            for (std::size_t previous = 0; previous < component; ++previous) {
+                if (previous != column) {
+                    derivative *= 1.0 - result.chart_coordinates[previous];
+                }
+            }
+            result.jacobian[component * dimension + column] = derivative;
+        }
+        if (std::abs(result.jacobian[component * dimension + component])
+            <= std::numeric_limits<double>::epsilon()
+                * std::max(1.0, free_scale)) {
+            result.singular = true;
+        }
+        for (std::size_t row = 0; row <= component; ++row) {
+            for (std::size_t column = 0; column <= component; ++column) {
+                if (row == column || (row == component && column == component)) {
+                    continue;
+                }
+                double derivative = free_scale;
+                if (row != component && column != component) {
+                    derivative *= result.chart_coordinates[component];
+                } else {
+                    derivative *= -1.0;
+                }
+                for (std::size_t previous = 0; previous < component; ++previous) {
+                    if (previous != row && previous != column) {
+                        derivative *= 1.0 - result.chart_coordinates[previous];
+                    }
+                }
+                result.component_hessians[
+                    (component * dimension + row) * dimension + column
+                ] = derivative;
+            }
+        }
+    }
+    return result;
+}
+
+Held2StateEvaluation transform_stage_ii_simplex_state(
+    const Held2StateEvaluation& physical,
+    const Held2StageIISimplexChart& chart
+) {
+    if (chart.singular) {
+        throw std::invalid_argument("HELD2 Stage II simplex chart is singular");
+    }
+    const std::size_t dimension = chart.chart_coordinates.size();
+    const std::size_t count = dimension + 1;
+    if (physical.gradient.size() != count
+        || physical.hessian.size() != count * count
+        || chart.jacobian.size() != dimension * dimension
+        || chart.component_hessians.size() != dimension * dimension * dimension) {
+        throw std::invalid_argument(
+            "HELD2 Stage II simplex derivative block is incomplete"
+        );
+    }
+    Held2StateEvaluation result = physical;
+    result.gradient.assign(count, 0.0);
+    result.hessian.assign(count * count, 0.0);
+    for (std::size_t column = 0; column < dimension; ++column) {
+        for (std::size_t physical_index = 0; physical_index < dimension;
+             ++physical_index) {
+            result.gradient[column] += chart.jacobian[
+                physical_index * dimension + column
+            ] * physical.gradient[physical_index];
+        }
+    }
+    result.gradient.back() = physical.gradient.back();
+    for (std::size_t row = 0; row < dimension; ++row) {
+        for (std::size_t column = 0; column < dimension; ++column) {
+            double value = 0.0;
+            for (std::size_t left = 0; left < dimension; ++left) {
+                value += physical.gradient[left] * chart.component_hessians[
+                    (left * dimension + row) * dimension + column
+                ];
+                for (std::size_t right = 0; right < dimension; ++right) {
+                    value += chart.jacobian[left * dimension + row]
+                        * physical.hessian[left * count + right]
+                        * chart.jacobian[right * dimension + column];
+                }
+            }
+            result.hessian[row * count + column] = value;
+        }
+        double cross = 0.0;
+        for (std::size_t physical_index = 0; physical_index < dimension;
+             ++physical_index) {
+            cross += chart.jacobian[physical_index * dimension + row]
+                * physical.hessian[physical_index * count + dimension];
+        }
+        result.hessian[row * count + dimension] = cross;
+        result.hessian[dimension * count + row] = cross;
+    }
+    result.hessian.back() = physical.hessian.back();
+    return result;
+}
+
+Held2SearchRun solve_stage_ii_local(
+    const Held2StateEvaluator& evaluator,
+    const std::vector<double>& feed,
+    const std::vector<double>& multipliers,
+    const std::vector<double>& initial,
+    const std::vector<double>& physical_lower,
+    const std::vector<double>& physical_upper,
+    double composition_sum_upper
+) {
+    const std::size_t dimension = feed.size();
+    Held2SearchRun invalid;
+    if (dimension == 0 || multipliers.size() != dimension
+        || initial.size() != dimension + 1
+        || physical_lower.size() != dimension + 1
+        || physical_upper.size() != dimension + 1) {
+        invalid.callback_error = "HELD2 Stage II simplex search dimensions changed";
+        return invalid;
+    }
+    const std::vector<double> independent_initial(
+        initial.begin(), initial.end() - 1
+    );
+    const std::vector<double> independent_lower(
+        physical_lower.begin(), physical_lower.end() - 1
+    );
+    const std::vector<double> independent_upper(
+        physical_upper.begin(), physical_upper.end() - 1
+    );
+    Held2StageIISimplexChart initial_chart;
+    try {
+        initial_chart = evaluate_stage_ii_simplex_chart(
+            independent_lower,
+            independent_upper,
+            composition_sum_upper,
+            independent_initial,
+            true
+        );
+    } catch (const std::exception& error) {
+        invalid.callback_error = error.what();
+        return invalid;
+    }
+    if (initial_chart.singular) {
+        invalid.callback_error = "HELD2 Stage II simplex start is singular";
+        return invalid;
+    }
+    std::vector<double> chart_initial = initial_chart.chart_coordinates;
+    chart_initial.push_back(initial.back());
+    std::vector<double> chart_lower(dimension, 0.0);
+    std::vector<double> chart_upper(dimension, 1.0);
+    chart_lower.push_back(physical_lower.back());
+    chart_upper.push_back(physical_upper.back());
+    const Held2StateEvaluator chart_evaluator = [
+        evaluator,
+        feed,
+        multipliers,
+        independent_lower,
+        independent_upper,
+        composition_sum_upper
+    ](const std::vector<double>& chart_coordinates, double log_volume) {
+        const Held2StageIISimplexChart chart = evaluate_stage_ii_simplex_chart(
+            independent_lower,
+            independent_upper,
+            composition_sum_upper,
+            chart_coordinates,
+            false
+        );
+        Held2StateEvaluation state = evaluator(
+            chart.physical_coordinates,
+            log_volume
+        );
+        for (std::size_t coordinate = 0; coordinate < feed.size(); ++coordinate) {
+            state.objective += multipliers[coordinate]
+                * (feed[coordinate] - chart.physical_coordinates[coordinate]);
+            state.gradient[coordinate] -= multipliers[coordinate];
+        }
+        return transform_stage_ii_simplex_state(state, chart);
+    };
+    Held2SearchRun run = solve_held2_search(
+        chart_evaluator,
+        chart_initial,
+        chart_evaluator(initial_chart.chart_coordinates, initial.back()),
+        false,
+        chart_initial,
+        chart_lower,
+        chart_upper
+    );
+    if (run.variables.size() != dimension + 1) {
+        return run;
+    }
+    const double log_volume = run.variables.back();
+    const std::vector<double> terminal_chart(
+        run.variables.begin(), run.variables.end() - 1
+    );
+    try {
+        const Held2StageIISimplexChart physical = evaluate_stage_ii_simplex_chart(
+            independent_lower,
+            independent_upper,
+            composition_sum_upper,
+            terminal_chart,
+            false
+        );
+        if (physical.singular) {
+            throw std::invalid_argument("HELD2 Stage II simplex terminal is singular");
+        }
+        run.variables = physical.physical_coordinates;
+        run.variables.push_back(log_volume);
+        run.coordinate_jacobian = physical.jacobian;
+    } catch (const std::exception& error) {
+        run.callback_error = error.what();
+        run.solver_converged = false;
+    }
+    return run;
+}
+
+Held2PhysicalKkt evaluate_stage_ii_physical_kkt(
+    const std::vector<double>& physical_gradient,
+    const std::vector<double>& master_multipliers,
+    const std::vector<double>& variables,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    double composition_sum_upper,
+    const std::vector<double>& chart_jacobian,
+    const std::vector<double>& chart_lower_multipliers,
+    const std::vector<double>& chart_upper_multipliers
+) {
+    const std::size_t dimension = master_multipliers.size();
+    if (physical_gradient.size() != dimension + 1
+        || variables.size() != dimension + 1
+        || lower.size() != dimension + 1
+        || upper.size() != dimension + 1
+        || chart_jacobian.size() != dimension * dimension
+        || chart_lower_multipliers.size() != dimension + 1
+        || chart_upper_multipliers.size() != dimension + 1) {
+        throw std::invalid_argument("HELD2 Stage II physical KKT dimensions changed");
+    }
+    Held2PhysicalKkt result;
+    result.dual_signs_valid = std::all_of(
+        chart_lower_multipliers.begin(),
+        chart_lower_multipliers.end(),
+        [](double value) { return value >= -kCertificateTolerance; }
+    ) && std::all_of(
+        chart_upper_multipliers.begin(),
+        chart_upper_multipliers.end(),
+        [](double value) { return value >= -kCertificateTolerance; }
+    );
+    if (!result.dual_signs_valid) {
+        return result;
+    }
+    for (std::size_t index = 0; index < variables.size(); ++index) {
+        if (lower[index] > upper[index]
+            || variables[index] < lower[index] - kCertificateTolerance
+            || variables[index] > upper[index] + kCertificateTolerance) {
+            return result;
+        }
+    }
+    const double simplex_slack = composition_sum_upper
+        - std::accumulate(variables.begin(), variables.end() - 1, 0.0);
+    if (simplex_slack < -kCertificateTolerance) {
+        return result;
+    }
+
+    std::vector<double> chart_force(dimension + 1, 0.0);
+    for (std::size_t index = 0; index <= dimension; ++index) {
+        chart_force[index] = chart_upper_multipliers[index]
+            - chart_lower_multipliers[index];
+    }
+    std::vector<double> physical_force(dimension + 1, 0.0);
+    for (std::size_t column = dimension; column-- > 0;) {
+        double value = chart_force[column];
+        for (std::size_t row = column + 1; row < dimension; ++row) {
+            value -= chart_jacobian[row * dimension + column]
+                * physical_force[row];
+        }
+        const double diagonal = chart_jacobian[column * dimension + column];
+        if (std::abs(diagonal) <= std::numeric_limits<double>::epsilon()) {
+            return result;
+        }
+        physical_force[column] = value / diagonal;
+    }
+    physical_force.back() = chart_force.back();
+
+    const auto multiplier_cap = [](double slack) {
+        return slack <= 0.0
+            ? std::numeric_limits<double>::infinity()
+            : kCertificateTolerance / slack;
+    };
+    double simplex_lower = 0.0;
+    double simplex_upper = multiplier_cap(simplex_slack);
+    for (std::size_t index = 0; index < dimension; ++index) {
+        simplex_lower = std::max(
+            simplex_lower,
+            physical_force[index]
+                - multiplier_cap(upper[index] - variables[index])
+        );
+        simplex_upper = std::min(
+            simplex_upper,
+            physical_force[index]
+                + multiplier_cap(variables[index] - lower[index])
+        );
+    }
+    if (simplex_lower > simplex_upper + kCoordinateTolerance) {
+        return result;
+    }
+    const double simplex_multiplier = std::isfinite(simplex_upper)
+        ? 0.5 * (simplex_lower + simplex_upper)
+        : simplex_lower;
+    std::vector<double> reconstructed(dimension + 1, 0.0);
+    double complementarity = std::abs(simplex_multiplier * simplex_slack);
+    for (std::size_t index = 0; index < dimension; ++index) {
+        const double difference = physical_force[index] - simplex_multiplier;
+        const double lower_multiplier = std::max(0.0, -difference);
+        const double upper_multiplier = std::max(0.0, difference);
+        reconstructed[index] = -lower_multiplier + upper_multiplier
+            + simplex_multiplier;
+        complementarity = std::max({
+            complementarity,
+            std::abs(lower_multiplier * (variables[index] - lower[index])),
+            std::abs(upper_multiplier * (upper[index] - variables[index])),
+        });
+    }
+    const double phase_lower_multiplier = std::max(0.0, -physical_force.back());
+    const double phase_upper_multiplier = std::max(0.0, physical_force.back());
+    reconstructed.back() = -phase_lower_multiplier + phase_upper_multiplier;
+    complementarity = std::max({
+        complementarity,
+        std::abs(phase_lower_multiplier * (variables.back() - lower.back())),
+        std::abs(phase_upper_multiplier * (upper.back() - variables.back())),
+    });
+
+    double reconstruction = maximum_abs_difference(physical_force, reconstructed);
+    for (std::size_t column = 0; column < dimension; ++column) {
+        double pulled = 0.0;
+        for (std::size_t row = 0; row < dimension; ++row) {
+            pulled += chart_jacobian[row * dimension + column]
+                * reconstructed[row];
+        }
+        reconstruction = std::max(
+            reconstruction,
+            std::abs(chart_force[column] - pulled)
+        );
+    }
+    reconstruction = std::max(
+        reconstruction,
+        std::abs(chart_force.back() - reconstructed.back())
+    );
+    double stationarity = 0.0;
+    for (std::size_t index = 0; index < dimension; ++index) {
+        stationarity = std::max(
+            stationarity,
+            std::abs(
+                physical_gradient[index] - master_multipliers[index]
+                + reconstructed[index]
+            )
+        );
+    }
+    stationarity = std::max(
+        stationarity,
+        std::abs(physical_gradient.back() + reconstructed.back())
+    );
+    result.stationarity_inf_norm = stationarity;
+    result.complementarity = complementarity;
+    result.reconstruction_inf_norm = reconstruction;
+    return result;
 }
 
 std::array<double, 2> manufactured_modified_potentials(
@@ -1691,8 +2183,7 @@ Held2StageIResult solve_held2_manufactured_stage_i(
 
 Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
     const std::vector<double>& charges,
-    const std::vector<double>& physical_feed,
-    bool use_basin_strategy
+    const std::vector<double>& physical_feed
 ) {
     constexpr int major_iteration_cap = 100;
     constexpr double stage_ii_tolerance = 1.0e-8;
@@ -1738,15 +2229,9 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
     const std::vector<double> lower = {lower_composition, std::log(0.5)};
     const std::vector<double> upper = {upper_composition, std::log(1.5)};
     Held2StageIIResult result;
-    result.search_strategy = use_basin_strategy
-        ? "continuation_sobol_direct_l_ipopt_v1"
-        : "legacy_fixed_multistart_ipopt_v1";
-    result.global_explorer = use_basin_strategy
-        ? "continuation_sobol_direct_l"
-        : "none";
-    result.lower_starts_per_iteration = use_basin_strategy
-        ? 0
-        : 10 * static_cast<int>(charges.size());
+    result.search_strategy = "continuation_sobol_direct_l_ipopt_v1";
+    result.global_explorer = "continuation_sobol_direct_l";
+    result.lower_starts_per_iteration = 0;
     std::vector<Held2StateEvaluation> traced_basins;
     bool request_direct_escalation = false;
 
@@ -1789,27 +2274,7 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
         const std::vector<double> lower_reference_variables = {feed, 0.0};
         std::vector<std::vector<double>> starts;
         std::vector<std::string> start_sources;
-        if (!use_basin_strategy) {
-            std::mt19937 generator(kStageISeed + static_cast<unsigned int>(major));
-            std::uniform_real_distribution<double> composition_distribution(
-                lower_composition,
-                upper_composition
-            );
-            std::uniform_real_distribution<double> log_volume_distribution(
-                lower.back(),
-                upper.back()
-            );
-            starts = {{0.2, 0.0}, {0.8, 0.0}};
-            start_sources = {"phase_rich_seed", "phase_rich_seed"};
-            while (starts.size()
-                   < static_cast<std::size_t>(result.lower_starts_per_iteration)) {
-                starts.push_back({
-                    composition_distribution(generator),
-                    log_volume_distribution(generator),
-                });
-                start_sources.push_back("frozen_random_v1");
-            }
-        } else {
+        {
             std::vector<Held2StageIIBasinSeed> seeds;
             for (const Held2StateEvaluation& basin : traced_basins) {
                 seeds.push_back({
@@ -1936,9 +2401,10 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
             attempt.major_iteration = major;
             attempt.start_index = static_cast<int>(start_index);
             attempt.start_source = start_sources[start_index];
+            attempt.provider_status = "manufactured_oracle";
             attempt.internal_start = start;
             attempt.same_major_upper_bound = upper_bound;
-            attempt.same_major_multiplier = multiplier;
+            attempt.same_major_multipliers = {multiplier};
             const Held2StateEvaluation start_state = evaluator(
                 {start.front()},
                 start.back()
@@ -1979,10 +2445,9 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
             attempt.objective = state.objective;
             attempt.lower_value = value;
             attempt.pressure_residual = state.pressure_stationarity_relative;
-            attempt.pressure_passed = use_basin_strategy
-                ? std::abs(state.pressure_stationarity_relative)
-                    <= stage_ii_tolerance
-                : std::abs(state.gradient.back()) <= stage_ii_tolerance;
+            attempt.pressure_passed =
+                std::abs(state.pressure_stationarity_relative)
+                <= stage_ii_tolerance;
 
             if (run.lower_bound_multipliers.size() == run.variables.size()
                 && run.upper_bound_multipliers.size() == run.variables.size()) {
@@ -2029,7 +2494,7 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
                 attempt.complementarity_inf_norm = complementarity_inf;
                 attempt.dual_signs_valid = dual_signs_valid;
                 attempt.physical_kkt_passed = attempt.pressure_passed
-                    && (!use_basin_strategy || dual_signs_valid)
+                    && dual_signs_valid
                     && stationarity_inf <= stage_ii_tolerance
                     && complementarity_inf <= stage_ii_tolerance;
             }
@@ -2056,9 +2521,7 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
                 attempt.basin_id = static_cast<int>(traced_basins.size());
                 traced_basins.push_back(state);
             } else {
-                if (use_basin_strategy) {
-                    ++result.duplicate_terminal_count;
-                }
+                ++result.duplicate_terminal_count;
                 attempt.basin_id = static_cast<int>(
                     std::distance(traced_basins.begin(), basin)
                 );
@@ -2078,7 +2541,7 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
         result.bound_history.push_back({
             lower_bound,
             upper_bound,
-            multiplier,
+            {multiplier},
             static_cast<int>(cuts.size()),
             upper_solve.solver,
             upper_solve.solver_version,
@@ -2127,7 +2590,9 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
                 if (!duplicate_candidate) {
                     result.candidates.push_back({
                         cut.modified_fractions,
+                        {cut.modified_fractions[independent_retained]},
                         cut.volume,
+                        std::log(cut.volume),
                         gap,
                     });
                 }
@@ -2140,13 +2605,11 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
             return result;
         }
         if (duplicate) {
-            if (use_basin_strategy && !request_direct_escalation) {
+            if (!request_direct_escalation) {
                 request_direct_escalation = true;
                 continue;
             }
-            result.outcome = use_basin_strategy
-                ? "indeterminate_finite_search_stalled"
-                : "no_progress";
+            result.outcome = "indeterminate_finite_search_stalled";
             result.cut_count = static_cast<int>(cuts.size());
             result.distinct_basin_count = static_cast<int>(traced_basins.size());
             return result;
@@ -2164,20 +2627,595 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
 ) {
     return solve_held2_manufactured_stage_ii_impl(
         charges,
-        physical_feed,
-        true
+        physical_feed
     );
 }
 
-Held2StageIIResult solve_held2_manufactured_stage_ii_legacy(
-    const std::vector<double>& charges,
-    const std::vector<double>& physical_feed
+Held2StageIIResult solve_held2_stage_ii(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const Held2StateEvaluator& evaluator,
+    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
+    const Held2StateEvaluation& reference,
+    const std::vector<Held2StageICandidate>& stage_i_candidates,
+    int major_iteration_cap,
+    int local_attempt_cap_per_major
 ) {
-    return solve_held2_manufactured_stage_ii_impl(
-        charges,
-        physical_feed,
-        false
+    if (major_iteration_cap <= 0 || local_attempt_cap_per_major <= 0) {
+        throw std::invalid_argument(
+            "HELD2 Stage II resource caps must be positive"
+        );
+    }
+    const std::size_t dimension = coordinates.independent_indices.size();
+    if (dimension == 0 || reference.gradient.size() != dimension + 1
+        || !(reference.volume > 0.0)) {
+        throw std::invalid_argument("HELD2 Stage II reference evidence is incomplete");
+    }
+    const std::vector<double> modified_feed = held2_transform_physical_fractions(
+        coordinates,
+        physical_feed
     );
+    std::vector<std::size_t> retained_positions;
+    std::vector<double> feed;
+    for (std::size_t component : coordinates.independent_indices) {
+        const auto found = std::find(
+            coordinates.retained_indices.begin(),
+            coordinates.retained_indices.end(),
+            component
+        );
+        if (found == coordinates.retained_indices.end()) {
+            throw std::invalid_argument(
+                "HELD2 Stage II independent coordinate is not retained"
+            );
+        }
+        retained_positions.push_back(static_cast<std::size_t>(
+            found - coordinates.retained_indices.begin()
+        ));
+        feed.push_back(modified_feed[retained_positions.back()]);
+    }
+    const auto dependent = std::find(
+        coordinates.retained_indices.begin(),
+        coordinates.retained_indices.end(),
+        coordinates.dependent_index
+    );
+    if (dependent == coordinates.retained_indices.end()) {
+        throw std::invalid_argument("HELD2 Stage II dependent coordinate is not retained");
+    }
+    const std::size_t dependent_position = static_cast<std::size_t>(
+        dependent - coordinates.retained_indices.begin()
+    );
+    const double composition_sum_upper = 1.0
+        - kModifiedLowerScale * coordinates.modified_factors[dependent_position];
+    std::vector<double> physical_lower = coordinates.independent_lower_bounds;
+    std::vector<double> physical_upper = coordinates.independent_upper_bounds;
+    for (std::size_t index = 0; index < dimension; ++index) {
+        physical_upper[index] = std::nextafter(
+            physical_upper[index],
+            physical_lower[index]
+        );
+    }
+    const auto independent_from_state = [
+        &retained_positions
+    ](const Held2StateEvaluation& state) {
+        std::vector<double> independent;
+        independent.reserve(retained_positions.size());
+        for (std::size_t retained : retained_positions) {
+            independent.push_back(state.modified_fractions[retained]);
+        }
+        return independent;
+    };
+    struct Cut {
+        Held2StateEvaluation state;
+        std::vector<double> independent;
+        std::vector<double> fixed_volume_gradient;
+    };
+    const auto make_cut = [&evaluator, dimension](
+        const std::vector<double>& independent,
+        double volume
+    ) {
+        if (!(volume > 0.0) || !std::isfinite(volume)) {
+            throw std::invalid_argument("HELD2 Stage II cut volume is invalid");
+        }
+        Held2StateEvaluation state = evaluator(independent, std::log(volume));
+        if (state.gradient.size() != dimension + 1) {
+            throw std::invalid_argument(
+                "HELD2 Stage II cut gradient is incomplete"
+            );
+        }
+        return Cut{
+            state,
+            independent,
+            std::vector<double>(state.gradient.begin(), state.gradient.end() - 1),
+        };
+    };
+    const auto make_pressure_cut = [
+        &evaluator,
+        &volume_bounds_evaluator,
+        &make_cut
+    ](const std::vector<double>& independent) {
+        const Held2PressureEnvelopeResult envelope =
+            evaluate_held2_pressure_envelope(
+                independent,
+                volume_bounds_evaluator(independent),
+                evaluator,
+                64,
+                8
+            );
+        if (envelope.outcome != "selected" || envelope.selected_root_index < 0) {
+            throw std::runtime_error(
+                "HELD2 Stage II initial cut pressure envelope failed: "
+                + envelope.failure_reason
+            );
+        }
+        return make_cut(
+            independent,
+            envelope.roots[static_cast<std::size_t>(
+                envelope.selected_root_index
+            )].volume
+        );
+    };
+
+    std::vector<Cut> cuts;
+    cuts.push_back(make_cut(feed, reference.volume));
+    for (const Held2StageICandidate& candidate : stage_i_candidates) {
+        if (candidate.modified_fractions.size() != modified_feed.size()) {
+            continue;
+        }
+        Held2StateEvaluation state;
+        state.modified_fractions = candidate.modified_fractions;
+        cuts.push_back(make_cut(independent_from_state(state), candidate.volume));
+    }
+    for (std::size_t coordinate = 0;
+         cuts.size() < dimension + 1 && coordinate < dimension;
+         ++coordinate) {
+        std::vector<double> point = feed;
+        const double lower_sum = std::accumulate(
+            physical_lower.begin(), physical_lower.end(), 0.0
+        );
+        const double free = composition_sum_upper - lower_sum;
+        const double delta = std::min(
+            0.05 * free,
+            0.5 * (composition_sum_upper
+                - std::accumulate(point.begin(), point.end(), 0.0))
+        );
+        point[coordinate] += delta;
+        cuts.push_back(make_pressure_cut(point));
+    }
+
+    Held2StageIIResult result;
+    result.search_strategy = "continuation_sobol_direct_l_ipopt_v1";
+    result.global_explorer = "continuation_sobol_direct_l";
+    result.local_attempt_cap_per_major = local_attempt_cap_per_major;
+    if (cuts.size() < dimension + 1) {
+        result.outcome = "indeterminate_initial_cut_set";
+        result.cut_count = static_cast<int>(cuts.size());
+        return result;
+    }
+    const double feed_gibbs = reference.objective;
+    std::vector<Held2StateEvaluation> traced_basins;
+    bool request_direct_escalation = false;
+
+    for (int major = 0; major < major_iteration_cap; ++major) {
+        Held2StageIIUpperProblem upper_problem;
+        upper_problem.multiplier_lower_bounds.assign(
+            dimension, -std::numeric_limits<double>::infinity()
+        );
+        upper_problem.multiplier_upper_bounds.assign(
+            dimension, std::numeric_limits<double>::infinity()
+        );
+        for (std::size_t cut_index = 0; cut_index < cuts.size(); ++cut_index) {
+            std::vector<double> slopes(dimension, 0.0);
+            for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+                slopes[coordinate] = feed[coordinate]
+                    - cuts[cut_index].independent[coordinate];
+            }
+            upper_problem.cuts.push_back({
+                static_cast<int>(cut_index),
+                cuts[cut_index].state.objective,
+                std::move(slopes),
+            });
+        }
+        upper_problem.cuts.push_back({
+            static_cast<int>(cuts.size()),
+            feed_gibbs,
+            std::vector<double>(dimension, 0.0),
+        });
+        const Held2StageIIUpperResult upper_solve =
+            solve_held2_stage_ii_upper_highs(upper_problem);
+        if (upper_solve.outcome != "optimal"
+            || upper_solve.multipliers.size() != dimension
+            || !upper_solve.primal_feasible || !upper_solve.dual_feasible) {
+            result.outcome = "indeterminate_upper_lp";
+            result.cut_count = static_cast<int>(cuts.size());
+            return result;
+        }
+        const double upper_bound = upper_solve.upper_bound;
+        const std::vector<double>& multipliers = upper_solve.multipliers;
+
+        std::vector<Held2StageIIBasinSeed> seeds;
+        for (const Held2StateEvaluation& basin : traced_basins) {
+            seeds.push_back({independent_from_state(basin), "continuation"});
+        }
+        for (const Cut& cut : cuts) {
+            seeds.push_back({cut.independent, "cut_state"});
+        }
+        for (const Held2StageICandidate& candidate : stage_i_candidates) {
+            if (candidate.modified_fractions.size() == modified_feed.size()) {
+                Held2StateEvaluation state;
+                state.modified_fractions = candidate.modified_fractions;
+                seeds.push_back({independent_from_state(state), "stage_i_witness"});
+            }
+        }
+        seeds.push_back({feed, "homogeneous_reference"});
+        for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+            std::vector<double> low = feed;
+            low[coordinate] = physical_lower[coordinate]
+                + 0.05 * (feed[coordinate] - physical_lower[coordinate]);
+            seeds.push_back({std::move(low), "boundary_aware_seed"});
+        }
+        const Held2StageIIBasinEvaluator basin_evaluator = [
+            &coordinates,
+            &evaluator,
+            &volume_bounds_evaluator,
+            &feed,
+            &multipliers,
+            &retained_positions
+        ](const std::vector<double>& independent) {
+            Held2StageIIBasinEvaluation evaluation;
+            evaluation.independent_modified_fractions = independent;
+            const std::array<double, 2> bounds = volume_bounds_evaluator(independent);
+            evaluation.pressure_envelope = evaluate_held2_pressure_envelope(
+                independent,
+                bounds,
+                evaluator,
+                64,
+                8
+            );
+            if (evaluation.pressure_envelope.outcome != "selected"
+                && evaluation.pressure_envelope.failure_reason
+                    != "stable_objective_tie") {
+                evaluation.failure_reason =
+                    evaluation.pressure_envelope.failure_reason;
+                return evaluation;
+            }
+            for (const Held2PressureRoot& root : evaluation.pressure_envelope.roots) {
+                if (root.mechanical_class != "strict_stable" || root.boundary) {
+                    continue;
+                }
+                double value = root.objective;
+                for (std::size_t coordinate = 0;
+                     coordinate < multipliers.size(); ++coordinate) {
+                    value += multipliers[coordinate] * (
+                        feed[coordinate]
+                        - root.state.modified_fractions[
+                            retained_positions[coordinate]
+                        ]
+                    );
+                }
+                evaluation.reduced_lower_value = std::min(
+                    evaluation.reduced_lower_value,
+                    value
+                );
+            }
+            if (!std::isfinite(evaluation.reduced_lower_value)) {
+                evaluation.failure_reason = "no_strict_stable_root";
+                return evaluation;
+            }
+            evaluation.certified = true;
+            return evaluation;
+        };
+        const Held2StageIIBasinExplorationResult exploration =
+            explore_held2_stage_ii_basins(
+                coordinates,
+                seeds,
+                12,
+                request_direct_escalation,
+                24,
+                basin_evaluator
+            );
+        result.exploration_evaluation_count += exploration.completed_evaluation_count;
+        result.exploration_failure_count += exploration.failed_evaluation_count;
+        result.exploration_representative_count += static_cast<int>(
+            exploration.representatives.size()
+        );
+        result.duplicate_representative_count += exploration.duplicate_start_count;
+        result.direct_escalation_used = result.direct_escalation_used
+            || exploration.direct_escalation_used;
+        if (exploration.outcome != "representatives_found") {
+            result.outcome = "indeterminate_exploration_failure";
+            result.cut_count = static_cast<int>(cuts.size());
+            return result;
+        }
+
+        double lower_bound = std::numeric_limits<double>::infinity();
+        Cut best;
+        bool any_failed = false;
+        const std::size_t attempt_count = std::min(
+            exploration.representatives.size(),
+            static_cast<std::size_t>(local_attempt_cap_per_major)
+        );
+        result.local_attempts_truncated = result.local_attempts_truncated
+            || attempt_count < exploration.representatives.size();
+        for (std::size_t start_index = 0;
+             start_index < attempt_count; ++start_index) {
+            const Held2StageIIPhysicalStart& representative =
+                exploration.representatives[start_index];
+            Held2StageIIAttempt attempt;
+            attempt.attempt_id = static_cast<int>(result.attempt_trace.size());
+            attempt.major_iteration = major;
+            attempt.start_index = static_cast<int>(start_index);
+            attempt.start_source = representative.source;
+            attempt.internal_start = representative.independent_modified_fractions;
+            attempt.internal_start.push_back(representative.log_volume);
+            attempt.same_major_upper_bound = upper_bound;
+            attempt.same_major_multipliers = multipliers;
+            try {
+                const Held2StateEvaluation start_state = evaluator(
+                    representative.independent_modified_fractions,
+                    representative.log_volume
+                );
+                attempt.physical_start_modified_fractions =
+                    start_state.modified_fractions;
+                attempt.physical_start_volume = start_state.volume;
+                attempt.provider_status = "provider_exact";
+                const std::array<double, 2> bounds = volume_bounds_evaluator(
+                    representative.independent_modified_fractions
+                );
+                std::vector<double> lower = physical_lower;
+                std::vector<double> upper = physical_upper;
+                lower.push_back(std::log(bounds[0]));
+                upper.push_back(std::log(bounds[1]));
+                const Held2SearchRun run = solve_stage_ii_local(
+                    evaluator,
+                    feed,
+                    multipliers,
+                    attempt.internal_start,
+                    lower,
+                    upper,
+                    composition_sum_upper
+                );
+                attempt.solver_status = run.solver_status;
+                attempt.solver_converged = run.solver_converged;
+                attempt.callback_error = run.callback_error;
+                attempt.internal_terminal = run.variables;
+                attempt.lower_bound_multipliers = run.lower_bound_multipliers;
+                attempt.upper_bound_multipliers = run.upper_bound_multipliers;
+                attempt.provider_status = "provider_exact";
+                if (!run.solver_converged || !run.callback_error.empty()
+                    || run.variables.size() != dimension + 1) {
+                    any_failed = true;
+                    result.attempt_trace.push_back(std::move(attempt));
+                    continue;
+                }
+                const std::vector<double> independent(
+                    run.variables.begin(), run.variables.end() - 1
+                );
+                const Held2StateEvaluation state = evaluator(
+                    independent,
+                    run.variables.back()
+                );
+                double value = state.objective;
+                for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+                    value += multipliers[coordinate]
+                        * (feed[coordinate] - independent[coordinate]);
+                }
+                attempt.terminal_modified_fractions = state.modified_fractions;
+                attempt.terminal_volume = state.volume;
+                attempt.objective = state.objective;
+                attempt.lower_value = value;
+                attempt.pressure_residual = state.pressure_stationarity_relative;
+                attempt.pressure_passed = std::abs(attempt.pressure_residual)
+                    <= kCertificateTolerance;
+                attempt.chart_jacobian_condition =
+                    lower_triangular_condition_inf(
+                        run.coordinate_jacobian, dimension
+                    );
+                attempt.chart_kkt_inf_norm = 0.0;
+                for (std::size_t column = 0; column < dimension; ++column) {
+                    double residual = run.upper_bound_multipliers[column]
+                        - run.lower_bound_multipliers[column];
+                    for (std::size_t row = 0; row < dimension; ++row) {
+                        residual += run.coordinate_jacobian[
+                            row * dimension + column
+                        ] * (state.gradient[row] - multipliers[row]);
+                    }
+                    attempt.chart_kkt_inf_norm = std::max(
+                        attempt.chart_kkt_inf_norm, std::abs(residual)
+                    );
+                }
+                attempt.chart_kkt_inf_norm = std::max(
+                    attempt.chart_kkt_inf_norm,
+                    std::abs(
+                        state.gradient.back()
+                        - run.lower_bound_multipliers.back()
+                        + run.upper_bound_multipliers.back()
+                    )
+                );
+                const Held2PhysicalKkt kkt = evaluate_stage_ii_physical_kkt(
+                    state.gradient,
+                    multipliers,
+                    run.variables,
+                    lower,
+                    upper,
+                    composition_sum_upper,
+                    run.coordinate_jacobian,
+                    run.lower_bound_multipliers,
+                    run.upper_bound_multipliers
+                );
+                attempt.physical_kkt_inf_norm = kkt.stationarity_inf_norm;
+                attempt.complementarity_inf_norm = kkt.complementarity;
+                attempt.dual_pullback_inf_norm = kkt.reconstruction_inf_norm;
+                attempt.dual_signs_valid = kkt.dual_signs_valid;
+                attempt.physical_kkt_passed = attempt.pressure_passed
+                    && kkt.dual_signs_valid
+                    && kkt.stationarity_inf_norm <= kStageIIKktTolerance
+                    && kkt.complementarity <= kCertificateTolerance
+                    && kkt.reconstruction_inf_norm <= kCoordinateTolerance;
+                attempt.cut_eligible = attempt.physical_kkt_passed;
+                const double gap = upper_bound - value;
+                bool fixed_volume_stationary = true;
+                for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+                    if (independent[coordinate]
+                        <= physical_lower[coordinate] + kCoordinateTolerance) {
+                        continue;
+                    }
+                    fixed_volume_stationary = fixed_volume_stationary
+                        && std::abs(state.gradient[coordinate]
+                            - multipliers[coordinate])
+                            <= kStageIIStep6EpsilonLambda
+                                * std::abs(multipliers[coordinate]);
+                }
+                attempt.step6_eligible = attempt.cut_eligible
+                    && std::abs(gap) <= kStageIIStep6EpsilonB
+                    && fixed_volume_stationary;
+                const auto basin = std::find_if(
+                    traced_basins.begin(),
+                    traced_basins.end(),
+                    [&state](const Held2StateEvaluation& known) {
+                        return maximum_abs_difference(
+                                   known.modified_fractions,
+                                   state.modified_fractions
+                               ) < kStageIIStep6EpsilonX
+                            && std::abs(known.volume - state.volume)
+                                < kStageIIStep6EpsilonVolume;
+                    }
+                );
+                if (basin == traced_basins.end()) {
+                    attempt.basin_id = static_cast<int>(traced_basins.size());
+                    traced_basins.push_back(state);
+                } else {
+                    attempt.basin_id = static_cast<int>(
+                        basin - traced_basins.begin()
+                    );
+                    ++result.duplicate_terminal_count;
+                }
+                if (attempt.cut_eligible && value < lower_bound) {
+                    lower_bound = value;
+                    best = make_cut(independent, state.volume);
+                }
+                result.attempt_trace.push_back(std::move(attempt));
+            } catch (const std::exception& error) {
+                attempt.callback_error = error.what();
+                attempt.provider_status = "provider_failed";
+                any_failed = true;
+                result.attempt_trace.push_back(std::move(attempt));
+            }
+        }
+        ++result.major_iterations;
+        result.lower_starts_per_iteration = std::max(
+            result.lower_starts_per_iteration,
+            static_cast<int>(attempt_count)
+        );
+        if (any_failed || !std::isfinite(lower_bound)) {
+            result.outcome = "indeterminate_lower_search";
+            result.cut_count = static_cast<int>(cuts.size());
+            result.distinct_basin_count = static_cast<int>(traced_basins.size());
+            return result;
+        }
+        if (result.local_attempts_truncated) {
+            result.outcome = "resource_limit";
+            result.cut_count = static_cast<int>(cuts.size());
+            result.distinct_basin_count = static_cast<int>(traced_basins.size());
+            return result;
+        }
+        result.bound_history.push_back({
+            lower_bound,
+            upper_bound,
+            multipliers,
+            static_cast<int>(cuts.size()),
+            upper_solve.solver,
+            upper_solve.solver_version,
+            upper_solve.solver_status,
+            upper_solve.primal_feasible,
+            upper_solve.dual_feasible,
+            upper_solve.primal_residual_inf,
+            upper_solve.dual_residual_inf,
+            upper_solve.cut_slacks,
+            upper_solve.cut_duals,
+            upper_solve.active_cut_ids,
+        });
+        const bool duplicate_cut = std::any_of(
+            cuts.begin(),
+            cuts.end(),
+            [&best](const Cut& known) {
+                return maximum_abs_difference(
+                           known.state.modified_fractions,
+                           best.state.modified_fractions
+                       ) < kStageIIStep6EpsilonX
+                    && std::abs(known.state.volume - best.state.volume)
+                        < kStageIIStep6EpsilonVolume;
+            }
+        );
+        if (!duplicate_cut) {
+            cuts.push_back(std::move(best));
+        }
+        result.candidates.clear();
+        for (const Cut& cut : cuts) {
+            double value = cut.state.objective;
+            for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+                value += multipliers[coordinate]
+                    * (feed[coordinate] - cut.independent[coordinate]);
+            }
+            const double gap = upper_bound - value;
+            bool fixed_volume_stationary = true;
+            for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+                if (cut.independent[coordinate]
+                    <= physical_lower[coordinate] + kCoordinateTolerance) {
+                    continue;
+                }
+                fixed_volume_stationary = fixed_volume_stationary
+                    && std::abs(cut.fixed_volume_gradient[coordinate]
+                        - multipliers[coordinate])
+                        <= kStageIIStep6EpsilonLambda
+                            * std::abs(multipliers[coordinate]);
+            }
+            if (std::abs(gap) > kStageIIStep6EpsilonB
+                || std::abs(cut.state.pressure_stationarity_relative)
+                    > kCertificateTolerance
+                || !fixed_volume_stationary) {
+                continue;
+            }
+            const bool distinct = std::all_of(
+                result.candidates.begin(),
+                result.candidates.end(),
+                [&cut](const Held2StageIICandidate& known) {
+                    return maximum_abs_difference(
+                               known.modified_fractions,
+                               cut.state.modified_fractions
+                           ) >= kStageIIStep6EpsilonX
+                        || std::abs(known.volume - cut.state.volume)
+                            >= kStageIIStep6EpsilonVolume;
+                }
+            );
+            if (distinct) {
+                result.candidates.push_back({
+                    cut.state.modified_fractions,
+                    cut.independent,
+                    cut.state.volume,
+                    std::log(cut.state.volume),
+                    gap,
+                });
+            }
+        }
+        result.cut_count = static_cast<int>(cuts.size());
+        result.distinct_basin_count = static_cast<int>(traced_basins.size());
+        if (result.candidates.size() > 1) {
+            result.outcome = "candidate_set";
+            return result;
+        }
+        if (duplicate_cut) {
+            if (!request_direct_escalation) {
+                request_direct_escalation = true;
+                continue;
+            }
+            result.outcome = "indeterminate_finite_search_stalled";
+            return result;
+        }
+    }
+    result.outcome = "resource_limit";
+    result.cut_count = static_cast<int>(cuts.size());
+    result.distinct_basin_count = static_cast<int>(traced_basins.size());
+    return result;
 }
 
 Held2ManufacturedEvaluation evaluate_held2_manufactured(

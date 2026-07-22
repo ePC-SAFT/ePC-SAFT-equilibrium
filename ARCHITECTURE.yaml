@@ -150,8 +150,8 @@ local_candidate:
 
 development_candidate:
   name: perdomo-held2
-  implementation_status: current-main-private-stage-i-ii-development
-  solver_strategy_status: stage-i-ii-landed-stage-iii-hardening-pending
+  implementation_status: current-main-private-integrated-stage-i-ii-iii-development
+  solver_strategy_status: integrated-controller-landed-installed-candidate-evidence-pending
   authority_effect: none
   current_public_electrolyte_dispatch: false
   archived_installed_wip:
@@ -173,17 +173,17 @@ development_candidate:
     stage_ii_upper: highs-lp
     stage_ii_global_exploration: continuation-sobol-stall-triggered-direct-l
     stage_ii_local_refinement: ipopt-exact-hessian
+    stage_iii: ipopt-exact-hessian-kkt-active-set-lifecycle
     scientific_acceptance: independent-equilibrium-certificates
     slsqp_default: false
     finite_search_globality: not-guaranteed
   remaining_solver_strategy:
-    stage_iii: ipopt-exact-hessian-lifecycle-hardening
     installed_two_liquid_evidence: pending-separate-assignment
   internal_dependencies:
     - NLopt 2.11.0 for Stage-I and stall-triggered Stage-II DIRECT-L exploration
     - HiGHS 1.15.1 for the Stage-II Problem-(64) linear program
     - Ipopt retained for Stage-II local refinement and Stage III
-  private_stage_i_ii_implementation: true
+  private_integrated_stage_i_ii_iii_implementation: true
   public_runtime_authorized: false
   source:
     repository: tannerpolley/ePC-SAFT-lab
@@ -251,20 +251,15 @@ development_candidate:
     focused_installed_test_result: 10 passed
     review: APPROVE_WIP_CHECKPOINT
     authority_effect: none
-  manufactured_baseline_checkpoint:
-    status: frozen-with-historical-dual-pullback-evidence-gap
-    fixture: data/reference/perdomo_held2_baseline_v2.json
-    capture_script: scripts/capture_held2_baseline.py
-    source_commit: 60b9b60e3150e4b295a9c95976449264a8b83907
-    source_tree: 7dd06a7b35c6394782d31f9b258fca10625396c0
+  integrated_candidate_checkpoint:
+    status: pending-immutable-installed-capture
+    fixture: data/reference/perdomo_held2_candidate_v1.json
+    capture_script: scripts/capture_held2_candidate.py
     provider_wheel_sha256: 9e4da0d7ba7896bcd2ec096400553d935e0516c61f1bd9f41f2370ab68ab36ea
-    equilibrium_wheel_sha256: 9910205c9f4c90760c3e6c751e98275e93637230dc370170bf032dd679dee04e
-    start_terminal_exposure: aggregate-only
-    historical_dual_pullback_partition: evidence-gap
+    start_terminal_exposure: complete
     authority_effect: none
   package_tests:
     - tests/test_held2.py
-    - tests/test_held2_baseline.py
   next_evidence_gate: source-complete-installed-two-liquid-stage-ii-iii-case
   next_gate_status: stage-i-ii-landed-pending-stage-iii-and-installed-two-liquid-assignment
   globality_certificate: not_guaranteed
@@ -307,11 +302,12 @@ owners:
   held2_private_development_implementation: >-
     cpp/src/held2.cpp, cpp/src/held2_stage_i_direct.cpp,
     cpp/src/held2_stage_ii_upper.cpp, cpp/src/held2_stage_ii_basin.cpp, and
-    cpp/src/held2_stage_iii.cpp
-  held2_stage_i_ii_solver_ownership: >-
+    cpp/src/held2_stage_iii.cpp, and cpp/src/held2_stage_iii_generic.cpp
+  held2_solver_ownership: >-
     deterministic pressure roots; NLopt DIRECT-L Stage I and Stage-II
     exploration; HiGHS Stage-II upper LP; Ipopt Stage-II local refinement and
-    Equilibrium independent certificates
+    Stage III; Equilibrium independent certificates and fail-closed integrated
+    controller
   input_validation_and_typed_results: src/epcsaft_equilibrium/_api.py
   pure_scientific_anchors: data/reference/pure_saturation_anchors.csv
   flash_predictive_validation: ePC-SAFT-validation
