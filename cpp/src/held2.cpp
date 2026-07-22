@@ -1,4 +1,5 @@
 #include "held2.hpp"
+#include "held2_stage_ii_upper.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -1685,43 +1686,37 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
     std::vector<Held2StateEvaluation> traced_basins;
 
     for (int major = 0; major < major_iteration_cap; ++major) {
-        struct Line {
-            double intercept = 0.0;
-            double slope = 0.0;
+        Held2StageIIUpperProblem upper_problem;
+        upper_problem.multiplier_lower_bounds = {
+            -std::numeric_limits<double>::infinity(),
         };
-        std::vector<Line> lines;
-        lines.reserve(cuts.size() + 1);
-        for (const Held2StateEvaluation& cut : cuts) {
-            lines.push_back({
+        upper_problem.multiplier_upper_bounds = {
+            std::numeric_limits<double>::infinity(),
+        };
+        upper_problem.cuts.reserve(cuts.size() + 1);
+        for (std::size_t cut_index = 0; cut_index < cuts.size(); ++cut_index) {
+            const Held2StateEvaluation& cut = cuts[cut_index];
+            upper_problem.cuts.push_back({
+                static_cast<int>(cut_index),
                 cut.objective,
-                feed - cut.modified_fractions[independent_retained],
+                {feed - cut.modified_fractions[independent_retained]},
             });
         }
-        lines.push_back({feed_gibbs, 0.0});
-        std::vector<double> multiplier_candidates = {0.0};
-        for (std::size_t left = 0; left < lines.size(); ++left) {
-            for (std::size_t right = left + 1; right < lines.size(); ++right) {
-                const double slope_delta = lines[left].slope - lines[right].slope;
-                if (std::abs(slope_delta) <= std::numeric_limits<double>::epsilon()) {
-                    continue;
-                }
-                multiplier_candidates.push_back(
-                    (lines[right].intercept - lines[left].intercept) / slope_delta
-                );
-            }
+        upper_problem.cuts.push_back({
+            static_cast<int>(cuts.size()),
+            feed_gibbs,
+            {0.0},
+        });
+        const Held2StageIIUpperResult upper_solve =
+            solve_held2_stage_ii_upper_highs(upper_problem);
+        if (upper_solve.outcome != "optimal"
+            || upper_solve.multipliers.size() != 1) {
+            result.outcome = "indeterminate";
+            result.cut_count = static_cast<int>(cuts.size());
+            return result;
         }
-        double upper_bound = -std::numeric_limits<double>::infinity();
-        double multiplier = 0.0;
-        for (double candidate : multiplier_candidates) {
-            double envelope = std::numeric_limits<double>::infinity();
-            for (const Line& line : lines) {
-                envelope = std::min(envelope, line.intercept + line.slope * candidate);
-            }
-            if (envelope > upper_bound) {
-                upper_bound = envelope;
-                multiplier = candidate;
-            }
-        }
+        const double upper_bound = upper_solve.upper_bound;
+        const double multiplier = upper_solve.multipliers.front();
 
         Held2StateEvaluation lower_reference;
         lower_reference.gradient = {multiplier, 0.0};
@@ -1886,6 +1881,16 @@ Held2StageIIResult solve_held2_manufactured_stage_ii(
             upper_bound,
             multiplier,
             static_cast<int>(cuts.size()),
+            upper_solve.solver,
+            upper_solve.solver_version,
+            upper_solve.solver_status,
+            upper_solve.primal_feasible,
+            upper_solve.dual_feasible,
+            upper_solve.primal_residual_inf,
+            upper_solve.dual_residual_inf,
+            upper_solve.cut_slacks,
+            upper_solve.cut_duals,
+            upper_solve.active_cut_ids,
         });
         const bool duplicate = std::any_of(
             cuts.begin(),

@@ -178,6 +178,16 @@ struct Held2StageIIBound {
     double upper_bound = 0.0;
     double multiplier = 0.0;
     int cut_count = 0;
+    std::string upper_solver;
+    std::string upper_solver_version;
+    std::string upper_solver_status;
+    bool upper_primal_feasible = false;
+    bool upper_dual_feasible = false;
+    double upper_primal_residual_inf = 0.0;
+    double upper_dual_residual_inf = 0.0;
+    std::vector<double> cut_slacks;
+    std::vector<double> cut_duals;
+    std::vector<int> active_cut_ids;
 };
 
 struct Held2StageIICandidate {
