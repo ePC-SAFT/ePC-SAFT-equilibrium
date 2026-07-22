@@ -701,20 +701,67 @@ def _figiel_provider_model() -> epcsaft.EPCSAFT:
     return epcsaft.EPCSAFT(parameters)
 
 
-def _neutral_source_record(
+def _analytic_charged_reference(model: epcsaft.EPCSAFT) -> dict[str, object]:
+    return {
+        "component_count": 5,
+        "neutral_basis_row_count": 3,
+        "neutral_basis": [
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 1.0],
+        ],
+        "log_fugacity_contractions": [1.25, -2.5, 0.75],
+        "reference_composition": [1.0, 0.0, 0.0, 0.0, 0.0],
+        "derivative_availability": 0,
+        "temperature_k": 298.15,
+        "pressure_pa": 100_000.0,
+        "solvent_molar_mass_kg_per_mol": 0.0180153,
+        "reference_amount_mol": 1.0,
+        "reference_number_density_mol_per_m3": 1.0,
+        "reference_molality_mol_per_kg": 1.0e-12,
+        "reference_convergence_error": 1.0e-8,
+        "basis_id": "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3",
+        "parameter_fingerprint": model.parameter_fingerprint,
+        "component_ids": [
+            "water", "sodium-cation", "chloride-anion", "calcium-cation", "sulfate-anion"
+        ],
+        "charges": [0, 1, -1, 2, -2],
+    }
+
+
+def _analytic_charged_source(
     model: epcsaft.EPCSAFT,
     reference: dict[str, object],
 ) -> dict[str, object]:
+    component_ids = reference["component_ids"]
+    charges = reference["charges"]
+    records = tuple(
+        {
+            "source_id": f"analytic-reaction-{index}",
+            "source_standard_state_id": "analytic-molality-v1",
+            "reference_id": reference["basis_id"],
+            "dimensionless": True,
+            "temperature_k": 298.15,
+            "pressure_pa": 100_000.0,
+            "pressure_binding": "fixed",
+        }
+        for index in range(3)
+    )
     return {
-        "component_ids": ["water", "sodium-cation", "chloride-anion"],
-        "charges": [0, 1, -1],
+        "component_ids": component_ids,
+        "charges": charges,
         "provider_fingerprint": model.parameter_fingerprint,
         "temperature_k": 298.15,
         "pressure_pa": 100_000.0,
         "dimensionless": True,
-        "reaction_matrix": [[-2.0, 1.0, 1.0], [1.0, -0.5, -0.5]],
-        "ln_k": [2.0, -0.25],
-        "log_activity_scale_factors": [0.4, -0.2, 0.7],
+        "reaction_matrix": [
+            [-2.0, 1.0, 1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0, 1.0, 1.0],
+            [0.0, 2.0, 2.0, -1.0, -1.0],
+        ],
+        "ln_k": [2.0, -0.25, 1.7],
+        "log_activity_scale_factors": [0.4, -0.2, 0.3, 0.1, -0.5],
+        "equilibrium_constant_records": records,
         "reference": reference,
     }
 
@@ -747,51 +794,65 @@ def test_installed_provider_neutral_reference_is_exactly_bound() -> None:
     assert reference["derivative_availability"] == 0
 
 
-def test_generic_standard_state_transform_is_basis_and_gauge_invariant() -> None:
+def test_generic_standard_state_transform_is_basis_and_species_order_invariant() -> None:
     model = _figiel_provider_model()
-    capsule = epcsaft.native_sdk(model)
-    reference = _equilibrium._chemical_evaluate_provider_neutral_reference(
-        capsule, 298.15, 100_000.0, model.parameter_fingerprint
-    )
-    source = _neutral_source_record(model, reference)
+    reference = _analytic_charged_reference(model)
+    source = _analytic_charged_source(model, reference)
     transformed = _equilibrium._chemical_transform_source_standard_state(source)
 
     contractions = reference["log_fugacity_contractions"]
     expected_offsets = [
-        -0.3 - 2.0 * contractions[0] + contractions[1],
-        0.15 + contractions[0] - 0.5 * contractions[1],
+        -0.7 - 2.0 * contractions[0] + contractions[1],
+        -0.8 - contractions[0] + contractions[2],
+        0.6 + 2.0 * contractions[1] - contractions[2],
     ]
     assert transformed["ln_k_provider_basis"] == pytest.approx(
-        [source["ln_k"][i] + expected_offsets[i] for i in range(2)]
+        [source["ln_k"][i] + expected_offsets[i] for i in range(3)]
     )
     assert transformed["standard_offsets"] == pytest.approx(expected_offsets)
-    assert transformed["reaction_to_neutral_basis"] == [[-2.0, 1.0], [1.0, -0.5]]
+    for actual, expected in zip(
+        transformed["reaction_to_neutral_basis"],
+        [[-2.0, 1.0, 0.0], [-1.0, 0.0, 1.0], [0.0, 2.0, -1.0]],
+        strict=True,
+    ):
+        assert actual == pytest.approx(expected)
     assert transformed["representation_residual_inf_norm"] <= 1.0e-12
+    assert transformed["basis_condition_ratio"] > 1.0e-10
     assert transformed["derivative_availability"] == 0
 
     permuted = copy.deepcopy(source)
     permuted["reference"] = copy.deepcopy(reference)
+    permutation = [4, 1, 0, 3, 2]
     permuted["reference"]["component_ids"] = [
-        "chloride-anion", "water", "sodium-cation"
+        reference["component_ids"][index] for index in permutation
     ]
-    permuted["reference"]["charges"] = [-1, 0, 1]
-    permuted["reference"]["neutral_basis"] = [[0.0, 1.0, 0.0], [1.0, 0.0, 1.0]]
-    permuted["reference"]["reference_composition"] = [0.0, 1.0, 0.0]
-    permuted["reference"]["log_fugacity_contractions"] = [
-        reference["log_fugacity_contractions"][0],
-        reference["log_fugacity_contractions"][1],
+    permuted["reference"]["charges"] = [reference["charges"][index] for index in permutation]
+    permuted["reference"]["neutral_basis"] = [
+        [row[index] for index in permutation] for row in reference["neutral_basis"]
     ]
-    permuted["component_ids"] = ["chloride-anion", "water", "sodium-cation"]
-    permuted["charges"] = [-1, 0, 1]
-    permuted["reaction_matrix"] = [[1.0, -2.0, 1.0], [-0.5, 1.0, -0.5]]
-    permuted["log_activity_scale_factors"] = [0.7, 0.4, -0.2]
+    permuted["reference"]["reference_composition"] = [
+        reference["reference_composition"][index] for index in permutation
+    ]
+    permuted["component_ids"] = permuted["reference"]["component_ids"]
+    permuted["charges"] = permuted["reference"]["charges"]
+    permuted["reaction_matrix"] = [
+        [row[index] for index in permutation] for row in source["reaction_matrix"]
+    ]
+    permuted["log_activity_scale_factors"] = [
+        source["log_activity_scale_factors"][index] for index in permutation
+    ]
     assert _equilibrium._chemical_transform_source_standard_state(permuted) == transformed
 
     basis_variant = copy.deepcopy(source)
     basis_variant["reference"] = copy.deepcopy(reference)
-    basis_variant["reference"]["neutral_basis"] = [[0.0, 2.0, 2.0], [3.0, 0.0, 0.0]]
+    basis_variant["reference"]["neutral_basis"] = [
+        [0.0, 2.0, 2.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 3.0, 3.0],
+        [3.0, 0.0, 0.0, 0.0, 0.0],
+    ]
     basis_variant["reference"]["log_fugacity_contractions"] = [
         2.0 * reference["log_fugacity_contractions"][1],
+        3.0 * reference["log_fugacity_contractions"][2],
         3.0 * reference["log_fugacity_contractions"][0],
     ]
     basis_transformed = _equilibrium._chemical_transform_source_standard_state(basis_variant)
@@ -802,22 +863,50 @@ def test_generic_standard_state_transform_is_basis_and_gauge_invariant() -> None
         transformed["ln_k_provider_basis"]
     )
 
+    small_basis = copy.deepcopy(source)
+    small_basis["reference"] = copy.deepcopy(reference)
+    small_basis["reference"]["neutral_basis"] = [
+        [1.0e-12 * value for value in row] for row in reference["neutral_basis"]
+    ]
+    small_basis["reference"]["log_fugacity_contractions"] = [
+        1.0e-12 * value for value in reference["log_fugacity_contractions"]
+    ]
+    small_transformed = _equilibrium._chemical_transform_source_standard_state(small_basis)
+    assert small_transformed["ln_k_provider_basis"] == pytest.approx(
+        transformed["ln_k_provider_basis"]
+    )
+
 
 def test_generic_standard_state_transform_rejects_unsupported_records() -> None:
     model = _figiel_provider_model()
-    capsule = epcsaft.native_sdk(model)
-    reference = _equilibrium._chemical_evaluate_provider_neutral_reference(
-        capsule, 298.15, 100_000.0, model.parameter_fingerprint
-    )
-    source = _neutral_source_record(model, reference)
+    reference = _analytic_charged_reference(model)
+    source = _analytic_charged_source(model, reference)
     mutations = (
-        ("non-neutral reaction", {"reaction_matrix": [[-1.0, 1.0, 0.0], [1.0, -0.5, -0.5]]}),
         (
-            "incomplete neutral span",
+            "non-neutral reaction",
+            {"reaction_matrix": [[-2.0, 1.0, 0.0, 0.0, 0.0], *source["reaction_matrix"][1:]]},
+        ),
+        (
+            "full-rank nonrepresentable basis",
             {
                 "reference": {
                     **reference,
-                    "neutral_basis": [[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
+                    "neutral_basis_row_count": 1,
+                    "neutral_basis": [[1.0, 0.0, 0.0, 0.0, 0.0]],
+                    "log_fugacity_contractions": [1.25],
+                }
+            },
+        ),
+        (
+            "ill-conditioned basis",
+            {
+                "reference": {
+                    **reference,
+                    "neutral_basis": [
+                        [1.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 1.0, 0.0, 0.0],
+                        [1.0e-12, 1.0e-12, 1.0e-12, 1.0e-12, 1.0e-12],
+                    ],
                 }
             },
         ),
@@ -831,13 +920,59 @@ def test_generic_standard_state_transform_rejects_unsupported_records() -> None:
                 }
             },
         ),
+        (
+            "salt-free composition",
+            {
+                "reference": {
+                    **reference,
+                    "reference_composition": [0.8, 0.1, 0.1, 0.0, 0.0],
+                }
+            },
+        ),
+        ("nonpositive reference temperature", {"reference": {**reference, "temperature_k": 0.0}}),
+        (
+            "source identity",
+            {
+                "equilibrium_constant_records": [
+                    {**source["equilibrium_constant_records"][0], "source_id": ""},
+                    *source["equilibrium_constant_records"][1:],
+                ]
+            },
+        ),
+        (
+            "reference identity",
+            {
+                "equilibrium_constant_records": [
+                    {
+                        **source["equilibrium_constant_records"][0],
+                        "reference_id": "wrong-reference",
+                    },
+                    *source["equilibrium_constant_records"][1:],
+                ]
+            },
+        ),
+        (
+            "pressure binding",
+            {
+                "equilibrium_constant_records": [
+                    {
+                        **source["equilibrium_constant_records"][0],
+                        "pressure_binding": "temperature_only",
+                    },
+                    *source["equilibrium_constant_records"][1:],
+                ]
+            },
+        ),
         ("nonfinite scale", {"log_activity_scale_factors": [math.nan, 0.0, 0.0]}),
         ("derivative claim", {"reference": {**reference, "derivative_availability": 1}}),
     )
     for _claim, mutation in mutations:
         candidate = copy.deepcopy(source)
         candidate.update(mutation)
-        with pytest.raises(ValueError, match=r"Provider|reaction|derivative|finite"):
+        with pytest.raises(
+            ValueError,
+            match=r"Provider|reaction|derivative|finite|bound|identity|dimensions|conditioning|span",
+        ):
             _equilibrium._chemical_transform_source_standard_state(candidate)
 
 

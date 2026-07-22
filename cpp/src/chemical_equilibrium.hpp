@@ -150,6 +150,7 @@ struct SourceStandardStateResult {
     std::vector<double> ln_k_provider_basis;
     DenseMatrix reaction_to_neutral_basis;
     double representation_residual_inf_norm = 0.0;
+    double basis_condition_ratio = 0.0;
     std::uint32_t derivative_availability = 0;
     std::string basis_id;
     std::string parameter_fingerprint;

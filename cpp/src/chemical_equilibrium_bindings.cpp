@@ -381,9 +381,6 @@ py::dict provider_neutral_reference_evidence(
 }
 
 py::dict source_standard_state_evidence(const py::dict& source) {
-    if (!source.contains("dimensionless") || !py::cast<bool>(source["dimensionless"])) {
-        throw py::value_error("source lnK must be explicitly dimensionless");
-    }
     const std::vector<std::string> component_ids = py::cast<std::vector<std::string>>(
         source["component_ids"]
     );
@@ -446,6 +443,36 @@ py::dict source_standard_state_evidence(const py::dict& source) {
     reference.parameter_fingerprint = py::cast<std::string>(
         reference_record["parameter_fingerprint"]
     );
+    if (!source.contains("equilibrium_constant_records")) {
+        throw py::value_error("source equilibrium-constant records are incomplete");
+    }
+    const py::tuple records = py::cast<py::tuple>(source["equilibrium_constant_records"]);
+    if (records.size() != reaction_matrix.rows) {
+        throw py::value_error("source equilibrium-constant records do not match reactions");
+    }
+    std::string source_standard_state_id;
+    for (const py::handle item : records) {
+        const py::dict record = py::cast<py::dict>(item);
+        const std::string source_id = py::cast<std::string>(record["source_id"]);
+        const std::string standard_state_id = py::cast<std::string>(
+            record["source_standard_state_id"]
+        );
+        if (source_id.empty() || standard_state_id.empty()) {
+            throw py::value_error("source identity is incomplete");
+        }
+        if (source_standard_state_id.empty()) {
+            source_standard_state_id = standard_state_id;
+        } else if (source_standard_state_id != standard_state_id) {
+            throw py::value_error("source standard-state identity is inconsistent");
+        }
+        if (!py::cast<bool>(record["dimensionless"])
+            || py::cast<std::string>(record["reference_id"]) != reference.basis_id
+            || py::cast<double>(record["temperature_k"]) != temperature_k
+            || py::cast<double>(record["pressure_pa"]) != pressure_pa
+            || py::cast<std::string>(record["pressure_binding"]) != "fixed") {
+            throw py::value_error("source/reference standard-state identity is incompatible");
+        }
+    }
     const SourceStandardStateResult transformed = transform_source_standard_state(
         reaction_matrix,
         source_ln_k,
@@ -477,6 +504,7 @@ py::dict source_standard_state_evidence(const py::dict& source) {
     result["reaction_to_neutral_basis"] = coordinates;
     result["representation_residual_inf_norm"] =
         transformed.representation_residual_inf_norm;
+    result["basis_condition_ratio"] = transformed.basis_condition_ratio;
     result["derivative_availability"] = transformed.derivative_availability;
     result["basis_id"] = transformed.basis_id;
     result["parameter_fingerprint"] = transformed.parameter_fingerprint;

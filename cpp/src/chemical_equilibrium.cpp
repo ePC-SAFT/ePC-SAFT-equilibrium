@@ -751,7 +751,8 @@ SourceStandardStateResult transform_source_standard_state(
             "Provider neutral-reference derivative availability is unsupported"
         );
     }
-    if (!std::isfinite(temperature_k) || !std::isfinite(pressure_pa)
+    if (!std::isfinite(temperature_k) || temperature_k <= 0.0
+        || !std::isfinite(pressure_pa) || pressure_pa <= 0.0
         || temperature_k != reference.temperature_k || pressure_pa != reference.pressure_pa) {
         throw std::invalid_argument("source/reference temperature and pressure are not bound");
     }
@@ -777,9 +778,13 @@ SourceStandardStateResult transform_source_standard_state(
         throw std::invalid_argument("Provider neutral-reference scalar identity is incompatible");
     }
     double reference_composition_sum = 0.0;
-    for (double value : reference.reference_composition) {
+    for (std::size_t component = 0; component < reference.reference_composition.size(); ++component) {
+        const double value = reference.reference_composition[component];
         if (value < 0.0) {
             throw std::invalid_argument("Provider reference composition is negative");
+        }
+        if (charges[component] != 0 && value != 0.0) {
+            throw std::invalid_argument("Provider reference composition is not salt-free");
         }
         reference_composition_sum += value;
     }
@@ -801,90 +806,140 @@ SourceStandardStateResult transform_source_standard_state(
         reaction_matrix.columns,
         reference.neutral_basis,
     };
-    if (matrix_rank(neutral_basis) != neutral_basis.rows) {
+    const double basis_scale = matrix_scale(neutral_basis);
+    if (basis_scale == 0.0) {
         throw std::invalid_argument("Provider neutral-reference basis is rank deficient");
     }
-    const double charge_tolerance = numerical_tolerance(
-        matrix_scale(reaction_matrix), reaction_matrix.columns
-    );
+    const auto relative_tolerance = [](double scale, std::size_t dimension) {
+        return kResidualMultiplier * std::numeric_limits<double>::epsilon()
+            * std::max(scale, std::numeric_limits<double>::min())
+            * static_cast<double>(std::max<std::size_t>(1, dimension));
+    };
     for (std::size_t row = 0; row < reaction_matrix.rows; ++row) {
+        double reaction_scale = 0.0;
         double reaction_charge = 0.0;
         for (std::size_t component = 0; component < reaction_matrix.columns; ++component) {
+            reaction_scale = std::max(reaction_scale, std::abs(reaction_matrix(row, component)));
             reaction_charge += static_cast<double>(charges[component])
                 * reaction_matrix(row, component);
         }
-        if (std::abs(reaction_charge) > charge_tolerance) {
+        if (std::abs(reaction_charge)
+            > relative_tolerance(reaction_scale, reaction_matrix.columns)) {
             throw std::invalid_argument("source reaction is not charge neutral");
         }
     }
     for (std::size_t row = 0; row < neutral_basis.rows; ++row) {
+        double row_scale = 0.0;
+        for (std::size_t component = 0; component < neutral_basis.columns; ++component) {
+            row_scale = std::max(row_scale, std::abs(neutral_basis(row, component)));
+        }
+        row_scale = std::max(1.0e-300, row_scale);
         double basis_charge = 0.0;
         for (std::size_t component = 0; component < neutral_basis.columns; ++component) {
             basis_charge += static_cast<double>(charges[component])
                 * neutral_basis(row, component);
         }
-        if (std::abs(basis_charge) > charge_tolerance) {
+        if (std::abs(basis_charge) > relative_tolerance(row_scale, neutral_basis.columns)) {
             throw std::invalid_argument("Provider neutral basis row is not charge neutral");
         }
     }
 
     const std::size_t basis_count = neutral_basis.rows;
-    DenseMatrix gram{basis_count, basis_count, std::vector<double>(basis_count * basis_count, 0.0)};
-    for (std::size_t first = 0; first < basis_count; ++first) {
-        for (std::size_t second = 0; second < basis_count; ++second) {
-            for (std::size_t component = 0; component < neutral_basis.columns; ++component) {
-                gram(first, second) += neutral_basis(first, component)
-                    * neutral_basis(second, component);
+    constexpr double kMinimumBasisConditionRatio = 1.0e-10;
+    const std::size_t coordinate_count = neutral_basis.columns;
+    std::vector<double> work(coordinate_count * basis_count, 0.0);
+    for (std::size_t component = 0; component < coordinate_count; ++component) {
+        for (std::size_t basis = 0; basis < basis_count; ++basis) {
+            work[component * basis_count + basis] = neutral_basis(basis, component);
+        }
+    }
+    std::vector<double> q(coordinate_count * basis_count, 0.0);
+    std::vector<double> r(basis_count * basis_count, 0.0);
+    std::vector<std::size_t> permutation(basis_count, 0);
+    std::iota(permutation.begin(), permutation.end(), 0);
+    const double rank_tolerance = kResidualMultiplier
+        * std::numeric_limits<double>::epsilon()
+        * basis_scale * static_cast<double>(std::max<std::size_t>(1, coordinate_count));
+    std::vector<double> diagonal_magnitudes(basis_count, 0.0);
+    for (std::size_t column = 0; column < basis_count; ++column) {
+        std::size_t selected = column;
+        double selected_norm = 0.0;
+        for (std::size_t candidate = column; candidate < basis_count; ++candidate) {
+            double candidate_norm = 0.0;
+            for (std::size_t component = 0; component < coordinate_count; ++component) {
+                candidate_norm = std::hypot(
+                    candidate_norm, work[component * basis_count + candidate]
+                );
+            }
+            if (candidate_norm > selected_norm) {
+                selected = candidate;
+                selected_norm = candidate_norm;
+            }
+        }
+        if (selected_norm <= rank_tolerance) {
+            throw std::invalid_argument("Provider neutral-reference basis is rank deficient");
+        }
+        if (selected != column) {
+            for (std::size_t component = 0; component < coordinate_count; ++component) {
+                std::swap(
+                    work[component * basis_count + selected],
+                    work[component * basis_count + column]
+                );
+            }
+            std::swap(permutation[selected], permutation[column]);
+        }
+        double norm = 0.0;
+        for (std::size_t component = 0; component < coordinate_count; ++component) {
+            norm = std::hypot(norm, work[component * basis_count + column]);
+        }
+        r[column * basis_count + column] = norm;
+        diagonal_magnitudes[column] = norm;
+        for (std::size_t component = 0; component < coordinate_count; ++component) {
+            q[component * basis_count + column] =
+                work[component * basis_count + column] / norm;
+        }
+        for (std::size_t other = column + 1; other < basis_count; ++other) {
+            double projection = 0.0;
+            for (std::size_t component = 0; component < coordinate_count; ++component) {
+                projection += q[component * basis_count + column]
+                    * work[component * basis_count + other];
+            }
+            r[column * basis_count + other] = projection;
+            for (std::size_t component = 0; component < coordinate_count; ++component) {
+                work[component * basis_count + other] -= projection
+                    * q[component * basis_count + column];
             }
         }
     }
+    const auto [minimum_diagonal, maximum_diagonal] = std::minmax_element(
+        diagonal_magnitudes.begin(), diagonal_magnitudes.end()
+    );
+    const double basis_condition_ratio = *minimum_diagonal / *maximum_diagonal;
+    if (!std::isfinite(basis_condition_ratio)
+        || basis_condition_ratio < kMinimumBasisConditionRatio) {
+        throw std::invalid_argument(
+            "Provider neutral-reference basis is ill-conditioned"
+        );
+    }
     auto solve_full_column_system = [&](const std::vector<double>& values) {
-        std::vector<double> matrix = gram.values;
-        std::vector<double> rhs(basis_count, 0.0);
-        for (std::size_t row = 0; row < basis_count; ++row) {
-            for (std::size_t component = 0; component < neutral_basis.columns; ++component) {
-                rhs[row] += neutral_basis(row, component) * values[component];
+        std::vector<double> projected(basis_count, 0.0);
+        for (std::size_t basis = 0; basis < basis_count; ++basis) {
+            for (std::size_t component = 0; component < coordinate_count; ++component) {
+                projected[basis] += q[component * basis_count + basis] * values[component];
             }
         }
-        for (std::size_t pivot = 0; pivot < basis_count; ++pivot) {
-            std::size_t selected = pivot;
-            for (std::size_t row = pivot + 1; row < basis_count; ++row) {
-                if (std::abs(matrix[row * basis_count + pivot])
-                    > std::abs(matrix[selected * basis_count + pivot])) {
-                    selected = row;
-                }
-            }
-            if (std::abs(matrix[selected * basis_count + pivot])
-                <= numerical_tolerance(1.0, basis_count)) {
-                throw std::invalid_argument("Provider neutral-reference basis solve is rank deficient");
-            }
-            if (selected != pivot) {
-                for (std::size_t column = pivot; column < basis_count; ++column) {
-                    std::swap(
-                        matrix[selected * basis_count + column],
-                        matrix[pivot * basis_count + column]
-                    );
-                }
-                std::swap(rhs[selected], rhs[pivot]);
-            }
-            for (std::size_t row = pivot + 1; row < basis_count; ++row) {
-                const double factor = matrix[row * basis_count + pivot]
-                    / matrix[pivot * basis_count + pivot];
-                for (std::size_t column = pivot; column < basis_count; ++column) {
-                    matrix[row * basis_count + column] -= factor
-                        * matrix[pivot * basis_count + column];
-                }
-                rhs[row] -= factor * rhs[pivot];
-            }
-        }
-        std::vector<double> result(basis_count, 0.0);
+        std::vector<double> coefficients(basis_count, 0.0);
         for (std::size_t reverse = basis_count; reverse > 0; --reverse) {
             const std::size_t row = reverse - 1;
-            double value = rhs[row];
+            double value = projected[row];
             for (std::size_t column = row + 1; column < basis_count; ++column) {
-                value -= matrix[row * basis_count + column] * result[column];
+                value -= r[row * basis_count + column] * coefficients[column];
             }
-            result[row] = value / matrix[row * basis_count + row];
+            coefficients[row] = value / r[row * basis_count + row];
+        }
+        std::vector<double> result(basis_count, 0.0);
+        for (std::size_t basis = 0; basis < basis_count; ++basis) {
+            result[permutation[basis]] = coefficients[basis];
         }
         return result;
     };
@@ -897,6 +952,7 @@ SourceStandardStateResult transform_source_standard_state(
         basis_count,
         std::vector<double>(reaction_matrix.rows * basis_count, 0.0),
     };
+    result.basis_condition_ratio = basis_condition_ratio;
     for (std::size_t reaction = 0; reaction < reaction_matrix.rows; ++reaction) {
         std::vector<double> nu(reaction_matrix.columns, 0.0);
         for (std::size_t component = 0; component < reaction_matrix.columns; ++component) {
@@ -914,12 +970,25 @@ SourceStandardStateResult transform_source_standard_state(
             contraction_offset += coefficients[basis]
                 * reference.log_fugacity_contractions[basis];
         }
+        double reaction_scale = 0.0;
+        double reconstruction_scale = 0.0;
         for (std::size_t component = 0; component < reaction_matrix.columns; ++component) {
             double reconstructed = 0.0;
             for (std::size_t basis = 0; basis < basis_count; ++basis) {
                 reconstructed += coefficients[basis] * neutral_basis(basis, component);
             }
+            reaction_scale = std::max(reaction_scale, std::abs(nu[component]));
+            reconstruction_scale = std::max(reconstruction_scale, std::abs(reconstructed));
             residual = std::max(residual, std::abs(reconstructed - nu[component]));
+        }
+        const double representation_tolerance = kResidualMultiplier
+            * std::numeric_limits<double>::epsilon()
+            * std::max({reaction_scale, reconstruction_scale, std::numeric_limits<double>::min()})
+            * static_cast<double>(std::max<std::size_t>(1, reaction_matrix.columns));
+        if (residual > representation_tolerance) {
+            throw std::invalid_argument(
+                "source reaction is outside the Provider neutral-reference span"
+            );
         }
         result.representation_residual_inf_norm = std::max(
             result.representation_residual_inf_norm, residual
