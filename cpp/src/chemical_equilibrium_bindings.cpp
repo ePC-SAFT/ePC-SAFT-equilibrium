@@ -318,6 +318,42 @@ py::dict provider_block_evidence(
     return result;
 }
 
+py::dict provider_standard_reference_evidence(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_native_sdk_v1& sdk = checked_chemical_sdk(capsule);
+    const ChemicalProviderMetadata metadata = chemical_provider_metadata(sdk);
+    if (metadata.component_ids
+            != std::vector<std::string>{
+                "water", "hydronium-cation", "hydroxide-anion"
+            }
+        || metadata.charges != std::vector<int>{0, 1, -1}) {
+        throw py::value_error(
+            "Provider standard-reference identity component order or charges mismatch"
+        );
+    }
+    const ProviderContext provider(sdk, expected_fingerprint);
+    const StandardReferenceEvaluation evaluation = provider.evaluate_standard_reference(
+        temperature_k, pressure_pa
+    );
+    py::dict result;
+    result["formula_unit_log_fugacity"] = evaluation.formula_unit_log_fugacity;
+    result["pure_solvent_log_fugacity"] = evaluation.pure_solvent_log_fugacity;
+    result["solvent_molar_mass_kg_per_mol"] =
+        evaluation.solvent_molar_mass_kg_per_mol;
+    result["reference_molality_mol_per_kg"] =
+        evaluation.reference_molality_mol_per_kg;
+    result["convergence_error"] = evaluation.convergence_error;
+    result["basis_id"] = evaluation.basis_id;
+    result["parameter_fingerprint"] = evaluation.parameter_fingerprint;
+    result["component_ids"] = metadata.component_ids;
+    result["charges"] = metadata.charges;
+    return result;
+}
+
 py::dict solve_provider_manufactured(
     const py::capsule& capsule,
     const py::dict& spec,
@@ -451,6 +487,14 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("temperature_k"),
         py::arg("amounts"),
         py::arg("volume_m3"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "_chemical_evaluate_provider_standard_reference",
+        &provider_standard_reference_evidence,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
         py::arg("expected_fingerprint")
     );
     module.def(

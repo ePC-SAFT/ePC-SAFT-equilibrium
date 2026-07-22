@@ -29,6 +29,16 @@ struct PackingFractionEvaluation {
     std::vector<double> hessian;
 };
 
+struct StandardReferenceEvaluation {
+    double formula_unit_log_fugacity = 0.0;
+    double pure_solvent_log_fugacity = 0.0;
+    double solvent_molar_mass_kg_per_mol = 0.0;
+    double reference_molality_mol_per_kg = 0.0;
+    double convergence_error = 0.0;
+    std::string basis_id;
+    std::string parameter_fingerprint;
+};
+
 class ProviderContext {
 public:
     ProviderContext(const epcsaft_native_sdk_v1& sdk, std::string fingerprint);
@@ -62,6 +72,11 @@ public:
         double temperature_k,
         const std::vector<double>& amounts_mol,
         double volume_m3
+    ) const;
+
+    [[nodiscard]] StandardReferenceEvaluation evaluate_standard_reference(
+        double temperature_k,
+        double pressure_pa
     ) const;
 
     [[nodiscard]] const std::string& fingerprint() const;

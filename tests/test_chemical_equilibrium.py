@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import ctypes
 import math
 from collections.abc import Callable
 
@@ -8,6 +9,91 @@ import epcsaft
 import pytest
 
 from epcsaft_equilibrium import _equilibrium
+
+
+class _StandardReferenceResult(ctypes.Structure):
+    _fields_ = (
+        ("struct_size", ctypes.c_uint32),
+        ("status", ctypes.c_int32),
+        ("temperature_k", ctypes.c_double),
+        ("pressure_pa", ctypes.c_double),
+        ("formula_unit_infinite_dilution_log_fugacity", ctypes.c_double),
+        ("pure_solvent_log_fugacity_coefficient", ctypes.c_double),
+        ("solvent_molar_mass_kg_per_mol", ctypes.c_double),
+        ("reference_molality_mol_per_kg", ctypes.c_double),
+        ("reference_convergence_error", ctypes.c_double),
+        ("parameter_fingerprint", ctypes.c_char * 72),
+        ("helmholtz_basis_id", ctypes.c_char * 72),
+        ("error", ctypes.c_char * 160),
+    )
+
+
+class _StandardReferenceSdk(ctypes.Structure):
+    _fields_ = (
+        ("abi_version", ctypes.c_uint32),
+        ("table_size", ctypes.c_size_t),
+        ("result_size", ctypes.c_size_t),
+        ("model_context", ctypes.c_void_p),
+        ("evaluate_pure_phase", ctypes.c_void_p),
+        ("parameterized_result_size", ctypes.c_size_t),
+        ("evaluate_pure_phase_parameters", ctypes.c_void_p),
+        ("component_count", ctypes.c_size_t),
+        ("mixture_result_size", ctypes.c_size_t),
+        ("evaluate_mixture_phase", ctypes.c_void_p),
+        ("evaluate_mixture_phase_kij", ctypes.c_void_p),
+        ("component_ids", ctypes.POINTER(ctypes.c_char_p)),
+        ("component_charges", ctypes.POINTER(ctypes.c_int32)),
+        ("evaluate_electrolyte_phase", ctypes.c_void_p),
+        ("evaluate_molar_volume_bounds", ctypes.c_void_p),
+        ("evaluate_packing_fraction", ctypes.c_void_p),
+        ("source_temperature_min_k", ctypes.c_double),
+        ("source_temperature_max_k", ctypes.c_double),
+        ("total_ion_mole_fraction_max", ctypes.c_double),
+        ("ion_solvation_born_result_size", ctypes.c_size_t),
+        ("evaluate_ion_solvation_born", ctypes.c_void_p),
+        ("helmholtz_basis_id", ctypes.c_char_p),
+        ("reference_amount_mol", ctypes.c_double),
+        ("reference_number_density_mol_per_m3", ctypes.c_double),
+        ("source_pressure_min_pa", ctypes.c_double),
+        ("source_pressure_max_pa", ctypes.c_double),
+        ("electrolyte_standard_reference_result_size", ctypes.c_size_t),
+        ("evaluate_electrolyte_standard_reference", ctypes.c_void_p),
+    )
+
+
+_STANDARD_REFERENCE_CALLBACK = ctypes.CFUNCTYPE(
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_double,
+    ctypes.c_double,
+    ctypes.POINTER(_StandardReferenceResult),
+)
+
+
+def _held_water_ionization_model() -> epcsaft.EPCSAFT:
+    parameters = epcsaft.ParameterBundle.from_catalog(
+        "held-2008-water-self-ionization", version=1
+    ).select(("water", "hydronium-cation", "hydroxide-anion"))
+    return epcsaft.EPCSAFT(parameters)
+
+
+def _copied_sdk_capsule(
+    model: epcsaft.EPCSAFT,
+) -> tuple[object, _StandardReferenceSdk, tuple[object, ...]]:
+    provider_capsule = epcsaft.native_sdk(model)
+    get_pointer = ctypes.pythonapi.PyCapsule_GetPointer
+    get_pointer.argtypes = (ctypes.py_object, ctypes.c_char_p)
+    get_pointer.restype = ctypes.c_void_p
+    source = get_pointer(provider_capsule, b"epcsaft.native_sdk.v1")
+    assert source
+    table = _StandardReferenceSdk()
+    ctypes.memmove(ctypes.addressof(table), source, ctypes.sizeof(table))
+    name = ctypes.create_string_buffer(b"epcsaft.native_sdk.v1")
+    new_capsule = ctypes.pythonapi.PyCapsule_New
+    new_capsule.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p)
+    new_capsule.restype = ctypes.py_object
+    capsule = new_capsule(ctypes.addressof(table), name, None)
+    return capsule, table, (provider_capsule, name)
 
 
 def _base_system() -> dict[str, object]:
@@ -572,6 +658,112 @@ def test_manufactured_charged_solution_is_species_order_invariant() -> None:
     assert tuple(reordered["amounts"][index] for index in inverse) == pytest.approx(
         baseline["amounts"], rel=4.0e-8
     )
+
+
+def test_installed_provider_standard_reference_tail_is_consumed_once() -> None:
+    model = _held_water_ionization_model()
+    result = _equilibrium._chemical_evaluate_provider_standard_reference(
+        epcsaft.native_sdk(model),
+        298.15,
+        100_000.0,
+        model.parameter_fingerprint,
+    )
+    public = model.reference_state(
+        temperature=298.15 * epcsaft.unit_registry.kelvin,
+        pressure=100_000.0 * epcsaft.unit_registry.pascal,
+        solvent_mole_fractions=(1.0, 0.0, 0.0),
+        phase="liquid",
+    )
+
+    assert result["formula_unit_log_fugacity"] == pytest.approx(
+        math.fsum(public.infinite_dilution_log_fugacity), abs=2.0e-12
+    )
+    assert result["pure_solvent_log_fugacity"] == pytest.approx(
+        public._pure_water_log_fugacity, abs=2.0e-12
+    )
+    assert result["solvent_molar_mass_kg_per_mol"] == pytest.approx(0.01801528)
+    assert result["reference_molality_mol_per_kg"] == 1.0e-12
+    assert 0.0 <= result["convergence_error"] <= 5.0e-5
+    assert result["basis_id"] == (
+        "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3"
+    )
+    assert result["parameter_fingerprint"] == model.parameter_fingerprint
+    assert result["component_ids"] == ["water", "hydronium-cation", "hydroxide-anion"]
+    assert result["charges"] == [0, 1, -1]
+
+
+def test_provider_standard_reference_tail_rejects_abi_identity_and_domain_mutations() -> None:
+    model = _held_water_ionization_model()
+
+    capsule, table, owners = _copied_sdk_capsule(model)
+    assert owners
+    table.table_size = _StandardReferenceSdk.source_pressure_max_pa.offset + ctypes.sizeof(
+        ctypes.c_double
+    )
+    with pytest.raises(ValueError, match="standard-reference ABI"):
+        _equilibrium._chemical_evaluate_provider_standard_reference(
+            capsule, 298.15, 100_000.0, model.parameter_fingerprint
+        )
+
+    capsule, table, owners = _copied_sdk_capsule(model)
+    assert owners
+    table.evaluate_electrolyte_standard_reference = None
+    with pytest.raises(ValueError, match="standard-reference ABI"):
+        _equilibrium._chemical_evaluate_provider_standard_reference(
+            capsule, 298.15, 100_000.0, model.parameter_fingerprint
+        )
+
+    capsule, table, owners = _copied_sdk_capsule(model)
+    assert owners
+    table.electrolyte_standard_reference_result_size -= 1
+    with pytest.raises(ValueError, match="standard-reference ABI"):
+        _equilibrium._chemical_evaluate_provider_standard_reference(
+            capsule, 298.15, 100_000.0, model.parameter_fingerprint
+        )
+
+    capsule, table, owners = _copied_sdk_capsule(model)
+    wrong_basis = ctypes.create_string_buffer(b"wrong-basis")
+    table.helmholtz_basis_id = ctypes.cast(wrong_basis, ctypes.c_char_p)
+    with pytest.raises(ValueError, match="standard-reference identity"):
+        _equilibrium._chemical_evaluate_provider_standard_reference(
+            capsule, 298.15, 100_000.0, model.parameter_fingerprint
+        )
+    assert owners and wrong_basis
+
+    with pytest.raises(ValueError, match="standard-reference identity"):
+        _equilibrium._chemical_evaluate_provider_standard_reference(
+            epcsaft.native_sdk(model), 298.15, 100_000.0, "sha256:wrong"
+        )
+
+    with pytest.raises(ValueError, match="standard-reference source domain"):
+        _equilibrium._chemical_evaluate_provider_standard_reference(
+            epcsaft.native_sdk(model), 299.0, 100_000.0, model.parameter_fingerprint
+        )
+
+
+def test_provider_standard_reference_tail_distinguishes_provider_failure() -> None:
+    model = _held_water_ionization_model()
+    capsule, table, owners = _copied_sdk_capsule(model)
+
+    @_STANDARD_REFERENCE_CALLBACK
+    def fail(
+        _context: int,
+        _temperature: float,
+        _pressure: float,
+        result: ctypes.POINTER(_StandardReferenceResult),
+    ) -> int:
+        result.contents.status = 4
+        result.contents.error = b"forced reference failure"
+        return 4
+
+    table.evaluate_electrolyte_standard_reference = ctypes.cast(
+        fail, ctypes.c_void_p
+    ).value
+    with pytest.raises(ValueError, match="Provider standard-reference evaluation failed"):
+        _equilibrium._chemical_evaluate_provider_standard_reference(
+            capsule, 298.15, 100_000.0, model.parameter_fingerprint
+        )
+    assert owners and fail
 
 
 def _figiel_provider_model() -> epcsaft.EPCSAFT:
