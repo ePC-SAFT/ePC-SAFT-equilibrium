@@ -160,11 +160,11 @@ that no sibling source, retired lab runtime, or copied Provider equation is
 loaded.
 
 The stable implementation checkpoint is Equilibrium commit
-`770ee8d30c39df4031ea302c795fb279d7288463`, tree
-`8ddb247ed4cd45aeced1d0952eb5adde51ad6da8`, consuming Provider commit
+`c15feead130a658c0ebe677ec2b4af4517c3cb58`, tree
+`d6f1c7835c33b3d173ec903895c901f3d86b51eb`, consuming Provider commit
 `4efb9345c852e66ed43e8ef446ac6c5ca4875d88`, tree
 `3a1dda2efedf3374b6ae8f89237ffec4add2e544`. The immutable wheel hashes are
-`52c66db982d553c498c0ad198cbf56b8c8bb6c46a3be2322b7e537ed219ff38c`
+`312518efaecb1a5372e53da465dbe30682e87d3458bcb60d725e4ae0aff1f914`
 for Equilibrium and
 `1927f6cb8926489d3ca1ff88c529f181bc0d237b00c98a8112df68f2315eb4ee`
 for Provider.
