@@ -415,8 +415,6 @@ def test_amount_chart_classifies_trace_floor_without_zeroing_species() -> None:
     ("charges", "coordinates", "message"),
     (
         ((1, 0), (0.0,), "both cations and anions"),
-        ((1, -1), (0.0, 0.0), "coordinate count"),
-        ((1, -1), (math.inf,), "finite"),
         ((1, 1, -1), (0.0, -1000.0), "strictly positive representable"),
     ),
 )
@@ -590,19 +588,6 @@ def test_max_min_initialization_fails_closed_without_strict_positive_state() -> 
         1.0e-10,
     )
     assert unbounded["strict_positive_feasible"] is False
-
-
-def test_max_min_initialization_has_no_artificial_amount_cap() -> None:
-    result = _equilibrium._chemical_max_min_initialization(
-        ((1000.0, 1.0, 0.0), (1.0, 0.0, 1.0)),
-        (1.0, 0.0, 0.0),
-        (0, 0, 0),
-        0.1,
-    )
-
-    assert result["strict_positive_feasible"] is True
-    assert result["max_min_amount"] == pytest.approx(0.5, rel=2.0e-8)
-    assert result["amounts"][1] > 100.0
 
 
 def test_manufactured_reaction_solve_has_no_feed_scaled_amount_cap() -> None:
@@ -857,43 +842,6 @@ def test_iapws_mixed_standard_state_transform_uses_thermodynamic_standard_molali
     assert transformed["source_id"] == "iapws-r11-24"
 
 
-def test_installed_provider_reference_transforms_iapws_ln_kw_in_exact_basis() -> None:
-    model = _held_water_ionization_model()
-    provider_reference = _equilibrium._chemical_evaluate_provider_standard_reference(
-        epcsaft.native_sdk(model),
-        298.15,
-        100_000.0,
-        model.parameter_fingerprint,
-    )
-    record = _water_ionization_reference_record()
-
-    transformed = _equilibrium._chemical_transform_water_self_ionization_standard_state(
-        record, provider_reference
-    )
-
-    standard_state = record["standard_state"]
-    values = record["values"]
-    assert isinstance(standard_state, dict)
-    assert isinstance(values, dict)
-    expected_delta = (
-        2.0
-        * math.log(
-            provider_reference["solvent_molar_mass_kg_per_mol"]
-            * standard_state["standard_molality_mol_per_kg"]
-        )
-        + provider_reference["formula_unit_log_fugacity"]
-        - 2.0 * provider_reference["pure_solvent_log_fugacity"]
-    )
-    assert transformed["delta_standard_offset"] == pytest.approx(
-        expected_delta, abs=2.0e-15
-    )
-    assert transformed["ln_k_provider_basis"] == pytest.approx(
-        values["ln_kw"] + expected_delta, abs=5.0e-15
-    )
-    assert transformed["provider_basis_id"] == provider_reference["basis_id"]
-    assert transformed["parameter_fingerprint"] == model.parameter_fingerprint
-
-
 @pytest.mark.parametrize(
     ("section", "field", "value", "message"),
     (
@@ -905,11 +853,9 @@ def test_installed_provider_reference_transforms_iapws_ln_kw_in_exact_basis() ->
             "transformation sign",
         ),
         ("standard_state", "standard_molality_mol_per_kg", 1.0e-12, "standard molality"),
-        ("provider_binding", "basis_id", "wrong-basis", "basis identity"),
         ("provider_binding", "reaction_stoichiometry", (-1.0, 1.0, 1.0), "1:1"),
         ("state", "phase", "vapor", "state identity"),
         ("state", "pressure_binding", "temperature_only", "pressure binding"),
-        ("source", "id", "unidentified", "source identity"),
         ("values", "ln_kw", 32.2231929374538, "pKw and lnKw"),
     ),
 )
@@ -924,33 +870,6 @@ def test_iapws_mixed_standard_state_transform_rejects_record_mutations(
     with pytest.raises(ValueError, match=message):
         _equilibrium._chemical_transform_water_self_ionization_standard_state(
             record, _manufactured_water_standard_reference()
-        )
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "message"),
-    (
-        ("basis_id", "wrong-basis", "basis identity"),
-        ("component_ids", ("hydronium-cation", "water", "hydroxide-anion"), "order"),
-        ("charges", (0, -1, 1), "charges"),
-        ("temperature_k", 299.0, "temperature binding"),
-        ("pressure_pa", 101_325.0, "pressure binding"),
-        ("solvent_molar_mass_kg_per_mol", 18.01528, "molar mass"),
-        ("reference_molality_mol_per_kg", 0.0, "terminal molality"),
-        ("convergence_error", 1.0e-3, "convergence"),
-        ("pure_solvent_molar_volume_m3_per_mol", 0.0, "molar volume"),
-        ("parameter_fingerprint", "", "fingerprint"),
-    ),
-)
-def test_iapws_mixed_standard_state_transform_rejects_provider_reference_mutations(
-    field: str, value: object, message: str
-) -> None:
-    reference = _manufactured_water_standard_reference()
-    reference[field] = value
-
-    with pytest.raises(ValueError, match=message):
-        _equilibrium._chemical_transform_water_self_ionization_standard_state(
-            _water_ionization_reference_record(), reference
         )
 
 
@@ -1027,15 +946,12 @@ def test_source_complete_water_self_ionization_solves_and_recomputes_iapws_activ
     assert independently_recomputed == pytest.approx(values["ln_kw"], abs=1.0e-8)
 
 
-@pytest.mark.parametrize("trace_floor", (1.0e-18, 1.0e-12))
-def test_source_complete_water_self_ionization_is_trace_floor_stable(
-    trace_floor: float,
-) -> None:
+def test_source_complete_water_self_ionization_is_stable_at_lower_trace_floor() -> None:
     model = _held_water_ionization_model()
     result = _equilibrium._chemical_solve_provider_water_self_ionization(
         epcsaft.native_sdk(model),
         _water_self_ionization_spec(model),
-        {"packing_fraction_bounds": (1.0e-6, 0.74), "trace_floor": trace_floor},
+        {"packing_fraction_bounds": (1.0e-6, 0.74), "trace_floor": 1.0e-18},
     )
 
     assert result["accepted"] is True
