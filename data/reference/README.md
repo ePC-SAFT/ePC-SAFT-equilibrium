@@ -50,3 +50,18 @@ observation.
 
 The executable owner of these thresholds is `scripts/validate_saturation.py`;
 the identical capability-level values are recorded in `ARCHITECTURE.yaml`.
+
+## Homogeneous MEA speciation evidence ledger
+
+`mea_speciation_input_ledger.json` is a private, non-executable evidence
+inventory for the intended nine-species, five-reaction aqueous MEA problem. It
+records exact stoichiometry, source-file hashes, candidate equilibrium-constant
+conventions, observation roles, the installed Provider identity, and every
+known blocker. It does not provide application chemistry to the package or
+claim that source-complete nonideal MEA inputs exist.
+
+Run `python scripts/validate_mea_speciation_ledger.py` to verify provenance
+fields, exact conservation, charge, and ranks. The stricter
+`--require-executable` mode intentionally fails until the declared Provider,
+reference-state, source-conflict, domain, feed, pressure, and species-completeness
+blockers are resolved.

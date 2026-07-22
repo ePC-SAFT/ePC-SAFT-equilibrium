@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "identity": "mea-homogeneous-speciation-input-ledger-v1",
+  "status": "blocked",
+  "executable": false,
+  "scope": "homogeneous fixed-temperature fixed-pressure aqueous MEA chemical speciation",
+  "authority": "evidence inventory only; not a public capability, parameter authority, or predictive claim",
+  "species_order": [
+    "CO2",
+    "MEA",
+    "H2O",
+    "MEAH+",
+    "MEACOO-",
+    "HCO3-",
+    "CO3--",
+    "H3O+",
+    "OH-"
+  ],
+  "species": [
+    {"identity": "mea-species:CO2", "name": "CO2", "formula": {"C": 1, "H": 0, "N": 0, "O": 2}, "charge": 0, "unit": "mol", "basis": "true-species amount", "source": "chemical-formula-ledger-v1", "provider_component_id": null, "blocker": "provider-mea-bundle-missing"},
+    {"identity": "mea-species:MEA", "name": "MEA", "formula": {"C": 2, "H": 7, "N": 1, "O": 1}, "charge": 0, "unit": "mol", "basis": "true-species amount", "source": "chemical-formula-ledger-v1", "provider_component_id": null, "blocker": "provider-mea-bundle-missing"},
+    {"identity": "mea-species:H2O", "name": "H2O", "formula": {"C": 0, "H": 2, "N": 0, "O": 1}, "charge": 0, "unit": "mol", "basis": "true-species amount", "source": "chemical-formula-ledger-v1", "provider_component_id": null, "blocker": "provider-mea-bundle-missing"},
+    {"identity": "mea-species:MEAH+", "name": "MEAH+", "formula": {"C": 2, "H": 8, "N": 1, "O": 1}, "charge": 1, "unit": "mol", "basis": "true-species amount", "source": "chemical-formula-ledger-v1", "provider_component_id": null, "blocker": "provider-mea-bundle-missing"},
+    {"identity": "mea-species:MEACOO-", "name": "MEACOO-", "formula": {"C": 3, "H": 6, "N": 1, "O": 3}, "charge": -1, "unit": "mol", "basis": "true-species amount", "source": "chemical-formula-ledger-v1", "provider_component_id": null, "blocker": "provider-mea-bundle-missing"},
+    {"identity": "mea-species:HCO3-", "name": "HCO3-", "formula": {"C": 1, "H": 1, "N": 0, "O": 3}, "charge": -1, "unit": "mol", "basis": "true-species amount", "source": "chemical-formula-ledger-v1", "provider_component_id": null, "blocker": "provider-mea-bundle-missing"},
+    {"identity": "mea-species:CO3--", "name": "CO3--", "formula": {"C": 1, "H": 0, "N": 0, "O": 3}, "charge": -2, "unit": "mol", "basis": "true-species amount", "source": "chemical-formula-ledger-v1", "provider_component_id": null, "blocker": "provider-mea-bundle-missing"},
+    {"identity": "mea-species:H3O+", "name": "H3O+", "formula": {"C": 0, "H": 3, "N": 0, "O": 1}, "charge": 1, "unit": "mol", "basis": "true-species amount", "source": "chemical-formula-ledger-v1", "provider_component_id": null, "blocker": "provider-mea-bundle-missing"},
+    {"identity": "mea-species:OH-", "name": "OH-", "formula": {"C": 0, "H": 1, "N": 0, "O": 1}, "charge": -1, "unit": "mol", "basis": "true-species amount", "source": "chemical-formula-ledger-v1", "provider_component_id": null, "blocker": "provider-mea-bundle-missing"}
+  ],
+  "balances": {
+    "identity": "mea-balances:CHNO-v1",
+    "row_order": ["C", "H", "N", "O"],
+    "matrix": [
+      [1, 2, 0, 2, 3, 1, 1, 0, 0],
+      [0, 7, 2, 8, 6, 1, 0, 3, 1],
+      [0, 1, 0, 1, 1, 0, 0, 0, 0],
+      [2, 1, 1, 1, 3, 3, 3, 1, 1]
+    ],
+    "declared_rank": 4,
+    "unit": "mol of conserved atom",
+    "basis": "ordered true-species amounts",
+    "source": "derived exactly from species formula records"
+  },
+  "reactions": [
+    {"identity": "mea-reaction:R1-water", "equation": "2 H2O <=> H3O+ + OH-", "stoichiometry": [0, 0, -2, 0, 0, 0, 0, 1, 1], "unit": "mol per mol reaction extent", "basis": "species_order; products positive", "source": "Nasrifar-2010:Table-1:k1"},
+    {"identity": "mea-reaction:R2-co2-hydration", "equation": "CO2 + 2 H2O <=> HCO3- + H3O+", "stoichiometry": [-1, 0, -2, 0, 0, 1, 0, 1, 0], "unit": "mol per mol reaction extent", "basis": "species_order; products positive", "source": "Nasrifar-2010:Table-1:k2"},
+    {"identity": "mea-reaction:R3-bicarbonate", "equation": "HCO3- + H2O <=> CO3-- + H3O+", "stoichiometry": [0, 0, -1, 0, 0, -1, 1, 1, 0], "unit": "mol per mol reaction extent", "basis": "species_order; products positive", "source": "Nasrifar-2010:Table-1:k3"},
+    {"identity": "mea-reaction:R4-carbamate-hydrolysis", "equation": "MEACOO- + H2O <=> HCO3- + MEA", "stoichiometry": [0, 1, -1, 0, -1, 1, 0, 0, 0], "unit": "mol per mol reaction extent", "basis": "species_order; products positive", "source": "Nasrifar-2010:Table-1:k9"},
+    {"identity": "mea-reaction:R5-meah-dissociation", "equation": "MEAH+ + H2O <=> MEA + H3O+", "stoichiometry": [0, 1, -1, -1, 0, 0, 0, 1, 0], "unit": "mol per mol reaction extent", "basis": "species_order; products positive", "source": "Nasrifar-2010:Table-1:k7"}
+  ],
+  "declared_reaction_rank": 5,
+  "feed": {
+    "identity": "mea-feed:unloaded-30-mass-percent-v1",
+    "composition_expression": "n_MEA=1 mol; n_H2O=((1-w_MEA)/w_MEA)*(M_MEA/M_H2O) mol; n_CO2=alpha*n_MEA; all other initial amounts=0",
+    "w_MEA": 0.30,
+    "loading_symbol": "alpha = mol CO2 per mol MEA",
+    "unit": "mol on one-mol-MEA basis",
+    "basis": "unloaded solvent mass fraction before CO2 addition",
+    "source": "exact mass-to-mole identity; Böttinger-2008:Table-3 identifies nominal 30 mass percent experiments",
+    "initial_charge_equivalents": 0,
+    "molar_masses": null,
+    "blocker": "feed-molar-mass-authority-missing"
+  },
+  "state_grid": {
+    "identity": "mea-state-grid:boettinger-20-40-60-80C-v1",
+    "temperature_values": [293.15, 313.15, 333.15, 353.15],
+    "temperature_unit": "K",
+    "temperature_basis": "ITS-90 temperature as reported in Böttinger-2008:Table-3",
+    "pressure_value": null,
+    "pressure_unit": "Pa",
+    "pressure_basis": "fixed-T,P kernel requires row-specific liquid-state pressure",
+    "source": "Böttinger-2008:experimental section reports 5-25 bar control range but Table 3 omits row pressures",
+    "blocker": "row-pressure-records-missing"
+  },
+  "equilibrium_constant_formula": {
+    "identity": "mea-lnK-formula:A+B-over-T+C-lnT+D-T-v1",
+    "expression": "ln(K_x)=A+B/T+C*ln(T)+D*T",
+    "temperature_unit": "K",
+    "result_unit": "dimensionless",
+    "basis": "mole-fraction activity convention stated by the candidate sources",
+    "standard_state": "candidate-source convention only; no accepted transformation to the installed Provider Helmholtz reference basis",
+    "source": "Nasrifar-2010:Equation-11-and-Table-1; Baygi-2015:Equation-17-18-and-Table-4",
+    "selected_provider_basis_mapping": null,
+    "blocker": "provider-reference-transform-missing"
+  },
+  "equilibrium_constant_candidates": [
+    {"identity": "mea-lnK:R1:Nasrifar-2010", "reaction": "mea-reaction:R1-water", "coefficients": {"A": 132.899, "B_K": -13445.9, "C": -22.4773, "D_per_K": 0.0}, "temperature_range_K": [273.0, 498.0], "unit": "dimensionless ln(K_x)", "basis": "mole-fraction activity", "standard_state": "source convention; Provider-basis transform absent", "source": "Nasrifar-2010:Table-1:k1", "role": "candidate", "status": "blocked"},
+    {"identity": "mea-lnK:R2:Nasrifar-2010", "reaction": "mea-reaction:R2-co2-hydration", "coefficients": {"A": 231.456, "B_K": -12092.1, "C": -36.7816, "D_per_K": 0.0}, "temperature_range_K": [273.0, 498.0], "unit": "dimensionless ln(K_x)", "basis": "mole-fraction activity", "standard_state": "source convention; Provider-basis transform absent", "source": "Nasrifar-2010:Table-1:k2", "role": "candidate", "status": "blocked"},
+    {"identity": "mea-lnK:R3:Nasrifar-2010", "reaction": "mea-reaction:R3-bicarbonate", "coefficients": {"A": 216.049, "B_K": -12431.7, "C": -35.4819, "D_per_K": 0.0}, "temperature_range_K": [273.0, 498.0], "unit": "dimensionless ln(K_x)", "basis": "mole-fraction activity", "standard_state": "source convention; Provider-basis transform absent", "source": "Nasrifar-2010:Table-1:k3", "role": "candidate", "status": "blocked"},
+    {"identity": "mea-lnK:R4:Nasrifar-2010", "reaction": "mea-reaction:R4-carbamate-hydrolysis", "coefficients": {"A": 2.8898, "B_K": -3635.09, "C": 0.0, "D_per_K": 0.0}, "temperature_range_K": [298.0, 393.0], "unit": "dimensionless ln(K_x)", "basis": "mole-fraction activity", "standard_state": "source convention; Provider-basis transform absent", "source": "Nasrifar-2010:Table-1:k9", "role": "candidate", "status": "blocked"},
+    {"identity": "mea-lnK:R5:Nasrifar-2010", "reaction": "mea-reaction:R5-meah-dissociation", "coefficients": {"A": 2.1211, "B_K": -8189.38, "C": 0.0, "D_per_K": -0.007484}, "temperature_range_K": [273.0, 323.0], "unit": "dimensionless ln(K_x)", "basis": "mole-fraction activity", "standard_state": "source convention; Provider-basis transform absent", "source": "Nasrifar-2010:Table-1:k7", "role": "candidate", "status": "blocked"},
+    {"identity": "mea-lnK:R1:Baygi-2015", "reaction": "mea-reaction:R1-water", "coefficients": {"A": 132.899, "B_K": -13445.9, "C": 22.4773, "D_per_K": 0.0}, "temperature_range_K": [273.15, 498.15], "unit": "dimensionless ln(K_x)", "basis": "ideal mole fraction after source conversion", "standard_state": "source convention; Provider-basis transform absent", "source": "Baygi-2015:Table-4:k1", "role": "conflicting_candidate", "status": "blocked"},
+    {"identity": "mea-lnK:R2:Baygi-2015", "reaction": "mea-reaction:R2-co2-hydration", "coefficients": {"A": 231.465, "B_K": -12092.1, "C": -36.7816, "D_per_K": 0.0}, "temperature_range_K": [273.15, 498.15], "unit": "dimensionless ln(K_x)", "basis": "ideal mole fraction after source conversion", "standard_state": "source convention; Provider-basis transform absent", "source": "Baygi-2015:Table-4:k2", "role": "conflicting_candidate", "status": "blocked"},
+    {"identity": "mea-lnK:R3:Baygi-2015", "reaction": "mea-reaction:R3-bicarbonate", "coefficients": {"A": 216.049, "B_K": -12431.7, "C": -35.4819, "D_per_K": 0.0}, "temperature_range_K": [273.15, 498.15], "unit": "dimensionless ln(K_x)", "basis": "ideal mole fraction after source conversion", "standard_state": "source convention; Provider-basis transform absent", "source": "Baygi-2015:Table-4:k3", "role": "candidate", "status": "blocked"},
+    {"identity": "mea-lnK:R4:Baygi-2015", "reaction": "mea-reaction:R4-carbamate-hydrolysis", "coefficients": {"A": -1.8652, "B_K": -1545.3, "C": 0.0, "D_per_K": 0.0}, "temperature_range_K": [293.15, 323.15], "unit": "dimensionless ln(K_x)", "basis": "ideal mole fraction converted from molality by source Equation 18", "standard_state": "source convention; Provider-basis transform absent", "source": "Baygi-2015:Table-4:k9", "role": "conflicting_candidate", "status": "blocked"},
+    {"identity": "mea-lnK:R5:Baygi-2015", "reaction": "mea-reaction:R5-meah-dissociation", "coefficients": {"A": 2.1211, "B_K": -8189.38, "C": 0.0, "D_per_K": -0.007484}, "temperature_range_K": [273.15, 323.15], "unit": "dimensionless ln(K_x)", "basis": "ideal mole fraction after source conversion", "standard_state": "source convention; Provider-basis transform absent", "source": "Baygi-2015:Table-4:k7", "role": "candidate", "status": "blocked"}
+  ],
+  "provider": {
+    "identity": "epcsaft-provider-wheel:0.1.0.dev0:sha256-1927f6cb",
+    "version": "0.1.0.dev0",
+    "wheel_sha256": "1927f6cb8926489d3ca1ff88c529f181bc0d237b00c98a8112df68f2315eb4ee",
+    "source": "installed wheel direct_url and RECORD inspection",
+    "required_component_order": ["CO2", "MEA", "H2O", "MEAH+", "MEACOO-", "HCO3-", "CO3--", "H3O+", "OH-"],
+    "required_parameter_bundle_identity": null,
+    "installed_relevant_bundle": {"identity": "held-2008-water-self-ionization", "fingerprint": "sha256:8ea2d7acbc179b82348fa938d081fe8d56f274bfe1f2167d10a507b7711aa1c2", "scope": "water self-ionization only; not an MEA bundle"},
+    "unit": "dimensionless Provider Helmholtz phase block A/(RT)",
+    "basis": "installed Provider native SDK",
+    "blocker": "provider-mea-bundle-missing"
+  },
+  "sources": [
+    {"identity": "Böttinger-2008", "doi": "10.1016/j.fluid.2007.09.017", "zotero_parent_key": "E322TKPZ", "zotero_attachment_key": "TJCRKTFQ", "file_sha256": "dd0c6986cbd058ec0a2343ac5097439862281492cd2dac01823144233f0fc0f4", "role": "primary experimental source"},
+    {"identity": "Jakobsen-2005", "doi": "10.1021/ie048813+", "zotero_parent_key": "VDRXENRB", "zotero_attachment_key": "XVFDEJM2", "file_sha256": "745e83d838a7e56b4371f2db0f99352572b7677fc2859af86beb4981ac682564", "role": "primary experimental source"},
+    {"identity": "Wong-2015", "doi": "10.1016/j.ijggc.2015.05.016", "zotero_parent_key": "CJ45LPAQ", "zotero_attachment_key": "FHFPHJDQ", "file_sha256": "312ea8218c98bf6b78289c5f43baf4e524442efd3943f1dfaf74270ff1292954", "role": "primary experimental source"},
+    {"identity": "Nasrifar-2010", "doi": "10.1021/ie901181n", "zotero_parent_key": "CBRPAXQG", "zotero_attachment_key": "3G4FGGY4", "file_sha256": "29165d43cf374760cc17a730d92e15ed77a9e969af1f3355a1ca39a275f7110f", "role": "equilibrium-constant candidate source"},
+    {"identity": "Baygi-2015", "doi": "10.1016/j.cherd.2014.07.017", "zotero_parent_key": "B8EJJPCJ", "zotero_attachment_key": "JWH69DKG", "file_sha256": "7e8e77577a34bd9867489faee992dd192e8cbbc728c50a26e8264b0e09192365", "role": "equilibrium-constant candidate source"}
+  ],
+  "observation_sets": [
+    {"identity": "Böttinger-2008:Table-3:293.15K:nominal-30wt", "temperature_K": 293.15, "feed_mass_fraction_MEA": 0.30, "row_count": 12, "loading_range_mol_CO2_per_mol_MEA": [0.075, 0.974], "unit": "liquid true-species mole fraction", "basis": "Table 3 analytical composition", "source": "Böttinger-2008:Table-3", "role": "held-out_validation", "observable_roles": {"MEA_plus_MEAH+": "aggregate", "MEACOO-": "direct", "HCO3-": "direct", "CO2": "direct", "H2O": "balance-inferred", "2-oxazolidone": "direct", "MEA": "excluded", "MEAH+": "excluded", "H3O+": "excluded", "OH-": "excluded", "CO3--": "excluded"}, "pressure_Pa": null, "blockers": ["row-pressure-records-missing", "oxazolidone-chemistry-missing"]},
+    {"identity": "Böttinger-2008:Table-3:313.15K:nominal-30wt", "temperature_K": 313.15, "feed_mass_fraction_MEA": 0.30, "row_count": 13, "loading_range_mol_CO2_per_mol_MEA": [0.125, 0.762], "unit": "liquid true-species mole fraction", "basis": "Table 3 analytical composition", "source": "Böttinger-2008:Table-3", "role": "held-out_validation", "observable_roles": {"MEA_plus_MEAH+": "aggregate", "MEACOO-": "direct", "HCO3-": "direct", "CO2": "direct", "H2O": "balance-inferred", "2-oxazolidone": "direct", "MEA": "excluded", "MEAH+": "excluded", "H3O+": "excluded", "OH-": "excluded", "CO3--": "excluded"}, "pressure_Pa": null, "blockers": ["row-pressure-records-missing", "oxazolidone-chemistry-missing"]},
+    {"identity": "Böttinger-2008:Table-3:333.15K:nominal-30wt", "temperature_K": 333.15, "feed_mass_fraction_MEA": 0.30, "row_count": 8, "loading_range_mol_CO2_per_mol_MEA": [0.131, 0.766], "unit": "liquid true-species mole fraction", "basis": "Table 3 analytical composition", "source": "Böttinger-2008:Table-3", "role": "held-out_validation", "observable_roles": {"MEA_plus_MEAH+": "aggregate", "MEACOO-": "direct", "HCO3-": "direct", "CO2": "direct", "H2O": "balance-inferred", "2-oxazolidone": "direct", "MEA": "excluded", "MEAH+": "excluded", "H3O+": "excluded", "OH-": "excluded", "CO3--": "excluded"}, "pressure_Pa": null, "blockers": ["row-pressure-records-missing", "oxazolidone-chemistry-missing", "equilibrium-constant-domain-incomplete"]},
+    {"identity": "Böttinger-2008:Table-3:353.15K:actual-31wt", "temperature_K": 353.15, "feed_mass_fraction_MEA": 0.31, "row_count": 6, "loading_range_mol_CO2_per_mol_MEA": [0.064, 0.510], "unit": "liquid true-species mole fraction", "basis": "Table 3 analytical composition; separate feed because the actual reported value is 31 mass percent", "source": "Böttinger-2008:Table-3", "role": "held-out_validation", "observable_roles": {"MEA_plus_MEAH+": "aggregate", "MEACOO-": "direct", "HCO3-": "direct", "CO2": "direct", "H2O": "balance-inferred", "2-oxazolidone": "direct", "MEA": "excluded", "MEAH+": "excluded", "H3O+": "excluded", "OH-": "excluded", "CO3--": "excluded"}, "pressure_Pa": null, "blockers": ["row-pressure-records-missing", "oxazolidone-chemistry-missing", "equilibrium-constant-domain-incomplete"]},
+    {"identity": "Jakobsen-2005:Table-A2:293.15K:30wt", "temperature_K": 293.15, "feed_mass_fraction_MEA": 0.30, "unit": "reported species composition", "basis": "NMR with calibrated and balance-derived observables", "source": "Jakobsen-2005:Table-A2", "role": "contextual", "observable_roles": {"MEA_plus_MEAH+": "aggregate", "HCO3-_plus_CO3--": "calibration", "MEACOO-": "direct"}, "exclusion_reason": "reported charge-balance error reaches 29.2 percent; pressure is not a fixed row input"},
+    {"identity": "Jakobsen-2005:Table-A2:313.15K:30wt", "temperature_K": 313.15, "feed_mass_fraction_MEA": 0.30, "unit": "reported species composition", "basis": "NMR with calibrated and balance-derived observables", "source": "Jakobsen-2005:Table-A2", "role": "contextual", "observable_roles": {"MEA_plus_MEAH+": "aggregate", "HCO3-_plus_CO3--": "calibration", "MEACOO-": "direct"}, "exclusion_reason": "reported charge-balance error reaches 34.4 percent; pressure is not a fixed row input"},
+    {"identity": "Jakobsen-2005:333.15K-and-353.15K:30wt", "temperature_K": [333.15, 353.15], "feed_mass_fraction_MEA": 0.30, "unit": "qualitative NMR spectra", "basis": "exchange-broadened spectra", "source": "Jakobsen-2005:results-discussion", "role": "excluded", "observable_roles": {"all_species": "excluded"}, "exclusion_reason": "authors exclude 60 and 80 degree Celsius spectra from quantitative analysis"},
+    {"identity": "Wong-2015:303.15-323.15K:30wt", "temperature_K": [303.15, 313.15, 323.15], "feed_mass_fraction_MEA": 0.30, "pressure_range_bar": [1, 60], "unit": "calibrated Raman species concentration", "basis": "30 mass percent aqueous MEA", "source": "Wong-2015:experimental-results", "role": "contextual", "observable_roles": {"MEA": "calibration", "MEAH+": "calibration", "MEACOO-": "calibration", "HCO3-": "calibration", "CO3--": "calibration", "CO2": "calibration"}, "exclusion_reason": "temperature grid does not supply 20, 60, or 80 degree Celsius rows"},
+    {"identity": "historical-surname-only:Matin", "temperature_K": [293.15, 313.15, 333.15, 353.15], "unit": "unknown", "basis": "unresolved historical plot points", "source": "retired-lab:unresolved_reference_observations", "role": "excluded", "observable_roles": {"all_points": "excluded"}, "exclusion_reason": "no primary bibliographic identity was recovered"}
+  ],
+  "historical_model_evidence": [
+    {"identity": "retired-lab:phase1-model-curves", "source": "ePC-SAFT-lab standalone_ce source_manifest", "role": "model_evidence", "classification": "imported downstream model snapshot; excluded from literature scoring"},
+    {"identity": "retired-lab:phase2-model-curves", "source": "ePC-SAFT-lab standalone_ce source_manifest", "role": "model_evidence", "classification": "imported downstream model snapshot; excluded from literature scoring"},
+    {"identity": "retired-lab:live-mea-reproduction", "source": "ePC-SAFT-lab standalone_ce summary.json", "role": "model_evidence", "classification": "failed reproduction", "balance_inf_norm": 2.5999999998789356, "reaction_stationarity_inf_norm": 73.79118023038392}
+  ],
+  "blockers": [
+    {"identity": "provider-mea-bundle-missing", "scope": "Provider", "resolution": "publish an exact source-complete nine-species MEA parameter bundle with ordered IDs, charges, fingerprint, domain, and derivatives"},
+    {"identity": "provider-reference-transform-missing", "scope": "thermodynamic standard state", "resolution": "derive and source the transformation from each accepted dimensionless K convention into this Provider Helmholtz reference basis"},
+    {"identity": "equilibrium-constant-conflicts", "scope": "reaction constants", "resolution": "adjudicate the R1 sign, R2 coefficient, and R4 source conflict without fitting to the validation observations"},
+    {"identity": "equilibrium-constant-domain-incomplete", "scope": "reaction constants", "resolution": "source constants valid at 333.15 and 353.15 K, especially R5, or narrow the validation domain"},
+    {"identity": "feed-molar-mass-authority-missing", "scope": "feed conversion", "resolution": "bind exact Provider component molar masses before evaluating the symbolic 30 mass percent conversion"},
+    {"identity": "row-pressure-records-missing", "scope": "fixed-T,P state", "resolution": "recover row-specific experimental liquid pressure or authorize and justify a pressure convention with sensitivity evidence"},
+    {"identity": "oxazolidone-chemistry-missing", "scope": "species completeness", "resolution": "exclude affected rows using a declared threshold or extend the application-owned chemistry to include 2-oxazolidone with source-complete constants and Provider parameters"}
+  ]
+}
