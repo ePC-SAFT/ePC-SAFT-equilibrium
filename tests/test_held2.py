@@ -404,6 +404,74 @@ def test_held2_manufactured_stage_i_finds_negative_tpd_with_declared_multistart(
     assert all(candidate["tpd"] < -1.0e-8 for candidate in result["candidates"])
 
 
+def test_held2_solver_neutral_search_objective_matches_raw_and_tpd_modes() -> None:
+    variables = (0.27, math.log(0.92))
+    reference_variables = (0.5, math.log(1.2))
+
+    raw = _equilibrium._held2_adapter(
+        CHARGES,
+        variables,
+        reference_variables,
+        False,
+        "search_objective",
+    )
+    reference = _equilibrium._held2_adapter(
+        CHARGES,
+        reference_variables,
+        reference_variables,
+        False,
+        "search_objective",
+    )
+    tpd = _equilibrium._held2_adapter(
+        CHARGES,
+        variables,
+        reference_variables,
+        True,
+        "search_objective",
+    )
+
+    expected_tpd = raw["objective"] - reference["objective"] - sum(
+        reference_gradient * (value - reference_value)
+        for reference_gradient, value, reference_value in zip(
+            reference["gradient"], variables, reference_variables, strict=True
+        )
+    )
+    assert raw["physical_amounts"] == pytest.approx([0.73, 0.135, 0.135])
+    assert raw["volume"] == pytest.approx(0.92)
+    assert raw["pressure_stationarity_relative"] == pytest.approx(-0.4)
+    assert tpd["objective"] == pytest.approx(expected_tpd, abs=2.0e-14)
+    assert tpd["gradient"] == pytest.approx(
+        [
+            value - reference_value
+            for value, reference_value in zip(
+                raw["gradient"], reference["gradient"], strict=True
+            )
+        ]
+    )
+    assert tpd["hessian"] == pytest.approx(raw["hessian"])
+    assert tpd["modified_fractions"] == pytest.approx(raw["modified_fractions"])
+    assert tpd["modified_potentials"] == pytest.approx(raw["modified_potentials"])
+
+
+def test_held2_solver_neutral_search_objective_fails_closed() -> None:
+    with pytest.raises(ValueError, match="coordinate count"):
+        _equilibrium._held2_adapter(
+            CHARGES,
+            (0.27, math.log(0.92), 0.0),
+            (0.5, math.log(1.2)),
+            True,
+            "search_objective",
+        )
+    with pytest.raises(ValueError, match="phase state has the wrong size"):
+        _equilibrium._held2_adapter(
+            CHARGES,
+            (0.27, math.inf),
+            (0.5, math.log(1.2)),
+            False,
+            "search_objective",
+        )
+
+
 def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
     result = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
 

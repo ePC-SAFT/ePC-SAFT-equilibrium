@@ -1351,6 +1351,44 @@ py::dict held2_coordinate_evidence(
     return result;
 }
 
+py::dict held2_state_evaluation_to_dict(
+    const epcsaft_equilibrium::Held2StateEvaluation& evaluation
+) {
+    py::dict result;
+    result["modified_fractions"] = evaluation.modified_fractions;
+    result["physical_amounts"] = evaluation.physical_amounts;
+    result["volume"] = evaluation.volume;
+    result["objective"] = evaluation.objective;
+    result["gradient"] = evaluation.gradient;
+    result["hessian"] = evaluation.hessian;
+    result["modified_potentials"] = evaluation.modified_potentials;
+    result["pressure_stationarity_relative"] =
+        evaluation.pressure_stationarity_relative;
+    return result;
+}
+
+py::dict held2_manufactured_search_objective_evidence(
+    const std::vector<double>& charges,
+    const std::vector<double>& variables,
+    const std::vector<double>& reference_variables,
+    bool use_tpd,
+    const std::string& stage
+) {
+    if (stage != "search_objective") {
+        throw py::value_error("unsupported HELD2 search-objective adapter stage");
+    }
+    const epcsaft_equilibrium::Held2Coordinates coordinates =
+        epcsaft_equilibrium::make_held2_coordinates(charges);
+    return held2_state_evaluation_to_dict(
+        epcsaft_equilibrium::evaluate_held2_manufactured_search_objective(
+            coordinates,
+            variables,
+            reference_variables,
+            use_tpd
+        )
+    );
+}
+
 py::dict held2_phase_block_evidence(
     const std::vector<double>& charges,
     const std::vector<double>& independent_modified_fractions,
@@ -1378,17 +1416,7 @@ py::dict held2_phase_block_evidence(
             target_pressure_pa,
             block
         );
-    py::dict result;
-    result["modified_fractions"] = evaluation.modified_fractions;
-    result["physical_amounts"] = evaluation.physical_amounts;
-    result["volume"] = evaluation.volume;
-    result["objective"] = evaluation.objective;
-    result["gradient"] = evaluation.gradient;
-    result["hessian"] = evaluation.hessian;
-    result["modified_potentials"] = evaluation.modified_potentials;
-    result["pressure_stationarity_relative"] =
-        evaluation.pressure_stationarity_relative;
-    return result;
+    return held2_state_evaluation_to_dict(evaluation);
 }
 
 py::dict held2_installed_phase_block(
@@ -1806,6 +1834,15 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("gradient"),
         py::arg("hessian"),
         py::arg("provider_pressure_pa")
+    );
+    module.def(
+        "_held2_adapter",
+        &held2_manufactured_search_objective_evidence,
+        py::arg("charges"),
+        py::arg("variables"),
+        py::arg("reference_variables"),
+        py::arg("use_tpd"),
+        py::arg("stage")
     );
     module.def(
         "_held2_adapter",

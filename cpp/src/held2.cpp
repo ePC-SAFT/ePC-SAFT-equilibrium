@@ -166,6 +166,58 @@ struct Held2SearchRun {
     std::vector<double> variables;
 };
 
+class Held2SearchObjectiveEvaluator {
+public:
+    Held2SearchObjectiveEvaluator(
+        Held2StateEvaluator phase_evaluator,
+        std::vector<double> reference_variables,
+        Held2StateEvaluation reference,
+        bool use_tpd
+    )
+        : phase_evaluator_(std::move(phase_evaluator)),
+          reference_variables_(std::move(reference_variables)),
+          reference_(std::move(reference)),
+          use_tpd_(use_tpd) {}
+
+    [[nodiscard]] Held2StateEvaluation evaluate(
+        const std::vector<double>& variables
+    ) const {
+        if (variables.empty()
+            || variables.size() != reference_variables_.size()) {
+            throw std::invalid_argument("HELD2 search coordinate count changed");
+        }
+        std::vector<double> independent(variables.begin(), variables.end() - 1);
+        Held2StateEvaluation evaluation = phase_evaluator_(
+            independent,
+            variables.back()
+        );
+        const std::size_t dimension = variables.size();
+        if (evaluation.gradient.size() != dimension
+            || evaluation.hessian.size() != dimension * dimension) {
+            throw std::invalid_argument("HELD2 search derivative dimensions changed");
+        }
+        if (!use_tpd_) {
+            return evaluation;
+        }
+        if (reference_.gradient.size() != dimension) {
+            throw std::invalid_argument("HELD2 reference gradient dimension changed");
+        }
+        evaluation.objective -= reference_.objective;
+        for (std::size_t index = 0; index < dimension; ++index) {
+            evaluation.objective -= reference_.gradient[index]
+                * (variables[index] - reference_variables_[index]);
+            evaluation.gradient[index] -= reference_.gradient[index];
+        }
+        return evaluation;
+    }
+
+private:
+    Held2StateEvaluator phase_evaluator_;
+    std::vector<double> reference_variables_;
+    Held2StateEvaluation reference_;
+    bool use_tpd_ = false;
+};
+
 class Held2SearchTnlp final : public Ipopt::TNLP {
 public:
     Held2SearchTnlp(
@@ -177,10 +229,12 @@ public:
         std::vector<double> lower,
         std::vector<double> upper
     )
-        : evaluator_(std::move(evaluator)),
-          reference_variables_(std::move(reference_variables)),
-          reference_(std::move(reference)),
-          use_tpd_(use_tpd),
+        : objective_(
+              std::move(evaluator),
+              std::move(reference_variables),
+              std::move(reference),
+              use_tpd
+          ),
           initial_(std::move(initial)),
           lower_(std::move(lower)),
           upper_(std::move(upper)) {}
@@ -362,24 +416,10 @@ private:
         if (n != static_cast<Ipopt::Index>(initial_.size())) {
             throw std::invalid_argument("HELD2 search coordinate count changed");
         }
-        std::vector<double> independent(x, x + n - 1);
-        Held2StateEvaluation evaluation = evaluator_(independent, x[n - 1]);
-        if (!use_tpd_) {
-            return evaluation;
-        }
-        evaluation.objective -= reference_.objective;
-        for (std::size_t index = 0; index < evaluation.gradient.size(); ++index) {
-            evaluation.objective -= reference_.gradient[index]
-                * (x[index] - reference_variables_[index]);
-            evaluation.gradient[index] -= reference_.gradient[index];
-        }
-        return evaluation;
+        return objective_.evaluate(std::vector<double>(x, x + n));
     }
 
-    Held2StateEvaluator evaluator_;
-    std::vector<double> reference_variables_;
-    Held2StateEvaluation reference_;
-    bool use_tpd_ = false;
+    Held2SearchObjectiveEvaluator objective_;
     std::vector<double> initial_;
     std::vector<double> lower_;
     std::vector<double> upper_;
@@ -494,6 +534,38 @@ Held2StateEvaluation evaluate_held2_manufactured_state(
         independent_modified_fractions,
         log_volume
     );
+}
+
+Held2StateEvaluation evaluate_held2_manufactured_search_objective(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& variables,
+    const std::vector<double>& reference_variables,
+    bool use_tpd
+) {
+    if (reference_variables.empty()) {
+        throw std::invalid_argument("HELD2 search reference variables must not be empty");
+    }
+    const Held2StateEvaluator phase_evaluator = [&coordinates](
+        const std::vector<double>& independent,
+        double log_volume
+    ) {
+        return evaluate_manufactured_state_impl(
+            coordinates,
+            independent,
+            log_volume
+        );
+    };
+    const std::vector<double> reference_independent(
+        reference_variables.begin(),
+        reference_variables.end() - 1
+    );
+    Held2SearchObjectiveEvaluator objective(
+        phase_evaluator,
+        reference_variables,
+        phase_evaluator(reference_independent, reference_variables.back()),
+        use_tpd
+    );
+    return objective.evaluate(variables);
 }
 
 double held2_manufactured_enumerated_objective(double feed_composition) {

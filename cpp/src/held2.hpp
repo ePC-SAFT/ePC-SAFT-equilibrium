@@ -53,6 +53,13 @@ struct Held2StateEvaluation;
     double log_volume
 );
 
+[[nodiscard]] Held2StateEvaluation evaluate_held2_manufactured_search_objective(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& variables,
+    const std::vector<double>& reference_variables,
+    bool use_tpd
+);
+
 [[nodiscard]] double held2_manufactured_enumerated_objective(
     double feed_composition
 );
