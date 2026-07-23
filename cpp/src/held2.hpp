@@ -11,8 +11,6 @@ namespace epcsaft_equilibrium {
 
 class Held2ProgressObserver;
 
-inline constexpr const char* kHeld2ManufacturedFormulationId =
-    "perdomo-held2.modified-mole.manufactured.v1";
 inline constexpr double kHeld2PackingFractionMinimum = 1.0e-6;
 inline constexpr double kHeld2PackingFractionMaximum = 0.74;
 
@@ -63,13 +61,6 @@ struct Held2StateEvaluation;
     const Held2Coordinates& coordinates,
     const std::vector<double>& independent_modified_fractions,
     double log_volume
-);
-
-[[nodiscard]] Held2StateEvaluation evaluate_held2_manufactured_search_objective(
-    const Held2Coordinates& coordinates,
-    const std::vector<double>& variables,
-    const std::vector<double>& reference_variables,
-    bool use_tpd
 );
 
 [[nodiscard]] double held2_manufactured_enumerated_objective(
@@ -496,14 +487,6 @@ struct Held2StageIIIResult {
     const std::string& evaluation_source = "provider_exact"
 );
 
-[[nodiscard]] Held2StageIIINlpEvaluation evaluate_held2_manufactured_stage_iii_nlp(
-    const std::vector<double>& charges,
-    const std::vector<double>& physical_feed,
-    const std::vector<std::array<double, 2>>& candidates,
-    const std::vector<double>& variables,
-    const std::vector<double>& equality_multipliers
-);
-
 [[nodiscard]] Held2StageIIIResult solve_held2_manufactured_stage_iii(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed,
@@ -529,45 +512,6 @@ struct Held2StageIIIResult {
     double free_energy_upper_bound,
     const std::string& free_energy_gap_provenance,
     Held2ProgressObserver* observer = nullptr
-);
-
-struct Held2Certificate {
-    bool accepted = false;
-    bool independent_evidence = false;
-    double modified_balance_abs = 0.0;
-    double ordinary_balance_inf_norm = 0.0;
-    double phase_charge_inf_norm = 0.0;
-    double modified_potential_gap = 0.0;
-    double pressure_stationarity_inf_norm = 0.0;
-    double reduced_kkt_inf_norm = 0.0;
-    double enumeration_objective_gap = 0.0;
-    double independent_modified_composition_count = 0.0;
-};
-
-struct Held2ManufacturedEvaluation {
-    Held2Coordinates coordinates;
-    std::vector<double> modified_feed;
-    double phase_fraction = 0.0;
-    std::array<std::vector<double>, 2> modified_phases;
-    std::array<std::vector<double>, 2> physical_phases;
-    std::array<double, 2> phase_charge_residuals{};
-    std::vector<double> modified_balance;
-    std::vector<double> ordinary_balance;
-    std::vector<double> transformed_modified_potentials;
-    std::array<std::array<double, 2>, 2> phase_gibbs_gradients{};
-    std::array<std::array<double, 2>, 2> phase_modified_potentials{};
-    double modified_potential_gap = 0.0;
-    double pressure_stationarity_inf_norm = 0.0;
-    double objective = 0.0;
-    std::array<double, 4> gradient{};
-    Held2Certificate certificate;
-};
-
-[[nodiscard]] Held2ManufacturedEvaluation evaluate_held2_manufactured(
-    const std::vector<double>& charges,
-    const std::vector<double>& physical_feed,
-    const std::array<double, 4>& variables,
-    const std::vector<double>& chemical_potentials
 );
 
 }  // namespace epcsaft_equilibrium

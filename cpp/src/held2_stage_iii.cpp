@@ -104,24 +104,6 @@ Held2StageIIIRetirementDecision held2_stage_iii_retirement_decision(
     return result;
 }
 
-Held2StageIIINlpEvaluation evaluate_held2_manufactured_stage_iii_nlp(
-    const std::vector<double>& charges,
-    const std::vector<double>& physical_feed,
-    const std::vector<std::array<double, 2>>& candidates,
-    const std::vector<double>& variables,
-    const std::vector<double>& equality_multipliers
-) {
-    const Held2Coordinates coordinates = make_held2_coordinates(charges);
-    return evaluate_held2_stage_iii_nlp(
-        coordinates,
-        physical_feed,
-        manufactured_evaluator(coordinates),
-        candidates.size(),
-        variables,
-        equality_multipliers
-    );
-}
-
 Held2StageIIIResult solve_held2_manufactured_stage_iii(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed,

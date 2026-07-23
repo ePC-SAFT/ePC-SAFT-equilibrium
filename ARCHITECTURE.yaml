@@ -251,18 +251,6 @@ development_candidate:
     focused_installed_test_result: 10 passed
     review: APPROVE_WIP_CHECKPOINT
     authority_effect: none
-  integrated_candidate_checkpoint:
-    status: retained-private-installed-candidate
-    fixture: data/reference/perdomo_held2_candidate_v1.json
-    capture_script_status: removed-with-active-tracer-replacement
-    implementation_commit: 40d01d32dbcda67caa5eafc71b04abe74b80f016
-    implementation_tree: 2dfec318226194fb556a33c50ce01b501915122b
-    equilibrium_wheel_sha256: 606686b766162a4366b2274113a954329ba1496a9b4a27f819b5e2c030979188
-    equilibrium_native_sha256: 6ca0ee33ff9d20625172d5c085fe4a430fd8cf63ca1c233842e0dc3cde4019e3
-    provider_wheel_sha256: 9e4da0d7ba7896bcd2ec096400553d935e0516c61f1bd9f41f2370ab68ab36ea
-    provider_native_sha256: 99b1d30e8f98dbd26b710f06af5e995707c4ad067b77846ae45c202b3e90bc13
-    tracer_outcome: indeterminate-stage-ii-lower-search
-    stage_i_outcome: certified-negative-witness-found
     stage_iii_status: not-run
     predictive_comparison_status: not-allowed-before-physical-acceptance
     start_terminal_exposure: complete
