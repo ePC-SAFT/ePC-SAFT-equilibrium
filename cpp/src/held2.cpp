@@ -27,6 +27,8 @@ namespace {
 // Perdomo Eq. (61) uses 1e-10 times the eliminated-ion coordinate factor.
 constexpr double kModifiedLowerScale = 1.0e-10;
 constexpr int kStageIIpoptIterations = 300;
+constexpr int kStageIISobolEvaluationCount = 12;
+constexpr int kStageIIDirectEvaluationBudget = 128;
 constexpr unsigned int kStageISeed = 2025;
 
 void require_finite_vector(const std::vector<double>& values, const char* name) {
@@ -196,6 +198,65 @@ struct Held2StageIISimplexChart {
     bool normalized_boundary_contact = false;
 };
 
+struct Held2SecondOrderScalar {
+    double value = 0.0;
+    std::vector<double> gradient;
+    std::vector<double> hessian;
+};
+
+Held2SecondOrderScalar second_order_constant(double value, std::size_t dimension) {
+    return {value, std::vector<double>(dimension, 0.0),
+            std::vector<double>(dimension * dimension, 0.0)};
+}
+
+Held2SecondOrderScalar second_order_variable(
+    double value,
+    std::size_t dimension,
+    std::size_t index
+) {
+    Held2SecondOrderScalar result = second_order_constant(value, dimension);
+    result.gradient[index] = 1.0;
+    return result;
+}
+
+Held2SecondOrderScalar second_order_add(
+    const Held2SecondOrderScalar& left,
+    const Held2SecondOrderScalar& right,
+    double right_factor = 1.0
+) {
+    Held2SecondOrderScalar result = left;
+    result.value += right_factor * right.value;
+    for (std::size_t index = 0; index < result.gradient.size(); ++index) {
+        result.gradient[index] += right_factor * right.gradient[index];
+    }
+    for (std::size_t index = 0; index < result.hessian.size(); ++index) {
+        result.hessian[index] += right_factor * right.hessian[index];
+    }
+    return result;
+}
+
+Held2SecondOrderScalar second_order_multiply(
+    const Held2SecondOrderScalar& left,
+    const Held2SecondOrderScalar& right
+) {
+    const std::size_t dimension = left.gradient.size();
+    Held2SecondOrderScalar result = second_order_constant(
+        left.value * right.value, dimension
+    );
+    for (std::size_t row = 0; row < dimension; ++row) {
+        result.gradient[row] = left.gradient[row] * right.value
+            + left.value * right.gradient[row];
+        for (std::size_t column = 0; column < dimension; ++column) {
+            result.hessian[row * dimension + column] =
+                left.hessian[row * dimension + column] * right.value
+                + left.gradient[row] * right.gradient[column]
+                + left.gradient[column] * right.gradient[row]
+                + left.value * right.hessian[row * dimension + column];
+        }
+    }
+    return result;
+}
+
 struct Held2PhysicalKkt {
     double primal_inf_norm = std::numeric_limits<double>::infinity();
     double dual_sign_violation_inf_norm = std::numeric_limits<double>::infinity();
@@ -206,7 +267,65 @@ struct Held2PhysicalKkt {
     bool dual_signs_valid = false;
 };
 
-double lower_triangular_condition_inf(
+std::optional<std::vector<double>> solve_dense_linear_system(
+    const std::vector<double>& matrix,
+    const std::vector<double>& right_hand_side,
+    std::size_t dimension
+) {
+    if (dimension == 0 || matrix.size() != dimension * dimension
+        || right_hand_side.size() != dimension) {
+        return std::nullopt;
+    }
+    std::vector<double> factors = matrix;
+    std::vector<double> solution = right_hand_side;
+    double maximum_entry = 0.0;
+    for (double value : factors) {
+        maximum_entry = std::max(maximum_entry, std::abs(value));
+    }
+    const double singular_threshold = std::numeric_limits<double>::epsilon()
+        * std::max(1.0, maximum_entry) * static_cast<double>(dimension);
+    for (std::size_t pivot = 0; pivot < dimension; ++pivot) {
+        std::size_t pivot_row = pivot;
+        for (std::size_t row = pivot + 1; row < dimension; ++row) {
+            if (std::abs(factors[row * dimension + pivot])
+                > std::abs(factors[pivot_row * dimension + pivot])) {
+                pivot_row = row;
+            }
+        }
+        if (std::abs(factors[pivot_row * dimension + pivot])
+            <= singular_threshold) {
+            return std::nullopt;
+        }
+        if (pivot_row != pivot) {
+            for (std::size_t column = 0; column < dimension; ++column) {
+                std::swap(
+                    factors[pivot * dimension + column],
+                    factors[pivot_row * dimension + column]
+                );
+            }
+            std::swap(solution[pivot], solution[pivot_row]);
+        }
+        for (std::size_t row = pivot + 1; row < dimension; ++row) {
+            const double multiplier = factors[row * dimension + pivot]
+                / factors[pivot * dimension + pivot];
+            factors[row * dimension + pivot] = 0.0;
+            for (std::size_t column = pivot + 1; column < dimension; ++column) {
+                factors[row * dimension + column] -= multiplier
+                    * factors[pivot * dimension + column];
+            }
+            solution[row] -= multiplier * solution[pivot];
+        }
+    }
+    for (std::size_t row = dimension; row-- > 0;) {
+        for (std::size_t column = row + 1; column < dimension; ++column) {
+            solution[row] -= factors[row * dimension + column] * solution[column];
+        }
+        solution[row] /= factors[row * dimension + row];
+    }
+    return solution;
+}
+
+double matrix_condition_inf(
     const std::vector<double>& matrix,
     std::size_t dimension
 ) {
@@ -216,24 +335,22 @@ double lower_triangular_condition_inf(
     double matrix_norm = 0.0;
     for (std::size_t row = 0; row < dimension; ++row) {
         double row_sum = 0.0;
-        for (std::size_t column = 0; column <= row; ++column) {
+        for (std::size_t column = 0; column < dimension; ++column) {
             row_sum += std::abs(matrix[row * dimension + column]);
         }
         matrix_norm = std::max(matrix_norm, row_sum);
     }
     std::vector<double> inverse(dimension * dimension, 0.0);
     for (std::size_t column = 0; column < dimension; ++column) {
+        std::vector<double> unit(dimension, 0.0);
+        unit[column] = 1.0;
+        const std::optional<std::vector<double>> inverse_column =
+            solve_dense_linear_system(matrix, unit, dimension);
+        if (!inverse_column.has_value()) {
+            return std::numeric_limits<double>::infinity();
+        }
         for (std::size_t row = 0; row < dimension; ++row) {
-            double value = row == column ? 1.0 : 0.0;
-            for (std::size_t inner = 0; inner < row; ++inner) {
-                value -= matrix[row * dimension + inner]
-                    * inverse[inner * dimension + column];
-            }
-            const double diagonal = matrix[row * dimension + row];
-            if (std::abs(diagonal) <= std::numeric_limits<double>::epsilon()) {
-                return std::numeric_limits<double>::infinity();
-            }
-            inverse[row * dimension + column] = value / diagonal;
+            inverse[row * dimension + column] = (*inverse_column)[row];
         }
     }
     double inverse_norm = 0.0;
@@ -302,10 +419,7 @@ private:
 class Held2SearchTnlp final : public Ipopt::TNLP {
 public:
     Held2SearchTnlp(
-        Held2StateEvaluator evaluator,
-        std::vector<double> reference_variables,
-        Held2StateEvaluation reference,
-        bool use_tpd,
+        std::function<Held2StateEvaluation(const std::vector<double>&)> objective,
         std::vector<double> initial,
         std::vector<double> lower,
         std::vector<double> upper,
@@ -314,12 +428,7 @@ public:
         int progress_major,
         int progress_attempt
     )
-        : objective_(
-              std::move(evaluator),
-              std::move(reference_variables),
-              std::move(reference),
-              use_tpd
-          ),
+        : objective_(std::move(objective)),
           initial_(std::move(initial)),
           lower_(std::move(lower)),
           upper_(std::move(upper)),
@@ -610,10 +719,18 @@ private:
         if (n != static_cast<Ipopt::Index>(initial_.size())) {
             throw std::invalid_argument("HELD2 search coordinate count changed");
         }
-        return objective_.evaluate(std::vector<double>(x, x + n));
+        const std::vector<double> variables(x, x + n);
+        if (cached_evaluation_.has_value() && cached_variables_ == variables) {
+            return *cached_evaluation_;
+        }
+        cached_variables_ = variables;
+        cached_evaluation_ = objective_(variables);
+        return *cached_evaluation_;
     }
 
-    Held2SearchObjectiveEvaluator objective_;
+    std::function<Held2StateEvaluation(const std::vector<double>&)> objective_;
+    mutable std::vector<double> cached_variables_;
+    mutable std::optional<Held2StateEvaluation> cached_evaluation_;
     std::vector<double> initial_;
     std::vector<double> lower_;
     std::vector<double> upper_;
@@ -630,11 +747,8 @@ private:
     int progress_attempt_ = -1;
 };
 
-Held2SearchRun solve_held2_search(
-    const Held2StateEvaluator& evaluator,
-    const std::vector<double>& reference_variables,
-    const Held2StateEvaluation& reference,
-    bool use_tpd,
+Held2SearchRun solve_held2_vector_search(
+    std::function<Held2StateEvaluation(const std::vector<double>&)> objective,
     const std::vector<double>& initial,
     const std::vector<double>& lower,
     const std::vector<double>& upper,
@@ -644,10 +758,7 @@ Held2SearchRun solve_held2_search(
     int progress_attempt = -1
 ) {
     Ipopt::SmartPtr<Held2SearchTnlp> problem = new Held2SearchTnlp(
-        evaluator,
-        reference_variables,
-        reference,
-        use_tpd,
+        std::move(objective),
         initial,
         lower,
         upper,
@@ -665,12 +776,50 @@ Held2SearchRun solve_held2_search(
     return problem->result();
 }
 
+Held2SearchRun solve_held2_search(
+    const Held2StateEvaluator& evaluator,
+    const std::vector<double>& reference_variables,
+    const Held2StateEvaluation& reference,
+    bool use_tpd,
+    const std::vector<double>& initial,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    Held2ProgressObserver* observer = nullptr,
+    const std::string& progress_stage = {},
+    int progress_major = -1,
+    int progress_attempt = -1
+) {
+    Held2SearchObjectiveEvaluator objective(
+        evaluator,
+        reference_variables,
+        reference,
+        use_tpd
+    );
+    return solve_held2_vector_search(
+        [objective = std::move(objective)](
+            const std::vector<double>& variables
+        ) {
+            return objective.evaluate(variables);
+        },
+        initial,
+        lower,
+        upper,
+        observer,
+        progress_stage,
+        progress_major,
+        progress_attempt
+    );
+}
+
 Held2StageIISimplexChart evaluate_stage_ii_simplex_chart(
     const std::vector<double>& lower,
     const std::vector<double>& upper,
     double sum_upper,
     const std::vector<double>& coordinates,
-    bool inverse
+    bool inverse,
+    const std::vector<bool>& charged_coordinates = {},
+    double total_ion_mole_fraction_max =
+        std::numeric_limits<double>::quiet_NaN()
 ) {
     const std::size_t dimension = lower.size();
     if (dimension == 0 || upper.size() != dimension
@@ -694,9 +843,146 @@ Held2StageIISimplexChart evaluate_stage_ii_simplex_chart(
         }
     }
 
+    const bool source_domain_chart =
+        std::isfinite(total_ion_mole_fraction_max);
+    if (source_domain_chart && charged_coordinates.size() != dimension) {
+        throw std::invalid_argument(
+            "HELD2 Stage II source-domain chart dimensions are invalid"
+        );
+    }
+    if (!source_domain_chart && !charged_coordinates.empty()) {
+        throw std::invalid_argument(
+            "HELD2 Stage II source-domain chart requires a finite ion ceiling"
+        );
+    }
+    double charged_lower_sum = 0.0;
+    if (source_domain_chart) {
+        for (std::size_t index = 0; index < dimension; ++index) {
+            if (charged_coordinates[index]) {
+                charged_lower_sum += lower[index];
+            }
+        }
+        if (!(total_ion_mole_fraction_max > charged_lower_sum)
+            || total_ion_mole_fraction_max > sum_upper) {
+            throw std::invalid_argument(
+                "HELD2 Stage II Provider ion ceiling is invalid or infeasible"
+            );
+        }
+    }
+
     Held2StageIISimplexChart result;
     result.chart_coordinates.assign(dimension, 0.0);
     result.physical_coordinates.assign(dimension, 0.0);
+    if (source_domain_chart) {
+        if (inverse) {
+            double remaining_ion = total_ion_mole_fraction_max
+                - charged_lower_sum;
+            double charged_shift_sum = 0.0;
+            for (std::size_t index = 0; index < dimension; ++index) {
+                if (!charged_coordinates[index]) {
+                    continue;
+                }
+                const double shifted = coordinates[index] - lower[index];
+                if (shifted < 0.0 || shifted > remaining_ion
+                    || !(remaining_ion > 0.0)) {
+                    throw std::invalid_argument(
+                        "HELD2 Stage II physical start is outside the Provider ion domain"
+                    );
+                }
+                result.chart_coordinates[index] = shifted / remaining_ion;
+                charged_shift_sum += shifted;
+                remaining_ion -= shifted;
+            }
+            double remaining_composition = free_scale - charged_shift_sum;
+            for (std::size_t index = 0; index < dimension; ++index) {
+                if (charged_coordinates[index]) {
+                    continue;
+                }
+                const double shifted = coordinates[index] - lower[index];
+                if (shifted < 0.0 || shifted > remaining_composition
+                    || !(remaining_composition > 0.0)) {
+                    throw std::invalid_argument(
+                        "HELD2 Stage II physical start is outside the feasible simplex"
+                    );
+                }
+                result.chart_coordinates[index] = shifted / remaining_composition;
+                remaining_composition -= shifted;
+            }
+        } else {
+            for (std::size_t index = 0; index < dimension; ++index) {
+                const Held2StageIIChartCoordinate normalized =
+                    normalize_held2_stage_ii_chart_coordinate(coordinates[index]);
+                result.chart_coordinates[index] = normalized.normalized;
+                result.normalized_boundary_contact =
+                    result.normalized_boundary_contact
+                    || normalized.normalized_boundary_contact;
+            }
+        }
+
+        std::vector<Held2SecondOrderScalar> chart;
+        chart.reserve(dimension);
+        for (std::size_t index = 0; index < dimension; ++index) {
+            chart.push_back(second_order_variable(
+                result.chart_coordinates[index], dimension, index
+            ));
+        }
+        std::vector<Held2SecondOrderScalar> shifted(
+            dimension, second_order_constant(0.0, dimension)
+        );
+        Held2SecondOrderScalar remaining_ion = second_order_constant(
+            total_ion_mole_fraction_max - charged_lower_sum, dimension
+        );
+        Held2SecondOrderScalar charged_shift = second_order_constant(0.0, dimension);
+        for (std::size_t index = 0; index < dimension; ++index) {
+            if (!charged_coordinates[index]) {
+                continue;
+            }
+            shifted[index] = second_order_multiply(remaining_ion, chart[index]);
+            charged_shift = second_order_add(charged_shift, shifted[index]);
+            remaining_ion = second_order_add(
+                remaining_ion, shifted[index], -1.0
+            );
+        }
+        Held2SecondOrderScalar remaining_composition = second_order_add(
+            second_order_constant(free_scale, dimension), charged_shift, -1.0
+        );
+        for (std::size_t index = 0; index < dimension; ++index) {
+            if (charged_coordinates[index]) {
+                continue;
+            }
+            shifted[index] = second_order_multiply(
+                remaining_composition, chart[index]
+            );
+            remaining_composition = second_order_add(
+                remaining_composition, shifted[index], -1.0
+            );
+        }
+
+        result.jacobian.assign(dimension * dimension, 0.0);
+        result.component_hessians.assign(
+            dimension * dimension * dimension, 0.0
+        );
+        for (std::size_t component = 0; component < dimension; ++component) {
+            result.physical_coordinates[component] = lower[component]
+                + shifted[component].value;
+            for (std::size_t column = 0; column < dimension; ++column) {
+                result.jacobian[component * dimension + column] =
+                    shifted[component].gradient[column];
+                for (std::size_t row = 0; row < dimension; ++row) {
+                    result.component_hessians[
+                        (component * dimension + row) * dimension + column
+                    ] = shifted[component].hessian[row * dimension + column];
+                }
+            }
+            if (std::abs(result.jacobian[component * dimension + component])
+                <= std::numeric_limits<double>::epsilon()
+                    * std::max(1.0, free_scale)) {
+                result.singular = true;
+            }
+        }
+        return result;
+    }
+
     if (inverse) {
         double remaining = free_scale;
         for (std::size_t index = 0; index < dimension; ++index) {
@@ -773,71 +1059,173 @@ Held2StageIISimplexChart evaluate_stage_ii_simplex_chart(
     return result;
 }
 
-Held2StateEvaluation transform_stage_ii_simplex_state(
+Held2StateEvaluation transform_stage_ii_reduced_state(
     const Held2StateEvaluation& physical,
+    const Held2StageIIPressureRootReduction& reduced,
     const Held2StageIISimplexChart& chart
 ) {
-    if (chart.singular) {
-        throw std::invalid_argument("HELD2 Stage II simplex chart is singular");
-    }
-    const std::size_t dimension = chart.chart_coordinates.size();
-    const std::size_t count = dimension + 1;
-    if (physical.gradient.size() != count
-        || physical.hessian.size() != count * count
+    const std::size_t dimension = reduced.gradient.size();
+    if (reduced.hessian.size() != dimension * dimension
         || chart.jacobian.size() != dimension * dimension
-        || chart.component_hessians.size() != dimension * dimension * dimension) {
+        || chart.component_hessians.size()
+            != dimension * dimension * dimension) {
         throw std::invalid_argument(
-            "HELD2 Stage II simplex derivative block is incomplete"
+            "HELD2 Stage II reduced derivative block is incomplete"
         );
     }
     Held2StateEvaluation result = physical;
-    result.gradient.assign(count, 0.0);
-    result.hessian.assign(count * count, 0.0);
+    result.objective = reduced.objective;
+    result.gradient.assign(dimension, 0.0);
+    result.hessian.assign(dimension * dimension, 0.0);
     for (std::size_t column = 0; column < dimension; ++column) {
         for (std::size_t physical_index = 0; physical_index < dimension;
              ++physical_index) {
             result.gradient[column] += chart.jacobian[
                 physical_index * dimension + column
-            ] * physical.gradient[physical_index];
+            ] * reduced.gradient[physical_index];
         }
     }
-    result.gradient.back() = physical.gradient.back();
     for (std::size_t row = 0; row < dimension; ++row) {
         for (std::size_t column = 0; column < dimension; ++column) {
             double value = 0.0;
             for (std::size_t left = 0; left < dimension; ++left) {
-                value += physical.gradient[left] * chart.component_hessians[
+                value += reduced.gradient[left] * chart.component_hessians[
                     (left * dimension + row) * dimension + column
                 ];
                 for (std::size_t right = 0; right < dimension; ++right) {
                     value += chart.jacobian[left * dimension + row]
-                        * physical.hessian[left * count + right]
+                        * reduced.hessian[left * dimension + right]
                         * chart.jacobian[right * dimension + column];
                 }
             }
-            result.hessian[row * count + column] = value;
+            result.hessian[row * dimension + column] = value;
         }
-        double cross = 0.0;
-        for (std::size_t physical_index = 0; physical_index < dimension;
-             ++physical_index) {
-            cross += chart.jacobian[physical_index * dimension + row]
-                * physical.hessian[physical_index * count + dimension];
-        }
-        result.hessian[row * count + dimension] = cross;
-        result.hessian[dimension * count + row] = cross;
     }
-    result.hessian.back() = physical.hessian.back();
     return result;
 }
 
-Held2SearchRun solve_stage_ii_local(
+Held2PressureRoot select_stage_ii_stable_branch(
     const Held2StateEvaluator& evaluator,
+    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
+    const std::vector<double>& independent,
+    int stable_branch_index
+) {
+    if (stable_branch_index < 0) {
+        throw std::invalid_argument(
+            "HELD2 Stage II stable branch index must be nonnegative"
+        );
+    }
+    const Held2PressureEnvelopeResult envelope =
+        evaluate_held2_pressure_envelope(
+            independent,
+            volume_bounds_evaluator(independent),
+            evaluator,
+            64,
+            8
+        );
+    if (envelope.outcome != "selected"
+        && envelope.failure_reason != "stable_objective_tie") {
+        throw std::runtime_error(
+            "HELD2 Stage II pressure-root local evaluation failed: "
+            + envelope.failure_reason
+        );
+    }
+    int current = 0;
+    for (const Held2PressureRoot& root : envelope.roots) {
+        if (root.mechanical_class != "strict_stable" || root.boundary) {
+            continue;
+        }
+        if (current++ == stable_branch_index) {
+            if (!audit_held2_tolerance(
+                    kHeld2RootPressure, root.pressure_residual
+                ).passed) {
+                throw std::runtime_error(
+                    "HELD2 Stage II selected branch failed pressure closure"
+                );
+            }
+            return root;
+        }
+    }
+    throw std::runtime_error(
+        "HELD2 Stage II selected stable branch disappeared"
+    );
+}
+
+Held2PressureRoot polish_stage_ii_stable_branch(
+    const Held2StateEvaluator& evaluator,
+    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
+    const std::vector<double>& independent,
+    int stable_branch_index,
+    double log_volume_hint
+) {
+    const std::array<double, 2> volume_bounds =
+        volume_bounds_evaluator(independent);
+    const double lower = std::log(volume_bounds[0]);
+    const double upper = std::log(volume_bounds[1]);
+    double log_volume = std::clamp(log_volume_hint, lower, upper);
+    for (int iteration = 0; iteration < 20; ++iteration) {
+        const Held2StateEvaluation state = evaluator(independent, log_volume);
+        const double residual = state.pressure_stationarity_relative;
+        const double derivative =
+            state.pressure_stationarity_derivative_log_volume;
+        const double curvature = state.hessian.empty()
+            ? std::numeric_limits<double>::quiet_NaN()
+            : state.hessian.back();
+        if (std::abs(residual) <= kHeld2IpoptTarget.atol
+            && derivative < 0.0 && curvature > 0.0
+            && audit_held2_tolerance(
+                   kHeld2MechanicalMargin,
+                   std::min(std::abs(derivative), std::abs(curvature))
+               ).passed) {
+            Held2PressureRoot root;
+            root.log_volume = log_volume;
+            root.volume = state.volume;
+            root.objective = state.objective;
+            root.pressure_residual = residual;
+            root.pressure_derivative_log_volume = derivative;
+            root.objective_curvature_log_volume = curvature;
+            root.mechanical_class = "strict_stable";
+            root.origin = "continued_exact_derivative";
+            root.state = state;
+            return root;
+        }
+        if (!std::isfinite(residual) || !std::isfinite(derivative)
+            || std::abs(derivative)
+                <= std::numeric_limits<double>::epsilon()) {
+            break;
+        }
+        const double step = std::clamp(-residual / derivative, -0.75, 0.75);
+        const double candidate = std::clamp(
+            log_volume + step,
+            std::nextafter(lower, upper),
+            std::nextafter(upper, lower)
+        );
+        if (candidate == log_volume) {
+            break;
+        }
+        log_volume = candidate;
+    }
+    return select_stage_ii_stable_branch(
+        evaluator,
+        volume_bounds_evaluator,
+        independent,
+        stable_branch_index
+    );
+}
+
+Held2SearchRun solve_stage_ii_pressure_root_local(
+    const Held2StateEvaluator& evaluator,
+    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
     const std::vector<double>& feed,
     const std::vector<double>& multipliers,
-    const std::vector<double>& initial,
-    const std::vector<double>& physical_lower,
-    const std::vector<double>& physical_upper,
+    const std::vector<double>& independent_initial,
+    int stable_branch_index,
+    double branch_log_volume_hint,
+    const std::vector<double>& independent_lower,
+    const std::vector<double>& independent_upper,
     double composition_sum_upper,
+    const std::vector<bool>& charged_coordinates,
+    double total_ion_mole_fraction_max,
     Held2ProgressObserver* observer = nullptr,
     int major_iteration = -1,
     int attempt_index = -1
@@ -845,21 +1233,14 @@ Held2SearchRun solve_stage_ii_local(
     const std::size_t dimension = feed.size();
     Held2SearchRun invalid;
     if (dimension == 0 || multipliers.size() != dimension
-        || initial.size() != dimension + 1
-        || physical_lower.size() != dimension + 1
-        || physical_upper.size() != dimension + 1) {
-        invalid.callback_error = "HELD2 Stage II simplex search dimensions changed";
+        || independent_initial.size() != dimension
+        || independent_lower.size() != dimension
+        || independent_upper.size() != dimension
+        || stable_branch_index < 0 || !std::isfinite(branch_log_volume_hint)) {
+        invalid.callback_error =
+            "HELD2 Stage II pressure-root search dimensions changed";
         return invalid;
     }
-    const std::vector<double> independent_initial(
-        initial.begin(), initial.end() - 1
-    );
-    const std::vector<double> independent_lower(
-        physical_lower.begin(), physical_lower.end() - 1
-    );
-    const std::vector<double> independent_upper(
-        physical_upper.begin(), physical_upper.end() - 1
-    );
     Held2StageIISimplexChart initial_chart;
     try {
         initial_chart = evaluate_stage_ii_simplex_chart(
@@ -867,7 +1248,9 @@ Held2SearchRun solve_stage_ii_local(
             independent_upper,
             composition_sum_upper,
             independent_initial,
-            true
+            true,
+            charged_coordinates,
+            total_ion_mole_fraction_max
         );
     } catch (const std::exception& error) {
         invalid.callback_error = error.what();
@@ -878,42 +1261,52 @@ Held2SearchRun solve_stage_ii_local(
         return invalid;
     }
     std::vector<double> chart_initial = initial_chart.chart_coordinates;
-    chart_initial.push_back(initial.back());
     std::vector<double> chart_lower(dimension, 0.0);
     std::vector<double> chart_upper(dimension, 1.0);
-    chart_lower.push_back(physical_lower.back());
-    chart_upper.push_back(physical_upper.back());
-    const Held2StateEvaluator chart_evaluator = [
+    const auto chart_evaluator = [
         evaluator,
+        volume_bounds_evaluator,
         feed,
         multipliers,
+        stable_branch_index,
+        branch_log_volume_hint,
         independent_lower,
         independent_upper,
-        composition_sum_upper
-    ](const std::vector<double>& chart_coordinates, double log_volume) {
+        composition_sum_upper,
+        charged_coordinates,
+        total_ion_mole_fraction_max
+    ](const std::vector<double>& chart_coordinates) {
         const Held2StageIISimplexChart chart = evaluate_stage_ii_simplex_chart(
             independent_lower,
             independent_upper,
             composition_sum_upper,
             chart_coordinates,
-            false
+            false,
+            charged_coordinates,
+            total_ion_mole_fraction_max
         );
-        Held2StateEvaluation state = evaluator(
+        const Held2PressureRoot root = polish_stage_ii_stable_branch(
+            evaluator,
+            volume_bounds_evaluator,
             chart.physical_coordinates,
-            log_volume
+            stable_branch_index,
+            branch_log_volume_hint
         );
-        for (std::size_t coordinate = 0; coordinate < feed.size(); ++coordinate) {
-            state.objective += multipliers[coordinate]
-                * (feed[coordinate] - chart.physical_coordinates[coordinate]);
-            state.gradient[coordinate] -= multipliers[coordinate];
-        }
-        return transform_stage_ii_simplex_state(state, chart);
+        const Held2StageIIPressureRootReduction reduced =
+            reduce_held2_stage_ii_pressure_root(
+                chart.physical_coordinates,
+                feed,
+                multipliers,
+                root.state
+            );
+        return transform_stage_ii_reduced_state(
+            root.state,
+            reduced,
+            chart
+        );
     };
-    Held2SearchRun run = solve_held2_search(
+    Held2SearchRun run = solve_held2_vector_search(
         chart_evaluator,
-        chart_initial,
-        chart_evaluator(initial_chart.chart_coordinates, initial.back()),
-        false,
         chart_initial,
         chart_lower,
         chart_upper,
@@ -923,24 +1316,29 @@ Held2SearchRun solve_stage_ii_local(
         attempt_index
     );
     for (Held2StageIILocalEvaluation& evaluation : run.evaluation_trace) {
-        if (evaluation.raw_variables.size() != dimension + 1) {
+        if (evaluation.raw_variables.size() != dimension) {
             evaluation.mapping_status = "variables_unavailable";
             continue;
         }
-        const std::vector<double> chart_coordinates(
-            evaluation.raw_variables.begin(),
-            evaluation.raw_variables.end() - 1
-        );
         try {
             const Held2StageIISimplexChart mapped = evaluate_stage_ii_simplex_chart(
                 independent_lower,
                 independent_upper,
                 composition_sum_upper,
-                chart_coordinates,
-                false
+                evaluation.raw_variables,
+                false,
+                charged_coordinates,
+                total_ion_mole_fraction_max
             );
             evaluation.physical_variables = mapped.physical_coordinates;
-            evaluation.physical_variables.push_back(evaluation.raw_variables.back());
+            const Held2PressureRoot root = polish_stage_ii_stable_branch(
+                evaluator,
+                volume_bounds_evaluator,
+                mapped.physical_coordinates,
+                stable_branch_index,
+                branch_log_volume_hint
+            );
+            evaluation.physical_variables.push_back(root.log_volume);
             evaluation.mapping_status = mapped.normalized_boundary_contact
                 ? "normalized_boundary_contact"
                 : "mapped";
@@ -948,26 +1346,33 @@ Held2SearchRun solve_stage_ii_local(
             evaluation.mapping_status = "chart_out_of_bounds";
         }
     }
-    if (run.variables.size() != dimension + 1) {
+    if (run.variables.size() != dimension) {
         return run;
     }
-    const double log_volume = run.variables.back();
-    const std::vector<double> terminal_chart(
-        run.variables.begin(), run.variables.end() - 1
-    );
     try {
         const Held2StageIISimplexChart physical = evaluate_stage_ii_simplex_chart(
             independent_lower,
             independent_upper,
             composition_sum_upper,
-            terminal_chart,
-            false
+            run.variables,
+            false,
+            charged_coordinates,
+            total_ion_mole_fraction_max
         );
         if (physical.singular) {
             throw std::invalid_argument("HELD2 Stage II simplex terminal is singular");
         }
+        const Held2PressureRoot root = polish_stage_ii_stable_branch(
+            evaluator,
+            volume_bounds_evaluator,
+            physical.physical_coordinates,
+            stable_branch_index,
+            branch_log_volume_hint
+        );
         run.variables = physical.physical_coordinates;
-        run.variables.push_back(log_volume);
+        run.variables.push_back(root.log_volume);
+        run.lower_bound_multipliers.push_back(0.0);
+        run.upper_bound_multipliers.push_back(0.0);
         run.coordinate_jacobian = physical.jacobian;
     } catch (const std::exception& error) {
         run.callback_error = error.what();
@@ -1040,19 +1445,24 @@ Held2PhysicalKkt evaluate_stage_ii_physical_kkt(
         chart_force[index] = chart_upper_multipliers[index]
             - chart_lower_multipliers[index];
     }
-    std::vector<double> physical_force(dimension + 1, 0.0);
-    for (std::size_t column = dimension; column-- > 0;) {
-        double value = chart_force[column];
-        for (std::size_t row = column + 1; row < dimension; ++row) {
-            value -= chart_jacobian[row * dimension + column]
-                * physical_force[row];
+    std::vector<double> transposed_jacobian(dimension * dimension, 0.0);
+    for (std::size_t row = 0; row < dimension; ++row) {
+        for (std::size_t column = 0; column < dimension; ++column) {
+            transposed_jacobian[row * dimension + column] =
+                chart_jacobian[column * dimension + row];
         }
-        const double diagonal = chart_jacobian[column * dimension + column];
-        if (std::abs(diagonal) <= std::numeric_limits<double>::epsilon()) {
-            return result;
-        }
-        physical_force[column] = value / diagonal;
     }
+    const std::optional<std::vector<double>> composition_force =
+        solve_dense_linear_system(
+            transposed_jacobian,
+            std::vector<double>(chart_force.begin(), chart_force.end() - 1),
+            dimension
+        );
+    if (!composition_force.has_value()) {
+        return result;
+    }
+    std::vector<double> physical_force = *composition_force;
+    physical_force.push_back(0.0);
     physical_force.back() = chart_force.back();
 
     const auto multiplier_cap = [](double slack) {
@@ -1216,6 +1626,91 @@ double enumerated_manufactured_objective(double feed_composition) {
 }
 
 }  // namespace
+
+Held2StageIIPressureRootReduction reduce_held2_stage_ii_pressure_root(
+    const std::vector<double>& independent,
+    const std::vector<double>& feed,
+    const std::vector<double>& multipliers,
+    const Held2StateEvaluation& state
+) {
+    const std::size_t dimension = independent.size();
+    const std::size_t full_dimension = dimension + 1;
+    if (dimension == 0 || feed.size() != dimension
+        || multipliers.size() != dimension
+        || state.gradient.size() != full_dimension
+        || state.hessian.size() != full_dimension * full_dimension) {
+        throw std::invalid_argument(
+            "HELD2 Stage II pressure-root reduction dimensions changed"
+        );
+    }
+    require_finite_vector(independent, "HELD2 Stage II independent composition");
+    require_finite_vector(feed, "HELD2 Stage II feed composition");
+    require_finite_vector(multipliers, "HELD2 Stage II multipliers");
+    require_finite_vector(state.gradient, "HELD2 Stage II physical gradient");
+    require_finite_vector(state.hessian, "HELD2 Stage II physical Hessian");
+    if (!std::isfinite(state.objective)) {
+        throw std::invalid_argument(
+            "HELD2 Stage II physical objective must be finite"
+        );
+    }
+    const double pressure_curvature = state.hessian.back();
+    if (!audit_held2_tolerance(
+            kHeld2MechanicalMargin, pressure_curvature
+        ).passed) {
+        throw std::domain_error(
+            "HELD2 Stage II pressure root is not strictly mechanically stable"
+        );
+    }
+
+    Held2StageIIPressureRootReduction result;
+    result.objective = state.objective;
+    result.gradient.assign(dimension, 0.0);
+    result.hessian.assign(dimension * dimension, 0.0);
+    result.pressure_coordinate_gradient = state.gradient.back();
+    result.pressure_coordinate_curvature = pressure_curvature;
+    for (std::size_t row = 0; row < dimension; ++row) {
+        result.objective += multipliers[row]
+            * (feed[row] - independent[row]);
+        result.gradient[row] = state.gradient[row] - multipliers[row];
+        for (std::size_t column = 0; column < dimension; ++column) {
+            result.hessian[row * dimension + column] =
+                state.hessian[row * full_dimension + column]
+                - state.hessian[row * full_dimension + dimension]
+                    * state.hessian[dimension * full_dimension + column]
+                    / pressure_curvature;
+        }
+    }
+    return result;
+}
+
+Held2StageIIStep5Assessment assess_held2_stage_ii_step5(
+    double upper_bound,
+    double local_value,
+    bool local_state_certified
+) {
+    Held2StageIIStep5Assessment result;
+    result.gap = upper_bound - local_value;
+    if (!std::isfinite(upper_bound) || !std::isfinite(local_value)) {
+        result.reason = "nonfinite_lower_upper_comparison";
+        return result;
+    }
+    if (!local_state_certified) {
+        result.reason = "local_state_not_certified";
+        return result;
+    }
+    if (local_value <= upper_bound) {
+        result.qualified = true;
+        result.reason = "lower_not_above_upper";
+        return result;
+    }
+    if (audit_held2_tolerance(kHeld2Step6Gap, result.gap).passed) {
+        result.qualified = true;
+        result.reason = "lower_equal_within_step6_gate";
+        return result;
+    }
+    result.reason = "certified_local_above_upper";
+    return result;
+}
 
 Held2StageIIChartCoordinate normalize_held2_stage_ii_chart_coordinate(
     double coordinate
@@ -2619,6 +3114,7 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
                     12,
                     request_direct_escalation,
                     24,
+                    std::numeric_limits<double>::quiet_NaN(),
                     basin_evaluator
                 );
             result.exploration_evaluation_count +=
@@ -2968,6 +3464,7 @@ Held2StageIIResult solve_held2_stage_ii(
     const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
     const Held2StateEvaluation& reference,
     const std::vector<Held2StageICandidate>& stage_i_candidates,
+    double total_ion_mole_fraction_max,
     int major_iteration_cap,
     int local_attempt_cap_per_major,
     Held2ProgressObserver* observer
@@ -3025,6 +3522,42 @@ Held2StageIIResult solve_held2_stage_ii(
             physical_lower[index]
         );
     }
+    std::vector<bool> source_domain_charged;
+    double local_ion_mole_fraction_max =
+        std::numeric_limits<double>::quiet_NaN();
+    if (!std::isnan(total_ion_mole_fraction_max)) {
+        if (!std::isfinite(total_ion_mole_fraction_max)
+            || total_ion_mole_fraction_max <= 0.0
+            || total_ion_mole_fraction_max > 1.0) {
+            throw std::invalid_argument(
+                "HELD2 Stage II Provider ion ceiling is invalid"
+            );
+        }
+        source_domain_charged.assign(dimension, false);
+        double charged_lower_sum = 0.0;
+        bool has_independent_charge = false;
+        for (std::size_t index = 0; index < dimension; ++index) {
+            const std::size_t component = coordinates.independent_indices[index];
+            source_domain_charged[index] = coordinates.charges[component] != 0.0;
+            if (source_domain_charged[index]) {
+                // In Perdomo's electroneutral modified coordinates, the sum of
+                // retained charged fractions is the explicit total-ion fraction.
+                has_independent_charge = true;
+                charged_lower_sum += physical_lower[index];
+            }
+        }
+        if (has_independent_charge
+            && total_ion_mole_fraction_max < composition_sum_upper) {
+            if (!(total_ion_mole_fraction_max > charged_lower_sum)) {
+                throw std::invalid_argument(
+                    "HELD2 Stage II Provider ion ceiling excludes the feasible interior"
+                );
+            }
+            local_ion_mole_fraction_max = total_ion_mole_fraction_max;
+        } else {
+            source_domain_charged.clear();
+        }
+    }
     const auto independent_from_state = [
         &retained_positions
     ](const Held2StateEvaluation& state) {
@@ -3039,10 +3572,12 @@ Held2StageIIResult solve_held2_stage_ii(
         Held2StateEvaluation state;
         std::vector<double> independent;
         std::vector<double> fixed_volume_gradient;
+        bool candidate_phase_eligible = false;
     };
     const auto make_cut = [&evaluator, dimension](
         const std::vector<double>& independent,
-        double volume
+        double volume,
+        bool candidate_phase_eligible = false
     ) {
         if (!(volume > 0.0) || !std::isfinite(volume)) {
             throw std::invalid_argument("HELD2 Stage II cut volume is invalid");
@@ -3057,6 +3592,7 @@ Held2StageIIResult solve_held2_stage_ii(
             state,
             independent,
             std::vector<double>(state.gradient.begin(), state.gradient.end() - 1),
+            candidate_phase_eligible,
         };
     };
     const auto make_pressure_cut = [
@@ -3109,7 +3645,24 @@ Held2StageIIResult solve_held2_stage_ii(
             0.5 * (composition_sum_upper
                 - std::accumulate(point.begin(), point.end(), 0.0))
         );
-        point[coordinate] += delta;
+        double domain_safe_delta = delta;
+        if (!source_domain_charged.empty()
+            && source_domain_charged[coordinate]) {
+            double charged_sum = 0.0;
+            for (std::size_t index = 0; index < dimension; ++index) {
+                if (source_domain_charged[index]) {
+                    charged_sum += point[index];
+                }
+            }
+            domain_safe_delta = std::min(
+                domain_safe_delta,
+                0.5 * (local_ion_mole_fraction_max - charged_sum)
+            );
+        }
+        if (!(domain_safe_delta > 0.0)) {
+            continue;
+        }
+        point[coordinate] += domain_safe_delta;
         cuts.push_back(make_pressure_cut(point));
     }
 
@@ -3216,6 +3769,18 @@ Held2StageIIResult solve_held2_stage_ii(
                 + 0.05 * (feed[coordinate] - physical_lower[coordinate]);
             seeds.push_back({std::move(low), "boundary_aware_seed"});
         }
+        for (std::size_t vertex = 0; vertex < dimension; ++vertex) {
+            std::vector<double> cube(dimension, 0.05);
+            cube[vertex] = 0.95;
+            seeds.push_back({
+                held2_map_unit_cube_to_independent_fractions(
+                    coordinates,
+                    cube,
+                    total_ion_mole_fraction_max
+                ),
+                "simplex_vertex_seed",
+            });
+        }
         const Held2StageIIBasinEvaluator basin_evaluator = [
             &coordinates,
             &evaluator,
@@ -3271,9 +3836,10 @@ Held2StageIIResult solve_held2_stage_ii(
             explore_held2_stage_ii_basins(
                 coordinates,
                 seeds,
-                12,
+                kStageIISobolEvaluationCount,
                 request_direct_escalation,
-                24,
+                kStageIIDirectEvaluationBudget,
+                total_ion_mole_fraction_max,
                 basin_evaluator
             );
         result.exploration_evaluation_count += exploration.completed_evaluation_count;
@@ -3292,21 +3858,69 @@ Held2StageIIResult solve_held2_stage_ii(
 
         double lower_bound = std::numeric_limits<double>::infinity();
         Cut best;
-        bool any_failed = false;
         const std::size_t attempt_count = std::min(
             exploration.representatives.size(),
             static_cast<std::size_t>(local_attempt_cap_per_major)
         );
-        result.local_attempts_truncated = result.local_attempts_truncated
-            || attempt_count < exploration.representatives.size();
+        const bool representative_cap_truncated =
+            attempt_count < exploration.representatives.size();
+        bool step5_condition_satisfied = false;
+        const std::size_t attempt_trace_start = result.attempt_trace.size();
+        std::vector<Cut> same_major_step6_cuts;
+        std::vector<std::size_t> representative_order(
+            exploration.representatives.size()
+        );
+        std::iota(
+            representative_order.begin(),
+            representative_order.end(),
+            std::size_t{0}
+        );
+        if (representative_order.size() > 1) {
+            const Held2StageIIPhysicalStart& first =
+                exploration.representatives.front();
+            std::stable_sort(
+                representative_order.begin() + 1,
+                representative_order.end(),
+                [&exploration, &first](std::size_t left, std::size_t right) {
+                    const Held2StageIIPhysicalStart& left_start =
+                        exploration.representatives[left];
+                    const Held2StageIIPhysicalStart& right_start =
+                        exploration.representatives[right];
+                    const bool left_same_branch =
+                        left_start.stable_branch_index
+                        == first.stable_branch_index;
+                    const bool right_same_branch =
+                        right_start.stable_branch_index
+                        == first.stable_branch_index;
+                    if (left_same_branch != right_same_branch) {
+                        return left_same_branch;
+                    }
+                    const double left_distance = maximum_abs_difference(
+                        left_start.independent_modified_fractions,
+                        first.independent_modified_fractions
+                    );
+                    const double right_distance = maximum_abs_difference(
+                        right_start.independent_modified_fractions,
+                        first.independent_modified_fractions
+                    );
+                    if (left_distance != right_distance) {
+                        return left_distance > right_distance;
+                    }
+                    return left_start.reduced_lower_value
+                        < right_start.reduced_lower_value;
+                }
+            );
+        }
         for (std::size_t start_index = 0;
              start_index < attempt_count; ++start_index) {
+            const std::size_t representative_index =
+                representative_order[start_index];
             const Held2StageIIPhysicalStart& representative =
-                exploration.representatives[start_index];
+                exploration.representatives[representative_index];
             Held2StageIIAttempt attempt;
             attempt.attempt_id = static_cast<int>(result.attempt_trace.size());
             attempt.major_iteration = major;
-            attempt.start_index = static_cast<int>(start_index);
+            attempt.start_index = static_cast<int>(representative_index);
             attempt.start_source = representative.source;
             attempt.internal_start = representative.independent_modified_fractions;
             attempt.internal_start.push_back(representative.log_volume);
@@ -3321,21 +3935,19 @@ Held2StageIIResult solve_held2_stage_ii(
                     start_state.modified_fractions;
                 attempt.physical_start_volume = start_state.volume;
                 attempt.provider_status = "provider_exact";
-                const std::array<double, 2> bounds = volume_bounds_evaluator(
-                    representative.independent_modified_fractions
-                );
-                std::vector<double> lower = physical_lower;
-                std::vector<double> upper = physical_upper;
-                lower.push_back(std::log(bounds[0]));
-                upper.push_back(std::log(bounds[1]));
-                const Held2SearchRun run = solve_stage_ii_local(
+                const Held2SearchRun run = solve_stage_ii_pressure_root_local(
                     evaluator,
+                    volume_bounds_evaluator,
                     feed,
                     multipliers,
-                    attempt.internal_start,
-                    lower,
-                    upper,
+                    representative.independent_modified_fractions,
+                    representative.stable_branch_index,
+                    representative.log_volume,
+                    physical_lower,
+                    physical_upper,
                     composition_sum_upper,
+                    source_domain_charged,
+                    local_ion_mole_fraction_max,
                     observer,
                     major,
                     attempt.attempt_id
@@ -3356,7 +3968,6 @@ Held2StageIIResult solve_held2_stage_ii(
                 attempt.provider_status = "provider_exact";
                 if (!run.solver_converged || !run.callback_error.empty()
                     || run.variables.size() != dimension + 1) {
-                    any_failed = true;
                     result.attempt_trace.push_back(std::move(attempt));
                     continue;
                 }
@@ -3367,6 +3978,12 @@ Held2StageIIResult solve_held2_stage_ii(
                     independent,
                     run.variables.back()
                 );
+                const std::array<double, 2> terminal_volume_bounds =
+                    volume_bounds_evaluator(independent);
+                std::vector<double> lower = physical_lower;
+                std::vector<double> upper = physical_upper;
+                lower.push_back(std::log(terminal_volume_bounds[0]));
+                upper.push_back(std::log(terminal_volume_bounds[1]));
                 double value = state.objective;
                 for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
                     value += multipliers[coordinate]
@@ -3380,10 +3997,9 @@ Held2StageIIResult solve_held2_stage_ii(
                 attempt.pressure_passed = audit_held2_tolerance(
                     kHeld2RootPressure, attempt.pressure_residual
                 ).passed;
-                attempt.chart_jacobian_condition =
-                    lower_triangular_condition_inf(
-                        run.coordinate_jacobian, dimension
-                    );
+                attempt.chart_jacobian_condition = matrix_condition_inf(
+                    run.coordinate_jacobian, dimension
+                );
                 attempt.chart_kkt_inf_norm = 0.0;
                 for (std::size_t column = 0; column < dimension; ++column) {
                     double residual = run.upper_bound_multipliers[column]
@@ -3425,6 +4041,11 @@ Held2StageIIResult solve_held2_stage_ii(
                     kkt.dual_sign_violation_inf_norm;
                 attempt.dual_signs_valid = kkt.dual_signs_valid;
                 attempt.physical_kkt_passed = attempt.pressure_passed
+                    && std::isfinite(kkt.primal_inf_norm)
+                    && std::isfinite(kkt.stationarity_inf_norm)
+                    && std::isfinite(kkt.complementarity)
+                    && std::isfinite(kkt.reconstruction_inf_norm)
+                    && std::isfinite(kkt.reconstruction_scale)
                     && audit_held2_tolerance(
                            kHeld2Stage2Primal, kkt.primal_inf_norm
                        ).passed
@@ -3442,7 +4063,15 @@ Held2StageIIResult solve_held2_stage_ii(
                            kkt.reconstruction_inf_norm,
                            kkt.reconstruction_scale
                        ).passed;
-                attempt.cut_eligible = attempt.physical_kkt_passed;
+                const Held2StageIIStep5Assessment step5 =
+                    assess_held2_stage_ii_step5(
+                        upper_bound,
+                        value,
+                        attempt.physical_kkt_passed
+                    );
+                attempt.step5_qualified = step5.qualified;
+                attempt.step5_reason = step5.reason;
+                attempt.cut_eligible = attempt.step5_qualified;
                 Held2ProgressEvent certificate_progress;
                 certificate_progress.kind = Held2ProgressKind::Certificate;
                 certificate_progress.stage = "STAGE II LOCAL KKT";
@@ -3457,37 +4086,57 @@ Held2StageIIResult solve_held2_stage_ii(
                 observe_held2(observer, certificate_progress);
                 const double gap = upper_bound - value;
                 attempt.step6_gap = gap;
-                bool fixed_volume_stationary = true;
-                for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-                    if (independent[coordinate]
-                        <= physical_lower[coordinate] + kHeld2BoundActivity.atol) {
-                        continue;
+                attempt.step6_gap_passed = audit_held2_tolerance(
+                    kHeld2Step6Gap, gap
+                ).passed;
+                bool fixed_volume_stationary = attempt.cut_eligible;
+                if (attempt.cut_eligible) {
+                    for (std::size_t coordinate = 0; coordinate < dimension;
+                         ++coordinate) {
+                        if (independent[coordinate]
+                            <= physical_lower[coordinate]
+                                + kHeld2BoundActivity.atol) {
+                            continue;
+                        }
+                        const double gradient_scale = std::max(
+                            std::abs(state.gradient[coordinate]),
+                            std::abs(multipliers[coordinate])
+                        );
+                        attempt.fixed_volume_gradient_inf_norm = std::max(
+                            attempt.fixed_volume_gradient_inf_norm,
+                            std::abs(
+                                state.gradient[coordinate]
+                                    - multipliers[coordinate]
+                            )
+                        );
+                        attempt.fixed_volume_gradient_scale = std::max(
+                            attempt.fixed_volume_gradient_scale, gradient_scale
+                        );
+                        fixed_volume_stationary = fixed_volume_stationary
+                            && audit_held2_tolerance(
+                                   kHeld2Step6Gradient,
+                                   state.gradient[coordinate]
+                                       - multipliers[coordinate],
+                                   gradient_scale
+                               ).passed;
                     }
-                    const double gradient_scale = std::max(
-                        std::abs(state.gradient[coordinate]),
-                        std::abs(multipliers[coordinate])
-                    );
-                    attempt.fixed_volume_gradient_inf_norm = std::max(
-                        attempt.fixed_volume_gradient_inf_norm,
-                        std::abs(
-                            state.gradient[coordinate]
-                                - multipliers[coordinate]
-                        )
-                    );
-                    attempt.fixed_volume_gradient_scale = std::max(
-                        attempt.fixed_volume_gradient_scale, gradient_scale
-                    );
-                    fixed_volume_stationary = fixed_volume_stationary
-                        && audit_held2_tolerance(
-                               kHeld2Step6Gradient,
-                               state.gradient[coordinate]
-                                   - multipliers[coordinate],
-                               gradient_scale
-                           ).passed;
                 }
-                attempt.step6_eligible = attempt.cut_eligible
-                    && audit_held2_tolerance(kHeld2Step6Gap, gap).passed
+                attempt.step6_gradient_passed = fixed_volume_stationary;
+                attempt.step6_eligible = attempt.step5_qualified
+                    && attempt.step6_gap_passed
                     && fixed_volume_stationary;
+                if (attempt.step6_eligible) {
+                    attempt.step6_rejection_reason = "eligible";
+                } else if (!attempt.step5_qualified) {
+                    attempt.step6_rejection_reason =
+                        "step5_lower_not_qualified";
+                } else if (!attempt.step6_gap_passed) {
+                    attempt.step6_rejection_reason =
+                        "same_major_gap_failed";
+                } else {
+                    attempt.step6_rejection_reason =
+                        "fixed_volume_gradient_failed";
+                }
                 Held2ProgressEvent step6_progress;
                 step6_progress.kind = Held2ProgressKind::Certificate;
                 step6_progress.stage = "STAGE II STEP 6";
@@ -3498,7 +4147,7 @@ Held2StageIIResult solve_held2_stage_ii(
                     : "ineligible";
                 step6_progress.reason = attempt.step6_eligible
                     ? "same_major_gap_and_fixed_volume_gradient"
-                    : "step6_gate_failed";
+                    : attempt.step6_rejection_reason;
                 step6_progress.primal_residual = gap;
                 step6_progress.dual_residual =
                     attempt.fixed_volume_gradient_inf_norm;
@@ -3528,32 +4177,78 @@ Held2StageIIResult solve_held2_stage_ii(
                 }
                 if (attempt.cut_eligible && value < lower_bound) {
                     lower_bound = value;
-                    best = make_cut(independent, state.volume);
+                    best = make_cut(independent, state.volume, true);
                 }
+                if (attempt.step6_eligible) {
+                    const bool duplicate_step6_state = std::any_of(
+                        same_major_step6_cuts.begin(),
+                        same_major_step6_cuts.end(),
+                        [&state](const Cut& known) {
+                            return maximum_abs_difference(
+                                       known.state.modified_fractions,
+                                       state.modified_fractions
+                                   )
+                                    <= kHeld2BasinDuplicateComposition.atol
+                                && std::abs(
+                                       std::log(known.state.volume)
+                                           - std::log(state.volume)
+                                   )
+                                    <= kHeld2BasinDuplicateLogVolume.atol;
+                        }
+                    );
+                    if (!duplicate_step6_state) {
+                        same_major_step6_cuts.push_back(
+                            make_cut(independent, state.volume, true)
+                        );
+                    }
+                }
+                const bool qualified = attempt.step5_qualified;
+                const bool step6_eligible = attempt.step6_eligible;
                 result.attempt_trace.push_back(std::move(attempt));
+                if (qualified && !step6_eligible
+                    && same_major_step6_cuts.empty()) {
+                    step5_condition_satisfied = true;
+                    break;
+                }
+                if (step6_eligible) {
+                    step5_condition_satisfied = true;
+                    if (same_major_step6_cuts.size() >= 2) {
+                        break;
+                    }
+                }
             } catch (const std::exception& error) {
                 attempt.callback_error = error.what();
                 attempt.provider_status = "provider_failed";
-                any_failed = true;
                 result.attempt_trace.push_back(std::move(attempt));
             }
         }
         ++result.major_iterations;
         result.lower_starts_per_iteration = std::max(
             result.lower_starts_per_iteration,
-            static_cast<int>(attempt_count)
+            static_cast<int>(
+                result.attempt_trace.size() - attempt_trace_start
+            )
         );
-        if (any_failed || !std::isfinite(lower_bound)) {
-            result.outcome = "indeterminate_lower_search";
+        if (!std::isfinite(lower_bound)) {
+            result.local_attempts_truncated =
+                result.local_attempts_truncated
+                || representative_cap_truncated;
+            result.outcome = representative_cap_truncated
+                ? "resource_limit"
+                : "indeterminate_step5_lower_not_below_upper";
             result.cut_count = static_cast<int>(cuts.size());
             result.distinct_basin_count = static_cast<int>(traced_basins.size());
             return result;
         }
-        if (result.local_attempts_truncated) {
-            result.outcome = "resource_limit";
+        if (!step5_condition_satisfied) {
+            result.outcome = "indeterminate_step5_completion";
             result.cut_count = static_cast<int>(cuts.size());
             result.distinct_basin_count = static_cast<int>(traced_basins.size());
             return result;
+        }
+        if (same_major_step6_cuts.size() == 1
+            && representative_cap_truncated) {
+            result.local_attempts_truncated = true;
         }
         result.bound_history.back().lower_bound = lower_bound;
         result.bound_history.back().lower_bound_available = true;
@@ -3575,11 +4270,97 @@ Held2StageIIResult solve_held2_stage_ii(
                        ) <= kHeld2BasinDuplicateLogVolume.atol;
             }
         );
+        bool new_cut_added = false;
         if (!duplicate_cut) {
             cuts.push_back(std::move(best));
+            new_cut_added = true;
+        } else {
+            const auto known = std::find_if(
+                cuts.begin(),
+                cuts.end(),
+                [&best](const Cut& cut) {
+                    return maximum_abs_difference(
+                               cut.state.modified_fractions,
+                               best.state.modified_fractions
+                           ) <= kHeld2BasinDuplicateComposition.atol
+                        && std::abs(
+                               std::log(cut.state.volume)
+                                   - std::log(best.state.volume)
+                           ) <= kHeld2BasinDuplicateLogVolume.atol;
+                }
+            );
+            if (known != cuts.end()) {
+                known->candidate_phase_eligible = true;
+            }
+        }
+        for (Cut& candidate_cut : same_major_step6_cuts) {
+            const bool duplicate_candidate_cut = std::any_of(
+                cuts.begin(),
+                cuts.end(),
+                [&candidate_cut](const Cut& known) {
+                    return maximum_abs_difference(
+                               known.state.modified_fractions,
+                               candidate_cut.state.modified_fractions
+                           ) <= kHeld2BasinDuplicateComposition.atol
+                        && std::abs(
+                               std::log(known.state.volume)
+                                   - std::log(candidate_cut.state.volume)
+                           ) <= kHeld2BasinDuplicateLogVolume.atol;
+                }
+            );
+            if (!duplicate_candidate_cut) {
+                cuts.push_back(std::move(candidate_cut));
+                new_cut_added = true;
+            } else {
+                const auto known = std::find_if(
+                    cuts.begin(),
+                    cuts.end(),
+                    [&candidate_cut](const Cut& cut) {
+                        return maximum_abs_difference(
+                                   cut.state.modified_fractions,
+                                   candidate_cut.state.modified_fractions
+                               ) <= kHeld2BasinDuplicateComposition.atol
+                            && std::abs(
+                                   std::log(cut.state.volume)
+                                       - std::log(candidate_cut.state.volume)
+                               ) <= kHeld2BasinDuplicateLogVolume.atol;
+                    }
+                );
+                if (known != cuts.end()) {
+                    known->candidate_phase_eligible = true;
+                }
+            }
+        }
+        for (const Held2StageIIPhysicalStart& representative :
+             exploration.representatives) {
+            Cut exploration_cut = make_cut(
+                representative.independent_modified_fractions,
+                representative.volume
+            );
+            const bool duplicate_exploration_cut = std::any_of(
+                cuts.begin(),
+                cuts.end(),
+                [&exploration_cut](const Cut& known) {
+                    return maximum_abs_difference(
+                               known.state.modified_fractions,
+                               exploration_cut.state.modified_fractions
+                           ) <= kHeld2BasinDuplicateComposition.atol
+                        && std::abs(
+                               std::log(known.state.volume)
+                                   - std::log(exploration_cut.state.volume)
+                           ) <= kHeld2BasinDuplicateLogVolume.atol;
+                }
+            );
+            if (!duplicate_exploration_cut) {
+                cuts.push_back(std::move(exploration_cut));
+                new_cut_added = true;
+            }
         }
         result.candidates.clear();
         for (const Cut& cut : cuts) {
+            if (!cut.candidate_phase_eligible) {
+                continue;
+            }
             double value = cut.state.objective;
             for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
                 value += multipliers[coordinate]
@@ -3666,7 +4447,7 @@ Held2StageIIResult solve_held2_stage_ii(
             result.outcome = "candidate_set";
             return result;
         }
-        if (duplicate_cut) {
+        if (!new_cut_added) {
             if (!request_direct_escalation) {
                 request_direct_escalation = true;
                 continue;

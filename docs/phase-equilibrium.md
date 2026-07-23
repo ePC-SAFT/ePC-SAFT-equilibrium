@@ -92,8 +92,18 @@ Those documents begin from the retained Stage-II-indeterminate artifact and do
 not reinterpret it as an equilibrium result. Current source has classified the
 artifact's unit-cube callback failure as bounded binary64 contact, preserves
 ordered trial/accepted-iterate and upper-LP evidence, and reaches successful
-local Ipopt termination for that exact start. It still has no certified
-installed Stage-II candidate set or physical Stage-III result.
+local Ipopt termination for that exact start. The corrected Problem-(65) owner
+now follows Provider-certified pressure branches in a composition-only local
+solve, reconstructs exact reduced derivatives through the volume Schur
+complement, rejects local values above the same-major upper bound, and keeps
+dual-cut eligibility separate from Eq. (66) candidate eligibility.
+Composition-rich vertex seeds expose both aqueous-rich and organic-rich
+basins. Manufactured Step-6 candidates feed the generic Step-8 NLP and pass
+the complete Step-9 physical certificate. The private Perdomo Table-5
+ePC-SAFT screening hypothesis still yields only one same-major Eq. (66)
+candidate after its declared finite search, so its real Step 8 remains
+correctly skipped with `indeterminate_finite_search_stalled`; this is not a
+source-equivalent reproduction of Perdomo's SAFT-gamma-Mie calculation.
 
 ### HELD2 live progress diagnostic
 

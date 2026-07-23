@@ -92,6 +92,34 @@ def test_perdomo_stage_i_first_trial_respects_provider_ionic_domain() -> None:
     assert "status 3" not in first["failure_reason"]
 
 
+def test_perdomo_stage_ii_sobol_trials_respect_provider_ionic_domain() -> None:
+    model = _perdomo_table3_model()
+    coordinate_evidence = _equilibrium._held2_adapter(
+        [0.0, 1.0, -1.0],
+        PERDOMO_TABLE3_FEED,
+        [0.0, 0.0, 0.0],
+    )
+    feed_independent = [coordinate_evidence["modified_feed"][1]]
+
+    result = _equilibrium._held2_stage_ii_basin_explorer(
+        epcsaft.native_sdk(model),
+        298.15,
+        2508.0,
+        [feed_independent],
+        model.parameter_fingerprint,
+        1,
+    )
+
+    assert result["outcome"] == "representatives_found"
+    assert result["failed_evaluation_count"] == 0
+    assert result["completed_evaluation_count"] == 2
+    assert all(
+        evaluation["independent_modified_fractions"][0] <= 0.38 + 1.0e-12
+        and "status 3" not in evaluation["failure_reason"]
+        for evaluation in result["evaluations"]
+    )
+
+
 def test_perdomo_table3_nacl_workflow(held2_live: bool) -> None:
     model = _perdomo_table3_model()
     result = _equilibrium._held2_controller(

@@ -1521,6 +1521,54 @@ py::dict held2_tolerance_audit_evidence(
     }
 }
 
+py::dict held2_stage_ii_pressure_root_reduction_evidence(
+    const std::vector<double>& independent,
+    const std::vector<double>& feed,
+    const std::vector<double>& multipliers,
+    double objective,
+    const std::vector<double>& gradient,
+    const std::vector<double>& hessian
+) {
+    epcsaft_equilibrium::Held2StateEvaluation state;
+    state.objective = objective;
+    state.gradient = gradient;
+    state.hessian = hessian;
+    const epcsaft_equilibrium::Held2StageIIPressureRootReduction reduction =
+        epcsaft_equilibrium::reduce_held2_stage_ii_pressure_root(
+            independent,
+            feed,
+            multipliers,
+            state
+        );
+    py::dict result;
+    result["objective"] = reduction.objective;
+    result["gradient"] = reduction.gradient;
+    result["hessian"] = reduction.hessian;
+    result["pressure_coordinate_gradient"] =
+        reduction.pressure_coordinate_gradient;
+    result["pressure_coordinate_curvature"] =
+        reduction.pressure_coordinate_curvature;
+    return result;
+}
+
+py::dict held2_stage_ii_step5_assessment_evidence(
+    double upper_bound,
+    double local_value,
+    bool local_state_certified
+) {
+    const epcsaft_equilibrium::Held2StageIIStep5Assessment assessment =
+        epcsaft_equilibrium::assess_held2_stage_ii_step5(
+            upper_bound,
+            local_value,
+            local_state_certified
+        );
+    py::dict result;
+    result["qualified"] = assessment.qualified;
+    result["gap"] = assessment.gap;
+    result["reason"] = assessment.reason;
+    return result;
+}
+
 py::dict held2_manufactured_search_objective_evidence(
     const std::vector<double>& charges,
     const std::vector<double>& variables,
@@ -1964,6 +2012,7 @@ py::dict held2_stage_ii_basin_exploration_to_dict(
         py::dict serialized;
         serialized["independent_modified_fractions"] =
             start.independent_modified_fractions;
+        serialized["stable_branch_index"] = start.stable_branch_index;
         serialized["log_volume"] = start.log_volume;
         serialized["volume"] = start.volume;
         serialized["reduced_lower_value"] = start.reduced_lower_value;
@@ -2062,6 +2111,7 @@ py::dict held2_manufactured_stage_ii_basin_explorer(
             0,
             use_direct_escalation,
             direct_evaluation_budget,
+            std::numeric_limits<double>::quiet_NaN(),
             evaluator
         );
     return held2_stage_ii_basin_exploration_to_dict(evaluation);
@@ -2293,6 +2343,7 @@ py::dict held2_installed_stage_ii_basin_explorer(
             sobol_count,
             false,
             0,
+            sdk.total_ion_mole_fraction_max,
             evaluator
         );
     py::dict result = held2_stage_ii_basin_exploration_to_dict(evaluation);
@@ -2711,8 +2762,14 @@ py::dict held2_stage_ii_to_dict(
         item["dual_signs_valid"] = attempt.dual_signs_valid;
         item["physical_kkt_passed"] = attempt.physical_kkt_passed;
         item["cut_eligible"] = attempt.cut_eligible;
+        item["step5_qualified"] = attempt.step5_qualified;
+        item["step5_reason"] = attempt.step5_reason;
         item["step6_eligible"] = attempt.step6_eligible;
         item["step6_gap"] = attempt.step6_gap;
+        item["step6_gap_passed"] = attempt.step6_gap_passed;
+        item["step6_gradient_passed"] = attempt.step6_gradient_passed;
+        item["step6_rejection_reason"] =
+            attempt.step6_rejection_reason;
         item["fixed_volume_gradient_inf_norm"] =
             attempt.fixed_volume_gradient_inf_norm;
         item["fixed_volume_gradient_scale"] =
@@ -3167,6 +3224,7 @@ py::dict held2_installed_controller(
             bounds_evaluator,
             stage_i.reference,
             witnesses,
+            problem.total_ion_mole_fraction_max(),
             stage_ii_major_iteration_cap,
             stage_ii_local_attempt_cap_per_major,
             observer
@@ -3749,6 +3807,23 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("name"),
         py::arg("residual"),
         py::arg("scale") = 0.0
+    );
+    module.def(
+        "_held2_stage_ii_pressure_root_reduction",
+        &held2_stage_ii_pressure_root_reduction_evidence,
+        py::arg("independent"),
+        py::arg("feed"),
+        py::arg("multipliers"),
+        py::arg("objective"),
+        py::arg("gradient"),
+        py::arg("hessian")
+    );
+    module.def(
+        "_held2_stage_ii_step5_assessment",
+        &held2_stage_ii_step5_assessment_evidence,
+        py::arg("upper_bound"),
+        py::arg("local_value"),
+        py::arg("local_state_certified")
     );
     module.def(
         "_held2_adapter",

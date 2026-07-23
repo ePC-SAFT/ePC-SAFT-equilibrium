@@ -864,6 +864,93 @@ def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
     assert all(abs(candidate["lower_gap"]) <= 1.0e-8 for candidate in result["candidates"])
 
 
+def test_held2_step6_candidates_feed_stage8_and_complete_stage9_certification() -> None:
+    stage_ii = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
+    candidates = tuple(
+        (candidate["modified_fractions"][1], candidate["volume"])
+        for candidate in stage_ii["candidates"]
+    )
+
+    stage_iii = _equilibrium._held2_adapter(
+        CHARGES,
+        PHYSICAL_FEED,
+        candidates,
+        "stage_iii",
+    )
+
+    assert stage_ii["outcome"] == "candidate_set"
+    assert len(candidates) == 2
+    assert stage_iii["numerical_status"] == "converged"
+    assert stage_iii["physical_status"] == "accepted"
+    assert stage_iii["feedback"] == "none"
+    assert len(stage_iii["phases"]) == 2
+    assert stage_iii["modified_balance_inf_norm"] < 1.0e-9
+    assert stage_iii["ordinary_balance_inf_norm"] < 1.0e-9
+    assert stage_iii["pressure_stationarity_inf_norm"] < 1.0e-9
+    assert stage_iii["modified_potential_mixed_gap"] < 1.0e-9
+
+
+def test_held2_stage_ii_pressure_root_reduction_uses_exact_schur_complement() -> None:
+    result = _equilibrium._held2_stage_ii_pressure_root_reduction(
+        [0.2, 0.3],
+        [0.25, 0.35],
+        [2.0, -1.0],
+        -7.0,
+        [3.0, 5.0, 0.0],
+        [
+            10.0,
+            2.0,
+            1.0,
+            2.0,
+            8.0,
+            2.0,
+            1.0,
+            2.0,
+            4.0,
+        ],
+    )
+
+    assert result["objective"] == pytest.approx(-6.95)
+    assert result["gradient"] == pytest.approx([1.0, 6.0])
+    assert result["hessian"] == pytest.approx(
+        [
+            9.75,
+            1.5,
+            1.5,
+            7.0,
+        ]
+    )
+    assert result["pressure_coordinate_gradient"] == pytest.approx(0.0)
+    assert result["pressure_coordinate_curvature"] == pytest.approx(4.0)
+
+
+@pytest.mark.parametrize(
+    ("upper", "lower", "certified", "qualified", "reason"),
+    [
+        (-36.0, -37.0, True, True, "lower_not_above_upper"),
+        (-36.0, -36.0 + 5.0e-9, True, True, "lower_equal_within_step6_gate"),
+        (-36.0, -35.9, True, False, "certified_local_above_upper"),
+        (-36.0, -37.0, False, False, "local_state_not_certified"),
+    ],
+)
+def test_held2_stage_ii_step5_requires_source_lower_upper_order(
+    upper: float,
+    lower: float,
+    certified: bool,
+    qualified: bool,
+    reason: str,
+) -> None:
+    result = _equilibrium._held2_stage_ii_step5_assessment(
+        upper,
+        lower,
+        certified,
+    )
+
+    assert result["qualified"] is qualified
+    assert result["reason"] == reason
+    assert result["gap"] == pytest.approx(upper - lower)
+
+
 def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
     first = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
     second = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
@@ -1105,6 +1192,8 @@ def test_held2_stage_ii_highs_upper_lp_handles_nearly_parallel_cuts() -> None:
     assert result["multipliers"] == pytest.approx((0.0,), abs=1.0e-8)
     assert result["primal_feasible"] is True
     assert result["dual_feasible"] is True
+    assert min(result["cut_slacks"]) >= -1.0e-10
+    assert result["primal_residual_inf"] <= 1.0e-10
 
 
 @pytest.mark.parametrize(
