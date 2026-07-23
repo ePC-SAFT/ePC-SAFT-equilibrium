@@ -132,6 +132,28 @@ struct Held2StageIIStep5Assessment {
     bool local_state_certified
 );
 
+struct Held2StageIIStep6Assessment {
+    bool eligible = false;
+    bool gap_passed = false;
+    bool gradient_passed = false;
+    bool pressure_passed = false;
+    double gap = 0.0;
+    double fixed_volume_gradient_inf_norm = 0.0;
+    double fixed_volume_gradient_scale = 0.0;
+    std::string reason = "not_evaluated";
+};
+
+[[nodiscard]] Held2StageIIStep6Assessment assess_held2_stage_ii_step6(
+    double upper_bound,
+    double lower_value,
+    bool step5_qualified,
+    double pressure_residual,
+    const std::vector<double>& fixed_volume_gradient,
+    const std::vector<double>& independent,
+    const std::vector<double>& physical_lower,
+    const std::vector<double>& multipliers
+);
+
 struct Held2PressureScanPoint {
     double log_volume = 0.0;
     double volume = 0.0;
@@ -203,17 +225,6 @@ struct Held2StageICandidate {
     std::vector<double> modified_fractions;
     double volume = 0.0;
     double tpd = 0.0;
-};
-
-struct Held2StageIResult {
-    std::string outcome;
-    int declared_start_count = 0;
-    int completed_start_count = 0;
-    int failed_start_count = 0;
-    std::vector<double> reference_modified_fractions;
-    double reference_volume = 0.0;
-    double minimum_tpd = 0.0;
-    std::vector<Held2StageICandidate> candidates;
 };
 
 struct Held2StageIIBound {
@@ -316,6 +327,32 @@ struct Held2StageIIAttempt {
     std::vector<double> last_valid_physical_variables;
 };
 
+struct Held2StageIIMajorContext {
+    int major_id = -1;
+    int upper_solve_id = -1;
+    double upper_bound = 0.0;
+    std::vector<double> multipliers;
+    std::vector<int> active_cut_ids;
+    std::vector<int> lower_attempt_ids;
+    std::vector<int> current_basin_ids;
+    std::vector<int> pressure_branch_ids;
+    std::vector<int> step5_qualified_attempt_ids;
+    std::vector<int> step6_eligible_attempt_ids;
+    std::vector<int> certificate_failed_attempt_ids;
+};
+
+enum class Held2NextAction {
+    ContinueStageII,
+    RunGlobalEscalation,
+    EnterStageIII,
+    ReturnStageIIIFeedback,
+    AcceptOnePhase,
+    AcceptMultiphase,
+    TerminateIndeterminate,
+};
+
+[[nodiscard]] std::string held2_next_action_name(Held2NextAction action);
+
 struct Held2StageIIResult {
     std::string outcome;
     std::string search_strategy = "continuation_sobol_direct_l_ipopt_v1";
@@ -335,7 +372,9 @@ struct Held2StageIIResult {
     int local_attempt_cap_per_major = 0;
     bool local_attempts_truncated = false;
     bool direct_escalation_used = false;
+    Held2NextAction next_action = Held2NextAction::TerminateIndeterminate;
     std::vector<Held2StageIIBound> bound_history;
+    std::vector<Held2StageIIMajorContext> major_contexts;
     std::vector<Held2StageIIAttempt> attempt_trace;
     std::vector<Held2StageIICandidate> candidates;
 };
@@ -438,11 +477,6 @@ struct Held2StageIIIResult {
     const Held2PhysicalPhaseBlock& block
 );
 
-[[nodiscard]] Held2StageIResult solve_held2_manufactured_stage_i(
-    const std::vector<double>& charges,
-    const std::vector<double>& physical_feed
-);
-
 [[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed
@@ -458,7 +492,8 @@ struct Held2StageIIIResult {
     double total_ion_mole_fraction_max,
     int major_iteration_cap,
     int local_attempt_cap_per_major,
-    Held2ProgressObserver* observer = nullptr
+    Held2ProgressObserver* observer = nullptr,
+    const std::string& evaluation_source = "provider_exact"
 );
 
 [[nodiscard]] Held2StageIIINlpEvaluation evaluate_held2_manufactured_stage_iii_nlp(

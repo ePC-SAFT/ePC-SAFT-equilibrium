@@ -786,40 +786,6 @@ Held2SearchRun solve_held2_vector_search(
     return problem->result();
 }
 
-Held2SearchRun solve_held2_search(
-    const Held2StateEvaluator& evaluator,
-    const std::vector<double>& reference_variables,
-    const Held2StateEvaluation& reference,
-    bool use_tpd,
-    const std::vector<double>& initial,
-    const std::vector<double>& lower,
-    const std::vector<double>& upper,
-    Held2ProgressObserver* observer = nullptr,
-    const std::string& progress_stage = {},
-    int progress_major = -1,
-    int progress_attempt = -1
-) {
-    Held2SearchObjectiveEvaluator objective(
-        evaluator,
-        reference_variables,
-        reference,
-        use_tpd
-    );
-    return solve_held2_vector_search(
-        [objective = std::move(objective)](
-            const std::vector<double>& variables
-        ) {
-            return objective.evaluate(variables);
-        },
-        initial,
-        lower,
-        upper,
-        observer,
-        progress_stage,
-        progress_major,
-        progress_attempt
-    );
-}
 
 Held2StageIISimplexChart evaluate_stage_ii_simplex_chart(
     const std::vector<double>& lower,
@@ -1720,6 +1686,95 @@ Held2StageIIStep5Assessment assess_held2_stage_ii_step5(
     }
     result.reason = "certified_local_above_upper";
     return result;
+}
+
+Held2StageIIStep6Assessment assess_held2_stage_ii_step6(
+    double upper_bound,
+    double lower_value,
+    bool step5_qualified,
+    double pressure_residual,
+    const std::vector<double>& fixed_volume_gradient,
+    const std::vector<double>& independent,
+    const std::vector<double>& physical_lower,
+    const std::vector<double>& multipliers
+) {
+    const std::size_t dimension = multipliers.size();
+    if (!std::isfinite(upper_bound) || !std::isfinite(lower_value)
+        || !std::isfinite(pressure_residual)
+        || fixed_volume_gradient.size() != dimension
+        || independent.size() != dimension
+        || physical_lower.size() != dimension) {
+        throw std::invalid_argument(
+            "HELD2 Stage-II Step-6 evidence is incomplete"
+        );
+    }
+    Held2StageIIStep6Assessment result;
+    result.gap = upper_bound - lower_value;
+    result.gap_passed = audit_held2_tolerance(
+        kHeld2Step6Gap, result.gap
+    ).passed;
+    result.pressure_passed = audit_held2_tolerance(
+        kHeld2RootPressure, pressure_residual
+    ).passed;
+    result.gradient_passed = step5_qualified;
+    for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+        if (independent[coordinate]
+            <= physical_lower[coordinate] + kHeld2BoundActivity.atol) {
+            continue;
+        }
+        const double residual =
+            fixed_volume_gradient[coordinate] - multipliers[coordinate];
+        const double scale = std::max(
+            std::abs(fixed_volume_gradient[coordinate]),
+            std::abs(multipliers[coordinate])
+        );
+        result.fixed_volume_gradient_inf_norm = std::max(
+            result.fixed_volume_gradient_inf_norm, std::abs(residual)
+        );
+        result.fixed_volume_gradient_scale = std::max(
+            result.fixed_volume_gradient_scale, scale
+        );
+        result.gradient_passed = result.gradient_passed
+            && audit_held2_tolerance(
+                   kHeld2Step6Gradient, residual, scale
+               ).passed;
+    }
+    result.eligible = step5_qualified
+        && result.gap_passed
+        && result.gradient_passed
+        && result.pressure_passed;
+    if (result.eligible) {
+        result.reason = "eligible";
+    } else if (!step5_qualified) {
+        result.reason = "step5_lower_not_qualified";
+    } else if (!result.gap_passed) {
+        result.reason = "same_major_gap_failed";
+    } else if (!result.pressure_passed) {
+        result.reason = "pressure_certificate_failed";
+    } else {
+        result.reason = "fixed_volume_gradient_failed";
+    }
+    return result;
+}
+
+std::string held2_next_action_name(Held2NextAction action) {
+    switch (action) {
+        case Held2NextAction::ContinueStageII:
+            return "continue_stage_ii";
+        case Held2NextAction::RunGlobalEscalation:
+            return "run_global_escalation";
+        case Held2NextAction::EnterStageIII:
+            return "enter_stage_iii";
+        case Held2NextAction::ReturnStageIIIFeedback:
+            return "return_stage_iii_feedback";
+        case Held2NextAction::AcceptOnePhase:
+            return "accept_one_phase";
+        case Held2NextAction::AcceptMultiphase:
+            return "accept_multiphase";
+        case Held2NextAction::TerminateIndeterminate:
+            return "terminate_indeterminate";
+    }
+    throw std::invalid_argument("unknown HELD2 next action");
 }
 
 Held2StageIIChartCoordinate normalize_held2_stage_ii_chart_coordinate(
@@ -2798,159 +2853,10 @@ Held2StateEvaluation evaluate_held2_phase_block(
     return result;
 }
 
-Held2StageIResult solve_held2_manufactured_stage_i(
+Held2StageIIResult solve_held2_manufactured_stage_ii(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed
 ) {
-    const Held2Coordinates coordinates = make_held2_coordinates(charges);
-    if (coordinates.independent_indices.size() != 1) {
-        throw std::invalid_argument(
-            "manufactured HELD2 Stage I requires one independent modified composition"
-        );
-    }
-    const std::vector<double> modified_feed = held2_transform_physical_fractions(
-        coordinates,
-        physical_feed
-    );
-    const auto independent_retained = static_cast<std::size_t>(
-        std::find(
-            coordinates.retained_indices.begin(),
-            coordinates.retained_indices.end(),
-            coordinates.independent_indices.front()
-        ) - coordinates.retained_indices.begin()
-    );
-    const double feed_independent = modified_feed[independent_retained];
-    const Held2StateEvaluator evaluator = [coordinates](
-        const std::vector<double>& independent,
-        double log_volume
-    ) {
-        return evaluate_manufactured_state_impl(
-            coordinates,
-            independent,
-            log_volume
-        );
-    };
-
-    const std::vector<double> reference_initial = {feed_independent, 0.0};
-    const Held2StateEvaluation initial_reference = evaluator({feed_independent}, 0.0);
-    const Held2SearchRun reference_run = solve_held2_search(
-        evaluator,
-        reference_initial,
-        initial_reference,
-        false,
-        reference_initial,
-        {feed_independent, std::log(0.5)},
-        {feed_independent, std::log(1.5)}
-    );
-    Held2StageIResult result;
-    result.declared_start_count = 10 * static_cast<int>(charges.size());
-    result.minimum_tpd = std::numeric_limits<double>::infinity();
-    if (!reference_run.solver_converged || !reference_run.callback_error.empty()
-        || reference_run.variables.size() != 2) {
-        result.outcome = "indeterminate";
-        return result;
-    }
-    const Held2StateEvaluation reference = evaluator(
-        {reference_run.variables.front()},
-        reference_run.variables.back()
-    );
-    result.reference_modified_fractions = reference.modified_fractions;
-    result.reference_volume = reference.volume;
-
-    const double lower_composition = coordinates.independent_lower_bounds.front();
-    const double upper_composition = std::nextafter(
-        coordinates.independent_upper_bounds.front(),
-        lower_composition
-    );
-    const std::vector<double> lower = {lower_composition, std::log(0.5)};
-    const std::vector<double> upper = {upper_composition, std::log(1.5)};
-    std::mt19937 generator(kStageISeed);
-    std::uniform_real_distribution<double> composition_distribution(
-        lower_composition,
-        upper_composition
-    );
-    std::uniform_real_distribution<double> log_volume_distribution(
-        lower.back(),
-        upper.back()
-    );
-    std::vector<std::vector<double>> starts;
-    starts.reserve(static_cast<std::size_t>(result.declared_start_count));
-    starts.push_back({0.2, 0.0});
-    starts.push_back({0.8, 0.0});
-    while (starts.size() < static_cast<std::size_t>(result.declared_start_count)) {
-        starts.push_back({
-            composition_distribution(generator),
-            log_volume_distribution(generator),
-        });
-    }
-    const std::vector<double> reference_variables = {
-        reference_run.variables.front(),
-        reference_run.variables.back(),
-    };
-    for (const std::vector<double>& start : starts) {
-        const Held2SearchRun run = solve_held2_search(
-            evaluator,
-            reference_variables,
-            reference,
-            true,
-            start,
-            lower,
-            upper
-        );
-        if (!run.solver_converged || !run.callback_error.empty() || run.variables.size() != 2) {
-            ++result.failed_start_count;
-            continue;
-        }
-        ++result.completed_start_count;
-        Held2StateEvaluation state = evaluator({run.variables.front()}, run.variables.back());
-        double tpd = state.objective - reference.objective;
-        for (std::size_t index = 0; index < state.gradient.size(); ++index) {
-            tpd -= reference.gradient[index]
-                * (run.variables[index] - reference_variables[index]);
-        }
-        result.minimum_tpd = std::min(result.minimum_tpd, tpd);
-        if (!audit_held2_tolerance(kHeld2TpdNegativeMargin, tpd).passed) {
-            continue;
-        }
-        const bool duplicate = std::any_of(
-            result.candidates.begin(),
-            result.candidates.end(),
-            [&state](const Held2StageICandidate& candidate) {
-                return maximum_abs_difference(
-                           candidate.modified_fractions,
-                           state.modified_fractions
-                       ) <= kHeld2BasinDuplicateComposition.atol
-                    && std::abs(
-                           std::log(candidate.volume) - std::log(state.volume)
-                       ) <= kHeld2BasinDuplicateLogVolume.atol;
-            }
-        );
-        if (!duplicate) {
-            result.candidates.push_back({state.modified_fractions, state.volume, tpd});
-        }
-    }
-    std::sort(
-        result.candidates.begin(),
-        result.candidates.end(),
-        [](const Held2StageICandidate& left, const Held2StageICandidate& right) {
-            return left.modified_fractions < right.modified_fractions;
-        }
-    );
-    if (result.failed_start_count != 0) {
-        result.outcome = "indeterminate";
-    } else if (!result.candidates.empty()) {
-        result.outcome = "negative_tpd";
-    } else {
-        result.outcome = "no_negative_found";
-    }
-    return result;
-}
-
-Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
-    const std::vector<double>& charges,
-    const std::vector<double>& physical_feed
-) {
-    constexpr int major_iteration_cap = 100;
     const Held2Coordinates coordinates = make_held2_coordinates(charges);
     if (coordinates.independent_indices.size() != 1) {
         throw std::invalid_argument(
@@ -2961,509 +2867,55 @@ Held2StageIIResult solve_held2_manufactured_stage_ii_impl(
         coordinates,
         physical_feed
     );
-    const auto independent_retained = static_cast<std::size_t>(
-        std::find(
-            coordinates.retained_indices.begin(),
-            coordinates.retained_indices.end(),
-            coordinates.independent_indices.front()
-        ) - coordinates.retained_indices.begin()
+    const auto retained = std::find(
+        coordinates.retained_indices.begin(),
+        coordinates.retained_indices.end(),
+        coordinates.independent_indices.front()
     );
-    const double feed = modified_feed[independent_retained];
+    if (retained == coordinates.retained_indices.end()) {
+        throw std::invalid_argument(
+            "manufactured HELD2 independent coordinate is not retained"
+        );
+    }
+    const std::size_t retained_position = static_cast<std::size_t>(
+        retained - coordinates.retained_indices.begin()
+    );
+    const double feed = modified_feed[retained_position];
     const Held2StateEvaluator evaluator = [coordinates](
         const std::vector<double>& independent,
         double log_volume
     ) {
-        return evaluate_manufactured_state_impl(
+        Held2StateEvaluation state = evaluate_manufactured_state_impl(
             coordinates,
             independent,
             log_volume
         );
+        state.pressure_stationarity_relative *= -1.0;
+        state.pressure_stationarity_derivative_log_volume *= -1.0;
+        return state;
     };
-    std::vector<Held2StateEvaluation> cuts = {
-        evaluator({feed}, 0.0),
-        evaluator({0.5 * feed}, 0.0),
-        evaluator({0.5 * (1.0 + feed)}, 0.0),
+    const Held2VolumeBoundsEvaluator volume_bounds = [](
+        const std::vector<double>&
+    ) {
+        return std::array<double, 2>{0.5, 1.5};
     };
-    const double feed_gibbs = cuts.front().objective;
-    const double lower_composition = coordinates.independent_lower_bounds.front();
-    const double upper_composition = std::nextafter(
-        coordinates.independent_upper_bounds.front(),
-        lower_composition
-    );
-    const std::vector<double> lower = {lower_composition, std::log(0.5)};
-    const std::vector<double> upper = {upper_composition, std::log(1.5)};
-    Held2StageIIResult result;
-    result.search_strategy = "continuation_sobol_direct_l_ipopt_v1";
-    result.global_explorer = "continuation_sobol_direct_l";
-    result.lower_starts_per_iteration = 0;
-    std::vector<Held2StateEvaluation> traced_basins;
-    bool request_direct_escalation = false;
-
-    for (int major = 0; major < major_iteration_cap; ++major) {
-        Held2StageIIUpperProblem upper_problem;
-        upper_problem.multiplier_lower_bounds = {
-            -std::numeric_limits<double>::infinity(),
-        };
-        upper_problem.multiplier_upper_bounds = {
-            std::numeric_limits<double>::infinity(),
-        };
-        upper_problem.cuts.reserve(cuts.size() + 1);
-        for (std::size_t cut_index = 0; cut_index < cuts.size(); ++cut_index) {
-            const Held2StateEvaluation& cut = cuts[cut_index];
-            upper_problem.cuts.push_back({
-                static_cast<int>(cut_index),
-                cut.objective,
-                {feed - cut.modified_fractions[independent_retained]},
-            });
-        }
-        upper_problem.cuts.push_back({
-            static_cast<int>(cuts.size()),
-            feed_gibbs,
-            {0.0},
-        });
-        const Held2StageIIUpperResult upper_solve =
-            solve_held2_stage_ii_upper_highs(upper_problem);
-        if (upper_solve.outcome != "optimal"
-            || upper_solve.multipliers.size() != 1) {
-            result.outcome = "indeterminate";
-            result.cut_count = static_cast<int>(cuts.size());
-            return result;
-        }
-        const double upper_bound = upper_solve.upper_bound;
-        const double multiplier = upper_solve.multipliers.front();
-
-        Held2StateEvaluation lower_reference;
-        lower_reference.gradient = {multiplier, 0.0};
-        lower_reference.hessian.assign(4, 0.0);
-        const std::vector<double> lower_reference_variables = {feed, 0.0};
-        std::vector<std::vector<double>> starts;
-        std::vector<std::string> start_sources;
-        {
-            std::vector<Held2StageIIBasinSeed> seeds;
-            for (const Held2StateEvaluation& basin : traced_basins) {
-                seeds.push_back({
-                    {basin.modified_fractions[independent_retained]},
-                    "continuation",
-                });
-            }
-            for (const Held2StateEvaluation& cut : cuts) {
-                seeds.push_back({
-                    {cut.modified_fractions[independent_retained]},
-                    "cut_state",
-                });
-            }
-            seeds.push_back({{0.2}, "stage_i_witness"});
-            seeds.push_back({{0.8}, "stage_i_witness"});
-            seeds.push_back({{feed}, "homogeneous_reference"});
-            seeds.push_back({
-                {lower_composition + 0.05 * (upper_composition - lower_composition)},
-                "boundary_aware_seed",
-            });
-            seeds.push_back({
-                {upper_composition - 0.05 * (upper_composition - lower_composition)},
-                "boundary_aware_seed",
-            });
-            const Held2StageIIBasinEvaluator basin_evaluator = [
-                &coordinates,
-                &evaluator,
-                multiplier,
-                feed,
-                independent_retained
-            ](const std::vector<double>& independent) {
-                Held2StageIIBasinEvaluation evaluation;
-                evaluation.independent_modified_fractions = independent;
-                const Held2StateEvaluator pressure_evaluator = [&evaluator](
-                    const std::vector<double>& composition,
-                    double log_volume
-                ) {
-                    Held2StateEvaluation state = evaluator(composition, log_volume);
-                    state.pressure_stationarity_relative *= -1.0;
-                    state.pressure_stationarity_derivative_log_volume *= -1.0;
-                    return state;
-                };
-                evaluation.pressure_envelope = evaluate_held2_pressure_envelope(
-                    independent,
-                    {0.5, 1.5},
-                    pressure_evaluator,
-                    64,
-                    8
-                );
-                if (evaluation.pressure_envelope.outcome != "selected"
-                    && evaluation.pressure_envelope.failure_reason
-                        != "stable_objective_tie") {
-                    evaluation.failure_reason =
-                        evaluation.pressure_envelope.failure_reason;
-                    return evaluation;
-                }
-                for (const Held2PressureRoot& root :
-                     evaluation.pressure_envelope.roots) {
-                    if (root.mechanical_class == "strict_stable"
-                        && !root.boundary) {
-                        evaluation.reduced_lower_value = std::min(
-                            evaluation.reduced_lower_value,
-                            root.objective + multiplier * (
-                                feed
-                                - root.state.modified_fractions[
-                                    independent_retained
-                                ]
-                            )
-                        );
-                    }
-                }
-                if (!std::isfinite(evaluation.reduced_lower_value)) {
-                    evaluation.failure_reason = "no_strict_stable_root";
-                    return evaluation;
-                }
-                evaluation.certified = true;
-                return evaluation;
-            };
-            const Held2StageIIBasinExplorationResult exploration =
-                explore_held2_stage_ii_basins(
-                    coordinates,
-                    seeds,
-                    12,
-                    request_direct_escalation,
-                    24,
-                    std::numeric_limits<double>::quiet_NaN(),
-                    basin_evaluator
-                );
-            result.exploration_evaluation_count +=
-                exploration.completed_evaluation_count;
-            result.exploration_failure_count +=
-                exploration.failed_evaluation_count;
-            result.exploration_representative_count += static_cast<int>(
-                exploration.representatives.size()
-            );
-            result.duplicate_representative_count +=
-                exploration.duplicate_start_count;
-            result.direct_escalation_used = result.direct_escalation_used
-                || exploration.direct_escalation_used;
-            if (exploration.outcome != "representatives_found") {
-                result.outcome = "indeterminate_exploration_failure";
-                result.cut_count = static_cast<int>(cuts.size());
-                return result;
-            }
-            for (const Held2StageIIPhysicalStart& representative :
-                 exploration.representatives) {
-                starts.push_back({
-                    representative.independent_modified_fractions.front(),
-                    representative.log_volume,
-                });
-                start_sources.push_back(representative.source);
-            }
-            result.lower_starts_per_iteration = std::max(
-                result.lower_starts_per_iteration,
-                static_cast<int>(starts.size())
-            );
-        }
-        double lower_bound = std::numeric_limits<double>::infinity();
-        Held2StateEvaluation best_state;
-        bool lower_failed = false;
-        for (std::size_t start_index = 0; start_index < starts.size(); ++start_index) {
-            const std::vector<double>& start = starts[start_index];
-            Held2StageIIAttempt attempt;
-            attempt.attempt_id = static_cast<int>(result.attempt_trace.size());
-            attempt.major_iteration = major;
-            attempt.start_index = static_cast<int>(start_index);
-            attempt.start_source = start_sources[start_index];
-            attempt.provider_status = "manufactured_oracle";
-            attempt.internal_start = start;
-            attempt.same_major_upper_bound = upper_bound;
-            attempt.same_major_multipliers = {multiplier};
-            const Held2StateEvaluation start_state = evaluator(
-                {start.front()},
-                start.back()
-            );
-            attempt.physical_start_modified_fractions =
-                start_state.modified_fractions;
-            attempt.physical_start_volume = start_state.volume;
-
-            const Held2SearchRun run = solve_held2_search(
-                evaluator,
-                lower_reference_variables,
-                lower_reference,
-                true,
-                start,
-                lower,
-                upper
-            );
-            attempt.solver_status = run.solver_status;
-            attempt.solver_converged = run.solver_converged;
-            attempt.callback_error = run.callback_error;
-            attempt.internal_terminal = run.variables;
-            attempt.lower_bound_multipliers = run.lower_bound_multipliers;
-            attempt.upper_bound_multipliers = run.upper_bound_multipliers;
-            if (!run.solver_converged || !run.callback_error.empty()
-                || run.variables.size() != 2) {
-                lower_failed = true;
-                result.attempt_trace.push_back(std::move(attempt));
-                continue;
-            }
-            Held2StateEvaluation state = evaluator(
-                {run.variables.front()},
-                run.variables.back()
-            );
-            const double value = state.objective
-                + multiplier * (feed - state.modified_fractions[independent_retained]);
-            attempt.terminal_modified_fractions = state.modified_fractions;
-            attempt.terminal_volume = state.volume;
-            attempt.objective = state.objective;
-            attempt.lower_value = value;
-            attempt.pressure_residual = state.pressure_stationarity_relative;
-            attempt.pressure_passed = audit_held2_tolerance(
-                kHeld2RootPressure, state.pressure_stationarity_relative
-            ).passed;
-
-            if (run.lower_bound_multipliers.size() == run.variables.size()
-                && run.upper_bound_multipliers.size() == run.variables.size()) {
-                const std::array<double, 2> lower_gradient = {
-                    state.gradient.front() - multiplier,
-                    state.gradient.back(),
-                };
-                double stationarity_inf = 0.0;
-                double complementarity_inf = 0.0;
-                double dual_sign_violation = 0.0;
-                bool dual_signs_valid = true;
-                for (std::size_t index = 0; index < run.variables.size(); ++index) {
-                    dual_sign_violation = std::max({
-                        dual_sign_violation,
-                        -run.lower_bound_multipliers[index],
-                        -run.upper_bound_multipliers[index],
-                    });
-                    dual_signs_valid = dual_signs_valid
-                        && audit_held2_tolerance(
-                            kHeld2Stage2DualSign,
-                            std::max({
-                                0.0,
-                                -run.lower_bound_multipliers[index],
-                                -run.upper_bound_multipliers[index],
-                            })
-                        ).passed;
-                    stationarity_inf = std::max(
-                        stationarity_inf,
-                        std::abs(
-                            lower_gradient[index]
-                            - run.lower_bound_multipliers[index]
-                            + run.upper_bound_multipliers[index]
-                        )
-                    );
-                    complementarity_inf = std::max(
-                        complementarity_inf,
-                        std::abs(
-                            (run.variables[index] - lower[index])
-                            * run.lower_bound_multipliers[index]
-                        )
-                    );
-                    complementarity_inf = std::max(
-                        complementarity_inf,
-                        std::abs(
-                            (upper[index] - run.variables[index])
-                            * run.upper_bound_multipliers[index]
-                        )
-                    );
-                }
-                attempt.chart_kkt_inf_norm = stationarity_inf;
-                // The manufactured one-dimensional composition chart is the
-                // physical coordinate itself, so the pullback is the identity.
-                attempt.physical_kkt_inf_norm = stationarity_inf;
-                attempt.complementarity_inf_norm = complementarity_inf;
-                attempt.primal_inf_norm = 0.0;
-                attempt.dual_sign_violation_inf_norm = dual_sign_violation;
-                attempt.dual_pullback_inf_norm = 0.0;
-                attempt.dual_pullback_scale = std::max({
-                    std::abs(run.lower_bound_multipliers.front()),
-                    std::abs(run.upper_bound_multipliers.front()),
-                    std::abs(run.lower_bound_multipliers.back()),
-                    std::abs(run.upper_bound_multipliers.back()),
-                });
-                attempt.dual_signs_valid = dual_signs_valid;
-                attempt.physical_kkt_passed = attempt.pressure_passed
-                    && dual_signs_valid
-                    && audit_held2_tolerance(
-                           kHeld2Stage2Stationarity, stationarity_inf
-                       ).passed
-                    && audit_held2_tolerance(
-                           kHeld2Stage2Complementarity, complementarity_inf
-                       ).passed;
-            }
-            attempt.cut_eligible = attempt.physical_kkt_passed;
-            const double lower_gap = upper_bound - value;
-            attempt.step6_gap = lower_gap;
-            attempt.fixed_volume_gradient_inf_norm = std::abs(
-                state.gradient.front() - multiplier
-            );
-            attempt.fixed_volume_gradient_scale = std::max(
-                std::abs(state.gradient.front()), std::abs(multiplier)
-            );
-            attempt.step6_eligible = attempt.cut_eligible
-                && audit_held2_tolerance(kHeld2Step6Gap, lower_gap).passed
-                && audit_held2_tolerance(
-                       kHeld2Step6Gradient,
-                       attempt.fixed_volume_gradient_inf_norm,
-                       attempt.fixed_volume_gradient_scale
-                   ).passed;
-
-            const auto basin = std::find_if(
-                traced_basins.begin(),
-                traced_basins.end(),
-                [&state](const Held2StateEvaluation& known) {
-                    return maximum_abs_difference(
-                               known.modified_fractions,
-                               state.modified_fractions
-                           ) <= kHeld2BasinDuplicateComposition.atol
-                        && std::abs(
-                               std::log(known.volume) - std::log(state.volume)
-                           ) <= kHeld2BasinDuplicateLogVolume.atol;
-                }
-            );
-            if (basin == traced_basins.end()) {
-                attempt.basin_id = static_cast<int>(traced_basins.size());
-                traced_basins.push_back(state);
-            } else {
-                ++result.duplicate_terminal_count;
-                attempt.basin_id = static_cast<int>(
-                    std::distance(traced_basins.begin(), basin)
-                );
-            }
-            result.attempt_trace.push_back(std::move(attempt));
-            if (value < lower_bound) {
-                lower_bound = value;
-                best_state = state;
-            }
-        }
-        ++result.major_iterations;
-        if (lower_failed || !std::isfinite(lower_bound)) {
-            result.outcome = "indeterminate";
-            result.cut_count = static_cast<int>(cuts.size());
-            return result;
-        }
-        result.bound_history.push_back({
-            lower_bound,
-            true,
-            upper_bound,
-            {multiplier},
-            static_cast<int>(cuts.size()),
-            upper_solve.solver,
-            upper_solve.solver_version,
-            upper_solve.solver_status,
-            upper_solve.primal_feasible,
-            upper_solve.dual_feasible,
-            upper_solve.primal_residual_inf,
-            upper_solve.primal_scale,
-            upper_solve.dual_residual_inf,
-            upper_solve.dual_scale,
-            upper_solve.complementarity_inf,
-            upper_solve.cut_slacks,
-            upper_solve.cut_duals,
-            upper_solve.active_cut_ids,
-        });
-        const bool duplicate = std::any_of(
-            cuts.begin(),
-            cuts.end(),
-            [&best_state](const Held2StateEvaluation& cut) {
-                return maximum_abs_difference(
-                           cut.modified_fractions,
-                           best_state.modified_fractions
-                       ) <= kHeld2BasinDuplicateComposition.atol
-                    && std::abs(
-                           std::log(cut.volume) - std::log(best_state.volume)
-                       ) <= kHeld2BasinDuplicateLogVolume.atol;
-            }
-        );
-        if (!duplicate) {
-            cuts.push_back(best_state);
-        }
-        result.candidates.clear();
-        for (const Held2StateEvaluation& cut : cuts) {
-            const double lower_value = cut.objective
-                + multiplier * (feed - cut.modified_fractions[independent_retained]);
-            const double gap = upper_bound - lower_value;
-            if (audit_held2_tolerance(kHeld2Step6Gap, gap).passed
-                && audit_held2_tolerance(
-                       kHeld2Step6Gradient,
-                       cut.gradient.front() - multiplier,
-                       std::max(std::abs(cut.gradient.front()), std::abs(multiplier))
-                   ).passed
-                && audit_held2_tolerance(
-                       kHeld2RootPressure, cut.gradient.back()
-                   ).passed) {
-                bool duplicate_candidate = false;
-                bool unresolved_identity = false;
-                for (const Held2StageIICandidate& known : result.candidates) {
-                    const double composition_distance = maximum_abs_difference(
-                        known.modified_fractions, cut.modified_fractions
-                    );
-                    const double log_volume_distance = std::abs(
-                        std::log(known.volume) - std::log(cut.volume)
-                    );
-                    if (composition_distance
-                            <= kHeld2BasinDuplicateComposition.atol
-                        && log_volume_distance
-                            <= kHeld2BasinDuplicateLogVolume.atol) {
-                        duplicate_candidate = true;
-                        break;
-                    }
-                    if (!audit_held2_tolerance(
-                            kHeld2CandidateDistinctComposition,
-                            composition_distance
-                        ).passed
-                        && !audit_held2_tolerance(
-                            kHeld2CandidateDistinctLogVolume,
-                            log_volume_distance
-                        ).passed) {
-                        unresolved_identity = true;
-                        break;
-                    }
-                }
-                if (unresolved_identity) {
-                    ++result.unresolved_candidate_identity_count;
-                } else if (!duplicate_candidate) {
-                    result.candidates.push_back({
-                        cut.modified_fractions,
-                        {cut.modified_fractions[independent_retained]},
-                        cut.volume,
-                        std::log(cut.volume),
-                        gap,
-                    });
-                }
-            }
-        }
-        if (result.unresolved_candidate_identity_count != 0) {
-            result.outcome = "indeterminate_candidate_identity";
-            result.cut_count = static_cast<int>(cuts.size());
-            result.distinct_basin_count = static_cast<int>(traced_basins.size());
-            return result;
-        }
-        if (result.candidates.size() > 1) {
-            result.outcome = "candidate_set";
-            result.cut_count = static_cast<int>(cuts.size());
-            result.distinct_basin_count = static_cast<int>(traced_basins.size());
-            return result;
-        }
-        if (duplicate) {
-            if (!request_direct_escalation) {
-                request_direct_escalation = true;
-                continue;
-            }
-            result.outcome = "indeterminate_finite_search_stalled";
-            result.cut_count = static_cast<int>(cuts.size());
-            result.distinct_basin_count = static_cast<int>(traced_basins.size());
-            return result;
-        }
-    }
-    result.outcome = "resource_limit";
-    result.cut_count = static_cast<int>(cuts.size());
-    result.distinct_basin_count = static_cast<int>(traced_basins.size());
-    return result;
-}
-
-Held2StageIIResult solve_held2_manufactured_stage_ii(
-    const std::vector<double>& charges,
-    const std::vector<double>& physical_feed
-) {
-    return solve_held2_manufactured_stage_ii_impl(
-        charges,
-        physical_feed
+    const Held2StateEvaluation reference = evaluator({feed}, 0.0);
+    const std::vector<Held2StageICandidate> stage_i_candidates = {
+        {evaluator({0.2}, 0.0).modified_fractions, 1.0, -1.0},
+        {evaluator({0.8}, 0.0).modified_fractions, 1.0, -1.0},
+    };
+    return solve_held2_stage_ii(
+        coordinates,
+        physical_feed,
+        evaluator,
+        volume_bounds,
+        reference,
+        stage_i_candidates,
+        std::numeric_limits<double>::quiet_NaN(),
+        100,
+        64,
+        nullptr,
+        "manufactured_oracle"
     );
 }
 
@@ -3477,7 +2929,8 @@ Held2StageIIResult solve_held2_stage_ii(
     double total_ion_mole_fraction_max,
     int major_iteration_cap,
     int local_attempt_cap_per_major,
-    Held2ProgressObserver* observer
+    Held2ProgressObserver* observer,
+    const std::string& evaluation_source
 ) {
     if (major_iteration_cap <= 0 || local_attempt_cap_per_major <= 0) {
         throw std::invalid_argument(
@@ -3582,12 +3035,10 @@ Held2StageIIResult solve_held2_stage_ii(
         Held2StateEvaluation state;
         std::vector<double> independent;
         std::vector<double> fixed_volume_gradient;
-        bool candidate_phase_eligible = false;
     };
     const auto make_cut = [&evaluator, dimension](
         const std::vector<double>& independent,
-        double volume,
-        bool candidate_phase_eligible = false
+        double volume
     ) {
         if (!(volume > 0.0) || !std::isfinite(volume)) {
             throw std::invalid_argument("HELD2 Stage II cut volume is invalid");
@@ -3602,7 +3053,6 @@ Held2StageIIResult solve_held2_stage_ii(
             state,
             independent,
             std::vector<double>(state.gradient.begin(), state.gradient.end() - 1),
-            candidate_phase_eligible,
         };
     };
     const auto make_pressure_cut = [
@@ -3687,9 +3137,12 @@ Held2StageIIResult solve_held2_stage_ii(
     }
     const double feed_gibbs = reference.objective;
     std::vector<Held2StateEvaluation> traced_basins;
-    bool request_direct_escalation = false;
+    bool global_escalation_used = false;
+    bool run_global_escalation = false;
 
     for (int major = 0; major < major_iteration_cap; ++major) {
+        const bool escalated_major = run_global_escalation;
+        run_global_escalation = false;
         Held2StageIIUpperProblem upper_problem;
         upper_problem.multiplier_lower_bounds.assign(
             dimension, -std::numeric_limits<double>::infinity()
@@ -3757,13 +3210,32 @@ Held2StageIIResult solve_held2_stage_ii(
             upper_solve.cut_duals,
             upper_solve.active_cut_ids,
         });
+        Held2StageIIMajorContext major_context;
+        major_context.major_id = major;
+        major_context.upper_solve_id = major;
+        major_context.upper_bound = upper_bound;
+        major_context.multipliers = multipliers;
+        major_context.active_cut_ids = upper_solve.active_cut_ids;
+        result.major_contexts.push_back(std::move(major_context));
 
         std::vector<Held2StageIIBasinSeed> seeds;
         for (const Held2StateEvaluation& basin : traced_basins) {
             seeds.push_back({independent_from_state(basin), "continuation"});
         }
-        for (const Cut& cut : cuts) {
-            seeds.push_back({cut.independent, "cut_state"});
+        if (major == 0 || escalated_major) {
+            for (const Cut& cut : cuts) {
+                seeds.push_back({cut.independent, "cut_state"});
+            }
+        } else {
+            for (int active_cut_id : upper_solve.active_cut_ids) {
+                if (active_cut_id >= 0
+                    && static_cast<std::size_t>(active_cut_id) < cuts.size()) {
+                    seeds.push_back({
+                        cuts[static_cast<std::size_t>(active_cut_id)].independent,
+                        "cut_state",
+                    });
+                }
+            }
         }
         for (const Held2StageICandidate& candidate : stage_i_candidates) {
             if (candidate.modified_fractions.size() == modified_feed.size()) {
@@ -3773,23 +3245,25 @@ Held2StageIIResult solve_held2_stage_ii(
             }
         }
         seeds.push_back({feed, "homogeneous_reference"});
-        for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-            std::vector<double> low = feed;
-            low[coordinate] = physical_lower[coordinate]
-                + 0.05 * (feed[coordinate] - physical_lower[coordinate]);
-            seeds.push_back({std::move(low), "boundary_aware_seed"});
-        }
-        for (std::size_t vertex = 0; vertex < dimension; ++vertex) {
-            std::vector<double> cube(dimension, 0.05);
-            cube[vertex] = 0.95;
-            seeds.push_back({
-                held2_map_unit_cube_to_independent_fractions(
-                    coordinates,
-                    cube,
-                    total_ion_mole_fraction_max
-                ),
-                "simplex_vertex_seed",
-            });
+        if (major == 0 || escalated_major) {
+            for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+                std::vector<double> low = feed;
+                low[coordinate] = physical_lower[coordinate]
+                    + 0.05 * (feed[coordinate] - physical_lower[coordinate]);
+                seeds.push_back({std::move(low), "boundary_aware_seed"});
+            }
+            for (std::size_t vertex = 0; vertex < dimension; ++vertex) {
+                std::vector<double> cube(dimension, 0.05);
+                cube[vertex] = 0.95;
+                seeds.push_back({
+                    held2_map_unit_cube_to_independent_fractions(
+                        coordinates,
+                        cube,
+                        total_ion_mole_fraction_max
+                    ),
+                    "simplex_vertex_seed",
+                });
+            }
         }
         const Held2StageIIBasinEvaluator basin_evaluator = [
             &coordinates,
@@ -3846,8 +3320,10 @@ Held2StageIIResult solve_held2_stage_ii(
             explore_held2_stage_ii_basins(
                 coordinates,
                 seeds,
-                kStageIISobolEvaluationCount,
-                request_direct_escalation,
+                major == 0 || escalated_major
+                    ? kStageIISobolEvaluationCount
+                    : 0,
+                escalated_major,
                 kStageIIDirectEvaluationBudget,
                 total_ion_mole_fraction_max,
                 basin_evaluator
@@ -3877,6 +3353,8 @@ Held2StageIIResult solve_held2_stage_ii(
         bool step5_condition_satisfied = false;
         const std::size_t attempt_trace_start = result.attempt_trace.size();
         std::vector<Cut> same_major_step6_cuts;
+        std::vector<Held2StageIICandidate> same_major_candidates;
+        std::vector<Held2StateEvaluation> current_major_basins;
         std::vector<std::size_t> representative_order(
             exploration.representatives.size()
         );
@@ -3930,8 +3408,11 @@ Held2StageIIResult solve_held2_stage_ii(
             Held2StageIIAttempt attempt;
             attempt.attempt_id = static_cast<int>(result.attempt_trace.size());
             attempt.major_iteration = major;
-            attempt.start_index = static_cast<int>(representative_index);
+            attempt.start_index = static_cast<int>(start_index);
             attempt.start_source = representative.source;
+            result.major_contexts.back().pressure_branch_ids.push_back(
+                representative.stable_branch_index
+            );
             attempt.internal_start = representative.independent_modified_fractions;
             attempt.internal_start.push_back(representative.log_volume);
             attempt.same_major_upper_bound = upper_bound;
@@ -3944,7 +3425,7 @@ Held2StageIIResult solve_held2_stage_ii(
                 attempt.physical_start_modified_fractions =
                     start_state.modified_fractions;
                 attempt.physical_start_volume = start_state.volume;
-                attempt.provider_status = "provider_exact";
+                attempt.provider_status = evaluation_source;
                 const Held2SearchRun run = solve_stage_ii_pressure_root_local(
                     evaluator,
                     volume_bounds_evaluator,
@@ -3975,9 +3456,17 @@ Held2StageIIResult solve_held2_stage_ii(
                             evaluation.physical_variables;
                     }
                 }
-                attempt.provider_status = "provider_exact";
+                attempt.provider_status = evaluation_source;
                 if (!run.solver_converged || !run.callback_error.empty()
                     || run.variables.size() != dimension + 1) {
+                    result.major_contexts.back().lower_attempt_ids.push_back(
+                        attempt.attempt_id
+                    );
+                    result.major_contexts.back().current_basin_ids.push_back(-1);
+                    result.major_contexts.back()
+                        .certificate_failed_attempt_ids.push_back(
+                            attempt.attempt_id
+                        );
                     result.attempt_trace.push_back(std::move(attempt));
                     continue;
                 }
@@ -4094,59 +3583,29 @@ Held2StageIIResult solve_held2_stage_ii(
                 certificate_progress.dual_residual = kkt.stationarity_inf_norm;
                 certificate_progress.complementarity = kkt.complementarity;
                 observe_held2(observer, certificate_progress);
-                const double gap = upper_bound - value;
-                attempt.step6_gap = gap;
-                attempt.step6_gap_passed = audit_held2_tolerance(
-                    kHeld2Step6Gap, gap
-                ).passed;
-                bool fixed_volume_stationary = attempt.cut_eligible;
-                if (attempt.cut_eligible) {
-                    for (std::size_t coordinate = 0; coordinate < dimension;
-                         ++coordinate) {
-                        if (independent[coordinate]
-                            <= physical_lower[coordinate]
-                                + kHeld2BoundActivity.atol) {
-                            continue;
-                        }
-                        const double gradient_scale = std::max(
-                            std::abs(state.gradient[coordinate]),
-                            std::abs(multipliers[coordinate])
-                        );
-                        attempt.fixed_volume_gradient_inf_norm = std::max(
-                            attempt.fixed_volume_gradient_inf_norm,
-                            std::abs(
-                                state.gradient[coordinate]
-                                    - multipliers[coordinate]
-                            )
-                        );
-                        attempt.fixed_volume_gradient_scale = std::max(
-                            attempt.fixed_volume_gradient_scale, gradient_scale
-                        );
-                        fixed_volume_stationary = fixed_volume_stationary
-                            && audit_held2_tolerance(
-                                   kHeld2Step6Gradient,
-                                   state.gradient[coordinate]
-                                       - multipliers[coordinate],
-                                   gradient_scale
-                               ).passed;
-                    }
-                }
-                attempt.step6_gradient_passed = fixed_volume_stationary;
-                attempt.step6_eligible = attempt.step5_qualified
-                    && attempt.step6_gap_passed
-                    && fixed_volume_stationary;
-                if (attempt.step6_eligible) {
-                    attempt.step6_rejection_reason = "eligible";
-                } else if (!attempt.step5_qualified) {
-                    attempt.step6_rejection_reason =
-                        "step5_lower_not_qualified";
-                } else if (!attempt.step6_gap_passed) {
-                    attempt.step6_rejection_reason =
-                        "same_major_gap_failed";
-                } else {
-                    attempt.step6_rejection_reason =
-                        "fixed_volume_gradient_failed";
-                }
+                const std::vector<double> fixed_volume_gradient(
+                    state.gradient.begin(), state.gradient.end() - 1
+                );
+                const Held2StageIIStep6Assessment step6 =
+                    assess_held2_stage_ii_step6(
+                        upper_bound,
+                        value,
+                        attempt.step5_qualified,
+                        state.pressure_stationarity_relative,
+                        fixed_volume_gradient,
+                        independent,
+                        physical_lower,
+                        multipliers
+                    );
+                attempt.step6_gap = step6.gap;
+                attempt.step6_gap_passed = step6.gap_passed;
+                attempt.step6_gradient_passed = step6.gradient_passed;
+                attempt.step6_eligible = step6.eligible;
+                attempt.step6_rejection_reason = step6.reason;
+                attempt.fixed_volume_gradient_inf_norm =
+                    step6.fixed_volume_gradient_inf_norm;
+                attempt.fixed_volume_gradient_scale =
+                    step6.fixed_volume_gradient_scale;
                 Held2ProgressEvent step6_progress;
                 step6_progress.kind = Held2ProgressKind::Certificate;
                 step6_progress.stage = "STAGE II STEP 6";
@@ -4158,13 +3617,13 @@ Held2StageIIResult solve_held2_stage_ii(
                 step6_progress.reason = attempt.step6_eligible
                     ? "same_major_gap_and_fixed_volume_gradient"
                     : attempt.step6_rejection_reason;
-                step6_progress.primal_residual = gap;
+                step6_progress.primal_residual = step6.gap;
                 step6_progress.dual_residual =
                     attempt.fixed_volume_gradient_inf_norm;
                 observe_held2(observer, step6_progress);
                 const auto basin = std::find_if(
-                    traced_basins.begin(),
-                    traced_basins.end(),
+                    current_major_basins.begin(),
+                    current_major_basins.end(),
                     [&state](const Held2StateEvaluation& known) {
                         return maximum_abs_difference(
                                    known.modified_fractions,
@@ -4176,18 +3635,20 @@ Held2StageIIResult solve_held2_stage_ii(
                                ) <= kHeld2BasinDuplicateLogVolume.atol;
                     }
                 );
-                if (basin == traced_basins.end()) {
-                    attempt.basin_id = static_cast<int>(traced_basins.size());
-                    traced_basins.push_back(state);
+                if (basin == current_major_basins.end()) {
+                    attempt.basin_id = static_cast<int>(
+                        current_major_basins.size()
+                    );
+                    current_major_basins.push_back(state);
                 } else {
                     attempt.basin_id = static_cast<int>(
-                        basin - traced_basins.begin()
+                        basin - current_major_basins.begin()
                     );
                     ++result.duplicate_terminal_count;
                 }
                 if (attempt.cut_eligible && value < lower_bound) {
                     lower_bound = value;
-                    best = make_cut(independent, state.volume, true);
+                    best = make_cut(independent, state.volume);
                 }
                 if (attempt.step6_eligible) {
                     const bool duplicate_step6_state = std::any_of(
@@ -4208,18 +3669,82 @@ Held2StageIIResult solve_held2_stage_ii(
                     );
                     if (!duplicate_step6_state) {
                         same_major_step6_cuts.push_back(
-                            make_cut(independent, state.volume, true)
+                            make_cut(independent, state.volume)
                         );
+                        bool candidate_distinct = true;
+                        for (const Held2StageIICandidate& known :
+                             same_major_candidates) {
+                            const double composition_distance =
+                                maximum_abs_difference(
+                                    known.modified_fractions,
+                                    state.modified_fractions
+                                );
+                            const double log_volume_distance = std::abs(
+                                known.phase_coordinate - std::log(state.volume)
+                            );
+                            if (composition_distance
+                                    <= kHeld2BasinDuplicateComposition.atol
+                                && log_volume_distance
+                                    <= kHeld2BasinDuplicateLogVolume.atol) {
+                                candidate_distinct = false;
+                                break;
+                            }
+                            if (!audit_held2_tolerance(
+                                    kHeld2CandidateDistinctComposition,
+                                    composition_distance
+                                ).passed
+                                && !audit_held2_tolerance(
+                                    kHeld2CandidateDistinctLogVolume,
+                                    log_volume_distance
+                                ).passed) {
+                                candidate_distinct = false;
+                                ++result.unresolved_candidate_identity_count;
+                                break;
+                            }
+                        }
+                        if (candidate_distinct) {
+                            same_major_candidates.push_back({
+                                state.modified_fractions,
+                                independent,
+                                state.volume,
+                                std::log(state.volume),
+                                step6.gap,
+                            });
+                        }
                     }
                 }
                 const bool qualified = attempt.step5_qualified;
                 const bool step6_eligible = attempt.step6_eligible;
+                result.major_contexts.back().lower_attempt_ids.push_back(
+                    attempt.attempt_id
+                );
+                result.major_contexts.back().current_basin_ids.push_back(
+                    attempt.basin_id
+                );
+                if (qualified) {
+                    result.major_contexts.back()
+                        .step5_qualified_attempt_ids.push_back(
+                            attempt.attempt_id
+                        );
+                }
+                if (step6_eligible) {
+                    result.major_contexts.back()
+                        .step6_eligible_attempt_ids.push_back(
+                            attempt.attempt_id
+                        );
+                }
+                if (!attempt.physical_kkt_passed) {
+                    result.major_contexts.back()
+                        .certificate_failed_attempt_ids.push_back(
+                            attempt.attempt_id
+                        );
+                }
                 result.attempt_trace.push_back(std::move(attempt));
                 step5_condition_satisfied =
                     step5_condition_satisfied || qualified;
                 if (step6_eligible) {
                     if (stage_ii_local_search_has_candidate_set(
-                            same_major_step6_cuts.size()
+                            same_major_candidates.size()
                         )) {
                         break;
                     }
@@ -4227,9 +3752,18 @@ Held2StageIIResult solve_held2_stage_ii(
             } catch (const std::exception& error) {
                 attempt.callback_error = error.what();
                 attempt.provider_status = "provider_failed";
+                result.major_contexts.back().lower_attempt_ids.push_back(
+                    attempt.attempt_id
+                );
+                result.major_contexts.back().current_basin_ids.push_back(-1);
+                result.major_contexts.back()
+                    .certificate_failed_attempt_ids.push_back(
+                        attempt.attempt_id
+                    );
                 result.attempt_trace.push_back(std::move(attempt));
             }
         }
+        traced_basins = std::move(current_major_basins);
         ++result.major_iterations;
         result.lower_starts_per_iteration = std::max(
             result.lower_starts_per_iteration,
@@ -4282,24 +3816,6 @@ Held2StageIIResult solve_held2_stage_ii(
         if (!duplicate_cut) {
             cuts.push_back(std::move(best));
             new_cut_added = true;
-        } else {
-            const auto known = std::find_if(
-                cuts.begin(),
-                cuts.end(),
-                [&best](const Cut& cut) {
-                    return maximum_abs_difference(
-                               cut.state.modified_fractions,
-                               best.state.modified_fractions
-                           ) <= kHeld2BasinDuplicateComposition.atol
-                        && std::abs(
-                               std::log(cut.state.volume)
-                                   - std::log(best.state.volume)
-                           ) <= kHeld2BasinDuplicateLogVolume.atol;
-                }
-            );
-            if (known != cuts.end()) {
-                known->candidate_phase_eligible = true;
-            }
         }
         for (Cut& candidate_cut : same_major_step6_cuts) {
             const bool duplicate_candidate_cut = std::any_of(
@@ -4317,134 +3833,11 @@ Held2StageIIResult solve_held2_stage_ii(
                 }
             );
             if (!duplicate_candidate_cut) {
-                cuts.push_back(std::move(candidate_cut));
-                new_cut_added = true;
-            } else {
-                const auto known = std::find_if(
-                    cuts.begin(),
-                    cuts.end(),
-                    [&candidate_cut](const Cut& cut) {
-                        return maximum_abs_difference(
-                                   cut.state.modified_fractions,
-                                   candidate_cut.state.modified_fractions
-                               ) <= kHeld2BasinDuplicateComposition.atol
-                            && std::abs(
-                                   std::log(cut.state.volume)
-                                       - std::log(candidate_cut.state.volume)
-                               ) <= kHeld2BasinDuplicateLogVolume.atol;
-                    }
-                );
-                if (known != cuts.end()) {
-                    known->candidate_phase_eligible = true;
-                }
-            }
-        }
-        for (const Held2StageIIPhysicalStart& representative :
-             exploration.representatives) {
-            Cut exploration_cut = make_cut(
-                representative.independent_modified_fractions,
-                representative.volume
-            );
-            const bool duplicate_exploration_cut = std::any_of(
-                cuts.begin(),
-                cuts.end(),
-                [&exploration_cut](const Cut& known) {
-                    return maximum_abs_difference(
-                               known.state.modified_fractions,
-                               exploration_cut.state.modified_fractions
-                           ) <= kHeld2BasinDuplicateComposition.atol
-                        && std::abs(
-                               std::log(known.state.volume)
-                                   - std::log(exploration_cut.state.volume)
-                           ) <= kHeld2BasinDuplicateLogVolume.atol;
-                }
-            );
-            if (!duplicate_exploration_cut) {
-                cuts.push_back(std::move(exploration_cut));
+                cuts.push_back(candidate_cut);
                 new_cut_added = true;
             }
         }
-        result.candidates.clear();
-        for (const Cut& cut : cuts) {
-            if (!cut.candidate_phase_eligible) {
-                continue;
-            }
-            double value = cut.state.objective;
-            for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-                value += multipliers[coordinate]
-                    * (feed[coordinate] - cut.independent[coordinate]);
-            }
-            const double gap = upper_bound - value;
-            bool fixed_volume_stationary = true;
-            for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-                if (cut.independent[coordinate]
-                    <= physical_lower[coordinate] + kHeld2BoundActivity.atol) {
-                    continue;
-                }
-                const double gradient_scale = std::max(
-                    std::abs(cut.fixed_volume_gradient[coordinate]),
-                    std::abs(multipliers[coordinate])
-                );
-                fixed_volume_stationary = fixed_volume_stationary
-                    && audit_held2_tolerance(
-                           kHeld2Step6Gradient,
-                           cut.fixed_volume_gradient[coordinate]
-                               - multipliers[coordinate],
-                           gradient_scale
-                       ).passed;
-            }
-            if (!audit_held2_tolerance(kHeld2Step6Gap, gap).passed
-                || !audit_held2_tolerance(
-                        kHeld2RootPressure,
-                        cut.state.pressure_stationarity_relative
-                    ).passed
-                || !fixed_volume_stationary) {
-                continue;
-            }
-            bool distinct = true;
-            bool unresolved_identity = false;
-            for (const Held2StageIICandidate& known : result.candidates) {
-                const double composition_distance = maximum_abs_difference(
-                    known.modified_fractions, cut.state.modified_fractions
-                );
-                const double log_volume_distance = std::abs(
-                    known.phase_coordinate - std::log(cut.state.volume)
-                );
-                const bool duplicate =
-                    composition_distance <= kHeld2BasinDuplicateComposition.atol
-                    && log_volume_distance <= kHeld2BasinDuplicateLogVolume.atol;
-                if (duplicate) {
-                    distinct = false;
-                    break;
-                }
-                const bool confidently_distinct =
-                    audit_held2_tolerance(
-                        kHeld2CandidateDistinctComposition,
-                        composition_distance
-                    ).passed
-                    || audit_held2_tolerance(
-                        kHeld2CandidateDistinctLogVolume,
-                        log_volume_distance
-                    ).passed;
-                if (!confidently_distinct) {
-                    distinct = false;
-                    unresolved_identity = true;
-                    break;
-                }
-            }
-            if (unresolved_identity) {
-                ++result.unresolved_candidate_identity_count;
-            }
-            if (distinct) {
-                result.candidates.push_back({
-                    cut.state.modified_fractions,
-                    cut.independent,
-                    cut.state.volume,
-                    std::log(cut.state.volume),
-                    gap,
-                });
-            }
-        }
+        result.candidates = std::move(same_major_candidates);
         result.cut_count = static_cast<int>(cuts.size());
         result.distinct_basin_count = static_cast<int>(traced_basins.size());
         if (result.unresolved_candidate_identity_count != 0) {
@@ -4453,16 +3846,21 @@ Held2StageIIResult solve_held2_stage_ii(
         }
         if (result.candidates.size() > 1) {
             result.outcome = "candidate_set";
+            result.next_action = Held2NextAction::EnterStageIII;
             return result;
         }
         if (!new_cut_added) {
-            if (!request_direct_escalation) {
-                request_direct_escalation = true;
+            if (!global_escalation_used) {
+                global_escalation_used = true;
+                run_global_escalation = true;
+                result.next_action = Held2NextAction::RunGlobalEscalation;
                 continue;
             }
             result.outcome = "indeterminate_finite_search_stalled";
+            result.next_action = Held2NextAction::TerminateIndeterminate;
             return result;
         }
+        result.next_action = Held2NextAction::ContinueStageII;
     }
     result.outcome = "resource_limit";
     result.cut_count = static_cast<int>(cuts.size());

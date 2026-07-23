@@ -6,6 +6,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <streambuf>
 #include <string>
 #include <string_view>
@@ -19,6 +20,7 @@
 
 #include "held.hpp"
 #include "held2.hpp"
+#include "held2_controller.hpp"
 #include "held2_progress.hpp"
 #include "held2_stage_i_direct.hpp"
 #include "held2_stage_ii_basin.hpp"
@@ -53,6 +55,35 @@ py::dict held2_stage_ii_to_dict(
 py::dict held2_stage_iii_to_dict(
     const epcsaft_equilibrium::Held2StageIIIResult& evaluation
 );
+
+void update_held2_workflow_dict(
+    py::dict& result,
+    const epcsaft_equilibrium::Held2WorkflowState& workflow
+) {
+    py::list transitions;
+    for (const auto& transition : workflow.transitions) {
+        py::dict item;
+        item["completed_step"] = transition.completed_step;
+        item["next_action"] =
+            epcsaft_equilibrium::held2_next_action_name(transition.next_action);
+        item["outcome"] = transition.outcome;
+        item["reason"] = transition.reason;
+        item["feedback_owner_step"] = transition.feedback_owner_step;
+        transitions.append(std::move(item));
+    }
+    result["outcome"] = workflow.outcome;
+    result["failure_stage"] = workflow.failure_stage.empty()
+        ? py::none()
+        : py::cast(workflow.failure_stage);
+    result["failure_reason"] = workflow.failure_reason.empty()
+        ? py::none()
+        : py::cast(workflow.failure_reason);
+    result["completed_step"] = workflow.completed_step;
+    result["feedback_owner_step"] = workflow.feedback_owner_step;
+    result["next_action"] =
+        epcsaft_equilibrium::held2_next_action_name(workflow.next_action);
+    result["transitions"] = std::move(transitions);
+}
 
 const epcsaft_native_sdk_v1& checked_sdk(const py::capsule& capsule) {
     const char* name = capsule.name();
@@ -1729,49 +1760,16 @@ py::dict held2_stage_ii_chart_coordinate_evidence(
     }
 }
 
-py::dict held2_manufactured_stage_i(
+py::dict held2_manufactured_stage_ii(
     const std::vector<double>& charges,
-    const std::vector<double>& physical_feed,
-    const std::string& stage
+    const std::vector<double>& physical_feed
 ) {
-    if (stage == "stage_ii") {
-        py::dict result = held2_stage_ii_to_dict(
-            epcsaft_equilibrium::solve_held2_manufactured_stage_ii(
-                charges, physical_feed
-            )
-        );
-        result["profile"] = "perdomo-held2-stage-ii-manufactured-v1";
-        return result;
-    }
-    if (stage != "stage_i") {
-        throw py::value_error("unsupported manufactured HELD2 stage request");
-    }
-    const epcsaft_equilibrium::Held2StageIResult evaluation =
-        epcsaft_equilibrium::solve_held2_manufactured_stage_i(
-            charges,
-            physical_feed
-        );
-    py::list candidates;
-    for (const epcsaft_equilibrium::Held2StageICandidate& candidate :
-         evaluation.candidates) {
-        py::dict item;
-        item["modified_fractions"] = candidate.modified_fractions;
-        item["volume"] = candidate.volume;
-        item["tpd"] = candidate.tpd;
-        candidates.append(std::move(item));
-    }
-    py::dict result;
-    result["profile"] = "perdomo-held2-stage-i-manufactured-v1";
-    result["outcome"] = evaluation.outcome;
-    result["globality_certificate"] = "not_guaranteed";
-    result["declared_start_count"] = evaluation.declared_start_count;
-    result["completed_start_count"] = evaluation.completed_start_count;
-    result["failed_start_count"] = evaluation.failed_start_count;
-    result["reference_modified_fractions"] =
-        evaluation.reference_modified_fractions;
-    result["reference_volume"] = evaluation.reference_volume;
-    result["minimum_tpd"] = evaluation.minimum_tpd;
-    result["candidates"] = std::move(candidates);
+    py::dict result = held2_stage_ii_to_dict(
+        epcsaft_equilibrium::solve_held2_manufactured_stage_ii(
+            charges, physical_feed
+        )
+    );
+    result["profile"] = "perdomo-held2-stage-ii-manufactured-v1";
     return result;
 }
 
@@ -2892,6 +2890,25 @@ py::dict held2_stage_ii_to_dict(
         item["lower_gap"] = candidate.lower_gap;
         candidates.append(std::move(item));
     }
+    py::list major_contexts;
+    for (const auto& context : evaluation.major_contexts) {
+        py::dict item;
+        item["major_id"] = context.major_id;
+        item["upper_solve_id"] = context.upper_solve_id;
+        item["upper_bound"] = context.upper_bound;
+        item["multipliers"] = context.multipliers;
+        item["active_cut_ids"] = context.active_cut_ids;
+        item["lower_attempt_ids"] = context.lower_attempt_ids;
+        item["current_basin_ids"] = context.current_basin_ids;
+        item["pressure_branch_ids"] = context.pressure_branch_ids;
+        item["step5_qualified_attempt_ids"] =
+            context.step5_qualified_attempt_ids;
+        item["step6_eligible_attempt_ids"] =
+            context.step6_eligible_attempt_ids;
+        item["certificate_failed_attempt_ids"] =
+            context.certificate_failed_attempt_ids;
+        major_contexts.append(std::move(item));
+    }
     py::dict result;
     result["outcome"] = evaluation.outcome;
     result["search_strategy"] = evaluation.search_strategy;
@@ -2918,7 +2935,10 @@ py::dict held2_stage_ii_to_dict(
         evaluation.local_attempt_cap_per_major;
     result["local_attempts_truncated"] = evaluation.local_attempts_truncated;
     result["direct_escalation_used"] = evaluation.direct_escalation_used;
+    result["next_action"] =
+        epcsaft_equilibrium::held2_next_action_name(evaluation.next_action);
     result["bound_history"] = std::move(bounds);
+    result["major_contexts"] = std::move(major_contexts);
     result["attempt_trace"] = std::move(attempts);
     py::dict attempt_classification;
     attempt_classification["declared"] = evaluation.attempt_trace.size();
@@ -3094,6 +3114,71 @@ py::dict held2_stage_iii_to_dict(
     return result;
 }
 
+py::dict held2_manufactured_controller(
+    const std::vector<double>& charges,
+    const std::vector<double>& physical_feed
+) {
+    epcsaft_equilibrium::Held2WorkflowController workflow;
+    py::dict result;
+    result["controller"] = "perdomo_held2_steps_1_to_10_v1";
+    result["globality_certificate"] = "not_guaranteed";
+
+    epcsaft_equilibrium::Held2PressureEnvelopeResult reference;
+    reference.outcome = "selected";
+    reference.selected_root_index = 0;
+    reference.roots.resize(1);
+    const epcsaft_equilibrium::Held2StageIDirectResult stage_i =
+        epcsaft_equilibrium::solve_held2_manufactured_stage_i_direct(
+            "negative", 80
+        );
+    const epcsaft_equilibrium::Held2StageIIResult stage_ii =
+        epcsaft_equilibrium::solve_held2_manufactured_stage_ii(
+            charges, physical_feed
+        );
+
+    if (workflow.complete_reference(reference)
+            != epcsaft_equilibrium::Held2NextAction::ContinueStageII
+        || workflow.complete_stage_i(stage_i)
+            != epcsaft_equilibrium::Held2NextAction::ContinueStageII
+        || workflow.complete_stage_ii(stage_ii)
+            != epcsaft_equilibrium::Held2NextAction::EnterStageIII) {
+        throw std::logic_error(
+            "manufactured HELD2 evidence did not reach Stage III"
+        );
+    }
+
+    std::vector<std::array<double, 2>> candidates;
+    candidates.reserve(stage_ii.candidates.size());
+    for (const auto& candidate : stage_ii.candidates) {
+        if (candidate.independent_modified_fractions.size() != 1) {
+            throw std::logic_error(
+                "manufactured HELD2 controller requires one independent "
+                "modified composition"
+            );
+        }
+        candidates.push_back({
+            candidate.independent_modified_fractions.front(),
+            candidate.volume,
+        });
+    }
+    const epcsaft_equilibrium::Held2StageIIIResult stage_iii =
+        epcsaft_equilibrium::solve_held2_manufactured_stage_iii(
+            charges, physical_feed, candidates
+        );
+    if (workflow.complete_stage_iii(stage_iii)
+        != epcsaft_equilibrium::Held2NextAction::AcceptMultiphase) {
+        throw std::logic_error(
+            "manufactured HELD2 evidence did not pass final certification"
+        );
+    }
+
+    result["stage_i"] = held2_stage_i_direct_to_dict(stage_i);
+    result["stage_ii"] = held2_stage_ii_to_dict(stage_ii);
+    result["stage_iii"] = held2_stage_iii_to_dict(stage_iii);
+    update_held2_workflow_dict(result, workflow.state());
+    return result;
+}
+
 py::dict held2_installed_stage_iii_derivatives(
     const py::capsule& capsule,
     double temperature_k,
@@ -3169,10 +3254,14 @@ py::dict held2_installed_controller(
     const InstalledHeld2StageI stage_i = run_installed_held2_stage_i(
         problem, stage_i_evaluation_budget, observer
     );
+    epcsaft_equilibrium::Held2WorkflowController workflow;
     py::dict result;
-    result["controller"] = "perdomo_held2_integrated_private_v1";
+    result["controller"] = "perdomo_held2_steps_1_to_10_v1";
     result["stage_order"] = py::make_tuple(
-        "homogeneous_reference", "stage_i", "stage_ii", "stage_iii"
+        "step_1_reference",
+        "steps_2_3_stage_i",
+        "steps_4_7_stage_ii",
+        "steps_8_10_stage_iii"
     );
     result["parameter_fingerprint"] = problem.fingerprint();
     result["globality_certificate"] = "not_guaranteed";
@@ -3186,18 +3275,12 @@ py::dict held2_installed_controller(
     result["predictive_comparison_status"] =
         "not_allowed_before_physical_acceptance";
 
-    if (stage_i.search.outcome != "negative_witness_found"
-        || stage_i.search.negative_witness_index < 0) {
-        const bool search_indeterminate = stage_i.search.outcome == "indeterminate";
-        const std::string outcome = search_indeterminate
-            ? "indeterminate_stage_i"
-            : "stage_i_finite_search_without_negative_witness";
-        result["outcome"] = outcome;
-        result["failure_stage"] = "stage_i";
-        result["failure_reason"] = stage_i.search.termination_reason;
-        const std::string skip_reason = search_indeterminate
-            ? stage_i.search.termination_reason
-            : "stage_i_negative_witness_not_found";
+    epcsaft_equilibrium::Held2NextAction next_action =
+        workflow.complete_reference(stage_i.reference_envelope);
+    if (next_action == epcsaft_equilibrium::Held2NextAction::
+            TerminateIndeterminate) {
+        update_held2_workflow_dict(result, workflow.state());
+        const std::string skip_reason = workflow.state().failure_reason;
         result["stage_ii_skip_reason"] = skip_reason;
         result["stage_iii_skip_reason"] = skip_reason;
         progress = {};
@@ -3209,41 +3292,39 @@ py::dict held2_installed_controller(
         epcsaft_equilibrium::observe_held2(observer, progress);
         progress = {};
         progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
-        progress.status = outcome;
-        progress.reason = stage_i.search.termination_reason;
+        progress.status = workflow.state().outcome;
+        progress.reason = workflow.state().failure_reason;
+        epcsaft_equilibrium::observe_held2(observer, progress);
+        return result;
+    }
+    next_action = workflow.complete_stage_i(stage_i.search);
+    if (next_action == epcsaft_equilibrium::Held2NextAction::
+            TerminateIndeterminate) {
+        update_held2_workflow_dict(result, workflow.state());
+        const std::string skip_reason =
+            workflow.state().outcome
+                == "stage_i_finite_search_without_negative_witness"
+            ? "stage_i_negative_witness_not_found"
+            : workflow.state().failure_reason;
+        result["stage_ii_skip_reason"] = skip_reason;
+        result["stage_iii_skip_reason"] = skip_reason;
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageSkipped;
+        progress.stage = "STAGE II";
+        progress.reason = skip_reason;
+        epcsaft_equilibrium::observe_held2(observer, progress);
+        progress.stage = "STAGE III";
+        epcsaft_equilibrium::observe_held2(observer, progress);
+        progress = {};
+        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
+        progress.status = workflow.state().outcome;
+        progress.reason = workflow.state().failure_reason;
         epcsaft_equilibrium::observe_held2(observer, progress);
         return result;
     }
     const auto& witness = stage_i.search.evaluations[static_cast<std::size_t>(
         stage_i.search.negative_witness_index
     )];
-    if (witness.pressure_envelope.selected_root_index < 0) {
-        const std::string failure_reason =
-            "stage_i_witness_has_no_selected_pressure_root";
-        result["outcome"] = "indeterminate_stage_i_witness";
-        result["failure_stage"] = "stage_i";
-        result["failure_reason"] = failure_reason;
-        result["stage_ii_skip_reason"] = failure_reason;
-        result["stage_iii_skip_reason"] = failure_reason;
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
-        progress.stage = "STAGE I";
-        progress.reason = failure_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageSkipped;
-        progress.stage = "STAGE II";
-        progress.reason = failure_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        progress.stage = "STAGE III";
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
-        progress.status = "indeterminate_stage_i_witness";
-        progress.reason = failure_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        return result;
-    }
     progress = {};
     progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageStart;
     progress.stage = "STAGE II - HiGHS LP / IPOPT LOWER SEARCH";
@@ -3280,10 +3361,9 @@ py::dict held2_installed_controller(
             observer
         );
     result["stage_ii"] = held2_stage_ii_to_dict(stage_ii);
-    if (stage_ii.outcome != "candidate_set" || stage_ii.candidates.size() < 2) {
-        result["outcome"] = "indeterminate_stage_ii";
-        result["failure_stage"] = "stage_ii";
-        result["failure_reason"] = stage_ii.outcome;
+    next_action = workflow.complete_stage_ii(stage_ii);
+    if (next_action != epcsaft_equilibrium::Held2NextAction::EnterStageIII) {
+        update_held2_workflow_dict(result, workflow.state());
         result["stage_iii_skip_reason"] = stage_ii.outcome;
         progress = {};
         progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
@@ -3297,8 +3377,8 @@ py::dict held2_installed_controller(
         epcsaft_equilibrium::observe_held2(observer, progress);
         progress = {};
         progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
-        progress.status = "indeterminate_stage_ii";
-        progress.reason = stage_ii.outcome;
+        progress.status = workflow.state().outcome;
+        progress.reason = workflow.state().failure_reason;
         epcsaft_equilibrium::observe_held2(observer, progress);
         return result;
     }
@@ -3338,10 +3418,9 @@ py::dict held2_installed_controller(
             observer
         );
     result["stage_iii"] = held2_stage_iii_to_dict(stage_iii);
-    if (stage_iii.physical_status != "accepted") {
-        result["outcome"] = "indeterminate_stage_iii";
-        result["failure_stage"] = "stage_iii";
-        result["failure_reason"] = stage_iii.failure_reason;
+    next_action = workflow.complete_stage_iii(stage_iii);
+    update_held2_workflow_dict(result, workflow.state());
+    if (next_action != epcsaft_equilibrium::Held2NextAction::AcceptMultiphase) {
         progress = {};
         progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
         progress.stage = "STAGE III";
@@ -3349,14 +3428,11 @@ py::dict held2_installed_controller(
         epcsaft_equilibrium::observe_held2(observer, progress);
         progress = {};
         progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
-        progress.status = "indeterminate_stage_iii";
-        progress.reason = stage_iii.failure_reason;
+        progress.status = workflow.state().outcome;
+        progress.reason = workflow.state().failure_reason;
         epcsaft_equilibrium::observe_held2(observer, progress);
         return result;
     }
-    result["outcome"] = "physical_equilibrium_accepted";
-    result["failure_stage"] = py::none();
-    result["failure_reason"] = py::none();
     result["predictive_comparison_status"] =
         "eligible_but_not_executed_private_controller";
     progress = {};
@@ -3924,11 +4000,16 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("expected_fingerprint")
     );
     module.def(
-        "_held2_adapter",
-        &held2_manufactured_stage_i,
+        "_held2_manufactured_stage_ii",
+        &held2_manufactured_stage_ii,
         py::arg("charges"),
-        py::arg("physical_feed"),
-        py::arg("stage")
+        py::arg("physical_feed")
+    );
+    module.def(
+        "_held2_manufactured_controller",
+        &held2_manufactured_controller,
+        py::arg("charges"),
+        py::arg("physical_feed")
     );
     module.def(
         "_held2_pressure_envelope",

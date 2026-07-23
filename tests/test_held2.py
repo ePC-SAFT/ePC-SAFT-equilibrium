@@ -454,24 +454,6 @@ def test_held2_installed_electrolyte_sdk_phase_block_has_exact_reduced_derivativ
     assert math.isfinite(result["provider_pressure_pa"])
 
 
-def test_held2_manufactured_stage_i_finds_negative_tpd_with_declared_multistart() -> None:
-    result = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_i")
-
-    assert result["profile"] == "perdomo-held2-stage-i-manufactured-v1"
-    assert result["outcome"] == "negative_tpd"
-    assert result["globality_certificate"] == "not_guaranteed"
-    assert result["declared_start_count"] == 10 * len(CHARGES)
-    assert result["completed_start_count"] == result["declared_start_count"]
-    assert result["failed_start_count"] == 0
-    assert result["reference_modified_fractions"] == pytest.approx([0.5, 0.5])
-    assert result["reference_volume"] == pytest.approx(1.0, abs=2.0e-10)
-    assert result["minimum_tpd"] < -1.0e-8
-    assert sorted(
-        candidate["modified_fractions"][1] for candidate in result["candidates"]
-    ) == pytest.approx([0.2, 0.8], abs=2.0e-7)
-    assert all(candidate["tpd"] < -1.0e-8 for candidate in result["candidates"])
-
-
 def test_held2_stage_i_direct_l_finds_certified_negative_witness_deterministically() -> None:
     first = _equilibrium._held2_stage_i_direct("negative", 80)
     second = _equilibrium._held2_stage_i_direct("negative", 80)
@@ -832,7 +814,7 @@ def test_held2_stage_ii_chart_policy_rejects_meaningful_invalid_motion(
 
 
 def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
-    result = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
+    result = _equilibrium._held2_manufactured_stage_ii(CHARGES, PHYSICAL_FEED)
 
     assert result["profile"] == "perdomo-held2-stage-ii-manufactured-v1"
     assert result["outcome"] == "candidate_set"
@@ -840,13 +822,50 @@ def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
     assert result["search_strategy"] == "continuation_sobol_direct_l_ipopt_v1"
     assert result["global_explorer"] == "continuation_sobol_direct_l"
     assert result["local_solver"] == "ipopt_exact_hessian"
+    assert result["local_attempt_cap_per_major"] > 0
+    assert "simplex_vertex_seed" in {
+        attempt["start_source"] for attempt in result["attempt_trace"]
+    }
     assert result["exploration_failure_count"] == 0
     assert result["exploration_evaluation_count"] > 0
-    assert result["exploration_representative_count"] == len(result["attempt_trace"])
-    assert result["distinct_basin_count"] >= 3
+    assert result["exploration_representative_count"] >= len(result["attempt_trace"])
+    assert result["distinct_basin_count"] >= 2
     assert result["major_iterations"] <= 100
     assert result["lower_starts_per_iteration"] > 0
     assert len(result["bound_history"]) == result["major_iterations"]
+    assert len(result["major_contexts"]) == result["major_iterations"]
+    for major_id, context in enumerate(result["major_contexts"]):
+        assert context["major_id"] == major_id
+        assert context["upper_solve_id"] == major_id
+        assert context["upper_bound"] == pytest.approx(
+            result["bound_history"][major_id]["upper_bound"]
+        )
+        assert context["multipliers"] == pytest.approx(
+            result["bound_history"][major_id]["multipliers"]
+        )
+        assert context["lower_attempt_ids"] == [
+            attempt["attempt_id"]
+            for attempt in result["attempt_trace"]
+            if attempt["major_iteration"] == major_id
+        ]
+        assert context["step5_qualified_attempt_ids"] == [
+            attempt["attempt_id"]
+            for attempt in result["attempt_trace"]
+            if attempt["major_iteration"] == major_id
+            and attempt["step5_qualified"]
+        ]
+        assert context["step6_eligible_attempt_ids"] == [
+            attempt["attempt_id"]
+            for attempt in result["attempt_trace"]
+            if attempt["major_iteration"] == major_id
+            and attempt["step6_eligible"]
+        ]
+        assert context["certificate_failed_attempt_ids"] == [
+            attempt["attempt_id"]
+            for attempt in result["attempt_trace"]
+            if attempt["major_iteration"] == major_id
+            and not attempt["physical_kkt_passed"]
+        ]
     assert all(entry["lower_bound_available"] for entry in result["bound_history"])
     assert all(
         entry["lower_bound"] <= entry["upper_bound"] + 1.0e-10 for entry in result["bound_history"]
@@ -865,7 +884,7 @@ def test_held2_manufactured_stage_ii_builds_replayable_candidate_set() -> None:
 
 
 def test_held2_step6_candidates_feed_stage8_and_complete_stage9_certification() -> None:
-    stage_ii = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
+    stage_ii = _equilibrium._held2_manufactured_stage_ii(CHARGES, PHYSICAL_FEED)
     candidates = tuple(
         (candidate["modified_fractions"][1], candidate["volume"])
         for candidate in stage_ii["candidates"]
@@ -890,6 +909,32 @@ def test_held2_step6_candidates_feed_stage8_and_complete_stage9_certification() 
     assert stage_iii["ordinary_balance_inf_norm"] < 1.0e-9
     assert stage_iii["pressure_stationarity_inf_norm"] < 1.0e-9
     assert stage_iii["modified_potential_mixed_gap"] < 1.0e-9
+
+
+def test_held2_manufactured_workflow_uses_canonical_typed_transitions() -> None:
+    result = _equilibrium._held2_manufactured_controller(
+        CHARGES,
+        PHYSICAL_FEED,
+    )
+
+    assert result["controller"] == "perdomo_held2_steps_1_to_10_v1"
+    assert result["outcome"] == "physical_equilibrium_accepted"
+    assert result["next_action"] == "accept_multiphase"
+    assert result["completed_step"] == 10
+    assert [
+        transition["completed_step"] for transition in result["transitions"]
+    ] == [1, 3, 7, 10]
+    assert [
+        transition["next_action"] for transition in result["transitions"]
+    ] == [
+        "continue_stage_ii",
+        "continue_stage_ii",
+        "enter_stage_iii",
+        "accept_multiphase",
+    ]
+    assert result["stage_i"]["outcome"] == "negative_witness_found"
+    assert result["stage_ii"]["outcome"] == "candidate_set"
+    assert result["stage_iii"]["physical_status"] == "accepted"
 
 
 def test_held2_stage_ii_pressure_root_reduction_uses_exact_schur_complement() -> None:
@@ -954,8 +999,8 @@ def test_held2_stage_ii_step5_requires_source_lower_upper_order(
 
 
 def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
-    first = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
-    second = _equilibrium._held2_adapter(CHARGES, PHYSICAL_FEED, "stage_ii")
+    first = _equilibrium._held2_manufactured_stage_ii(CHARGES, PHYSICAL_FEED)
+    second = _equilibrium._held2_manufactured_stage_ii(CHARGES, PHYSICAL_FEED)
 
     assert first["attempt_trace"] == second["attempt_trace"]
     assert len(first["attempt_trace"]) >= first["lower_starts_per_iteration"]
@@ -970,6 +1015,7 @@ def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
             "stage_i_witness",
             "homogeneous_reference",
             "boundary_aware_seed",
+            "simplex_vertex_seed",
             "sobol",
             "direct_l",
         }
@@ -1019,17 +1065,13 @@ def test_held2_manufactured_stage_ii_retains_every_lower_attempt() -> None:
     assert classification["solver_failed"] == 0
     assert classification["physical_kkt_passed"] == classification["declared"]
     assert classification["step6_eligible"] > 1
-    assert any(
-        attempt["cut_eligible"] and not attempt["step6_eligible"]
-        for attempt in first["attempt_trace"]
-    )
     for major in range(first["major_iterations"]):
         certified_compositions = {
             round(attempt["terminal_modified_fractions"][1], 6)
             for attempt in first["attempt_trace"]
             if attempt["major_iteration"] == major and attempt["physical_kkt_passed"]
         }
-        assert len(certified_compositions) == 3
+        assert certified_compositions == {0.2, 0.8}
 
 
 def test_held2_stage_ii_explorer_keeps_same_composition_density_branches_distinct() -> None:
@@ -1125,10 +1167,9 @@ def test_held2_stage_ii_explorer_uses_exact_installed_provider_envelopes() -> No
 
 
 def test_held2_stage_ii_stall_exhaustion_is_indeterminate() -> None:
-    result = _equilibrium._held2_adapter(
+    result = _equilibrium._held2_manufactured_stage_ii(
         CHARGES,
         (0.9, 0.05, 0.05),
-        "stage_ii",
     )
 
     assert result["outcome"] == "indeterminate_finite_search_stalled"

@@ -77,12 +77,17 @@ the ordinary modified-simplex domain declared by a Provider with no ion cap.
 The linked implementation plan assigns deterministic pressure-root
 enumeration to density topology, DIRECT-L to the reduced Stage-I search, HiGHS
 to the Stage-II upper LP, basin exploration plus exact-Hessian Ipopt to the
-Stage-II lower problem, and exact-Hessian Ipopt to Stage III. The private
-integrated controller executes that stage order and retains every bounded
-failure as evidence. Replaced HELD2 runtime routes and baseline fixtures are
-removed; only focused manufactured formulation oracles remain. None of these
-internal owners is a caller-selectable backend or current public electrolyte
-behavior.
+Stage-II lower problem, and exact-Hessian Ipopt to Stage III. One typed
+`Held2WorkflowController` owns the closed Steps 1--10 transition vocabulary for
+both installed and manufactured problems. Stage II has one major loop and one
+Eq. (66) decision owner. Each major retains its own upper-solve identity,
+`UBD`, multipliers, active cuts, lower attempts, current basins, pressure
+branches, and certificate partitions. Ordinary later majors carry current
+basins, active cuts, and named witness/reference safeguards; fixed exploration
+returns only for one bounded escalation. Replaced HELD2 runtime routes and
+baseline fixtures are deleted; focused manufactured numerical oracles call the
+same transition and stage owners. None of these internal owners is a
+caller-selectable backend or current public electrolyte behavior.
 
 The remaining installed-completion contract is specified in
 [HELD2 Installed Completion](designs/2026-07-22-held2-installed-completion.md)

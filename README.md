@@ -78,8 +78,12 @@ than case- or component-name-driven, but it is not part of current `main`.
 Current `main` retains a private HELD2 development implementation. It includes
 the deterministic pressure-root envelope, DIRECT-L Stage I, HiGHS Stage-II
 Problem (64), and deterministic Stage-II basin discovery followed by
-exact-Hessian Ipopt refinement. The experimental public runtime is preserved
-by tag
+exact-Hessian Ipopt refinement. One typed Steps 1--10 workflow controller is
+shared by installed and manufactured problems; Stage II has one major loop,
+one Eq. (66) decision owner, current-basin continuation, and one bounded global
+escalation. Replaced multistart and duplicate manufactured controllers are
+deleted rather than retained as compatibility paths. The experimental public
+runtime is preserved by tag
 `archive/held2-pre-strategy-2026-07-21` for strategy review.
 
 The archived homogeneous reference search reports detected pressure-root
