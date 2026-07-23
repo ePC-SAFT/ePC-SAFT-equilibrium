@@ -155,6 +155,126 @@ bool general_stage_iii_simplex_domain_valid(
     return true;
 }
 
+bool polish_stage_iii_pressure_roots(
+    const Held2StateEvaluator& evaluator,
+    const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
+    std::size_t phase_count,
+    std::size_t dimension,
+    std::vector<double>& variables,
+    int& iteration_count,
+    std::string& failure
+) {
+    constexpr int kMaximumIterationsPerPhase = 12;
+    const std::size_t block_size = dimension + 2;
+    if (phase_coordinate_bounds.size() != phase_count
+        || variables.size() != phase_count * block_size) {
+        failure = "stage_iii_pressure_polish_dimensions_changed";
+        return false;
+    }
+    for (std::size_t phase = 0; phase < phase_count; ++phase) {
+        const std::size_t offset = phase * block_size;
+        if (!audit_held2_tolerance(
+                kHeld2PhaseActivity,
+                variables[offset]
+            ).passed) {
+            continue;
+        }
+        const std::vector<double> independent(
+            variables.begin() + static_cast<std::ptrdiff_t>(offset + 1),
+            variables.begin()
+                + static_cast<std::ptrdiff_t>(offset + 1 + dimension)
+        );
+        double& log_volume = variables[offset + 1 + dimension];
+        bool converged = false;
+        for (int iteration = 0;
+             iteration < kMaximumIterationsPerPhase;
+             ++iteration) {
+            const Held2StateEvaluation state = evaluator(
+                independent, log_volume
+            );
+            const double derivative =
+                state.pressure_stationarity_derivative_log_volume;
+            const double objective_curvature = state.hessian.empty()
+                ? std::numeric_limits<double>::quiet_NaN()
+                : state.hessian.back();
+            if (!std::isfinite(derivative) || derivative == 0.0
+                || !std::isfinite(objective_curvature)
+                || !(objective_curvature > 0.0)) {
+                failure = "stage_iii_pressure_polish_not_mechanically_stable";
+                return false;
+            }
+            if (audit_held2_tolerance(
+                    kHeld2Stage3Pressure,
+                    state.pressure_stationarity_relative
+                ).passed) {
+                converged = true;
+                break;
+            }
+            const double raw_step =
+                -state.pressure_stationarity_relative / derivative;
+            if (!std::isfinite(raw_step)) {
+                failure = "stage_iii_pressure_polish_step_nonfinite";
+                return false;
+            }
+            double step = std::clamp(raw_step, -0.25, 0.25);
+            bool accepted = false;
+            for (int backtrack = 0; backtrack < 12; ++backtrack) {
+                const double candidate = std::clamp(
+                    log_volume + step,
+                    std::nextafter(
+                        phase_coordinate_bounds[phase][0],
+                        phase_coordinate_bounds[phase][1]
+                    ),
+                    std::nextafter(
+                        phase_coordinate_bounds[phase][1],
+                        phase_coordinate_bounds[phase][0]
+                    )
+                );
+                if (candidate == log_volume) {
+                    break;
+                }
+                const Held2StateEvaluation trial = evaluator(
+                    independent, candidate
+                );
+                if (std::abs(trial.pressure_stationarity_relative)
+                    < std::abs(state.pressure_stationarity_relative)) {
+                    log_volume = candidate;
+                    accepted = true;
+                    ++iteration_count;
+                    break;
+                }
+                step *= 0.5;
+            }
+            if (!accepted) {
+                failure = "stage_iii_pressure_polish_no_progress";
+                return false;
+            }
+        }
+        if (!converged) {
+            const Held2StateEvaluation state = evaluator(
+                independent, log_volume
+            );
+            const double derivative =
+                state.pressure_stationarity_derivative_log_volume;
+            const double objective_curvature = state.hessian.empty()
+                ? std::numeric_limits<double>::quiet_NaN()
+                : state.hessian.back();
+            converged = std::isfinite(derivative) && derivative != 0.0
+                && std::isfinite(objective_curvature)
+                && objective_curvature > 0.0
+                && audit_held2_tolerance(
+                    kHeld2Stage3Pressure,
+                    state.pressure_stationarity_relative
+                ).passed;
+        }
+        if (!converged) {
+            failure = "stage_iii_pressure_polish_iteration_limit";
+            return false;
+        }
+    }
+    return true;
+}
+
 Held2StageIIINlpEvaluation evaluate_general_stage_iii_algebraic(
     const std::vector<double>& feed,
     std::size_t phase_count,
@@ -1102,6 +1222,136 @@ Held2StageIIIResult solve_held2_stage_iii(
             continue;
         }
 
+        std::string pressure_polish_failure;
+        if (!polish_stage_iii_pressure_roots(
+                evaluator,
+                active_bounds,
+                active_candidates.size(),
+                dimension,
+                run.variables,
+                result.pressure_polish_iteration_count,
+                pressure_polish_failure
+            )) {
+            result.numerical_status = "not_converged";
+            result.pressure_polish_status = "failed";
+            result.failure_reason = pressure_polish_failure;
+            result.lifecycle.push_back(make_general_lifecycle_step(
+                result.stage_iii_solve_count,
+                active_candidates.size(),
+                "pressure_polish_failed",
+                run.solver_status,
+                result.failure_reason
+            ));
+            return result;
+        }
+        result.pressure_polish_status = "passed";
+        try {
+            nlp = evaluate_general_stage_iii(
+                coordinates,
+                feed,
+                evaluator,
+                active_candidates.size(),
+                run.variables,
+                run.equality_multipliers,
+                1.0
+            );
+        } catch (const std::exception& error) {
+            result.numerical_status = "not_converged";
+            result.failure_reason = error.what();
+            return result;
+        }
+        std::vector<double> polished_kkt = nlp.lagrangian_gradient;
+        result.bound_complementarity_inf_norm = 0.0;
+        for (std::size_t phase = 0;
+             phase < active_candidates.size();
+             ++phase) {
+            const std::size_t offset = phase * block_size;
+            for (std::size_t local = 0; local < block_size; ++local) {
+                const std::size_t index = offset + local;
+                double lower = 0.0;
+                double upper = 1.0;
+                if (local > 0 && local <= dimension) {
+                    const std::size_t coordinate = local - 1;
+                    lower = std::max(
+                        coordinates.independent_lower_bounds[coordinate],
+                        active_candidates[phase]
+                            .independent_modified_fractions[coordinate]
+                            - kCandidateRadius
+                    );
+                    upper = std::min(
+                        coordinates.independent_upper_bounds[coordinate],
+                        active_candidates[phase]
+                            .independent_modified_fractions[coordinate]
+                            + kCandidateRadius
+                    );
+                } else if (local == block_size - 1) {
+                    lower = active_bounds[phase][0];
+                    upper = active_bounds[phase][1];
+                }
+                polished_kkt[index] -= run.lower_bound_multipliers[index];
+                polished_kkt[index] += run.upper_bound_multipliers[index];
+                result.bound_complementarity_inf_norm = std::max({
+                    result.bound_complementarity_inf_norm,
+                    std::abs(
+                        (run.variables[index] - lower)
+                        * run.lower_bound_multipliers[index]
+                    ),
+                    std::abs(
+                        (upper - run.variables[index])
+                        * run.upper_bound_multipliers[index]
+                    ),
+                });
+            }
+        }
+        result.kkt_stationarity_inf_norm = maximum_abs(polished_kkt);
+        if (!audit_held2_tolerance(
+                kHeld2Stage3Stationarity,
+                result.kkt_stationarity_inf_norm
+            ).passed
+            || !audit_held2_tolerance(
+                kHeld2Stage3Complementarity,
+                result.bound_complementarity_inf_norm
+            ).passed) {
+            result.numerical_status = "not_converged";
+            result.failure_reason =
+                "stage_iii_pressure_polish_kkt_failed";
+            result.lifecycle.push_back(make_general_lifecycle_step(
+                result.stage_iii_solve_count,
+                active_candidates.size(),
+                "pressure_polish_kkt_failed",
+                run.solver_status,
+                result.failure_reason
+            ));
+            return result;
+        }
+        states.clear();
+        for (std::size_t phase = 0;
+             phase < active_candidates.size();
+             ++phase) {
+            const std::size_t offset = phase * block_size;
+            const std::vector<double> independent(
+                run.variables.begin()
+                    + static_cast<std::ptrdiff_t>(offset + 1),
+                run.variables.begin()
+                    + static_cast<std::ptrdiff_t>(offset + 1 + dimension)
+            );
+            states.push_back(evaluator(
+                independent,
+                run.variables[offset + 1 + dimension]
+            ));
+        }
+        Held2ProgressEvent pressure_progress;
+        pressure_progress.kind = Held2ProgressKind::Certificate;
+        pressure_progress.stage = "STAGE III PRESSURE POLISH";
+        pressure_progress.status = "passed";
+        pressure_progress.iteration = result.pressure_polish_iteration_count;
+        for (const Held2StateEvaluation& state : states) {
+            pressure_progress.primal_residual = std::max(
+                pressure_progress.primal_residual,
+                std::abs(state.pressure_stationarity_relative)
+            );
+        }
+        observe_held2(observer, pressure_progress);
         result.lifecycle.push_back(make_general_lifecycle_step(
             result.stage_iii_solve_count,
             active_candidates.size(),

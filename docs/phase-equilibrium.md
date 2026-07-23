@@ -105,11 +105,15 @@ solved Problem-(67) total free energy; the result retains both values, the
 signed gap, and its provenance. Missing or failed gap evidence returns to
 Stage II even when Ipopt and all other physical checks pass. Exact installed
 Provider directional-gradient and Hessian-vector tests cover the generic
-Stage-III formulation. The private Perdomo Table-5
-ePC-SAFT screening hypothesis still yields only one same-major Eq. (66)
-candidate after its declared finite search, so its real Step 8 remains
-correctly skipped with `indeterminate_finite_search_stalled`; this is not a
-source-equivalent reproduction of Perdomo's SAFT-gamma-Mie calculation.
+Stage-III formulation. The private Perdomo Table-5 ePC-SAFT screening exposed a
+premature local-search exit that executed only one declared Step-5 attempt per
+major. The corrected 24-major/50-attempt profile reaches two same-major Eq.
+(66) candidates in major 19, runs the generic Step-8 NLP, applies a bounded
+exact-derivative pressure polish on the finalized active phases, and passes the
+complete Step-9 physical and Eq. (68) certificates. This is private numerical
+evidence under an unadmitted ePC-SAFT parameter hypothesis, not a
+source-equivalent reproduction of Perdomo's SAFT-gamma-Mie calculation or a
+globality proof.
 
 ### HELD2 live progress diagnostic
 

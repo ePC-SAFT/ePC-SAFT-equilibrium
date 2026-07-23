@@ -883,6 +883,8 @@ def test_held2_step6_candidates_feed_stage8_and_complete_stage9_certification() 
     assert stage_iii["numerical_status"] == "converged"
     assert stage_iii["physical_status"] == "accepted"
     assert stage_iii["feedback"] == "none"
+    assert stage_iii["pressure_polish_status"] == "passed"
+    assert stage_iii["pressure_polish_iteration_count"] == 0
     assert len(stage_iii["phases"]) == 2
     assert stage_iii["modified_balance_inf_norm"] < 1.0e-9
     assert stage_iii["ordinary_balance_inf_norm"] < 1.0e-9

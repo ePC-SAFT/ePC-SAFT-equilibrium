@@ -2976,6 +2976,9 @@ py::dict held2_stage_iii_to_dict(
     result["retired_inactive_count"] = evaluation.retired_inactive_count;
     result["stage_iii_solve_count"] = evaluation.stage_iii_solve_count;
     result["active_set_resolve_count"] = evaluation.active_set_resolve_count;
+    result["pressure_polish_iteration_count"] =
+        evaluation.pressure_polish_iteration_count;
+    result["pressure_polish_status"] = evaluation.pressure_polish_status;
     result["trace_component_count"] = evaluation.trace_component_count;
     result["certified_modified_potential_count"] =
         evaluation.certified_modified_potential_count;
@@ -3598,6 +3601,14 @@ std::string held2_terminal_progress_fixture() {
     event.stage = "STAGE II STEP 6";
     event.status = "ineligible";
     event.reason = "fixture_gate";
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::Certificate;
+    event.stage = "STAGE III PRESSURE POLISH";
+    event.status = "passed";
+    event.iteration = 2;
+    event.primal_residual = 2.0e-12;
     progress.observe(event);
 
     event = {};
