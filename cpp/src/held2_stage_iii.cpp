@@ -125,9 +125,23 @@ Held2StageIIINlpEvaluation evaluate_held2_manufactured_stage_iii_nlp(
 Held2StageIIIResult solve_held2_manufactured_stage_iii(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed,
-    const std::vector<std::array<double, 2>>& candidates
+    const std::vector<std::array<double, 2>>& candidates,
+    double free_energy_upper_bound_offset
 ) {
     const Held2Coordinates coordinates = make_held2_coordinates(charges);
+    const std::vector<double> modified_feed =
+        held2_transform_physical_fractions(coordinates, physical_feed);
+    const auto independent_position = static_cast<std::size_t>(
+        std::find(
+            coordinates.retained_indices.begin(),
+            coordinates.retained_indices.end(),
+            coordinates.independent_indices.front()
+        ) - coordinates.retained_indices.begin()
+    );
+    const double free_energy_upper_bound =
+        held2_manufactured_enumerated_objective(
+            modified_feed[independent_position]
+        ) + free_energy_upper_bound_offset;
     return solve_held2_stage_iii(
         coordinates,
         physical_feed,
@@ -136,7 +150,13 @@ Held2StageIIIResult solve_held2_manufactured_stage_iii(
         std::vector<std::array<double, 2>>(
             candidates.size(),
             {std::log(kVolumeLower), std::log(kVolumeUpper)}
-        )
+        ),
+        free_energy_upper_bound,
+        !std::isfinite(free_energy_upper_bound)
+            ? "unavailable"
+            : free_energy_upper_bound_offset == 0.0
+                ? "manufactured_enumeration_oracle"
+                : "manufactured_perturbed_oracle"
     );
 }
 

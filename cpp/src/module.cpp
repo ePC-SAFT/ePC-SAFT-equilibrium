@@ -2998,7 +2998,10 @@ py::dict held2_stage_iii_to_dict(
     result["bound_complementarity_inf_norm"] =
         evaluation.bound_complementarity_inf_norm;
     result["minimum_phase_fraction"] = evaluation.minimum_phase_fraction;
-    result["enumeration_objective_gap"] = evaluation.enumeration_objective_gap;
+    result["free_energy_upper_bound"] = evaluation.free_energy_upper_bound;
+    result["free_energy_gap"] = evaluation.free_energy_gap;
+    result["free_energy_gap_provenance"] =
+        evaluation.free_energy_gap_provenance;
     result["kkt_evidence_available"] = evaluation.kkt_evidence_available;
     result["physical_evidence_available"] = evaluation.physical_evidence_available;
     result["phase_identity_evidence_available"] =
@@ -3077,7 +3080,7 @@ py::dict held2_stage_iii_to_dict(
         tolerance_audits.append(held2_tolerance_audit_to_dict(
             epcsaft_equilibrium::audit_held2_tolerance(
                 epcsaft_equilibrium::kHeld2Stage3FreeEnergyGap,
-                evaluation.enumeration_objective_gap
+                evaluation.free_energy_gap
             )
         ));
     }
@@ -3085,6 +3088,50 @@ py::dict held2_stage_iii_to_dict(
     result["phases"] = std::move(phases);
     result["lifecycle"] = std::move(lifecycle);
     result["globality_certificate"] = "not_guaranteed";
+    return result;
+}
+
+py::dict held2_installed_stage_iii_derivatives(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& physical_feed,
+    std::size_t phase_count,
+    const std::vector<double>& variables,
+    const std::vector<double>& equality_multipliers,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_native_sdk_v1& sdk = checked_held2_sdk(capsule);
+    const InstalledHeld2Problem problem(
+        sdk,
+        temperature_k,
+        pressure_pa,
+        physical_feed,
+        expected_fingerprint
+    );
+    const epcsaft_equilibrium::Held2StateEvaluator evaluator = [
+        &problem
+    ](const std::vector<double>& independent, double log_volume) {
+        return problem.evaluate(independent, log_volume);
+    };
+    const epcsaft_equilibrium::Held2StageIIINlpEvaluation evaluation =
+        epcsaft_equilibrium::evaluate_held2_stage_iii_nlp(
+            problem.coordinates(),
+            problem.physical_feed(),
+            evaluator,
+            phase_count,
+            variables,
+            equality_multipliers
+        );
+    py::dict result;
+    result["objective"] = evaluation.objective;
+    result["objective_gradient"] = evaluation.objective_gradient;
+    result["constraints"] = evaluation.constraints;
+    result["constraint_jacobian"] = evaluation.constraint_jacobian;
+    result["lagrangian_gradient"] = evaluation.lagrangian_gradient;
+    result["lagrangian_hessian"] = evaluation.lagrangian_hessian;
+    result["parameter_fingerprint"] = problem.fingerprint();
+    result["derivative_source"] = "provider_exact";
     return result;
 }
 
@@ -3268,6 +3315,14 @@ py::dict held2_installed_controller(
             std::log(volume_bounds[0]), std::log(volume_bounds[1])
         });
     }
+    const double free_energy_upper_bound =
+        stage_ii.bound_history.empty()
+        ? std::numeric_limits<double>::quiet_NaN()
+        : stage_ii.bound_history.back().upper_bound;
+    const std::string free_energy_gap_provenance =
+        stage_ii.bound_history.empty()
+        ? "unavailable"
+        : "stage_ii_problem_64_same_major_upper_bound";
     const epcsaft_equilibrium::Held2StageIIIResult stage_iii =
         epcsaft_equilibrium::solve_held2_stage_iii(
             problem.coordinates(),
@@ -3275,6 +3330,8 @@ py::dict held2_installed_controller(
             stage_ii.candidates,
             evaluator,
             phase_coordinate_bounds,
+            free_energy_upper_bound,
+            free_energy_gap_provenance,
             observer
         );
     result["stage_iii"] = held2_stage_iii_to_dict(stage_iii);
@@ -3430,12 +3487,23 @@ py::dict held2_manufactured_stage_iii(
     const std::vector<std::array<double, 2>>& candidates,
     const std::string& stage
 ) {
-    if (stage != "stage_iii") {
+    if (stage != "stage_iii"
+        && stage != "stage_iii_gap_failure"
+        && stage != "stage_iii_gap_unavailable") {
         throw py::value_error("unsupported manufactured HELD2 Stage III request");
     }
+    const double free_energy_upper_bound_offset =
+        stage == "stage_iii_gap_failure"
+        ? 1.0e-4
+        : stage == "stage_iii_gap_unavailable"
+            ? std::numeric_limits<double>::quiet_NaN()
+            : 0.0;
     py::dict result = held2_stage_iii_to_dict(
         epcsaft_equilibrium::solve_held2_manufactured_stage_iii(
-            charges, physical_feed, candidates
+            charges,
+            physical_feed,
+            candidates,
+            free_energy_upper_bound_offset
         )
     );
     result["profile"] = "perdomo-held2-stage-iii-manufactured-v1";
@@ -3530,6 +3598,15 @@ std::string held2_terminal_progress_fixture() {
     event.stage = "STAGE II STEP 6";
     event.status = "ineligible";
     event.reason = "fixture_gate";
+    progress.observe(event);
+
+    event = {};
+    event.kind = epcsaft_equilibrium::Held2ProgressKind::Certificate;
+    event.stage = "STAGE III FREE ENERGY";
+    event.status = "passed";
+    event.objective = -2.0;
+    event.upper_bound = -2.0;
+    event.gap = 0.0;
     progress.observe(event);
 
     event = {};
@@ -3931,6 +4008,18 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("upper_bound_multiplier"),
         py::arg("reduced_derivative"),
         py::arg("remaining_balance_feasible")
+    );
+    module.def(
+        "_held2_installed_stage_iii_derivatives",
+        &held2_installed_stage_iii_derivatives,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("pressure_pa"),
+        py::arg("physical_feed"),
+        py::arg("phase_count"),
+        py::arg("variables"),
+        py::arg("equality_multipliers"),
+        py::arg("expected_fingerprint")
     );
     module.def(
         "_held2_adapter",

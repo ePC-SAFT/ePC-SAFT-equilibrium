@@ -749,6 +749,8 @@ Held2StageIIIResult solve_held2_stage_iii(
     const std::vector<Held2StageIICandidate>& candidates,
     const Held2StateEvaluator& evaluator,
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
+    double free_energy_upper_bound,
+    const std::string& free_energy_gap_provenance,
     Held2ProgressObserver* observer
 ) {
     Held2StageIIIResult result;
@@ -1121,6 +1123,15 @@ Held2StageIIIResult solve_held2_stage_iii(
     }
 
     result.objective = accepted_nlp.objective;
+    result.free_energy_upper_bound = free_energy_upper_bound;
+    result.free_energy_gap_provenance = free_energy_gap_provenance;
+    result.free_energy_gap_available =
+        std::isfinite(free_energy_upper_bound)
+        && !free_energy_gap_provenance.empty()
+        && free_energy_gap_provenance != "unavailable";
+    if (result.free_energy_gap_available) {
+        result.free_energy_gap = free_energy_upper_bound - result.objective;
+    }
     for (std::size_t phase = 0; phase < active_candidates.size(); ++phase) {
         const std::size_t offset = phase * block_size;
         result.phases.push_back({
@@ -1250,7 +1261,7 @@ Held2StageIIIResult solve_held2_stage_iii(
         result.failure_reason = "stage_iii_phase_identity_unresolved";
         return result;
     }
-    const bool physical =
+    const bool physical_without_free_energy_gap =
         audit_held2_tolerance(
             kHeld2Stage3ModifiedBalance,
             result.modified_balance_inf_norm
@@ -1290,7 +1301,7 @@ Held2StageIIIResult solve_held2_stage_iii(
             kHeld2Stage3Complementarity,
             result.bound_complementarity_inf_norm
         ).passed;
-    if (!physical) {
+    if (!physical_without_free_energy_gap) {
         result.physical_status = "rejected";
         result.failure_reason = "stage_iii_physical_certificate_failed";
         Held2ProgressEvent physical_progress;
@@ -1308,6 +1319,42 @@ Held2StageIIIResult solve_held2_stage_iii(
         observe_held2(observer, physical_progress);
         return result;
     }
+    if (!result.free_energy_gap_available) {
+        result.physical_status = "rejected";
+        result.failure_reason = "stage_iii_free_energy_gap_unavailable";
+        Held2ProgressEvent gap_progress;
+        gap_progress.kind = Held2ProgressKind::Certificate;
+        gap_progress.stage = "STAGE III FREE ENERGY";
+        gap_progress.status = "failed";
+        gap_progress.reason = result.failure_reason;
+        observe_held2(observer, gap_progress);
+        return result;
+    }
+    if (!audit_held2_tolerance(
+            kHeld2Stage3FreeEnergyGap,
+            result.free_energy_gap
+        ).passed) {
+        result.physical_status = "rejected";
+        result.failure_reason = "stage_iii_free_energy_gap_failed";
+        Held2ProgressEvent gap_progress;
+        gap_progress.kind = Held2ProgressKind::Certificate;
+        gap_progress.stage = "STAGE III FREE ENERGY";
+        gap_progress.status = "failed";
+        gap_progress.reason = result.failure_reason;
+        gap_progress.objective = result.objective;
+        gap_progress.upper_bound = result.free_energy_upper_bound;
+        gap_progress.gap = result.free_energy_gap;
+        observe_held2(observer, gap_progress);
+        return result;
+    }
+    Held2ProgressEvent gap_progress;
+    gap_progress.kind = Held2ProgressKind::Certificate;
+    gap_progress.stage = "STAGE III FREE ENERGY";
+    gap_progress.status = "passed";
+    gap_progress.objective = result.objective;
+    gap_progress.upper_bound = result.free_energy_upper_bound;
+    gap_progress.gap = result.free_energy_gap;
+    observe_held2(observer, gap_progress);
     result.physical_status = "accepted";
     result.feedback = "none";
     Held2ProgressEvent physical_progress;

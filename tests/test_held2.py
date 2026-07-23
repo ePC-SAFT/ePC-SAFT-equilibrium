@@ -1437,6 +1437,88 @@ def test_held2_general_mp_stage_iii_exact_lagrangian_hessian() -> None:
     )
 
 
+def test_held2_installed_stage_iii_exact_lagrangian_hessian() -> None:
+    model = _figiel_brine_model()
+    capsule = epcsaft.native_sdk(model)
+    temperature_k = 298.15
+    pressure_pa = 100_000.0
+    independent = (0.02, 0.04)
+    envelopes = [
+        _equilibrium._held2_pressure_envelope(
+            capsule,
+            temperature_k,
+            pressure_pa,
+            (composition,),
+            model.parameter_fingerprint,
+            64,
+        )
+        for composition in independent
+    ]
+    log_volumes = tuple(
+        envelope["roots"][envelope["selected_root_index"]]["log_volume"]
+        for envelope in envelopes
+    )
+    center = (
+        0.5,
+        independent[0],
+        log_volumes[0],
+        0.5,
+        independent[1],
+        log_volumes[1],
+    )
+    multipliers = (0.1, -0.2, 0.0, 0.0)
+    direction = (0.0, 0.004, -0.01, 0.0, -0.003, 0.008)
+
+    def evaluate(values: tuple[float, ...]) -> dict[str, object]:
+        return _equilibrium._held2_installed_stage_iii_derivatives(
+            capsule,
+            temperature_k,
+            pressure_pa,
+            (0.97, 0.015, 0.015),
+            2,
+            values,
+            multipliers,
+            model.parameter_fingerprint,
+        )
+
+    step = 2.0e-5
+    lower = evaluate(
+        tuple(value - step * delta for value, delta in zip(center, direction, strict=True))
+    )
+    result = evaluate(center)
+    upper = evaluate(
+        tuple(value + step * delta for value, delta in zip(center, direction, strict=True))
+    )
+
+    objective_directional = (upper["objective"] - lower["objective"]) / (2.0 * step)
+    assert objective_directional == pytest.approx(
+        sum(
+            value * delta
+            for value, delta in zip(result["objective_gradient"], direction, strict=True)
+        ),
+        rel=2.0e-8,
+        abs=2.0e-9,
+    )
+    size = len(center)
+    for row in range(size):
+        numerical = (upper["lagrangian_gradient"][row] - lower["lagrangian_gradient"][row]) / (
+            2.0 * step
+        )
+        analytic = sum(
+            result["lagrangian_hessian"][size * row + column] * direction[column]
+            for column in range(size)
+        )
+        assert numerical == pytest.approx(analytic, rel=2.0e-7, abs=2.0e-8)
+    assert tuple(result["lagrangian_hessian"]) == pytest.approx(
+        tuple(
+            result["lagrangian_hessian"][size * column + row]
+            for row in range(size)
+            for column in range(size)
+        ),
+        abs=2.0e-12,
+    )
+
+
 def test_held2_general_mp_stage_iii_refines_then_merges_duplicate_phases() -> None:
     result = _equilibrium._held2_adapter(
         CHARGES,
@@ -1481,8 +1563,10 @@ def test_held2_general_mp_stage_iii_refines_then_merges_duplicate_phases() -> No
     assert result["dual_sign_violation_inf_norm"] < 1.0e-8
     assert result["bound_complementarity_inf_norm"] < 1.0e-8
     assert result["minimum_phase_fraction"] > 1.0e-10
-    assert abs(result["enumeration_objective_gap"]) < 1.0e-9
-    assert result["free_energy_gap_available"] is False
+    assert abs(result["free_energy_gap"]) < 1.0e-9
+    assert result["free_energy_upper_bound"] == pytest.approx(result["objective"])
+    assert result["free_energy_gap_available"] is True
+    assert result["free_energy_gap_provenance"] == "manufactured_enumeration_oracle"
     assert result["kkt_evidence_available"] is True
     assert result["physical_evidence_available"] is True
     assert result["phase_identity_evidence_available"] is True
@@ -1495,8 +1579,57 @@ def test_held2_general_mp_stage_iii_refines_then_merges_duplicate_phases() -> No
         "stage3_stationarity",
         "stage3_dual_sign",
         "stage3_complementarity",
+        "stage3_free_energy_gap",
         "phase_activity",
         "phase_distinct",
+    }
+
+
+def test_held2_stage_iii_rejects_independent_free_energy_gap_failure() -> None:
+    result = _equilibrium._held2_adapter(
+        CHARGES,
+        PHYSICAL_FEED,
+        ((0.2, 1.0), (0.8, 1.0)),
+        "stage_iii_gap_failure",
+    )
+
+    assert result["solver_status"] in {"solve_succeeded", "solved_to_acceptable_level"}
+    assert result["numerical_status"] == "converged"
+    assert result["physical_evidence_available"] is True
+    assert result["kkt_evidence_available"] is True
+    assert result["phase_identity_evidence_available"] is True
+    assert result["free_energy_gap_available"] is True
+    assert result["free_energy_gap_provenance"] == "manufactured_perturbed_oracle"
+    assert result["free_energy_gap"] > 1.0e-6
+    assert result["physical_status"] == "rejected"
+    assert result["feedback"] == "return_to_stage_ii"
+    assert result["failure_reason"] == "stage_iii_free_energy_gap_failed"
+    audits = {audit["name"]: audit for audit in result["tolerance_audits"]}
+    assert audits["stage3_free_energy_gap"]["passed"] is False
+    assert all(
+        audit["passed"]
+        for name, audit in audits.items()
+        if name != "stage3_free_energy_gap"
+    )
+
+
+def test_held2_stage_iii_rejects_unavailable_free_energy_gap() -> None:
+    result = _equilibrium._held2_adapter(
+        CHARGES,
+        PHYSICAL_FEED,
+        ((0.2, 1.0), (0.8, 1.0)),
+        "stage_iii_gap_unavailable",
+    )
+
+    assert result["numerical_status"] == "converged"
+    assert result["physical_evidence_available"] is True
+    assert result["free_energy_gap_available"] is False
+    assert result["free_energy_gap_provenance"] == "unavailable"
+    assert result["physical_status"] == "rejected"
+    assert result["feedback"] == "return_to_stage_ii"
+    assert result["failure_reason"] == "stage_iii_free_energy_gap_unavailable"
+    assert "stage3_free_energy_gap" not in {
+        audit["name"] for audit in result["tolerance_audits"]
     }
 
 

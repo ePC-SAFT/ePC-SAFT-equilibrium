@@ -136,6 +136,14 @@ void Held2TerminalProgress::observe(const Held2ProgressEvent& event) {
                 output_ << "  comp=" << std::setw(13)
                         << event.complementarity;
             }
+            if (std::isfinite(event.gap)) {
+                output_ << "  objective=" << std::setw(13)
+                        << event.objective
+                        << "  upper=" << std::setw(13)
+                        << event.upper_bound
+                        << "  gap=" << std::setw(13)
+                        << event.gap;
+            }
             output_ << '\n';
             break;
         case Held2ProgressKind::StageSkipped:

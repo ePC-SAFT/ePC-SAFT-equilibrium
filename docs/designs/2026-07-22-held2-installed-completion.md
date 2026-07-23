@@ -217,10 +217,21 @@ The final certificate must include:
 - active-set lifecycle and re-solve evidence; and
 - a computed source-faithful total-free-energy/HELD gap.
 
-`enumeration_objective_gap` or an equivalent field must be computed from
-independent quantities; a default zero is not evidence. A manufactured test
-must demonstrate rejection when local KKT and physical equalities pass but the
-free-energy gap fails.
+The source Eq. (68) quantity is
+`same_major_stage_ii_UBD - stage_iii_total_free_energy`. The generic owner
+retains the upper bound, total free energy, signed gap, and provenance. A
+default zero is not evidence. The installed derivative seam checks the generic
+Problem-(67) gradient and Lagrangian Hessian through the exact Provider
+callback. Manufactured tests independently enumerate the upper bound,
+demonstrate acceptance at the matching total free energy, reject a perturbed
+upper bound while local KKT and physical equalities still pass, and reject
+unavailable gap evidence.
+
+The private Perdomo Table-5 ePC-SAFT screening hypothesis still produces only
+one same-major Eq. (66) candidate under its declared finite Stage-II campaign.
+Consequently the real installed Step 8 remains skipped; this is truthful
+candidate-set evidence, not a Stage-III failure and not a source-equivalent
+SAFT-gamma-Mie reproduction.
 
 If the exact installed case reaches the declared trace threshold, logarithmic
 or complementarity-safe trace refinement requires its own derivative and KKT

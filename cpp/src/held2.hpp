@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -405,7 +406,11 @@ struct Held2StageIIIResult {
     double dual_sign_violation_inf_norm = 0.0;
     double bound_complementarity_inf_norm = 0.0;
     double minimum_phase_fraction = 0.0;
-    double enumeration_objective_gap = 0.0;
+    double free_energy_upper_bound =
+        std::numeric_limits<double>::quiet_NaN();
+    double free_energy_gap =
+        std::numeric_limits<double>::quiet_NaN();
+    std::string free_energy_gap_provenance = "unavailable";
     bool kkt_evidence_available = false;
     bool physical_evidence_available = false;
     bool phase_identity_evidence_available = false;
@@ -465,7 +470,8 @@ struct Held2StageIIIResult {
 [[nodiscard]] Held2StageIIIResult solve_held2_manufactured_stage_iii(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed,
-    const std::vector<std::array<double, 2>>& candidates
+    const std::vector<std::array<double, 2>>& candidates,
+    double free_energy_upper_bound_offset = 0.0
 );
 
 [[nodiscard]] Held2StageIIINlpEvaluation evaluate_held2_stage_iii_nlp(
@@ -483,6 +489,8 @@ struct Held2StageIIIResult {
     const std::vector<Held2StageIICandidate>& candidates,
     const Held2StateEvaluator& evaluator,
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
+    double free_energy_upper_bound,
+    const std::string& free_energy_gap_provenance,
     Held2ProgressObserver* observer = nullptr
 );
 
