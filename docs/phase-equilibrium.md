@@ -99,7 +99,13 @@ complement, rejects local values above the same-major upper bound, and keeps
 dual-cut eligibility separate from Eq. (66) candidate eligibility.
 Composition-rich vertex seeds expose both aqueous-rich and organic-rich
 basins. Manufactured Step-6 candidates feed the generic Step-8 NLP and pass
-the complete Step-9 physical certificate. The private Perdomo Table-5
+the complete Step-9 physical certificate. Step 9 now computes Perdomo
+Eq. (68) as the same-major Problem-(64) upper bound minus the independently
+solved Problem-(67) total free energy; the result retains both values, the
+signed gap, and its provenance. Missing or failed gap evidence returns to
+Stage II even when Ipopt and all other physical checks pass. Exact installed
+Provider directional-gradient and Hessian-vector tests cover the generic
+Stage-III formulation. The private Perdomo Table-5
 ePC-SAFT screening hypothesis still yields only one same-major Eq. (66)
 candidate after its declared finite search, so its real Step 8 remains
 correctly skipped with `indeterminate_finite_search_stalled`; this is not a
@@ -110,7 +116,8 @@ source-equivalent reproduction of Perdomo's SAFT-gamma-Mie calculation.
 The private installed controller accepts an internal, nullable progress
 observer. It receives already-computed reference roots, DIRECT-L evaluations,
 HiGHS bounds, Ipopt iteration metrics, certificate results, stage skips, and
-the final controller status. The default path supplies no observer and remains
+the Step-9 total-free-energy upper bound/objective/gap, and the final controller
+status. The default path supplies no observer and remains
 silent. Observer failures are swallowed and cannot change solver decisions,
 structured results, tolerances, budgets, or the
 `globality_certificate="not_guaranteed"` label.

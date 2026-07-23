@@ -105,6 +105,18 @@ checks, then exercise candidate retirement, duplicate merging, active-set
 re-solves, material/charge/pressure/potential checks, phase distinction, and
 trace handling through the exact Provider.
 
+**Implementation status:** The generic owner now computes Perdomo Eq. (68)
+from the same-major Problem-(64) upper bound and the independently solved
+Problem-(67) objective, records provenance, rejects perturbed or unavailable
+gap evidence, and passes installed Provider directional-gradient and
+Hessian-vector checks. Manufactured lifecycle coverage exercises duplicate
+merging, one-at-a-time KKT retirement, active-set re-solves, physical
+certification, trace rejection, and Ipopt-success/physical-failure separation.
+The private Perdomo Table-5 ePC-SAFT screening campaign supplies only one
+certified Eq. (66) candidate under its declared finite resources, so the real
+installed Stage-III solve remains blocked at the candidate gate rather than
+being fabricated from non-candidates.
+
 ## Task 4: Retain repeatable end-to-end private evidence and hand off readiness
 
 **Use Cases:**

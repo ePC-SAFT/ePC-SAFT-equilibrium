@@ -432,6 +432,22 @@ implement the final logarithmic trace refinement. Trace components are not
 passed to Ipopt near `1e-300` and must not be accepted through an unconditional
 interior modified-potential equality.
 
+Step 9 applies Perdomo Eq. (68) to independent controller quantities:
+
+```text
+free_energy_gap = same_major_stage_ii_UBD - stage_iii_total_free_energy
+```
+
+The installed controller passes the Problem-(64) upper bound from the same
+Stage-II major that produced the candidate set. Stage III computes the
+Problem-(67) total free energy independently, retains both values and their
+provenance, and accepts only when the named free-energy-gap gate passes.
+Missing evidence, a default numeric value, or a locally converged Ipopt state
+with a failed gap returns to Stage II. The manufactured oracle computes its
+upper bound by independent enumeration and includes a perturbed-bound rejection
+case. Installed Provider directional-gradient and Hessian-vector tests exercise
+the same generic Stage-III derivative owner.
+
 ## Certification and status axes
 
 An accepted multiphase result requires all applicable existing certificates:
@@ -445,7 +461,7 @@ An accepted multiphase result requires all applicable existing certificates:
   coordinate from phase-fraction stationarity;
 - original-coordinate KKT stationarity and complementarity;
 - distinct active phases and no collapsed duplicate accepted as LLE;
-- Stage-II/Stage-III bound or feedback consistency; and
+- the source Eq. (68) same-major Stage-II/Stage-III free-energy gap; and
 - independent confirmation where the controller requires it.
 
 Potential-gap checks use mixed absolute/relative scaling rather than division
