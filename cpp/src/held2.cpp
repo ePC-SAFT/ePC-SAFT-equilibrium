@@ -31,6 +31,16 @@ constexpr int kStageIISobolEvaluationCount = 12;
 constexpr int kStageIIDirectEvaluationBudget = 128;
 constexpr unsigned int kStageISeed = 2025;
 
+constexpr bool stage_ii_local_search_has_candidate_set(
+    std::size_t distinct_step6_candidate_count
+) {
+    return distinct_step6_candidate_count >= 2;
+}
+
+static_assert(!stage_ii_local_search_has_candidate_set(0));
+static_assert(!stage_ii_local_search_has_candidate_set(1));
+static_assert(stage_ii_local_search_has_candidate_set(2));
+
 void require_finite_vector(const std::vector<double>& values, const char* name) {
     if (!std::all_of(values.begin(), values.end(), [](double value) {
             return std::isfinite(value);
@@ -4205,14 +4215,12 @@ Held2StageIIResult solve_held2_stage_ii(
                 const bool qualified = attempt.step5_qualified;
                 const bool step6_eligible = attempt.step6_eligible;
                 result.attempt_trace.push_back(std::move(attempt));
-                if (qualified && !step6_eligible
-                    && same_major_step6_cuts.empty()) {
-                    step5_condition_satisfied = true;
-                    break;
-                }
+                step5_condition_satisfied =
+                    step5_condition_satisfied || qualified;
                 if (step6_eligible) {
-                    step5_condition_satisfied = true;
-                    if (same_major_step6_cuts.size() >= 2) {
+                    if (stage_ii_local_search_has_candidate_set(
+                            same_major_step6_cuts.size()
+                        )) {
                         break;
                     }
                 }
@@ -4246,7 +4254,7 @@ Held2StageIIResult solve_held2_stage_ii(
             result.distinct_basin_count = static_cast<int>(traced_basins.size());
             return result;
         }
-        if (same_major_step6_cuts.size() == 1
+        if (same_major_step6_cuts.size() < 2
             && representative_cap_truncated) {
             result.local_attempts_truncated = true;
         }

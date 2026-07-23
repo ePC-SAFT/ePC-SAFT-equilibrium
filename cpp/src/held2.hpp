@@ -390,6 +390,8 @@ struct Held2StageIIIResult {
     int retired_inactive_count = 0;
     int stage_iii_solve_count = 0;
     int active_set_resolve_count = 0;
+    int pressure_polish_iteration_count = 0;
+    std::string pressure_polish_status = "not_run";
     int trace_component_count = 0;
     int certified_modified_potential_count = 0;
     double objective = 0.0;

@@ -84,14 +84,25 @@ as numerical evidence because Perdomo used SAFT-gamma Mie and no
 source-equivalent Provider bundle exists. The declared ePC-SAFT hypothesis
 combines published solvent and ion records with explicit unfitted screening
 assumptions. The corrected search finds and pressure-certifies both an
-organic-rich and an aqueous-rich local basin. Under the same dual multiplier,
-however, only one basin passes Eq. (66); the other is a useful lower cut, not a
-co-minimizing candidate. After the declared deterministic exploration is
-exhausted the truthful outcome is
-`indeterminate_finite_search_stalled`, with one certified candidate and
-`globality_certificate=not_guaranteed`. Step 8 is therefore intentionally not
-run for that screening hypothesis. This result is neither a Stage-III defect
-nor evidence that the published SAFT-gamma-Mie equilibrium is absent.
+organic-rich and an aqueous-rich local basin. The prior controller nevertheless
+executed only the first Step-5-qualified local solve in each major whenever that
+state missed Step 6, despite declaring up to 50 attempts. The corrected
+controller continues through distinct representatives until two Step-6 states
+are found or the declared attempt cap is exhausted. In the 24-major private
+profile, both basins pass Eq. (66) in major 19 with same-major gaps below
+`4.1e-9`.
+
+The resulting generic Step-8 solve converges to two active phases. Before Step
+9, a bounded exact-derivative corrector polishes only active phase log-volumes
+on their already selected strict-stable pressure branches, then recomputes the
+NLP KKT and complementarity evidence. It does not alter compositions,
+balances, Provider equations, or physical gates. The private screening replay
+then passes material and charge closure, pressure, modified-potential equality,
+KKT, phase identity, and the independently computed Eq. (68) gap. This is
+end-to-end numerical evidence for the implemented controller under an
+unadmitted ePC-SAFT parameter hypothesis; it is not reproduction or validation
+of Perdomo's SAFT-gamma-Mie result, and its
+`globality_certificate` remains `not_guaranteed`.
 
 The subsequent issue-#27 replay classified the retained chart failure as
 solver-bound numerical contact, not a physical-simplex excursion. The earliest
@@ -227,11 +238,13 @@ demonstrate acceptance at the matching total free energy, reject a perturbed
 upper bound while local KKT and physical equalities still pass, and reject
 unavailable gap evidence.
 
-The private Perdomo Table-5 ePC-SAFT screening hypothesis still produces only
-one same-major Eq. (66) candidate under its declared finite Stage-II campaign.
-Consequently the real installed Step 8 remains skipped; this is truthful
-candidate-set evidence, not a Stage-III failure and not a source-equivalent
-SAFT-gamma-Mie reproduction.
+The private Perdomo Table-5 ePC-SAFT screening hypothesis reaches two distinct
+same-major Eq. (66) candidates in major 19 of the corrected 24-major campaign.
+The generic installed Step 8 therefore runs and, after the active-phase
+pressure correction described above, passes every Step-9 certificate and the
+independently computed Eq. (68) gap. This is numerical controller evidence for
+the exact private ePC-SAFT hypothesis, not a source-equivalent SAFT-gamma-Mie
+reproduction or a globality proof.
 
 If the exact installed case reaches the declared trace threshold, logarithmic
 or complementarity-safe trace refinement requires its own derivative and KKT

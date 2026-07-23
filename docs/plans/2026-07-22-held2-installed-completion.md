@@ -112,10 +112,15 @@ gap evidence, and passes installed Provider directional-gradient and
 Hessian-vector checks. Manufactured lifecycle coverage exercises duplicate
 merging, one-at-a-time KKT retirement, active-set re-solves, physical
 certification, trace rejection, and Ipopt-success/physical-failure separation.
-The private Perdomo Table-5 ePC-SAFT screening campaign supplies only one
-certified Eq. (66) candidate under its declared finite resources, so the real
-installed Stage-III solve remains blocked at the candidate gate rather than
-being fabricated from non-candidates.
+The private Perdomo Table-5 ePC-SAFT screening campaign exposed and corrected a
+premature Step-5 local-search exit. With the declared 50-attempt cap actually
+enforced, the 24-major profile produces two distinct Eq. (66) candidates in
+major 19. The generic installed Stage-III owner then converges and, after a
+two-iteration exact-derivative pressure polish on the finalized active set,
+passes material/charge/pressure/potential/KKT/identity and independent Eq. (68)
+certification. This closes the numerical implementation leaf for the private
+unadmitted ePC-SAFT hypothesis; it does not validate Perdomo's SAFT-gamma-Mie
+prediction or provide a globality proof.
 
 ## Task 4: Retain repeatable end-to-end private evidence and hand off readiness
 

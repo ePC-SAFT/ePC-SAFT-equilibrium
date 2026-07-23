@@ -34,6 +34,7 @@ def test_held2_terminal_progress_formats_expected_rows() -> None:
     assert "lower=unavailable" in trace
     assert "STAGE II IPOPT" in trace
     assert "stage=STAGE II STEP 6" in trace
+    assert "stage=STAGE III PRESSURE POLISH" in trace
     assert "stage=STAGE III FREE ENERGY" in trace
     assert "objective=-2.000000e+00" in trace
     assert "upper=-2.000000e+00" in trace

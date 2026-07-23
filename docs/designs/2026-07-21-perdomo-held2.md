@@ -448,6 +448,15 @@ upper bound by independent enumeration and includes a perturbed-bound rejection
 case. Installed Provider directional-gradient and Hessian-vector tests exercise
 the same generic Stage-III derivative owner.
 
+An Ipopt terminal may meet its unscaled local target while its volume
+stationarity maps to a relative pressure residual just outside the physical
+pressure gate. After the active set is finalized, Stage III therefore applies a
+safeguarded Newton correction in log-volume using the exact Provider-derived
+pressure residual and derivative. Only phase-activity-certified phases are
+corrected; trace or inactive phases remain under their separate fail-closed
+logic. The corrected point is accepted only after KKT and complementarity are
+recomputed and all unchanged Step-9 gates pass.
+
 ## Certification and status axes
 
 An accepted multiphase result requires all applicable existing certificates:
