@@ -19,9 +19,10 @@ replace a formulation owner.
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
 | Strong-electrolyte Perdomo HELD2 | [Perdomo HELD2](designs/2026-07-21-perdomo-held2.md) and [solver-strategy plan](plans/2026-07-21-perdomo-held2-solver-strategy.md) | Private integrated Stage-I/II/III development controller with fail-closed installed evidence; no public electrolyte dispatch or admitted electrolyte LLE capability |
+| Private homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) | D-028-bound non-production foundation; underscored test seam only; manufactured evidence with Provider-basis `lnK`; no admitted source-complete chemistry |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
-| Reactive or coupled phase-chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
+| Coupled multiphase chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
 
 The only accepted capability is `pure-component-saturation-v1`. A public
 symbol, a local candidate, an installed campaign, or a converged local solve is
@@ -132,6 +133,26 @@ detected under the completed finite search. This is not a stability proof, a
 reproduction of Perdomo's SAFT-gamma-Mie endpoint, or an admitted electrolyte-
 LLE result.
 
+### Private homogeneous reacting phase
+
+The D-028 design owns one private homogeneous fixed-`T,P` reacting-phase
+foundation. It validates ordered species, conservation and independent
+reaction ranks, dimensionless source/reference-bound `lnK`, and the exact
+Provider identity before solving. It constructs `g_ref` in the Provider
+Helmholtz coordinate basis, uses a general positive electroneutral amount
+chart, performs max-min initialization, attempts the true Provider objective
+first, and permits only a final `lambda=1` continuation state to pass.
+
+Its certificate axes keep artifact/input completeness, Ipopt status, numerical
+and physical checks, reduced-Hessian local status, predictive status, finite
+search, and globality separate. The manufactured installed-Provider seam
+remains labeled manufactured/nonpredictive. Inputs must already supply
+dimensionless `lnK` in the declared Provider Helmholtz basis. Source-standard-
+state transformation is deferred until a source-complete application owns the
+necessary chemistry and validation evidence. No application chemistry or
+source-backed nonideal reacting case is retained here. There is no public solve
+route, result type, generalized chemistry registry, or globality claim.
+
 ## Shared package contract
 
 The installed `epcsaft` Provider owns resolved thermodynamic input, component
@@ -238,12 +259,13 @@ its own package-local design and bounded capability gate.
 
 ### Reactive and coupled equilibrium
 
-Standalone chemical equilibrium and simultaneous phase-chemical equilibrium
-require ordered species, phase incidence, stoichiometric and elemental balance
-matrices, standard states, source-bound equilibrium constants, and distinct
-reaction/transfer certificates. Staged chemistry followed by a phase-only
-solve is initialization evidence, not a coupled equilibrium result. No such
-public schema or runtime route is currently admitted.
+The private homogeneous foundation does not complete simultaneous
+phase-chemical equilibrium. A coupled formulation still requires explicit
+phase incidence, global conservation, phase-specific electroneutrality,
+source-complete standard-state transformations, phase discovery, and distinct
+reaction/transfer/pressure certificates. Staged chemistry followed by a
+phase-only solve is initialization evidence, not a coupled equilibrium result.
+No public reactive schema or runtime route is admitted.
 
 ## Historical and scientific provenance
 

@@ -66,6 +66,9 @@ endif()
 pybind11_add_module(
   _equilibrium MODULE
   cpp/src/module.cpp
+  cpp/src/chemical_equilibrium.cpp
+  cpp/src/chemical_equilibrium_bindings.cpp
+  cpp/src/chemical_equilibrium_solver.cpp
   cpp/src/provider.cpp
   cpp/src/held.cpp
   cpp/src/held_stage_i.cpp

@@ -84,6 +84,17 @@ subject, Validation, and public admission require separate authority. No specula
 case constants, route, tolerance, resource, or public runtime correction is
 active.
 
+D-028 separately binds a private, non-production homogeneous reacting-phase
+foundation. The implementation is intentionally reachable only through
+underscored native test seams: it compiles ordered balances, reactions, and
+reference records; constructs an exact positive electroneutral chart; owns one
+fixed-`T,P` Ipopt TNLP and its certificates; and consumes the installed
+Provider's Helmholtz, pressure, volume-domain, packing, and derivative
+callbacks. The manufactured seam remains explicitly
+`manufactured_nonpredictive`. No application chemistry or source-backed
+nonideal reacting case is retained in this package. D-026 remains the public
+HELD2 admission gate.
+
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD
 `5a678beff38717478fd333c65e77f005cc2f6b15` and record SHA-256
@@ -132,6 +143,10 @@ candidate source and a public route do not accept their own promotion.
 `promotion_status: accepted`
 
 `local_candidate: neutral-held-v1`
+
+`private_development_foundation: homogeneous-reacting-phase-d028`
+
+`private_development_foundation_authority_effect: none`
 
 `local_candidate_authority_effect: none`
 

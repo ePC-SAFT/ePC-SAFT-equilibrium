@@ -181,7 +181,13 @@ formulation owners are
 `docs/designs/2026-07-17-neutral-held-v1.md`, and
 `docs/designs/2026-07-21-perdomo-held2.md`; the canonical HELD2 execution plan
 and landed task record is
-`docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. Migration receipt
+`docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. The D-028 private,
+non-production
+reacting-phase foundation is documented separately in
+`docs/designs/2026-07-21-private-reacting-phase-kernel.md`. It currently has
+manufactured and installed-Provider-manufactured evidence only; application
+chemistry and source-backed nonideal reacting cases remain downstream work.
+Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
 solve is not a phase-discovery or global-stability proof. The local HELD

@@ -23,6 +23,12 @@ struct MixturePhaseEvaluation {
     std::string parameter_fingerprint;
 };
 
+struct PackingFractionEvaluation {
+    double value = 0.0;
+    std::vector<double> gradient;
+    std::vector<double> hessian;
+};
+
 class ProviderContext {
 public:
     ProviderContext(const epcsaft_native_sdk_v1& sdk, std::string fingerprint);
@@ -50,6 +56,12 @@ public:
         const std::vector<double>& mole_fractions,
         double packing_fraction_min,
         double packing_fraction_max
+    ) const;
+
+    [[nodiscard]] PackingFractionEvaluation evaluate_packing_fraction(
+        double temperature_k,
+        const std::vector<double>& amounts_mol,
+        double volume_m3
     ) const;
 
     [[nodiscard]] const std::string& fingerprint() const;

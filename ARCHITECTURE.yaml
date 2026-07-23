@@ -17,6 +17,7 @@ documentation:
   neutral_held_design: docs/designs/2026-07-17-neutral-held-v1.md
   perdomo_held2_design: docs/designs/2026-07-21-perdomo-held2.md
   perdomo_held2_solver_strategy: docs/plans/2026-07-21-perdomo-held2-solver-strategy.md
+  private_reacting_phase_design: docs/designs/2026-07-21-private-reacting-phase-kernel.md
   historical_lab_m4_role: scientific-and-migration-provenance
 
 accepted_capability:
@@ -320,6 +321,7 @@ owners:
     exploration; HiGHS Stage-II upper LP; Ipopt Stage-II local refinement and
     Stage III; Equilibrium independent certificates and fail-closed integrated
     controller
+  private_reacting_phase_compiler_and_ipopt: cpp/src/chemical_equilibrium.cpp and cpp/src/chemical_equilibrium_solver.cpp
   input_validation_and_typed_results: src/epcsaft_equilibrium/_api.py
   pure_scientific_anchors: data/reference/pure_saturation_anchors.csv
   flash_predictive_validation: ePC-SAFT-validation
@@ -349,6 +351,31 @@ public_surface:
     - Ipopt
     - NLopt 2.11.0 pinned source archive
     - HiGHS 1.15.1 pinned source archive
+
+private_reacting_phase_foundation:
+  binding_decision: D-028
+  status: private-non-production-manufactured-evidence
+  authority_effect: none
+  public_exports_added: []
+  scope: one homogeneous fixed-temperature fixed-pressure reacting phase
+  standard_reference_equation: nu_g_ref_equals_negative_lnK
+  amount_coordinates: positive-electroneutral-charge-equivalents-and-simplex-shares
+  objective: provider_total_helmholtz_over_rt_plus_PV_over_RT_plus_g_ref_dot_n
+  solver: native-Ipopt-direct-lambda-one-with-adaptive-continuation-fallback
+  provider_contracts:
+    - exact component order, charges, and fingerprint
+    - electrolyte Helmholtz value, gradient, Hessian, and pressure
+    - molar-volume domain bounds
+    - packing-fraction value, gradient, and Hessian
+    - source temperature and total-ion composition bounds
+    - dimensionless lnK already transformed into the declared Provider Helmholtz basis
+  evidence_profiles:
+    - installed_provider_manufactured_nonpredictive
+  globality_certificate: not_guaranteed
+  downstream_blockers:
+    - source-complete MEA species, equilibrium constants, and exact standard-state transformation
+    - typed Provider parameter derivatives for implicit sensitivities
+    - coupled phase incidence and HELD-owned phase discovery
 
 evidence:
   implementation_commit: 8318e755d4a8e490822fdf7bb2685d8c5af6436c
@@ -411,7 +438,8 @@ excluded:
   - arbitrary component counts, more than two phases, and trace-bound refinement
   - density closure and density-root derivatives
   - third derivatives for neutral HELD
-  - association, electrolyte, ionic, and reactive equilibrium
+  - association and electrolyte models outside the installed Perdomo HELD2 contract
+  - public reactive equilibrium
   - bubble-pressure and dew-pressure routes
   - critical completion and continuation
   - generic route registries, solver selectors, and fallback solvers
