@@ -103,6 +103,34 @@ using Held2VolumeBoundsEvaluator = std::function<std::array<double, 2>(
     const std::vector<double>&
 )>;
 
+struct Held2StageIIPressureRootReduction {
+    double objective = 0.0;
+    std::vector<double> gradient;
+    std::vector<double> hessian;
+    double pressure_coordinate_gradient = 0.0;
+    double pressure_coordinate_curvature = 0.0;
+};
+
+[[nodiscard]] Held2StageIIPressureRootReduction
+reduce_held2_stage_ii_pressure_root(
+    const std::vector<double>& independent,
+    const std::vector<double>& feed,
+    const std::vector<double>& multipliers,
+    const Held2StateEvaluation& state
+);
+
+struct Held2StageIIStep5Assessment {
+    bool qualified = false;
+    double gap = 0.0;
+    std::string reason;
+};
+
+[[nodiscard]] Held2StageIIStep5Assessment assess_held2_stage_ii_step5(
+    double upper_bound,
+    double local_value,
+    bool local_state_certified
+);
+
 struct Held2PressureScanPoint {
     double log_volume = 0.0;
     double volume = 0.0;
@@ -271,8 +299,13 @@ struct Held2StageIIAttempt {
     bool dual_signs_valid = false;
     bool physical_kkt_passed = false;
     bool cut_eligible = false;
+    bool step5_qualified = false;
+    std::string step5_reason = "not_evaluated";
     bool step6_eligible = false;
     double step6_gap = 0.0;
+    bool step6_gap_passed = false;
+    bool step6_gradient_passed = false;
+    std::string step6_rejection_reason = "not_evaluated";
     double fixed_volume_gradient_inf_norm = 0.0;
     double fixed_volume_gradient_scale = 0.0;
     int basin_id = -1;
@@ -415,6 +448,7 @@ struct Held2StageIIIResult {
     const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
     const Held2StateEvaluation& reference,
     const std::vector<Held2StageICandidate>& stage_i_candidates,
+    double total_ion_mole_fraction_max,
     int major_iteration_cap,
     int local_attempt_cap_per_major,
     Held2ProgressObserver* observer = nullptr

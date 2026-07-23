@@ -28,6 +28,7 @@ using Held2StageIIBasinEvaluator = std::function<Held2StageIIBasinEvaluation(
 
 struct Held2StageIIPhysicalStart {
     std::vector<double> independent_modified_fractions;
+    int stable_branch_index = -1;
     double log_volume = 0.0;
     double volume = 0.0;
     double reduced_lower_value = 0.0;
@@ -65,6 +66,7 @@ explore_held2_stage_ii_basins(
     int sobol_count,
     bool use_direct_escalation,
     int direct_evaluation_budget,
+    double total_ion_mole_fraction_max,
     const Held2StageIIBasinEvaluator& evaluator
 );
 

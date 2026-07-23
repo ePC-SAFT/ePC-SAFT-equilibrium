@@ -95,6 +95,7 @@ void retain_evaluation(
     }
     const double composition_offset = evaluation.reduced_lower_value
         - minimum_stable_root_objective;
+    int stable_branch_index = 0;
     for (const Held2PressureRoot& root : evaluation.pressure_envelope.roots) {
         if (root.mechanical_class != "strict_stable" || root.boundary) {
             continue;
@@ -102,6 +103,7 @@ void retain_evaluation(
         Held2StageIIPhysicalStart start;
         start.independent_modified_fractions =
             evaluation.independent_modified_fractions;
+        start.stable_branch_index = stable_branch_index++;
         start.log_volume = root.log_volume;
         start.volume = root.volume;
         start.reduced_lower_value = root.objective + composition_offset;
@@ -130,6 +132,8 @@ struct DirectContext {
     const Held2StageIIBasinEvaluator* evaluator = nullptr;
     Held2StageIIBasinExplorationResult* result = nullptr;
     nlopt::opt* optimizer = nullptr;
+    double total_ion_mole_fraction_max =
+        std::numeric_limits<double>::quiet_NaN();
     bool stop_requested = false;
 };
 
@@ -151,7 +155,7 @@ double direct_objective(
         held2_map_unit_cube_to_independent_fractions(
             *context.coordinates,
             cube,
-            std::numeric_limits<double>::quiet_NaN()
+            context.total_ion_mole_fraction_max
         );
     Held2StageIIBasinEvaluation evaluation = evaluate_fail_closed(
         *context.evaluator,
@@ -263,11 +267,16 @@ Held2StageIIBasinExplorationResult explore_held2_stage_ii_basins(
     int sobol_count,
     bool use_direct_escalation,
     int direct_evaluation_budget,
+    double total_ion_mole_fraction_max,
     const Held2StageIIBasinEvaluator& evaluator
 ) {
     if (coordinates.independent_indices.empty() || sobol_count < 0
         || direct_evaluation_budget < 0
-        || (use_direct_escalation && direct_evaluation_budget == 0)) {
+        || (use_direct_escalation && direct_evaluation_budget == 0)
+        || (!std::isnan(total_ion_mole_fraction_max)
+            && (!std::isfinite(total_ion_mole_fraction_max)
+                || total_ion_mole_fraction_max <= 0.0
+                || total_ion_mole_fraction_max > 1.0))) {
         throw std::invalid_argument("HELD2 Stage-II basin policy is invalid");
     }
     Held2StageIIBasinExplorationResult result;
@@ -317,7 +326,7 @@ Held2StageIIBasinExplorationResult explore_held2_stage_ii_basins(
             held2_map_unit_cube_to_independent_fractions(
                 coordinates,
                 cube,
-                std::numeric_limits<double>::quiet_NaN()
+                total_ion_mole_fraction_max
             );
         retain_evaluation(
             result,
@@ -341,6 +350,7 @@ Held2StageIIBasinExplorationResult explore_held2_stage_ii_basins(
             &evaluator,
             &result,
             &optimizer,
+            total_ion_mole_fraction_max,
             false,
         };
         optimizer.set_lower_bounds(std::vector<double>(

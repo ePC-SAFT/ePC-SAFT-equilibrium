@@ -40,6 +40,59 @@ set, a real Provider Stage-III solve, physical two-phase equilibrium, or
 predictive agreement with Khudaida. Its root-completeness and globality claims
 remain `not_proven` and `not_guaranteed`, respectively.
 
+## Corrected Step-5 through Step-9 status
+
+The current implementation no longer solves Problem (65) in a fixed volume box
+borrowed from the start composition. It minimizes a pressure-root-reduced
+objective in the independent modified-composition chart. Each trial
+composition obtains its own Provider volume domain, follows a numbered strict
+stable pressure branch with a safeguarded exact-derivative continuation, and
+falls back to the complete declared pressure-envelope search when branch
+continuation cannot be certified. The reduced gradient and Hessian are the
+exact pressure-manifold derivatives; the Hessian uses the Schur complement of
+the eliminated volume coordinate. The final state is reconstructed at the
+polished pressure root before physical KKT and Step-6 certification.
+
+Problem (65) is qualified only when its independently certified local value is
+not above the same-major Problem-(64) upper value, apart from the existing
+named Step-6 gap allowance. A locally converged point above that upper value is
+retained as failed evidence and cannot become a lower bound, cut, or candidate.
+The first qualified lower state supplies the next complete-cut iteration.
+When a Step-6 state is found, the same major continues through distinct
+representatives to look for a second co-minimizer.
+
+Provider-valid pressure-envelope representatives are eligible as affine dual
+cuts but not as candidate phases. Candidate eligibility additionally requires
+the exact-Hessian Ipopt terminal, pressure closure, original-coordinate KKT,
+physical multiplier signs, complementarity, dual reconstruction, same-major
+gap, and fixed-volume Eq. (66) gradient tests. Composition-rich simplex-vertex
+seeds are included so aqueous-rich and organic-rich basins do not depend on a
+fortunate Sobol point. HiGHS solves Problem (64) with a `1e-10` internal
+primal/dual target so its cut feasibility is resolved more tightly than the
+unchanged `1e-8` Step-6 gap gate; the public tolerance contract is unchanged.
+
+Manufactured end-to-end evidence now passes the Step-6 candidate set directly
+to the generic Problem-(67) owner. Step 8 converges with exact Hessians, and
+Step 9 accepts two phases only after modified and explicit material balances,
+charge, pressure, modified-potential equality, KKT, complementarity, phase
+identity, and active-set lifecycle checks pass. Deliberate potential,
+infeasible-set, trace-component, duplicate, and inactive-phase cases remain
+fail-closed.
+
+A private Perdomo Table-5 LiCl--water--1-butanol screening replay is useful only
+as numerical evidence because Perdomo used SAFT-gamma Mie and no
+source-equivalent Provider bundle exists. The declared ePC-SAFT hypothesis
+combines published solvent and ion records with explicit unfitted screening
+assumptions. The corrected search finds and pressure-certifies both an
+organic-rich and an aqueous-rich local basin. Under the same dual multiplier,
+however, only one basin passes Eq. (66); the other is a useful lower cut, not a
+co-minimizing candidate. After the declared deterministic exploration is
+exhausted the truthful outcome is
+`indeterminate_finite_search_stalled`, with one certified candidate and
+`globality_certificate=not_guaranteed`. Step 8 is therefore intentionally not
+run for that screening hypothesis. This result is neither a Stage-III defect
+nor evidence that the published SAFT-gamma-Mie equilibrium is absent.
+
 The subsequent issue-#27 replay classified the retained chart failure as
 solver-bound numerical contact, not a physical-simplex excursion. The earliest
 rejected trial was an `eval_f` request at `1.0000000000000002`, was not an

@@ -110,6 +110,14 @@ Held2StageIIUpperResult solve_held2_stage_ii_upper_highs(
     result.solver_version = highs.version();
     if (highs.setOptionValue("output_flag", false) == HighsStatus::kError
         || highs.setOptionValue("threads", 1) == HighsStatus::kError
+        || highs.setOptionValue(
+               "primal_feasibility_tolerance",
+               kHeld2IpoptTarget.atol
+           ) == HighsStatus::kError
+        || highs.setOptionValue(
+               "dual_feasibility_tolerance",
+               kHeld2IpoptTarget.atol
+           ) == HighsStatus::kError
         || highs.passModel(model) == HighsStatus::kError) {
         result.solver_status = "setup_failed";
         return result;
