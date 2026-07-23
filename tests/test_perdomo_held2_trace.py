@@ -30,14 +30,11 @@ def test_held2_observer_is_quiet_by_default_and_does_not_change_results(capfd) -
         2508.0,
         PERDOMO_TABLE3_FEED,
         model.parameter_fingerprint,
-        1,
-        1,
-        1,
     )
 
-    quiet = _equilibrium._held2_controller(*arguments)
+    quiet = _equilibrium._solve_tp_flash(*arguments)
     quiet_output = capfd.readouterr()
-    traced = _equilibrium._held2_controller(*arguments, trace=True)
+    traced = _equilibrium._solve_tp_flash(*arguments, trace=True)
     traced_output = capfd.readouterr()
 
     assert quiet_output.out == ""
@@ -53,24 +50,19 @@ def test_held2_observer_is_quiet_by_default_and_does_not_change_results(capfd) -
 
 def test_perdomo_table3_nacl_workflow(held2_live: bool) -> None:
     model = _perdomo_table3_model()
-    result = _equilibrium._held2_controller(
+    result = _equilibrium._solve_tp_flash(
         epcsaft.native_sdk(model),
         298.15,
         2508.0,
         PERDOMO_TABLE3_FEED,
         model.parameter_fingerprint,
-        50,
-        8,
-        50,
         trace=held2_live,
     )
 
     expected_feed = tuple(value / sum(_source_amounts) for value in _source_amounts)
     assert PERDOMO_TABLE3_FEED == pytest.approx(expected_feed, abs=1.0e-15)
     assert sum(PERDOMO_TABLE3_FEED) == pytest.approx(1.0, abs=1.0e-15)
-    assert PERDOMO_TABLE3_FEED[1] - PERDOMO_TABLE3_FEED[2] == pytest.approx(
-        0.0, abs=1.0e-15
-    )
+    assert PERDOMO_TABLE3_FEED[1] - PERDOMO_TABLE3_FEED[2] == pytest.approx(0.0, abs=1.0e-15)
     reference = result["reference_pressure_envelope"]
     assert reference["outcome"] == "selected"
     assert [root["mechanical_class"] for root in reference["roots"]] == [

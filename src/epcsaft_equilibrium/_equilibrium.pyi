@@ -11,7 +11,7 @@ def evaluate_phase(
 def evaluate_mixture_phase(
     capsule: object,
     temperature_k: float,
-    amounts_mol: tuple[float, float],
+    amounts_mol: tuple[float, ...],
     volume_m3: float,
     expected_fingerprint: str,
 ) -> dict[str, object]: ...
@@ -32,5 +32,8 @@ def _solve_tp_flash(
     capsule: object,
     temperature_k: float,
     pressure_pa: float,
-    overall_mole_fractions: tuple[float, float],
+    overall_mole_fractions: tuple[float, ...],
+    expected_fingerprint: str,
+    *,
+    trace: bool = ...,
 ) -> dict[str, Any]: ...

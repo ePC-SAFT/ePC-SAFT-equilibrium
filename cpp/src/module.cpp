@@ -937,7 +937,7 @@ py::dict held_stage_iii(
     return held_stage_iii_to_dict(solve);
 }
 
-py::dict solve_tp_flash(
+py::dict solve_neutral_tp_flash(
     const py::capsule& capsule,
     double temperature_k,
     double pressure_pa,
@@ -2909,6 +2909,49 @@ py::dict held2_installed_controller(
     return result;
 }
 
+py::dict solve_tp_flash(
+    const py::capsule& capsule,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& overall_mole_fractions,
+    const std::string& expected_fingerprint,
+    bool trace
+) {
+    const epcsaft_native_sdk_v1& sdk = checked_sdk(capsule);
+    const bool charged = sdk.table_size >= kSourceDomainSdkTableSize
+        && sdk.component_charges != nullptr
+        && std::any_of(
+            sdk.component_charges,
+            sdk.component_charges + sdk.component_count,
+            [](int32_t charge) { return charge != 0; }
+        );
+    if (charged) {
+        return held2_installed_controller(
+            capsule,
+            temperature_k,
+            pressure_pa,
+            overall_mole_fractions,
+            expected_fingerprint,
+            50,
+            8,
+            50,
+            trace
+        );
+    }
+    if (overall_mole_fractions.size() != 2
+        || expected_fingerprint != kFlashFingerprint) {
+        throw py::value_error(
+            "neutral tp_flash requires the approved two-component fingerprint"
+        );
+    }
+    return solve_neutral_tp_flash(
+        capsule,
+        temperature_k,
+        pressure_pa,
+        {overall_mole_fractions[0], overall_mole_fractions[1]}
+    );
+}
+
 py::dict held2_stage_ii_upper_lp(
     const std::vector<double>& intercepts,
     const std::vector<std::vector<double>>& slopes,
@@ -3211,20 +3254,6 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("evaluation_budget")
     );
     module.def(
-        "_held2_controller",
-        &held2_installed_controller,
-        py::arg("capsule"),
-        py::arg("temperature_k"),
-        py::arg("pressure_pa"),
-        py::arg("physical_feed"),
-        py::arg("expected_fingerprint"),
-        py::arg("stage_i_evaluation_budget") = 50,
-        py::arg("stage_ii_major_iteration_cap") = 8,
-        py::arg("stage_ii_local_attempt_cap_per_major") = 50,
-        py::kw_only(),
-        py::arg("trace") = false
-    );
-    module.def(
         "_held2_stage_ii_upper_lp",
         &held2_stage_ii_upper_lp,
         py::arg("intercepts"),
@@ -3261,7 +3290,10 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("capsule"),
         py::arg("temperature_k"),
         py::arg("pressure_pa"),
-        py::arg("overall_mole_fractions")
+        py::arg("overall_mole_fractions"),
+        py::arg("expected_fingerprint"),
+        py::kw_only(),
+        py::arg("trace") = false
     );
     module.def(
         "evaluate_phase",
