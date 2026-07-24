@@ -1,6 +1,6 @@
 # Reactive Prework Handoff to One Coupled Ipopt Solve
 
-**Status:** approved design
+**Status:** approved architecture; pre-issue sanity review incorporated
 
 **Date:** 2026-07-24
 
@@ -36,8 +36,12 @@ chemical material.
 
 ## Current HELD2 phase preparer
 
-The future phase-preparation input is the unified HELD2 workflow represented by
-Equilibrium branch `codex/issue-65-stage2-handoff` at commit `368ffd3`.
+The current inspection baseline for the future phase-preparation input is the
+provisional Equilibrium branch `codex/issue-65-stage2-handoff` at commit
+`368ffd3`. It is useful implementation evidence, not a stable dependency or
+authority record. The source-bound homogeneous slice does not depend on that
+branch. A later coupled design must bind an exact merged HELD2 artifact before
+it consumes any phase-preparation contract.
 
 Its relevant sequence is:
 
@@ -130,14 +134,20 @@ For admitted phase \(p\), Equilibrium evaluates
 =
 \Phi_p(T,n_p,V_p)
 +\frac{P V_p}{R T}
-+g_{\mathrm{ref}}^T n_p ,
++g_{\mathrm{ref},p}^T n_p ,
 \]
 
 where the installed Provider owns the total mechanical Helmholtz block
 \(\Phi_p\), pressure, packing, applicability, and exact nonlinear
-derivatives. Equilibrium owns the chemical reference vector, conservation,
+derivatives. Equilibrium owns the chemical reference vectors, conservation,
 electroneutral coordinates, phase incidence, Ipopt formulation, KKT assembly,
-and certificates.
+and certificates. When every phase uses the same Provider model and Helmholtz
+basis, the vectors may be one common \(g_{\mathrm{ref}}\). When aqueous and
+organic phases use different admitted Provider models, every
+\(g_{\mathrm{ref},p}\) must be transformed into one common global chemical
+reference convention. Independent per-phase gauges are forbidden because they
+would change reaction and transfer equilibria. Only a conservation-space gauge
+shift applied consistently across all phases is thermodynamically inert.
 
 The future coupled problem is
 
@@ -233,13 +243,25 @@ Provider neutral-reference contractions.
 
 The transformation must verify:
 
+- exact installed SDK ABI/table/result sizes and a non-null callback;
 - exact Provider and source component identity and order;
 - exact charges and charge-balanced reactions;
 - finite source records bound to the declared state;
 - representability of each reaction in the neutral basis;
 - rank and conditioning of the neutral-basis representation;
 - representation and reconstruction residuals;
+- exact returned capacities, basis-row count, and finite callback outputs;
 - exact Provider basis and parameter fingerprint.
+
+The per-species activity-scale shift \(s\) is admitted only when the declared
+source conversion is representable by such a state-bound linear shift.
+Composition-dependent or otherwise nonrepresentable reference changes fail
+closed rather than being frozen into constants.
+
+The current installed SDK reports no neutral-reference temperature, pressure,
+composition, or parameter derivatives. That is sufficient for the present
+fixed-\(T,P\) value transformation. It does not support caloric derivatives,
+implicit equilibrium sensitivities, or Regression parameter derivatives.
 
 The reaction compiler then constructs a minimum-norm chemical reference vector
 
@@ -285,10 +307,20 @@ and
 z^T\nu^T=0 .
 \]
 
-It rejects dependent reactions, inconsistent equilibrium constants, incorrect
-component identity or ordering, nonneutral feed, invalid source state,
-incomplete reference records, and Provider-domain incompatibility before
-Ipopt.
+For the complete closed homogeneous system it also requires
+
+\[
+\operatorname{rank}(B)+\operatorname{rank}(\nu)=C ,
+\]
+
+where \(C\) is the number of admitted true species. It rejects dependent
+reactions, an incomplete conservation/reaction span, inconsistent equilibrium
+constants, incorrect component identity or ordering, nonneutral feed, invalid
+source state, incomplete reference records, and Provider-domain
+incompatibility before Ipopt. A future phase-incidence topology must repeat the
+rank and span analysis for the species actually admitted in each phase and the
+global conservation system; the homogeneous rank certificate cannot simply be
+reused.
 
 Every Provider evaluation uses the existing positive electroneutral chart:
 positive total charge equivalents, cation and anion simplex shares, positive
@@ -305,6 +337,16 @@ pressure, reaction affinities, positivity, Provider domain and packing, KKT,
 trace-boundary status, and reduced curvature. Local KKT or continuation success
 does not prove globality or predictive agreement.
 
+The current logarithmic amount chart and equality-form reaction certificates
+accept only strictly positive interior equilibria above the declared trace
+floor. A state with an active zero-species boundary requires the corresponding
+inequality/complementarity optimality conditions; it must not be accepted by
+forcing every reaction affinity to zero. Until an active-set or
+complementarity formulation is designed, a boundary result is explicitly
+indeterminate for chemical-equilibrium acceptance. The first real sentinel
+must be demonstrably interior and insensitive to a scientifically reasonable
+trace-floor range.
+
 ## First implementation slice
 
 The next local slice:
@@ -315,17 +357,58 @@ The next local slice:
    directly by the preparation path.
 3. Composes source transformation, reaction compilation, and the existing
    Provider homogeneous solve without adding a second solver.
-4. Retains phase-assembly-ready information internally: conserved totals,
-   positive species amounts, volume, reference identity, and KKT evidence.
+4. Uses the existing compiled reaction-system and solve-result state together;
+   it does not add a speculative coupled warm-start packet or duplicate result
+   fields before a real coupled consumer exists.
 5. Adds one parameterized basis/order/gauge-invariance test and one
    parameterized fail-closed identity/reference/domain test.
 6. Adds a real installed-artifact sentinel only when the Provider parameters,
    applicability, source equilibrium constants, and reference transformation
    are complete.
 
-The provisional MEA bundle is not the first accepted sentinel. MEA parameter
+Restoring this path without a qualified end-to-end source record would recreate
+the dormant surface that was deliberately removed. Implementation therefore
+starts only when one exact installed artifact and complete source record can
+exercise the transformation through the existing homogeneous solve. If that
+input is unavailable, the leaf remains blocked rather than substituting a
+manufactured source record and calling the work source-bound.
+
+The provisional MEA bundle is not an accepted sentinel. MEA parameter
 qualification remains application and Provider work. The generic preparer must
-be ready to consume that bundle later without a chemistry-named native route.
+be able to consume a qualified bundle later without a chemistry-named native
+route.
+
+## Issue boundary and readiness
+
+GitHub issue #35 already owns the full source-bound homogeneous-liquid outcome,
+and issue #46 already owns the first source-complete MEA sentinel. A new broad
+chemical-equilibrium issue would duplicate both.
+
+The only additional executable leaf justified by this design is the narrow
+source-reference integration described above. Before creating it, the tracker
+must record that the implementation previously satisfying closed issue #34 is
+not present in the current minimized branch. The new leaf must either reopen
+#34 as a regression or explicitly supersede it; it must not claim that #34's
+historical merge remains an active capability.
+
+The leaf is Ready only when its body names:
+
+- the exact non-editable Provider artifact and native SDK contract;
+- one complete source record and its standard-state conversion;
+- the existing homogeneous solver entry point that consumes the transformed
+  values;
+- the two compact persistent test families;
+- the explicit interior-equilibrium and no-sensitivity limits.
+
+Without that real consumer, the issue may be recorded as Blocked for planning
+but implementation must not restore unused contracts or tests.
+
+The worktree currently binds the immutable Provider wheel with SHA-256
+`a8b6376193301673429a8d8b648896b6881c6f693ca4d8fc3f6a9d2d16f3b39c`.
+That artifact exposes the neutral-reference callback but does not contain the
+historical `held-2008-water-self-ionization` catalog bundle. The earlier IAPWS
+water self-ionization solve remains useful provenance, but it is not a current
+installed-artifact consumer and cannot make the new leaf Ready.
 
 ## Deferred work
 
@@ -367,8 +450,8 @@ The speciation preparer is ready for later coupled assembly when:
   one private path;
 - all source, identity, conservation, charge, derivative, domain, KKT, trace,
   and local-curvature gates fail closed;
-- the result carries enough internal state for a later balance-preserving
-  phase allocation without adding coupled code now;
+- the existing compiled system and solve result retain the state already
+  justified by homogeneous acceptance, without speculative coupled fields;
 - manufactured and incomplete application inputs remain explicitly
   nonpredictive;
 - no public surface, chemistry-specific native branch, or duplicate solver is
