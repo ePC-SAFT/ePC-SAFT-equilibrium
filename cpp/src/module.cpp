@@ -184,6 +184,18 @@ py::dict sdk_info(const py::capsule& capsule) {
     return result;
 }
 
+py::dict mixture_phase_to_dict(
+    const epcsaft_equilibrium::MixturePhaseEvaluation& phase
+) {
+    py::dict result;
+    result["helmholtz_over_rt_reference_amount"] = phase.value;
+    result["gradient"] = phase.gradient;
+    result["hessian"] = phase.hessian;
+    result["pressure_pa"] = phase.pressure_pa;
+    result["parameter_fingerprint"] = phase.parameter_fingerprint;
+    return result;
+}
+
 py::dict evaluate_mixture_phase(
     const py::capsule& capsule,
     double temperature_k,
@@ -191,16 +203,31 @@ py::dict evaluate_mixture_phase(
     double volume_m3,
     const std::string& expected_fingerprint
 ) {
-    const epcsaft_native_sdk_v1& sdk = checked_mixture_sdk(capsule);
-    const epcsaft_equilibrium::ProviderContext provider(sdk, expected_fingerprint);
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_mixture_sdk(capsule), expected_fingerprint
+    );
+    return mixture_phase_to_dict(
+        provider.evaluate_mixture(temperature_k, amounts_mol, volume_m3)
+    );
+}
+
+py::dict evaluate_electrolyte_phase(
+    const py::capsule& capsule,
+    double temperature_k,
+    const std::vector<double>& amounts_mol,
+    double volume_m3,
+    const std::string& expected_fingerprint
+) {
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_electrolyte_sdk(capsule), expected_fingerprint
+    );
     const epcsaft_equilibrium::MixturePhaseEvaluation phase =
-        provider.evaluate_mixture(temperature_k, amounts_mol, volume_m3);
-    py::dict result;
-    result["helmholtz_over_rt_reference_amount"] = phase.value;
-    result["gradient"] = phase.gradient;
-    result["hessian"] = phase.hessian;
-    result["pressure_pa"] = phase.pressure_pa;
-    result["parameter_fingerprint"] = phase.parameter_fingerprint;
+        provider.evaluate_electrolyte(temperature_k, amounts_mol, volume_m3);
+    py::dict result = mixture_phase_to_dict(phase);
+    result["chemical_potential_over_rt"] = std::vector<double>(
+        phase.gradient.begin(),
+        phase.gradient.begin() + static_cast<std::ptrdiff_t>(amounts_mol.size())
+    );
     return result;
 }
 
@@ -2391,6 +2418,15 @@ PYBIND11_MODULE(_equilibrium, module) {
     module.def(
         "evaluate_mixture_phase",
         &evaluate_mixture_phase,
+        py::arg("capsule"),
+        py::arg("temperature_k"),
+        py::arg("amounts_mol"),
+        py::arg("volume_m3"),
+        py::arg("expected_fingerprint")
+    );
+    module.def(
+        "evaluate_electrolyte_phase",
+        &evaluate_electrolyte_phase,
         py::arg("capsule"),
         py::arg("temperature_k"),
         py::arg("amounts_mol"),

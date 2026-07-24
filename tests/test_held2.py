@@ -286,6 +286,36 @@ def test_installed_pressure_envelope_uses_provider_bounds_and_stability_sign() -
         assert expected_sign * root["objective_curvature_log_volume"] < 0.0
 
 
+def test_installed_electrolyte_phase_binding_uses_full_component_count() -> None:
+    model = _figiel_brine_model()
+    capsule = epcsaft.native_sdk(model)
+    envelope = _equilibrium._held2_pressure_envelope(
+        capsule,
+        298.15,
+        100_000.0,
+        (0.02,),
+        model.parameter_fingerprint,
+        64,
+    )
+    volume = math.exp(
+        envelope["roots"][envelope["selected_root_index"]]["log_volume"]
+    )
+
+    result = _equilibrium.evaluate_electrolyte_phase(
+        capsule,
+        298.15,
+        (0.98, 0.01, 0.01),
+        volume,
+        model.parameter_fingerprint,
+    )
+
+    assert len(result["gradient"]) == 4
+    assert len(result["hessian"]) == 16
+    assert len(result["chemical_potential_over_rt"]) == 3
+    assert math.isfinite(result["pressure_pa"])
+    assert result["parameter_fingerprint"] == model.parameter_fingerprint
+
+
 def test_installed_stage_iii_has_exact_lagrangian_hessian() -> None:
     model = _figiel_brine_model()
     capsule = epcsaft.native_sdk(model)

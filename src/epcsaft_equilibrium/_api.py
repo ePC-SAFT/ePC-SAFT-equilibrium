@@ -460,6 +460,47 @@ def _held2_diagnostics(payload: Mapping[str, object]) -> HeldDiagnostics:
     )
 
 
+def _held2_phase_state(
+    capsule: object,
+    temperature_k: float,
+    component_count: int,
+    fingerprint: str,
+    payload: Mapping[str, object],
+) -> PhaseState:
+    fractions = _vector(
+        payload["physical_fractions"], component_count, "HELD2 phase composition"
+    )
+    phase_fraction = float(cast(float, payload["phase_fraction"]))
+    volume = float(cast(float, payload["volume"]))
+    if not math.isfinite(phase_fraction) or phase_fraction <= 0.0:
+        raise ValueError("native HELD2 phase fraction must be positive and finite")
+    if not math.isfinite(volume) or volume <= 0.0:
+        raise ValueError("native HELD2 phase volume must be positive and finite")
+    provider_phase = cast(
+        Mapping[str, object],
+        _equilibrium.evaluate_electrolyte_phase(
+            capsule, temperature_k, fractions, volume, fingerprint
+        ),
+    )
+    if str(provider_phase["parameter_fingerprint"]) != fingerprint:
+        raise ValueError("hydrated HELD2 phase has the wrong Provider fingerprint")
+    pressure_pa = float(cast(float, provider_phase["pressure_pa"]))
+    if not math.isfinite(pressure_pa):
+        raise ValueError("hydrated HELD2 phase pressure must be finite")
+    return PhaseState(
+        amount_mol=phase_fraction,
+        mole_fractions=fractions,
+        volume_m3=volume,
+        molar_density_mol_m3=1.0 / volume,
+        pressure_pa=pressure_pa,
+        chemical_potential_over_rt=_vector(
+            provider_phase["chemical_potential_over_rt"],
+            component_count,
+            "HELD2 chemical-potential vector",
+        )
+    )
+
+
 def _held2_result(
     capsule: object,
     temperature_k: float,
@@ -475,42 +516,40 @@ def _held2_result(
         reason = diagnostics.failure_reason or "HELD2 did not return a certified equilibrium"
         raise FlashError(reason, diagnostics)
     if str(native["parameter_fingerprint"]) != fingerprint:
-        raise ValueError("native HELD2 result has the wrong provider fingerprint")
+        raise ValueError("native HELD2 result has the wrong Provider fingerprint")
 
-    stage_iii = cast(Mapping[str, object], native["stage_iii"])
+    stage_iii_value = native.get("stage_iii")
+    if not isinstance(stage_iii_value, Mapping):
+        raise ValueError("accepted HELD2 result is missing Stage III evidence")
+    stage_iii = cast(Mapping[str, object], stage_iii_value)
+    if stage_iii.get("physical_status") != "accepted":
+        raise ValueError("accepted HELD2 result has a rejected Stage III status")
     phase_payloads = cast(Sequence[Mapping[str, object]], stage_iii["phases"])
-    phases: list[PhaseState] = []
-    for payload in phase_payloads:
-        fractions = _vector(payload["physical_fractions"], len(feed), "HELD2 phase composition")
-        volume = float(cast(float, payload["volume"]))
-        phase = cast(
-            Mapping[str, object],
-            _equilibrium.evaluate_mixture_phase(
-                capsule, temperature_k, fractions, volume, fingerprint
-            ),
+    phases = tuple(
+        _held2_phase_state(
+            capsule,
+            temperature_k,
+            len(feed),
+            fingerprint,
+            payload,
         )
-        phases.append(
-            PhaseState(
-                amount_mol=float(cast(float, payload["phase_fraction"])),
-                mole_fractions=fractions,
-                volume_m3=volume,
-                molar_density_mol_m3=1.0 / volume,
-                pressure_pa=float(cast(float, phase["pressure_pa"])),
-                chemical_potential_over_rt=_vector(
-                    phase["gradient"], len(feed), "HELD2 chemical-potential vector"
-                ),
-            )
-        )
+        for payload in phase_payloads
+    )
     phase_fractions = tuple(phase.amount_mol for phase in phases)
-    if len(phases) < 2 or not math.isclose(sum(phase_fractions), 1.0, rel_tol=0.0, abs_tol=1.0e-10):
+    if len(phases) < 2 or not math.isclose(
+        math.fsum(phase_fractions), 1.0, rel_tol=0.0, abs_tol=1.0e-10
+    ):
         raise ValueError("native HELD2 phase result is incomplete")
+    objective = float(cast(float, stage_iii["objective"]))
+    if not math.isfinite(objective):
+        raise ValueError("native HELD2 objective must be finite")
     return TpFlashResult(
         temperature_k=temperature_k,
         pressure_pa=pressure_pa,
         overall_mole_fractions=feed,
         phases=tuple(phases),
         phase_fractions=phase_fractions,
-        total_free_energy_over_rt=float(cast(float, stage_iii["objective"])),
+        total_free_energy_over_rt=objective,
         parameter_fingerprint=fingerprint,
         diagnostics=diagnostics,
     )
