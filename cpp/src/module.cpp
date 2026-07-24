@@ -17,6 +17,7 @@
 #include <epcsaft/native_sdk_v1.h>
 
 #include "held.hpp"
+#include "flash.hpp"
 #include "held2.hpp"
 #include "held2_controller.hpp"
 #include "held2_progress.hpp"
@@ -940,36 +941,14 @@ py::dict held_stage_iii(
     return held_stage_iii_to_dict(solve);
 }
 
-py::dict solve_neutral_tp_flash(
-    const py::capsule& capsule,
-    double temperature_k,
-    double pressure_pa,
-    const std::array<double, 2>& overall_mole_fractions
+py::dict neutral_flash_to_dict(
+    const epcsaft_equilibrium::FlashResult& flash
 ) {
-    if (!std::isfinite(temperature_k) || temperature_k <= 0.0
-        || !std::isfinite(pressure_pa) || pressure_pa <= 0.0
-        || !std::isfinite(overall_mole_fractions[0])
-        || !std::isfinite(overall_mole_fractions[1])
-        || overall_mole_fractions[0] <= 0.0
-        || overall_mole_fractions[1] <= 0.0
-        || std::abs(overall_mole_fractions[0] + overall_mole_fractions[1] - 1.0)
-            > 1.0e-12) {
-        throw py::value_error("tp_flash native inputs must be positive, finite, and normalized");
-    }
-    const epcsaft_equilibrium::ProviderContext provider(
-        checked_mixture_sdk(capsule),
-        std::string(kFlashFingerprint)
-    );
-    epcsaft_equilibrium::HeldResult solve;
-    {
-        py::gil_scoped_release release;
-        solve = epcsaft_equilibrium::solve_held(
-            provider,
-            temperature_k,
-            pressure_pa,
-            overall_mole_fractions[0]
-        );
-    }
+    const epcsaft_equilibrium::HeldResult& solve = flash.held;
+    const double temperature_k = flash.input.temperature_k;
+    const double pressure_pa = flash.input.pressure_pa;
+    const std::vector<double>& overall_mole_fractions =
+        flash.input.overall_mole_fractions;
     int attempt_count = static_cast<int>(
         solve.stage_i.reference_attempts.size() + solve.stage_i.attempt_log.size()
         + solve.stage_ii.endpoint_attempts.size()
@@ -1088,7 +1067,7 @@ py::dict solve_neutral_tp_flash(
     result["temperature_k"] = temperature_k;
     result["pressure_pa"] = pressure_pa;
     result["overall_mole_fractions"] = overall_mole_fractions;
-    result["parameter_fingerprint"] = std::string(kFlashFingerprint);
+    result["parameter_fingerprint"] = flash.parameter_fingerprint;
 
     if (solve.outcome == "one_phase" && solve.stage_i.has_reference) {
         const auto& state = solve.stage_i.reference;
@@ -1726,414 +1705,25 @@ py::dict held2_installed_pressure_envelope(
     const std::string& expected_fingerprint,
     int initial_interval_count
 ) {
-    if (!std::isfinite(temperature_k) || !std::isfinite(pressure_pa)
-        || temperature_k <= 0.0 || pressure_pa <= 0.0) {
-        throw py::value_error(
-            "HELD2 temperature and pressure must be finite and positive"
-        );
-    }
-    const epcsaft_native_sdk_v1& sdk = checked_molar_volume_sdk(capsule);
-    std::vector<double> charges;
-    std::vector<std::string> component_ids;
-    charges.reserve(sdk.component_count);
-    component_ids.reserve(sdk.component_count);
-    for (std::size_t component = 0; component < sdk.component_count; ++component) {
-        if (sdk.component_ids[component] == nullptr
-            || sdk.component_ids[component][0] == '\0') {
-            throw py::value_error(
-                "provider electrolyte component ID must not be empty"
-            );
-        }
-        charges.push_back(static_cast<double>(sdk.component_charges[component]));
-        component_ids.emplace_back(sdk.component_ids[component]);
-    }
-    const epcsaft_equilibrium::Held2Coordinates coordinates =
-        epcsaft_equilibrium::make_held2_coordinates(charges);
-    const std::vector<double> physical_amounts =
-        epcsaft_equilibrium::held2_lift_independent_fractions(
-            coordinates,
-            independent_modified_fractions
-        );
     const epcsaft_equilibrium::ProviderContext provider(
-        sdk,
-        expected_fingerprint
+        checked_held2_sdk(capsule), expected_fingerprint
     );
-    const std::array<double, 2> molar_volume_bounds =
-        provider.evaluate_molar_volume_bounds(
-            temperature_k,
-            physical_amounts,
-            epcsaft_equilibrium::kHeld2PackingFractionMinimum,
-            epcsaft_equilibrium::kHeld2PackingFractionMaximum
-        );
-    const double pressure_over_rt = pressure_pa
-        / (kGasConstantJPerMolK * temperature_k);
-    const epcsaft_equilibrium::Held2StateEvaluator evaluator = [
-        &provider,
-        coordinates,
-        temperature_k,
-        pressure_pa,
-        pressure_over_rt
-    ](
-        const std::vector<double>& independent,
-        double log_volume
-    ) {
-        const std::vector<double> amounts =
-            epcsaft_equilibrium::held2_lift_independent_fractions(
-                coordinates,
-                independent
-            );
-        const double volume = std::exp(log_volume);
-        const epcsaft_equilibrium::MixturePhaseEvaluation provider_phase =
-            provider.evaluate_electrolyte(
+    const epcsaft_equilibrium::Held2InstalledPressureEnvelopeDiagnostic
+        diagnostic =
+            epcsaft_equilibrium::evaluate_held2_installed_pressure_envelope(
+                provider,
                 temperature_k,
-                amounts,
-                volume
+                pressure_pa,
+                independent_modified_fractions,
+                initial_interval_count
             );
-        epcsaft_equilibrium::Held2PhysicalPhaseBlock block;
-        block.helmholtz_over_rt = provider_phase.value;
-        block.gradient = provider_phase.gradient;
-        block.hessian = provider_phase.hessian;
-        block.pressure_pa = provider_phase.pressure_pa;
-        return epcsaft_equilibrium::evaluate_held2_phase_block(
-            coordinates,
-            independent,
-            log_volume,
-            pressure_over_rt,
-            pressure_pa,
-            block
-        );
-    };
-    py::dict result = held2_pressure_envelope_to_dict(
-        epcsaft_equilibrium::evaluate_held2_pressure_envelope(
-            independent_modified_fractions,
-            molar_volume_bounds,
-            evaluator,
-            initial_interval_count,
-            8
-        )
-    );
-    result["component_ids"] = std::move(component_ids);
-    result["charges"] = std::move(charges);
-    result["molar_volume_bounds"] = molar_volume_bounds;
-    result["parameter_fingerprint"] = expected_fingerprint;
+    py::dict result = held2_pressure_envelope_to_dict(diagnostic.envelope);
+    result["component_ids"] = diagnostic.component_ids;
+    result["charges"] = diagnostic.charges;
+    result["molar_volume_bounds"] = diagnostic.molar_volume_bounds;
+    result["parameter_fingerprint"] = diagnostic.parameter_fingerprint;
     return result;
 }
-
-class InstalledHeld2Problem {
-public:
-    InstalledHeld2Problem(
-        const epcsaft_native_sdk_v1& sdk,
-        double temperature_k,
-        double pressure_pa,
-        std::vector<double> physical_feed,
-        std::string expected_fingerprint
-    )
-        : temperature_k_(temperature_k),
-          pressure_pa_(pressure_pa),
-          physical_feed_(std::move(physical_feed)),
-          coordinates_(epcsaft_equilibrium::make_held2_coordinates(
-              charges_from_sdk(sdk)
-          )),
-          provider_(sdk, std::move(expected_fingerprint)),
-          total_ion_mole_fraction_max_(sdk.total_ion_mole_fraction_max),
-          pressure_over_rt_(pressure_pa_
-              / (kGasConstantJPerMolK * temperature_k_)) {
-        if (!std::isfinite(temperature_k_) || !std::isfinite(pressure_pa_)
-            || temperature_k_ <= 0.0 || pressure_pa_ <= 0.0) {
-            throw py::value_error(
-                "HELD2 temperature and pressure must be finite and positive"
-            );
-        }
-        const std::vector<double> modified_feed =
-            epcsaft_equilibrium::held2_transform_physical_fractions(
-                coordinates_, physical_feed_
-            );
-        independent_feed_.reserve(coordinates_.independent_indices.size());
-        for (std::size_t component : coordinates_.independent_indices) {
-            const auto retained = std::find(
-                coordinates_.retained_indices.begin(),
-                coordinates_.retained_indices.end(),
-                component
-            );
-            if (retained == coordinates_.retained_indices.end()) {
-                throw py::value_error(
-                    "HELD2 independent component is not retained"
-                );
-            }
-            independent_feed_.push_back(modified_feed[static_cast<std::size_t>(
-                retained - coordinates_.retained_indices.begin()
-            )]);
-        }
-        static_cast<void>(
-            epcsaft_equilibrium::held2_map_unit_cube_to_independent_fractions(
-                coordinates_,
-                std::vector<double>(coordinates_.independent_indices.size(), 0.0),
-                total_ion_mole_fraction_max_
-            )
-        );
-    }
-
-    [[nodiscard]] epcsaft_equilibrium::Held2StateEvaluation evaluate(
-        const std::vector<double>& independent,
-        double log_volume
-    ) const {
-        const std::vector<double> amounts =
-            epcsaft_equilibrium::held2_lift_independent_fractions(
-                coordinates_, independent
-            );
-        const epcsaft_equilibrium::MixturePhaseEvaluation provider_phase =
-            provider_.evaluate_electrolyte(
-                temperature_k_, amounts, std::exp(log_volume)
-            );
-        epcsaft_equilibrium::Held2PhysicalPhaseBlock block;
-        block.helmholtz_over_rt = provider_phase.value;
-        block.gradient = provider_phase.gradient;
-        block.hessian = provider_phase.hessian;
-        block.pressure_pa = provider_phase.pressure_pa;
-        return epcsaft_equilibrium::evaluate_held2_phase_block(
-            coordinates_,
-            independent,
-            log_volume,
-            pressure_over_rt_,
-            pressure_pa_,
-            block
-        );
-    }
-
-    [[nodiscard]] std::array<double, 2> volume_bounds(
-        const std::vector<double>& independent
-    ) const {
-        const std::vector<double> amounts =
-            epcsaft_equilibrium::held2_lift_independent_fractions(
-                coordinates_, independent
-            );
-        return provider_.evaluate_molar_volume_bounds(
-            temperature_k_,
-            amounts,
-            epcsaft_equilibrium::kHeld2PackingFractionMinimum,
-            epcsaft_equilibrium::kHeld2PackingFractionMaximum
-        );
-    }
-
-    [[nodiscard]] epcsaft_equilibrium::Held2PressureEnvelopeResult envelope(
-        const std::vector<double>& independent
-    ) const {
-        const auto evaluator = [this](const std::vector<double>& values, double q) {
-            return evaluate(values, q);
-        };
-        return epcsaft_equilibrium::evaluate_held2_pressure_envelope(
-            independent, volume_bounds(independent), evaluator, 64, 8
-        );
-    }
-
-    [[nodiscard]] const epcsaft_equilibrium::Held2Coordinates& coordinates() const {
-        return coordinates_;
-    }
-
-    [[nodiscard]] const std::vector<double>& physical_feed() const {
-        return physical_feed_;
-    }
-
-    [[nodiscard]] const std::vector<double>& independent_feed() const {
-        return independent_feed_;
-    }
-
-    [[nodiscard]] const std::string& fingerprint() const {
-        return provider_.fingerprint();
-    }
-
-    [[nodiscard]] double total_ion_mole_fraction_max() const {
-        return total_ion_mole_fraction_max_;
-    }
-
-private:
-    static std::vector<double> charges_from_sdk(
-        const epcsaft_native_sdk_v1& sdk
-    ) {
-        std::vector<double> charges;
-        charges.reserve(sdk.component_count);
-        for (std::size_t component = 0; component < sdk.component_count; ++component) {
-            charges.push_back(static_cast<double>(sdk.component_charges[component]));
-        }
-        return charges;
-    }
-
-    double temperature_k_;
-    double pressure_pa_;
-    std::vector<double> physical_feed_;
-    epcsaft_equilibrium::Held2Coordinates coordinates_;
-    epcsaft_equilibrium::ProviderContext provider_;
-    double total_ion_mole_fraction_max_;
-    double pressure_over_rt_;
-    std::vector<double> independent_feed_;
-};
-
-struct InstalledHeld2StageI {
-    epcsaft_equilibrium::Held2PressureEnvelopeResult reference_envelope;
-    epcsaft_equilibrium::Held2StateEvaluation reference;
-    epcsaft_equilibrium::Held2StageIDirectResult search;
-};
-
-InstalledHeld2StageI run_installed_held2_stage_i(
-    const InstalledHeld2Problem& problem,
-    int evaluation_budget,
-    epcsaft_equilibrium::Held2ProgressObserver* observer = nullptr
-) {
-    InstalledHeld2StageI result;
-    result.search.total_ion_mole_fraction_max =
-        problem.total_ion_mole_fraction_max();
-    epcsaft_equilibrium::Held2ProgressEvent progress;
-    progress.kind = epcsaft_equilibrium::Held2ProgressKind::ReferenceStart;
-    epcsaft_equilibrium::observe_held2(observer, progress);
-    try {
-        result.reference_envelope = problem.envelope(problem.independent_feed());
-    } catch (const std::exception& error) {
-        result.search.declared_evaluation_budget = evaluation_budget;
-        result.search.termination_reason = std::string(
-            "reference_envelope_failed: "
-        ) + error.what();
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
-        progress.stage = "REFERENCE";
-        progress.reason = result.search.termination_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        return result;
-    }
-    for (std::size_t index = 0;
-         index < result.reference_envelope.roots.size();
-         ++index) {
-        const auto& root = result.reference_envelope.roots[index];
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::ReferenceRoot;
-        progress.count = static_cast<int>(index + 1);
-        progress.volume = root.volume;
-        progress.pressure_residual = root.pressure_residual;
-        progress.objective = root.objective;
-        progress.mechanical_class = root.mechanical_class;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-    }
-    if (result.reference_envelope.outcome != "selected") {
-        result.search.declared_evaluation_budget = evaluation_budget;
-        result.search.termination_reason = "reference_envelope_failed: "
-            + result.reference_envelope.failure_reason;
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
-        progress.stage = "REFERENCE";
-        progress.reason = result.search.termination_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        return result;
-    }
-    result.reference = result.reference_envelope.roots[static_cast<std::size_t>(
-        result.reference_envelope.selected_root_index
-    )].state;
-    progress = {};
-    progress.kind = epcsaft_equilibrium::Held2ProgressKind::ReferenceSelected;
-    progress.count = result.reference_envelope.selected_root_index + 1;
-    progress.status = "certified";
-    epcsaft_equilibrium::observe_held2(observer, progress);
-    progress = {};
-    progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageStart;
-    progress.stage = "STAGE I - DIRECT-L TPD SEARCH";
-    epcsaft_equilibrium::observe_held2(observer, progress);
-    const epcsaft_equilibrium::Held2StageIReducedEvaluator evaluator = [
-        &problem,
-        reference = result.reference
-    ](const std::vector<double>& chart_coordinates) {
-        epcsaft_equilibrium::Held2StageIReducedEvaluation evaluation;
-        evaluation.chart_coordinates = chart_coordinates;
-        try {
-            evaluation.independent_modified_fractions =
-                epcsaft_equilibrium::held2_map_unit_cube_to_independent_fractions(
-                    problem.coordinates(),
-                    chart_coordinates,
-                    problem.total_ion_mole_fraction_max()
-                );
-            const std::vector<double> physical =
-                epcsaft_equilibrium::held2_lift_independent_fractions(
-                    problem.coordinates(),
-                    evaluation.independent_modified_fractions
-                );
-            evaluation.physical_total_ion_mole_fraction =
-                held2_total_ion_mole_fraction(
-                    problem.coordinates().charges,
-                    physical
-                );
-            evaluation.total_ion_mole_fraction_max =
-                problem.total_ion_mole_fraction_max();
-            evaluation.pressure_envelope = problem.envelope(
-                evaluation.independent_modified_fractions
-            );
-            if (evaluation.pressure_envelope.outcome != "selected") {
-                evaluation.failure_reason =
-                    evaluation.pressure_envelope.failure_reason;
-                return evaluation;
-            }
-            const epcsaft_equilibrium::Held2StateEvaluation& selected =
-                evaluation.pressure_envelope.roots[static_cast<std::size_t>(
-                    evaluation.pressure_envelope.selected_root_index
-                )].state;
-            evaluation.tpd = selected.objective - reference.objective;
-            for (std::size_t index = 0;
-                 index < problem.independent_feed().size();
-                 ++index) {
-                evaluation.tpd -= reference.gradient[index]
-                    * (evaluation.independent_modified_fractions[index]
-                       - problem.independent_feed()[index]);
-            }
-            evaluation.certified = true;
-        } catch (const std::exception& error) {
-            evaluation.failure_reason = std::string(
-                "provider_evaluation_failed: "
-            ) + error.what();
-        }
-        return evaluation;
-    };
-    result.search = epcsaft_equilibrium::solve_held2_stage_i_direct(
-        problem.coordinates().independent_indices.size(),
-        evaluation_budget,
-        -1.0e-8,
-        evaluator,
-        observer
-    );
-    result.search.total_ion_mole_fraction_max =
-        problem.total_ion_mole_fraction_max();
-    progress = {};
-    progress.kind = epcsaft_equilibrium::Held2ProgressKind::Certificate;
-    progress.stage = "STAGE I";
-    progress.status = result.search.outcome;
-    progress.reason = result.search.termination_reason;
-    epcsaft_equilibrium::observe_held2(observer, progress);
-    return result;
-}
-
-py::dict held2_installed_stage_i_direct(
-    const py::capsule& capsule,
-    double temperature_k,
-    double pressure_pa,
-    const std::vector<double>& physical_feed,
-    const std::string& expected_fingerprint,
-    int evaluation_budget
-) {
-    const epcsaft_native_sdk_v1& sdk = checked_held2_sdk(capsule);
-    const InstalledHeld2Problem problem(
-        sdk,
-        temperature_k,
-        pressure_pa,
-        physical_feed,
-        expected_fingerprint
-    );
-    const InstalledHeld2StageI stage_i = run_installed_held2_stage_i(
-        problem, evaluation_budget
-    );
-    py::dict result = held2_stage_i_direct_to_dict(stage_i.search);
-    result["reference_pressure_envelope"] =
-        held2_pressure_envelope_to_dict(stage_i.reference_envelope);
-    result["reference_independent_modified_fractions"] =
-        problem.independent_feed();
-    result["parameter_fingerprint"] = problem.fingerprint();
-    return result;
-}
-
 py::dict held2_stage_ii_to_dict(
     const epcsaft_equilibrium::Held2StageIIResult& evaluation
 ) {
@@ -2588,64 +2178,17 @@ py::dict held2_manufactured_controller(
     const std::vector<double>& charges,
     const std::vector<double>& physical_feed
 ) {
-    epcsaft_equilibrium::Held2WorkflowController workflow;
-    py::dict result;
-    result["controller"] = "perdomo_held2_steps_1_to_10_v1";
-    result["globality_certificate"] = "not_guaranteed";
-
-    epcsaft_equilibrium::Held2PressureEnvelopeResult reference;
-    reference.outcome = "selected";
-    reference.selected_root_index = 0;
-    reference.roots.resize(1);
-    const epcsaft_equilibrium::Held2StageIDirectResult stage_i =
-        epcsaft_equilibrium::solve_held2_manufactured_stage_i_direct(
-            "negative", 80
-        );
-    const epcsaft_equilibrium::Held2StageIIResult stage_ii =
-        epcsaft_equilibrium::solve_held2_manufactured_stage_ii(
+    const epcsaft_equilibrium::Held2ManufacturedWorkflowResult solve =
+        epcsaft_equilibrium::solve_held2_manufactured_workflow(
             charges, physical_feed
         );
-
-    if (workflow.complete_reference(reference)
-            != epcsaft_equilibrium::Held2NextAction::ContinueStageII
-        || workflow.complete_stage_i(stage_i)
-            != epcsaft_equilibrium::Held2NextAction::ContinueStageII
-        || workflow.complete_stage_ii(stage_ii)
-            != epcsaft_equilibrium::Held2NextAction::EnterStageIII) {
-        throw std::logic_error(
-            "manufactured HELD2 evidence did not reach Stage III"
-        );
-    }
-
-    std::vector<std::array<double, 2>> candidates;
-    candidates.reserve(stage_ii.candidates.size());
-    for (const auto& candidate : stage_ii.candidates) {
-        if (candidate.independent_modified_fractions.size() != 1) {
-            throw std::logic_error(
-                "manufactured HELD2 controller requires one independent "
-                "modified composition"
-            );
-        }
-        candidates.push_back({
-            candidate.independent_modified_fractions.front(),
-            candidate.volume,
-        });
-    }
-    const epcsaft_equilibrium::Held2StageIIIResult stage_iii =
-        epcsaft_equilibrium::solve_held2_manufactured_stage_iii(
-            charges, physical_feed, candidates
-        );
-    if (workflow.complete_stage_iii(stage_iii)
-        != epcsaft_equilibrium::Held2NextAction::AcceptMultiphase) {
-        throw std::logic_error(
-            "manufactured HELD2 evidence did not pass final certification"
-        );
-    }
-
-    result["stage_i"] = held2_stage_i_direct_to_dict(stage_i);
-    result["stage_ii"] = held2_stage_ii_to_dict(stage_ii);
-    result["stage_iii"] = held2_stage_iii_to_dict(stage_iii);
-    update_held2_workflow_dict(result, workflow.state());
+    py::dict result;
+    result["controller"] = "perdomo_held2_steps_1_to_10_v1";
+    result["globality_certificate"] = solve.globality_certificate;
+    result["stage_i"] = held2_stage_i_direct_to_dict(solve.stage_i);
+    result["stage_ii"] = held2_stage_ii_to_dict(solve.stage_ii);
+    result["stage_iii"] = held2_stage_iii_to_dict(solve.stage_iii);
+    update_held2_workflow_dict(result, solve.workflow);
     return result;
 }
 
@@ -2659,24 +2202,13 @@ py::dict held2_installed_stage_iii_derivatives(
     const std::vector<double>& equality_multipliers,
     const std::string& expected_fingerprint
 ) {
-    const epcsaft_native_sdk_v1& sdk = checked_held2_sdk(capsule);
-    const InstalledHeld2Problem problem(
-        sdk,
-        temperature_k,
-        pressure_pa,
-        physical_feed,
-        expected_fingerprint
+    const epcsaft_equilibrium::ProviderContext provider(
+        checked_held2_sdk(capsule), expected_fingerprint
     );
-    const epcsaft_equilibrium::Held2StateEvaluator evaluator = [
-        &problem
-    ](const std::vector<double>& independent, double log_volume) {
-        return problem.evaluate(independent, log_volume);
-    };
     const epcsaft_equilibrium::Held2StageIIINlpEvaluation evaluation =
-        epcsaft_equilibrium::evaluate_held2_stage_iii_nlp(
-            problem.coordinates(),
-            problem.physical_feed(),
-            evaluator,
+        epcsaft_equilibrium::evaluate_held2_installed_stage_iii_derivatives(
+            provider,
+            {temperature_k, pressure_pa, physical_feed},
             phase_count,
             variables,
             equality_multipliers
@@ -2688,43 +2220,14 @@ py::dict held2_installed_stage_iii_derivatives(
     result["constraint_jacobian"] = evaluation.constraint_jacobian;
     result["lagrangian_gradient"] = evaluation.lagrangian_gradient;
     result["lagrangian_hessian"] = evaluation.lagrangian_hessian;
-    result["parameter_fingerprint"] = problem.fingerprint();
+    result["parameter_fingerprint"] = provider.fingerprint();
     result["derivative_source"] = "provider_exact";
     return result;
 }
-
-py::dict held2_installed_controller(
-    const py::capsule& capsule,
-    double temperature_k,
-    double pressure_pa,
-    const std::vector<double>& physical_feed,
-    const std::string& expected_fingerprint,
-    int stage_i_evaluation_budget,
-    int stage_ii_major_iteration_cap,
-    int stage_ii_local_attempt_cap_per_major,
-    bool trace
+py::dict held2_flash_to_dict(
+    const epcsaft_equilibrium::FlashResult& flash
 ) {
-    epcsaft_equilibrium::Held2TerminalProgress terminal_progress(std::cout);
-    epcsaft_equilibrium::Held2ProgressObserver* observer =
-        trace ? &terminal_progress : nullptr;
-    const epcsaft_native_sdk_v1& sdk = checked_held2_sdk(capsule);
-    const InstalledHeld2Problem problem(
-        sdk,
-        temperature_k,
-        pressure_pa,
-        physical_feed,
-        expected_fingerprint
-    );
-    epcsaft_equilibrium::Held2ProgressEvent progress;
-    progress.kind = epcsaft_equilibrium::Held2ProgressKind::CaseStart;
-    progress.case_id = "installed-held2-controller";
-    progress.temperature_k = temperature_k;
-    progress.pressure_pa = pressure_pa;
-    epcsaft_equilibrium::observe_held2(observer, progress);
-    const InstalledHeld2StageI stage_i = run_installed_held2_stage_i(
-        problem, stage_i_evaluation_budget, observer
-    );
-    epcsaft_equilibrium::Held2WorkflowController workflow;
+    const epcsaft_equilibrium::Held2FlashResult& solve = flash.held2;
     py::dict result;
     result["controller"] = "perdomo_held2_steps_1_to_10_v1";
     result["stage_order"] = py::make_tuple(
@@ -2733,182 +2236,30 @@ py::dict held2_installed_controller(
         "steps_4_7_stage_ii",
         "steps_8_10_stage_iii"
     );
-    result["parameter_fingerprint"] = problem.fingerprint();
-    result["globality_certificate"] = "not_guaranteed";
+    result["parameter_fingerprint"] = flash.parameter_fingerprint;
+    result["globality_certificate"] = flash.globality_certificate;
     result["reference_pressure_envelope"] =
-        held2_pressure_envelope_to_dict(stage_i.reference_envelope);
-    result["stage_i"] = held2_stage_i_direct_to_dict(stage_i.search);
-    result["stage_ii"] = py::none();
-    result["stage_iii"] = py::none();
-    result["stage_ii_skip_reason"] = py::none();
-    result["stage_iii_skip_reason"] = py::none();
+        held2_pressure_envelope_to_dict(solve.reference_pressure_envelope);
+    result["stage_i"] = held2_stage_i_direct_to_dict(solve.stage_i);
+    if (solve.stage_ii.has_value()) {
+        result["stage_ii"] = held2_stage_ii_to_dict(*solve.stage_ii);
+    } else {
+        result["stage_ii"] = py::none();
+    }
+    if (solve.stage_iii.has_value()) {
+        result["stage_iii"] = held2_stage_iii_to_dict(*solve.stage_iii);
+    } else {
+        result["stage_iii"] = py::none();
+    }
+    result["stage_ii_skip_reason"] = solve.stage_ii_skip_reason.empty()
+        ? py::none()
+        : py::cast(solve.stage_ii_skip_reason);
+    result["stage_iii_skip_reason"] = solve.stage_iii_skip_reason.empty()
+        ? py::none()
+        : py::cast(solve.stage_iii_skip_reason);
     result["predictive_comparison_status"] =
-        "not_allowed_before_physical_acceptance";
-
-    epcsaft_equilibrium::Held2NextAction next_action =
-        workflow.complete_reference(stage_i.reference_envelope);
-    if (next_action == epcsaft_equilibrium::Held2NextAction::
-            TerminateIndeterminate) {
-        update_held2_workflow_dict(result, workflow.state());
-        const std::string skip_reason = workflow.state().failure_reason;
-        result["stage_ii_skip_reason"] = skip_reason;
-        result["stage_iii_skip_reason"] = skip_reason;
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageSkipped;
-        progress.stage = "STAGE II";
-        progress.reason = skip_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        progress.stage = "STAGE III";
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
-        progress.status = workflow.state().outcome;
-        progress.reason = workflow.state().failure_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        return result;
-    }
-    next_action = workflow.complete_stage_i(stage_i.search);
-    if (next_action == epcsaft_equilibrium::Held2NextAction::
-            TerminateIndeterminate) {
-        update_held2_workflow_dict(result, workflow.state());
-        const std::string skip_reason =
-            workflow.state().outcome
-                == "stage_i_finite_search_without_negative_witness"
-            ? "stage_i_negative_witness_not_found"
-            : workflow.state().failure_reason;
-        result["stage_ii_skip_reason"] = skip_reason;
-        result["stage_iii_skip_reason"] = skip_reason;
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageSkipped;
-        progress.stage = "STAGE II";
-        progress.reason = skip_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        progress.stage = "STAGE III";
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
-        progress.status = workflow.state().outcome;
-        progress.reason = workflow.state().failure_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        return result;
-    }
-    const auto& witness = stage_i.search.evaluations[static_cast<std::size_t>(
-        stage_i.search.negative_witness_index
-    )];
-    progress = {};
-    progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageStart;
-    progress.stage = "STAGE II - HiGHS LP / IPOPT LOWER SEARCH";
-    epcsaft_equilibrium::observe_held2(observer, progress);
-    const auto& witness_state = witness.pressure_envelope.roots[
-        static_cast<std::size_t>(witness.pressure_envelope.selected_root_index)
-    ].state;
-    const std::vector<epcsaft_equilibrium::Held2StageICandidate> witnesses = {{
-        witness_state.modified_fractions,
-        witness_state.volume,
-        witness.tpd,
-    }};
-    const epcsaft_equilibrium::Held2StateEvaluator evaluator = [
-        &problem
-    ](const std::vector<double>& independent, double q) {
-        return problem.evaluate(independent, q);
-    };
-    const epcsaft_equilibrium::Held2VolumeBoundsEvaluator bounds_evaluator = [
-        &problem
-    ](const std::vector<double>& independent) {
-        return problem.volume_bounds(independent);
-    };
-    const epcsaft_equilibrium::Held2StageIIResult stage_ii =
-        epcsaft_equilibrium::solve_held2_stage_ii(
-            problem.coordinates(),
-            problem.physical_feed(),
-            evaluator,
-            bounds_evaluator,
-            stage_i.reference,
-            witnesses,
-            problem.total_ion_mole_fraction_max(),
-            stage_ii_major_iteration_cap,
-            stage_ii_local_attempt_cap_per_major,
-            observer
-        );
-    result["stage_ii"] = held2_stage_ii_to_dict(stage_ii);
-    next_action = workflow.complete_stage_ii(stage_ii);
-    if (next_action != epcsaft_equilibrium::Held2NextAction::EnterStageIII) {
-        update_held2_workflow_dict(result, workflow.state());
-        result["stage_iii_skip_reason"] = stage_ii.outcome;
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
-        progress.stage = "STAGE II";
-        progress.reason = stage_ii.outcome;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageSkipped;
-        progress.stage = "STAGE III";
-        progress.reason = stage_ii.outcome;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
-        progress.status = workflow.state().outcome;
-        progress.reason = workflow.state().failure_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        return result;
-    }
-
-    progress = {};
-    progress.kind = epcsaft_equilibrium::Held2ProgressKind::StageStart;
-    progress.stage = "STAGE III - IPOPT TOTAL FREE ENERGY";
-    epcsaft_equilibrium::observe_held2(observer, progress);
-
-    std::vector<std::array<double, 2>> phase_coordinate_bounds;
-    phase_coordinate_bounds.reserve(stage_ii.candidates.size());
-    for (const auto& candidate : stage_ii.candidates) {
-        const std::array<double, 2> volume_bounds = problem.volume_bounds(
-            candidate.independent_modified_fractions
-        );
-        phase_coordinate_bounds.push_back({
-            std::log(volume_bounds[0]), std::log(volume_bounds[1])
-        });
-    }
-    const double free_energy_upper_bound =
-        stage_ii.bound_history.empty()
-        ? std::numeric_limits<double>::quiet_NaN()
-        : stage_ii.bound_history.back().upper_bound;
-    const std::string free_energy_gap_provenance =
-        stage_ii.bound_history.empty()
-        ? "unavailable"
-        : "stage_ii_problem_64_same_major_upper_bound";
-    const epcsaft_equilibrium::Held2StageIIIResult stage_iii =
-        epcsaft_equilibrium::solve_held2_stage_iii(
-            problem.coordinates(),
-            problem.physical_feed(),
-            stage_ii.candidates,
-            evaluator,
-            phase_coordinate_bounds,
-            free_energy_upper_bound,
-            free_energy_gap_provenance,
-            observer
-        );
-    result["stage_iii"] = held2_stage_iii_to_dict(stage_iii);
-    next_action = workflow.complete_stage_iii(stage_iii);
-    update_held2_workflow_dict(result, workflow.state());
-    if (next_action != epcsaft_equilibrium::Held2NextAction::AcceptMultiphase) {
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Failure;
-        progress.stage = "STAGE III";
-        progress.reason = stage_iii.failure_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        progress = {};
-        progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
-        progress.status = workflow.state().outcome;
-        progress.reason = workflow.state().failure_reason;
-        epcsaft_equilibrium::observe_held2(observer, progress);
-        return result;
-    }
-    result["predictive_comparison_status"] =
-        "eligible_but_not_executed_private_controller";
-    progress = {};
-    progress.kind = epcsaft_equilibrium::Held2ProgressKind::Final;
-    progress.status = "physical_equilibrium_accepted";
-    epcsaft_equilibrium::observe_held2(observer, progress);
+        solve.predictive_comparison_status;
+    update_held2_workflow_dict(result, solve.workflow);
     return result;
 }
 
@@ -2921,38 +2272,33 @@ py::dict solve_tp_flash(
     bool trace
 ) {
     const epcsaft_native_sdk_v1& sdk = checked_sdk(capsule);
-    const bool charged = sdk.table_size >= kSourceDomainSdkTableSize
-        && sdk.component_charges != nullptr
-        && std::any_of(
-            sdk.component_charges,
-            sdk.component_charges + sdk.component_count,
-            [](int32_t charge) { return charge != 0; }
-        );
-    if (charged) {
-        return held2_installed_controller(
-            capsule,
-            temperature_k,
-            pressure_pa,
-            overall_mole_fractions,
-            expected_fingerprint,
-            kHeld2StageIEvaluationBudget,
-            kHeld2StageIIMajorIterationCap,
-            kHeld2StageIILocalAttemptCap,
-            trace
-        );
-    }
-    if (overall_mole_fractions.size() != 2
-        || expected_fingerprint != kFlashFingerprint) {
-        throw py::value_error(
-            "neutral tp_flash requires the approved two-component fingerprint"
-        );
-    }
-    return solve_neutral_tp_flash(
-        capsule,
-        temperature_k,
-        pressure_pa,
-        {overall_mole_fractions[0], overall_mole_fractions[1]}
+    const epcsaft_equilibrium::ProviderContext provider(
+        sdk, expected_fingerprint
     );
+    epcsaft_equilibrium::Held2TerminalProgress terminal_progress(std::cout);
+    epcsaft_equilibrium::Held2ProgressObserver* observer =
+        trace ? &terminal_progress : nullptr;
+    epcsaft_equilibrium::FlashResult flash;
+    {
+        py::gil_scoped_release release;
+        flash = epcsaft_equilibrium::solve_tp_flash(
+            provider,
+            {
+                temperature_k,
+                pressure_pa,
+                overall_mole_fractions,
+            },
+            {
+                kHeld2StageIEvaluationBudget,
+                kHeld2StageIIMajorIterationCap,
+                kHeld2StageIILocalAttemptCap,
+            },
+            observer
+        );
+    }
+    return flash.route == epcsaft_equilibrium::FlashResult::Route::Held2
+        ? held2_flash_to_dict(flash)
+        : neutral_flash_to_dict(flash);
 }
 
 py::dict held2_stage_ii_upper_lp(
@@ -3244,16 +2590,6 @@ PYBIND11_MODULE(_equilibrium, module) {
         "_held2_stage_i_direct",
         &held2_manufactured_stage_i_direct,
         py::arg("topology"),
-        py::arg("evaluation_budget")
-    );
-    module.def(
-        "_held2_stage_i_direct",
-        &held2_installed_stage_i_direct,
-        py::arg("capsule"),
-        py::arg("temperature_k"),
-        py::arg("pressure_pa"),
-        py::arg("physical_feed"),
-        py::arg("expected_fingerprint"),
         py::arg("evaluation_budget")
     );
     module.def(

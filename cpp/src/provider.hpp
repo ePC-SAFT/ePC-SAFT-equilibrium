@@ -53,6 +53,7 @@ public:
     ) const;
 
     [[nodiscard]] const std::string& fingerprint() const;
+    [[nodiscard]] const epcsaft_native_sdk_v1& sdk() const noexcept;
 
 private:
     const epcsaft_native_sdk_v1& sdk_;

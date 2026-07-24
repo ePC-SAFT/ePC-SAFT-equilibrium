@@ -244,4 +244,8 @@ const std::string& ProviderContext::fingerprint() const {
     return fingerprint_;
 }
 
+const epcsaft_native_sdk_v1& ProviderContext::sdk() const noexcept {
+    return sdk_;
+}
+
 }  // namespace epcsaft_equilibrium
