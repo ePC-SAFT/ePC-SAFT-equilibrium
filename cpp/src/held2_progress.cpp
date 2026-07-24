@@ -73,23 +73,26 @@ void Held2TerminalProgress::observe(const Held2ProgressEvent& event) {
             }
             break;
         case Held2ProgressKind::StageIIUpper:
-            output_ << "  major " << std::setw(3) << event.major_iteration
-                    << "  upper=" << std::setw(13) << event.upper_bound;
-            if (std::isfinite(event.lower_bound)) {
-                output_ << "  lower=" << std::setw(13) << event.lower_bound;
-            } else {
-                output_ << "  lower=unavailable";
+            if (!std::isfinite(event.lower_bound)) {
+                output_ << "  STAGE II STEP 4"
+                        << "  major=" << event.major_iteration
+                        << "  upper=" << std::setw(13) << event.upper_bound
+                        << "  LP_primal=" << std::setw(13)
+                        << event.primal_residual
+                        << "  LP_dual=" << std::setw(13)
+                        << event.dual_residual
+                        << "  active_cuts=" << event.count
+                        << "  " << event.status << '\n';
+                break;
             }
+            output_ << "  STAGE II STEP 5"
+                    << "  major=" << event.major_iteration
+                    << "  upper=" << std::setw(13) << event.upper_bound
+                    << "  lower=" << std::setw(13) << event.lower_bound;
             if (std::isfinite(event.gap)) {
                 output_ << "  gap=" << std::setw(13) << event.gap;
-            } else {
-                output_ << "  gap=unavailable";
             }
-            output_
-                    << "  primal=" << std::setw(13) << event.primal_residual
-                    << "  dual=" << std::setw(13) << event.dual_residual
-                    << "  active_cuts=" << event.count
-                    << "  " << event.status << '\n';
+            output_ << "  " << event.status << '\n';
             break;
         case Held2ProgressKind::LocalIteration:
             output_ << "  " << event.stage;

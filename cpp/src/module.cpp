@@ -45,6 +45,9 @@ constexpr std::size_t kSourceDomainSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, total_ion_mole_fraction_max)
     + sizeof(double);
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
+constexpr int kHeld2StageIEvaluationBudget = 50;
+constexpr int kHeld2StageIIMajorIterationCap = 24;
+constexpr int kHeld2StageIILocalAttemptCap = 50;
 
 py::dict held2_stage_ii_to_dict(
     const epcsaft_equilibrium::Held2StageIIResult& evaluation
@@ -2932,9 +2935,9 @@ py::dict solve_tp_flash(
             pressure_pa,
             overall_mole_fractions,
             expected_fingerprint,
-            50,
-            8,
-            50,
+            kHeld2StageIEvaluationBudget,
+            kHeld2StageIIMajorIterationCap,
+            kHeld2StageIILocalAttemptCap,
             trace
         );
     }
