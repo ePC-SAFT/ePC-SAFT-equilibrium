@@ -89,6 +89,8 @@ add_library(
   cpp/src/held2_step3.cpp
   cpp/src/held2_step4.cpp
   cpp/src/held2_step5.cpp
+  cpp/src/held2_step6.cpp
+  cpp/src/held2_step7.cpp
   cpp/src/held2_stage_iii.cpp
   cpp/src/held2_stage_iii_generic.cpp
   cpp/src/saturation.cpp

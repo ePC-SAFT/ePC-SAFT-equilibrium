@@ -228,6 +228,221 @@ std::array<std::uint32_t, 32> sobol_directions(std::size_t dimension) {
 
 }  // namespace
 
+Held2Step5Result run_held2_step5(
+    const Held2Step1Result& step1,
+    const Held2Step4Result& step4,
+    Held2PersistentState& state,
+    const Held2StateEvaluator& evaluator,
+    const Held2PackingFractionEvaluator& packing_fraction,
+    const Held2ResourceProfile& resources,
+    Held2ProgressObserver* observer
+) {
+    Held2Step5Result result;
+    result.timing.invocation_count = 1;
+    if (step4.status != "complete" || !step1.coordinates
+        || !step1.volume_bounds || !evaluator || !packing_fraction
+        || resources.step5_total_start_cap < 1) {
+        result.reason = "invalid_step5_input";
+        return result;
+    }
+    const Held2Coordinates& coordinates = *step1.coordinates;
+    const std::size_t dimension = state.feed.size();
+    std::vector<double> lower = coordinates.independent_lower_bounds;
+    std::vector<double> upper = coordinates.independent_upper_bounds;
+    const auto dependent = std::find(
+        coordinates.retained_indices.begin(),
+        coordinates.retained_indices.end(),
+        coordinates.dependent_index
+    );
+    const double sum_upper = 1.0 - kHeld2ModifiedLowerScale
+        * coordinates.modified_factors[static_cast<std::size_t>(
+            dependent - coordinates.retained_indices.begin()
+        )];
+    std::vector<std::vector<double>> starts;
+    for (const Held2MPoint& point : state.M) {
+        starts.push_back(point.independent_modified_fractions);
+    }
+    for (const auto& cube : held2_sobol_points(
+             dimension,
+             std::max(0, resources.step5_total_start_cap
+                 - static_cast<int>(starts.size()))
+         )) {
+        starts.push_back(held2_map_unit_cube_to_independent_fractions(
+            coordinates, cube, std::numeric_limits<double>::quiet_NaN()
+        ));
+    }
+    const std::size_t cap = std::min(
+        starts.size(),
+        static_cast<std::size_t>(resources.step5_total_start_cap)
+    );
+    double best = std::numeric_limits<double>::infinity();
+    Held2MPoint best_point;
+    for (std::size_t index = 0; index < cap; ++index) {
+        const std::uint64_t ordinal = state.next_start_ordinal++;
+        ++result.starts_consumed;
+        Held2LocalCertificate certificate;
+        certificate.start_ordinal = ordinal;
+        Held2PressureEnvelopeResult envelope;
+        try {
+            envelope = evaluate_held2_pressure_envelope(
+                starts[index],
+                (*step1.volume_bounds)(starts[index]),
+                evaluator,
+                64
+            );
+        } catch (...) {
+            certificate.solver_status = "pressure_root_failed";
+            result.attempts.push_back(certificate);
+            continue;
+        }
+        ++result.timing.provider_evaluations;
+        if (envelope.outcome != "selected") {
+            certificate.solver_status = envelope.failure_reason;
+            result.attempts.push_back(certificate);
+            continue;
+        }
+        const int selected = envelope.selected_root_index;
+        int branch = 0;
+        for (int root = 0; root < selected; ++root) {
+            branch += envelope.roots[static_cast<std::size_t>(root)]
+                .mechanical_class == "strict_stable" ? 1 : 0;
+        }
+        const Held2PressureRoot& initial_root =
+            envelope.roots[static_cast<std::size_t>(selected)];
+        const Held2LocalSearchRun run =
+            run_held2_local_pressure_root_search(
+                evaluator,
+                *step1.volume_bounds,
+                state.feed,
+                state.multipliers,
+                starts[index],
+                branch,
+                initial_root.log_volume,
+                lower,
+                upper,
+                sum_upper,
+                observer,
+                state.major_iteration,
+                static_cast<int>(ordinal)
+            );
+        ++result.timing.optimizer_solves;
+        certificate.solver_status = run.solver_status;
+        if (!run.solver_converged || !run.callback_error.empty()
+            || run.variables.size() != dimension + 1) {
+            result.attempts.push_back(certificate);
+            continue;
+        }
+        const std::vector<double> independent(
+            run.variables.begin(), run.variables.end() - 1
+        );
+        const Held2StateEvaluation terminal =
+            evaluator(independent, run.variables.back());
+        ++result.timing.provider_evaluations;
+        const std::array<double, 2> volume_bounds =
+            (*step1.volume_bounds)(independent);
+        std::vector<double> full_lower = lower;
+        std::vector<double> full_upper = upper;
+        full_lower.push_back(std::log(volume_bounds[0]));
+        full_upper.push_back(std::log(volume_bounds[1]));
+        const Held2PhysicalKkt kkt = certify_held2_local_physical_kkt(
+            terminal.gradient,
+            state.multipliers,
+            run.variables,
+            full_lower,
+            full_upper,
+            sum_upper,
+            run.coordinate_jacobian,
+            run.lower_bound_multipliers,
+            run.upper_bound_multipliers
+        );
+        double value = terminal.objective;
+        for (std::size_t coordinate = 0;
+             coordinate < dimension;
+             ++coordinate) {
+            value += state.multipliers[coordinate]
+                * (state.feed[coordinate] - independent[coordinate]);
+        }
+        certificate.finite_and_in_domain =
+            std::isfinite(value) && terminal.volume > 0.0;
+        certificate.pressure_residual =
+            terminal.pressure_stationarity_relative;
+        certificate.primal_residual_inf = kkt.primal_inf_norm;
+        certificate.stationarity_residual_inf = kkt.stationarity_inf_norm;
+        certificate.dual_sign_violation_inf =
+            kkt.dual_sign_violation_inf_norm;
+        certificate.complementarity_inf = kkt.complementarity;
+        certificate.dual_pullback_residual_inf =
+            kkt.reconstruction_inf_norm;
+        certificate.accepted = certificate.finite_and_in_domain
+            && audit_held2_tolerance(
+                kHeld2RootPressure, certificate.pressure_residual
+            ).passed
+            && audit_held2_tolerance(
+                kHeld2Stage2Primal, kkt.primal_inf_norm
+            ).passed
+            && kkt.dual_signs_valid
+            && audit_held2_tolerance(
+                kHeld2Stage2Stationarity, kkt.stationarity_inf_norm
+            ).passed
+            && audit_held2_tolerance(
+                kHeld2Stage2Complementarity, kkt.complementarity
+            ).passed
+            && audit_held2_tolerance(
+                kHeld2Stage2DualPullback,
+                kkt.reconstruction_inf_norm,
+                kkt.reconstruction_scale
+            ).passed;
+        result.attempts.push_back(certificate);
+        if (!assess_held2_stage_ii_step5(
+                state.upper_bound, value, certificate.accepted
+            ).qualified || value >= best) {
+            continue;
+        }
+        best = value;
+        best_point = {
+            static_cast<std::uint64_t>(state.M.size()),
+            independent,
+            terminal.volume,
+            packing_fraction(independent, terminal.volume),
+            terminal.objective,
+            "step5_local",
+        };
+        break;
+    }
+    if (!std::isfinite(best)) {
+        result.reason = "step5_start_budget_exhausted";
+        return result;
+    }
+    state.lower_value = best;
+    state.starts_consumed_in_epoch += static_cast<int>(
+        result.starts_consumed
+    );
+    result.lower_value = best;
+    result.terminal = best_point;
+    const bool duplicate = std::any_of(
+        state.M.begin(), state.M.end(), [&](const Held2MPoint& point) {
+            return maximum_abs_difference(
+                point.independent_modified_fractions,
+                best_point.independent_modified_fractions
+            ) <= kHeld2BasinDuplicateComposition.atol
+                && std::abs(
+                    std::log(point.volume) - std::log(best_point.volume)
+                ) <= kHeld2BasinDuplicateLogVolume.atol;
+        }
+    );
+    if (!duplicate) {
+        state.M.push_back(best_point);
+        state.start_epoch_added_member = true;
+        result.mathematical_set_changed = true;
+    }
+    result.status = "complete";
+    result.reason = "step5_complete";
+    result.timing.terminal_status = result.status;
+    result.timing.terminal_reason = result.reason;
+    result.timing.next_step = 6;
+    return result;
+}
+
 std::vector<std::vector<double>> held2_sobol_points(
     std::size_t dimension,
     int count

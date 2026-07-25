@@ -12,6 +12,7 @@ struct Held2MPoint {
     std::uint64_t insertion_id = 0;
     std::vector<double> independent_modified_fractions;
     double volume = 0.0;
+    double packing_fraction = std::numeric_limits<double>::quiet_NaN();
     double reduced_gibbs = 0.0;
     std::string origin;
 };

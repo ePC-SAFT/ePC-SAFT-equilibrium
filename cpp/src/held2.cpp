@@ -152,15 +152,7 @@ void configure_held2_ipopt(const Ipopt::SmartPtr<Ipopt::IpoptApplication>& appli
     application->Options()->SetStringValue("check_derivatives_for_naninf", "yes");
 }
 
-struct Held2SearchRun {
-    bool solver_converged = false;
-    std::string solver_status = "not_run";
-    std::string callback_error;
-    std::vector<double> variables;
-    std::vector<double> lower_bound_multipliers;
-    std::vector<double> upper_bound_multipliers;
-    std::vector<double> coordinate_jacobian;
-};
+using Held2SearchRun = Held2LocalSearchRun;
 
 struct Held2StageIISimplexChart {
     std::vector<double> physical_coordinates;
@@ -229,16 +221,6 @@ Held2SecondOrderScalar second_order_multiply(
     }
     return result;
 }
-
-struct Held2PhysicalKkt {
-    double primal_inf_norm = std::numeric_limits<double>::infinity();
-    double dual_sign_violation_inf_norm = std::numeric_limits<double>::infinity();
-    double stationarity_inf_norm = std::numeric_limits<double>::infinity();
-    double complementarity = std::numeric_limits<double>::infinity();
-    double reconstruction_inf_norm = std::numeric_limits<double>::infinity();
-    double reconstruction_scale = std::numeric_limits<double>::infinity();
-    bool dual_signs_valid = false;
-};
 
 std::optional<std::vector<double>> solve_dense_linear_system(
     const std::vector<double>& matrix,
@@ -1426,6 +1408,48 @@ double enumerated_manufactured_objective(double feed_composition) {
 }
 
 }  // namespace
+
+Held2LocalSearchRun run_held2_local_pressure_root_search(
+    const Held2StateEvaluator& evaluator,
+    const Held2VolumeBoundsEvaluator& volume_bounds,
+    const std::vector<double>& feed,
+    const std::vector<double>& multipliers,
+    const std::vector<double>& initial,
+    int stable_branch_index,
+    double branch_log_volume_hint,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    double composition_sum_upper,
+    Held2ProgressObserver* observer,
+    int major_iteration,
+    int attempt_index
+) {
+    return solve_stage_ii_pressure_root_local(
+        evaluator, volume_bounds, feed, multipliers, initial,
+        stable_branch_index, branch_log_volume_hint, lower, upper,
+        composition_sum_upper, {},
+        std::numeric_limits<double>::quiet_NaN(),
+        observer, major_iteration, attempt_index
+    );
+}
+
+Held2PhysicalKkt certify_held2_local_physical_kkt(
+    const std::vector<double>& physical_gradient,
+    const std::vector<double>& multipliers,
+    const std::vector<double>& variables,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    double composition_sum_upper,
+    const std::vector<double>& coordinate_jacobian,
+    const std::vector<double>& lower_bound_multipliers,
+    const std::vector<double>& upper_bound_multipliers
+) {
+    return evaluate_stage_ii_physical_kkt(
+        physical_gradient, multipliers, variables, lower, upper,
+        composition_sum_upper, coordinate_jacobian,
+        lower_bound_multipliers, upper_bound_multipliers
+    );
+}
 
 Held2StageIIPressureRootReduction reduce_held2_stage_ii_pressure_root(
     const std::vector<double>& independent,

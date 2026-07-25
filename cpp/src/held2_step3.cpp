@@ -64,6 +64,7 @@ Held2Step3Result run_held2_step3(
     state.upper_bound = state.feed_reduced_gibbs;
     state.M.push_back({
         0, state.feed, step2.reference->volume,
+        std::numeric_limits<double>::quiet_NaN(),
         step2.reference->objective, "homogeneous_feed",
     });
     const double eliminated_charge =
@@ -135,6 +136,7 @@ Held2Step3Result run_held2_step3(
                 static_cast<std::uint64_t>(state.M.size()),
                 std::move(independent),
                 root.volume,
+                std::numeric_limits<double>::quiet_NaN(),
                 root.objective,
                 side == 0 ? "appendix_c_lower" : "appendix_c_upper",
             });

@@ -1,13 +1,62 @@
 #pragma once
 
 #include <functional>
+#include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "held2.hpp"
+#include "held2_step4.hpp"
 
 namespace epcsaft_equilibrium {
+
+using Held2PackingFractionEvaluator = std::function<double(
+    const std::vector<double>&,
+    double
+)>;
+
+struct Held2ResourceProfile {
+    int step2_search_budget = 0;
+    int step5_start_epoch_size = 0;
+    int step5_total_start_cap = 0;
+    int step7_major_iteration_cap = 0;
+};
+
+struct Held2LocalCertificate {
+    std::uint64_t start_ordinal = 0;
+    std::string solver_status;
+    bool finite_and_in_domain = false;
+    double pressure_residual = std::numeric_limits<double>::infinity();
+    double primal_residual_inf = std::numeric_limits<double>::infinity();
+    double stationarity_residual_inf = std::numeric_limits<double>::infinity();
+    double dual_sign_violation_inf = std::numeric_limits<double>::infinity();
+    double complementarity_inf = std::numeric_limits<double>::infinity();
+    double dual_pullback_residual_inf =
+        std::numeric_limits<double>::infinity();
+    bool accepted = false;
+};
+
+struct Held2Step5Result {
+    std::string status = "indeterminate";
+    std::string reason = "not_run";
+    std::optional<double> lower_value;
+    std::optional<Held2MPoint> terminal;
+    bool mathematical_set_changed = false;
+    std::uint64_t starts_consumed = 0;
+    std::vector<Held2LocalCertificate> attempts;
+    Held2StepTiming timing;
+};
+
+[[nodiscard]] Held2Step5Result run_held2_step5(
+    const Held2Step1Result& step1,
+    const Held2Step4Result& step4,
+    Held2PersistentState& state,
+    const Held2StateEvaluator& evaluator,
+    const Held2PackingFractionEvaluator& packing_fraction,
+    const Held2ResourceProfile& resources,
+    Held2ProgressObserver* observer = nullptr
+);
 
 struct Held2StageIIBasinSeed {
     std::vector<double> independent_modified_fractions;

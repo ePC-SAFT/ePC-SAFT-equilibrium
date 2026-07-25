@@ -119,9 +119,58 @@ using Held2StateEvaluator = std::function<Held2StateEvaluation(
     double
 )>;
 
+struct Held2LocalSearchRun {
+    bool solver_converged = false;
+    std::string solver_status = "not_run";
+    std::string callback_error;
+    std::vector<double> variables;
+    std::vector<double> lower_bound_multipliers;
+    std::vector<double> upper_bound_multipliers;
+    std::vector<double> coordinate_jacobian;
+};
+
+struct Held2PhysicalKkt {
+    double primal_inf_norm = std::numeric_limits<double>::infinity();
+    double dual_sign_violation_inf_norm =
+        std::numeric_limits<double>::infinity();
+    double stationarity_inf_norm = std::numeric_limits<double>::infinity();
+    double complementarity = std::numeric_limits<double>::infinity();
+    double reconstruction_inf_norm = std::numeric_limits<double>::infinity();
+    double reconstruction_scale = std::numeric_limits<double>::infinity();
+    bool dual_signs_valid = false;
+};
+
 using Held2VolumeBoundsEvaluator = std::function<std::array<double, 2>(
     const std::vector<double>&
 )>;
+
+[[nodiscard]] Held2LocalSearchRun run_held2_local_pressure_root_search(
+    const Held2StateEvaluator& evaluator,
+    const Held2VolumeBoundsEvaluator& volume_bounds,
+    const std::vector<double>& feed,
+    const std::vector<double>& multipliers,
+    const std::vector<double>& initial,
+    int stable_branch_index,
+    double branch_log_volume_hint,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    double composition_sum_upper,
+    Held2ProgressObserver* observer = nullptr,
+    int major_iteration = -1,
+    int attempt_index = -1
+);
+
+[[nodiscard]] Held2PhysicalKkt certify_held2_local_physical_kkt(
+    const std::vector<double>& physical_gradient,
+    const std::vector<double>& multipliers,
+    const std::vector<double>& variables,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    double composition_sum_upper,
+    const std::vector<double>& coordinate_jacobian,
+    const std::vector<double>& lower_bound_multipliers,
+    const std::vector<double>& upper_bound_multipliers
+);
 
 struct Held2StageIIPressureRootReduction {
     double objective = 0.0;

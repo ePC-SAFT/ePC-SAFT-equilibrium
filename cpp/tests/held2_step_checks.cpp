@@ -1,5 +1,7 @@
 #include "held2_step2.hpp"
 #include "held2_step4.hpp"
+#include "held2_step5.hpp"
+#include "held2_step7.hpp"
 
 #include <array>
 #include <cmath>
@@ -496,6 +498,93 @@ void run_held2_step4_checks() {
     require(
         std::abs(result.multipliers->front()) <= 0.25 + 1.0e-10,
         "Step-4 multiplier left the analytic optimum face"
+    );
+}
+
+void run_held2_step5_checks() {
+    const Held2Step1Result prepared = step1(
+        {0.0, 1.0, -1.0},
+        {0.50, 0.25, 0.25},
+        [](const std::vector<double>&) {
+            return std::array<double, 2>{
+                std::exp(-1.5), std::exp(1.5),
+            };
+        }
+    );
+    Held2PersistentState state = std::move(*appendix_c_result().state);
+    const Held2Step4Result step4 = run_held2_step4(state);
+    const Held2Step5Result result = run_held2_step5(
+        prepared,
+        step4,
+        state,
+        [](const auto& composition, double log_volume) {
+            return search_state(composition, log_volume, false);
+        },
+        [](const auto&, double) { return 0.1; },
+        {0, 4, 8, 10}
+    );
+    require(
+        result.status == "complete" && result.lower_value <= step4.upper_bound
+            && !result.attempts.empty()
+            && result.attempts.back().accepted
+            && state.next_start_ordinal == result.starts_consumed,
+        "Step-5 certified persistent multistart changed"
+    );
+}
+
+void run_held2_step6_checks() {
+    const Held2Step1Result prepared = step1(
+        {0.0, 1.0, -1.0}, {0.50, 0.25, 0.25},
+        [](const std::vector<double>&) {
+            return std::array<double, 2>{
+                std::exp(-1.5), std::exp(1.5),
+            };
+        }
+    );
+    Held2PersistentState state = std::move(*appendix_c_result().state);
+    const Held2Step4Result step4 = run_held2_step4(state);
+    const Held2Step6Result result = run_held2_step6(
+        prepared,
+        step4,
+        state,
+        [](const auto& composition, double log_volume) {
+            return search_state(composition, log_volume, false);
+        },
+        [](const auto& composition, double) {
+            return composition.front();
+        }
+    );
+    require(
+        result.status == "complete"
+            && result.decisions.size() == state.M.size()
+            && result.timing.next_step == 7,
+        "Step-6 full-M search changed"
+    );
+}
+
+void run_held2_step7_checks() {
+    Held2PersistentState state = std::move(*appendix_c_result().state);
+    Held2Step5Result step5;
+    step5.status = "complete";
+    Held2Step6Result step6;
+    step6.status = "complete";
+    const Held2Step7Result next = run_held2_step7(
+        state, step5, step6, {0, 8, 20, 10}
+    );
+    require(
+        next.status == "complete" && next.next_step == 4
+            && state.major_iteration == 1,
+        "Step 7 did not advance exactly one major iteration"
+    );
+    state.starts_consumed_in_epoch = 8;
+    state.start_epoch_added_member = false;
+    const Held2Step7Result stagnant = run_held2_step7(
+        state, step5, step6, {0, 8, 20, 10}
+    );
+    require(
+        stagnant.status == "indeterminate"
+            && stagnant.reason == "stage_ii_stagnation",
+        "Step-7 stagnation did not fail closed"
     );
 }
 

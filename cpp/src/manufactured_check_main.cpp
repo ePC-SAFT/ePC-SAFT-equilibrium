@@ -11,6 +11,9 @@ void run_held2_step1_checks();
 std::string run_held2_step2_checks(Held2ProgressObserver*);
 void run_held2_step3_checks();
 void run_held2_step4_checks();
+void run_held2_step5_checks();
+void run_held2_step6_checks();
+void run_held2_step7_checks();
 }
 
 namespace {
@@ -72,6 +75,15 @@ int main(int argc, char** argv) {
         } else if (check == "step4") {
             epcsaft_equilibrium::test::run_held2_step4_checks();
             std::cout << "step4: pass\n";
+        } else if (check == "step5") {
+            epcsaft_equilibrium::test::run_held2_step5_checks();
+            std::cout << "step5: pass\n";
+        } else if (check == "step6") {
+            epcsaft_equilibrium::test::run_held2_step6_checks();
+            std::cout << "step6: pass\n";
+        } else if (check == "step7") {
+            epcsaft_equilibrium::test::run_held2_step7_checks();
+            std::cout << "step7: pass\n";
         } else if (check == "workflow") {
             run_workflow_check();
         } else {
