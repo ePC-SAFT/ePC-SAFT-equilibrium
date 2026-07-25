@@ -88,12 +88,16 @@ D-028 separately binds a private, non-production homogeneous reacting-phase
 foundation. The implementation is intentionally reachable only through
 underscored native test seams: it compiles ordered balances, reactions, and
 reference records; constructs an exact positive electroneutral chart; owns one
-fixed-`T,P` Ipopt TNLP and its certificates; and consumes the installed
+fixed-`T,P` Ipopt minimization plus a generic strictly-interior KKT feasibility
+polish when vanishing log-amount derivatives mask physical reaction affinity.
+Final equality multipliers and certificates are rebuilt from the accepted
+physical state. The private path consumes the installed
 Provider's Helmholtz, pressure, volume-domain, packing, and derivative
-callbacks. The manufactured seam remains explicitly
+callbacks. A source-derived Belov-Aristova gas restriction supplies only
+algorithm and trace-range evidence through the seam, which remains explicitly
 `manufactured_nonpredictive`. No application chemistry or source-backed
-nonideal reacting case is retained in this package. D-026 remains the public
-HELD2 admission gate.
+nonideal reacting case is retained in this package. Boundary equilibria remain
+indeterminate, and D-026 remains the public HELD2 admission gate.
 
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD

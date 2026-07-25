@@ -377,6 +377,17 @@ GitHub issue #69 owns the next local slice:
 7. Prove reaction-basis, species-order, conservation-gauge, and feed-scale
    invariance with the smallest persistent evidence surface.
 
+The implemented generic resolution preserves the exact-Hessian Ipopt
+minimization as the sole optimization solve. If that solve is feasible and
+strictly above the trace floor but fails the independently recomputed physical
+reaction-affinity certificate, a damped Newton pass imposes the square system
+of independent balances, reaction affinities, and pressure directly using the
+existing exact Jacobian blocks. A polished state is adopted only after physical
+affinities pass; Provider-domain inequalities, equality multipliers,
+stationarity, complementarity status, and reduced curvature are then
+reconstructed independently from that state. Active-bound or active-domain
+cases remain unaccepted.
+
 Belov is an ideal-gas algorithm and trace benchmark, not an installed-Provider
 or ePC-SAFT validation case. Reaktoro may be used as a disposable independent
 cross-check only; it is not a production dependency or oracle of record.

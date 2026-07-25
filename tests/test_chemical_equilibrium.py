@@ -61,6 +61,78 @@ def _bind_record(spec: dict[str, object]) -> None:
     )
 
 
+# gvbelov/Heterogeneous-Equilibrium commit c74b87545a3418262e8e38a7c7a2e31e1b12966a,
+# test1.dat blob 5490caab3f7a3f8cdea0d1cb883cce4323902657, SHA-256 below.
+# The element potentials and expected amounts are the independent 80-decimal
+# calculation recorded in docs/research/2026-07-24-belov-aristova-chemical-equilibrium.md.
+_BELOV_ELEMENT_POTENTIALS = (
+    -10.0776517753450153959143507476192439107332024990741,
+    44.8480568890243540815059574241188924984510845101041,
+)
+_BELOV_SOURCE_GIBBS = (
+    -7.072468897041624,
+    -28.765987200068952,
+    -26.51300119486301,
+    21.44955454258845,
+    21.26761422175228,
+    -34.35125913287487,
+    -55.36542486137457,
+    -17.10224518423043,
+)
+
+
+def _belov_aristova_gas_system() -> tuple[dict[str, object], tuple[float, ...]]:
+    temperature_k = 2000.0
+    pressure_pa = 100_000.0
+    standard_pressure_pa = 101_325.0
+    reactions = (
+        (-2.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        (-3.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, -2.0, 1.0, 0.0, 0.0, 0.0),
+        (-1.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0),
+        (-2.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0),
+        (-1.0, 0.0, 0.0, -2.0, 0.0, 0.0, 0.0, 1.0),
+    )
+    concentration_shift = math.log(
+        8.31446261815324 * temperature_k / standard_pressure_pa
+    )
+    manufactured_gibbs = tuple(
+        value + concentration_shift for value in _BELOV_SOURCE_GIBBS
+    )
+    ln_k = tuple(
+        -sum(row[index] * manufactured_gibbs[index] for index in range(8))
+        for row in reactions
+    )
+    spec: dict[str, object] = {
+        "species_ids": ("O", "O2", "O3", "C", "C2", "CO", "CO2", "C2O"),
+        "charges": (0,) * 8,
+        "provider_fingerprint": (
+            "sha256:2f24904e5db64e96aa2ee96c53bd80863c9518b6c2ddd914e266181fe7459f84"
+        ),
+        "balance_matrix": (
+            (0.0, 0.0, 0.0, 1.0, 2.0, 1.0, 1.0, 2.0),
+            (1.0, 2.0, 3.0, 0.0, 0.0, 1.0, 2.0, 1.0),
+        ),
+        "reaction_matrix": reactions,
+        "feed_amounts": (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+        "ln_k": ln_k,
+        "temperature_k": temperature_k,
+        "pressure_pa": pressure_pa,
+    }
+    _bind_record(spec)
+    expected = (
+        5.969938280702114e-17,
+        5.249059580600665e-27,
+        1.838054910648896e-47,
+        1.7496236329525488e-5,
+        4.996074090543112e-1,
+        9.992323142113352e-1,
+        4.453885591412746e-11,
+        7.676856995870245e-4,
+    )
+    return spec, expected
+
+
 def _nearly_dependent_system(
     reaction_scale: float, delta: float, *, reverse_order: bool = False
 ) -> dict[str, object]:
@@ -312,6 +384,103 @@ def test_manufactured_ideal_reactions_match_independent_analytic_states(
     assert result["complementarity_inf_norm"] <= 1.0e-7
     assert result["kkt_scope"] == "equality_kkt_on_strict_interior"
     assert len(result["kkt_residual"]) + len(result["kkt_jacobian"]) > 0
+
+
+@pytest.mark.parametrize("trace_floor", (1.0e-50, 1.0e-55))
+def test_belov_aristova_gas_restriction_resolves_extreme_positive_traces(
+    trace_floor: float,
+) -> None:
+    spec, expected = _belov_aristova_gas_system()
+
+    result = _manufactured_solve(spec, {"trace_floor": trace_floor})
+
+    assert result["accepted"] is True
+    assert result["trace_status"] == "interior"
+    amounts = tuple(result["amounts"])
+    assert tuple(map(math.log, amounts)) == pytest.approx(
+        tuple(map(math.log, expected)), abs=2.0e-6
+    )
+    balances = spec["balance_matrix"]
+    assert tuple(
+        sum(row[index] * amounts[index] for index in range(8))
+        for row in balances  # type: ignore[union-attr]
+    ) == pytest.approx((2.0, 1.0), abs=1.0e-9)
+    assert (
+        8.31446261815324 * 2000.0 * sum(amounts) / result["volume_m3"]
+    ) == pytest.approx(100_000.0, rel=1.0e-8)
+    concentration_shift = math.log(8.31446261815324 * 2000.0 / 101_325.0)
+    potentials = tuple(
+        _BELOV_SOURCE_GIBBS[index] + concentration_shift
+        + math.log(amounts[index] / result["volume_m3"])
+        for index in range(8)
+    )
+    reactions = spec["reaction_matrix"]
+    assert tuple(
+        sum(row[index] * potentials[index] for index in range(8))
+        for row in reactions  # type: ignore[union-attr]
+    ) == pytest.approx((0.0,) * 6, abs=1.0e-7)
+    assert tuple(
+        potentials[index]
+        + balances[0][index] * _BELOV_ELEMENT_POTENTIALS[0]  # type: ignore[index]
+        + balances[1][index] * _BELOV_ELEMENT_POTENTIALS[1]  # type: ignore[index]
+        for index in range(8)
+    ) == pytest.approx((0.0,) * 8, abs=1.0e-7)
+    assert result["balance_inf_norm"] <= 1.0e-9
+    assert result["pressure_relative_residual"] <= 1.0e-8
+    assert result["reaction_affinity_inf_norm"] <= 1.0e-7
+    assert result["kkt_stationarity_inf_norm"] <= 1.0e-7
+    assert result["local_minimum_status"] == "passed"
+
+
+@pytest.mark.parametrize(
+    "variant", ("reaction_basis", "species_order", "conservation_gauge", "feed_scale")
+)
+def test_belov_aristova_trace_solution_is_coordinate_invariant(variant: str) -> None:
+    spec, expected = _belov_aristova_gas_system()
+    options: dict[str, object] = {"trace_floor": 1.0e-50}
+
+    if variant == "reaction_basis":
+        reactions = spec["reaction_matrix"]
+        ln_k = spec["ln_k"]
+        spec["reaction_matrix"] = (
+            tuple(
+                reactions[0][index] + reactions[1][index]  # type: ignore[index]
+                for index in range(8)
+            ),
+            *reactions[1:],  # type: ignore[index]
+        )
+        spec["ln_k"] = (ln_k[0] + ln_k[1], *ln_k[1:])  # type: ignore[index]
+        _bind_record(spec)
+    elif variant == "species_order":
+        permutation = (7, 5, 3, 1, 6, 4, 2, 0)
+        for field in ("species_ids", "charges", "feed_amounts"):
+            values = spec[field]
+            spec[field] = tuple(values[index] for index in permutation)  # type: ignore[index]
+        spec["balance_matrix"] = tuple(
+            tuple(row[index] for index in permutation)
+            for row in spec["balance_matrix"]  # type: ignore[union-attr]
+        )
+        spec["reaction_matrix"] = tuple(
+            tuple(row[index] for index in permutation)
+            for row in spec["reaction_matrix"]  # type: ignore[union-attr]
+        )
+        expected = tuple(expected[index] for index in permutation)
+    elif variant == "conservation_gauge":
+        options["gauge_coefficients"] = (3.25, -1.75)
+    else:
+        scale = 3.0
+        spec["feed_amounts"] = tuple(
+            scale * value for value in spec["feed_amounts"]  # type: ignore[union-attr]
+        )
+        expected = tuple(scale * value for value in expected)
+
+    result = _manufactured_solve(spec, options)
+
+    assert result["accepted"] is True
+    assert tuple(map(math.log, result["amounts"])) == pytest.approx(
+        tuple(map(math.log, expected)), abs=3.0e-6
+    )
+    assert result["reaction_affinity_inf_norm"] <= 1.0e-7
 
 
 def test_manufactured_charged_reaction_uses_exact_electroneutral_chart() -> None:

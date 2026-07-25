@@ -756,6 +756,277 @@ ReactionNlpEvaluation evaluate_reaction_nlp(
     return result;
 }
 
+std::vector<double> chemical_potentials(
+    const ReactionNlpEvaluation& evaluation,
+    const std::vector<double>& g_ref
+) {
+    std::vector<double> result(
+        evaluation.phase.mechanical.gradient.begin(),
+        evaluation.phase.mechanical.gradient.begin()
+            + static_cast<std::ptrdiff_t>(g_ref.size())
+    );
+    for (std::size_t species = 0; species < result.size(); ++species) {
+        result[species] += g_ref[species];
+    }
+    return result;
+}
+
+struct KktPolishEvaluation {
+    std::vector<double> constraints;
+    std::vector<double> jacobian;
+    bool domain_feasible = true;
+};
+
+std::size_t kkt_polish_constraint_count(
+    const ConstraintRows& balances,
+    const DenseMatrix& reactions
+) {
+    return balances.matrix.rows + reactions.rows + 1;
+}
+
+KktPolishEvaluation evaluate_kkt_polish(
+    const AmountChart& chart,
+    const ConstraintRows& balances,
+    const DenseMatrix& reactions,
+    const std::vector<double>& g_ref,
+    double temperature_k,
+    double pressure_pa,
+    const PhaseEvaluator& phase_evaluator,
+    const ReactionDomain& domain,
+    const std::vector<double>& variables
+) {
+    if (reactions.columns != g_ref.size()) {
+        throw std::invalid_argument("reaction polish dimensions are inconsistent");
+    }
+    const ReactionNlpEvaluation base = evaluate_reaction_nlp(
+        chart,
+        balances,
+        g_ref,
+        temperature_k,
+        pressure_pa,
+        phase_evaluator,
+        domain,
+        variables,
+        std::vector<double>(reaction_constraint_count(balances, domain), 0.0)
+    );
+    const std::size_t species_count = g_ref.size();
+    const std::size_t variable_count = variables.size();
+    const std::size_t amount_dimension = chart.coordinate_count();
+    const std::size_t physical_count = species_count + 1;
+    KktPolishEvaluation result;
+    const std::size_t constraint_count = kkt_polish_constraint_count(balances, reactions);
+    result.constraints.assign(constraint_count, 0.0);
+    result.jacobian.assign(constraint_count * variable_count, 0.0);
+    for (std::size_t row = balances.matrix.rows; row < base.constraints.size(); ++row) {
+        const double scale = std::max(1.0, std::abs(base.constraints[row]));
+        result.domain_feasible = result.domain_feasible
+            && base.constraints[row]
+                >= base.constraint_lower[row] - kProviderDomainTolerance * scale
+            && base.constraints[row]
+                <= base.constraint_upper[row] + kProviderDomainTolerance * scale;
+    }
+
+    for (std::size_t row = 0; row < balances.matrix.rows; ++row) {
+        const double scale = std::max(1.0, std::abs(balances.totals[row]));
+        result.constraints[row] = base.constraints[row] / scale;
+        for (std::size_t variable = 0; variable < variable_count; ++variable) {
+            result.jacobian[row * variable_count + variable] =
+                base.jacobian[row * variable_count + variable] / scale;
+        }
+    }
+
+    std::vector<double> physical_jacobian(physical_count * variable_count, 0.0);
+    for (std::size_t species = 0; species < species_count; ++species) {
+        for (std::size_t reduced = 0; reduced < amount_dimension; ++reduced) {
+            physical_jacobian[species * variable_count + reduced] =
+                base.amount_chart.jacobian[species * amount_dimension + reduced];
+        }
+    }
+    physical_jacobian[species_count * variable_count + amount_dimension] =
+        base.volume;
+
+    const std::vector<double> potentials = chemical_potentials(base, g_ref);
+    std::size_t constraint = balances.matrix.rows;
+    for (std::size_t reaction = 0; reaction < reactions.rows; ++reaction) {
+        for (std::size_t species = 0; species < species_count; ++species) {
+            result.constraints[constraint] += reactions(reaction, species)
+                * potentials[species];
+            for (std::size_t variable = 0; variable < variable_count; ++variable) {
+                for (std::size_t physical = 0; physical < physical_count; ++physical) {
+                    result.jacobian[constraint * variable_count + variable] +=
+                        reactions(reaction, species)
+                        * base.phase.mechanical.hessian[
+                            species * physical_count + physical
+                        ]
+                        * physical_jacobian[physical * variable_count + variable];
+                }
+            }
+        }
+        ++constraint;
+    }
+
+    result.constraints[constraint] =
+        (base.phase.mechanical.pressure_pa - pressure_pa) / pressure_pa;
+    for (std::size_t variable = 0; variable < variable_count; ++variable) {
+        for (std::size_t physical = 0; physical < physical_count; ++physical) {
+            result.jacobian[constraint * variable_count + variable] -=
+                kGasConstantJPerMolK * temperature_k
+                * base.phase.mechanical.hessian[
+                    species_count * physical_count + physical
+                ]
+                * physical_jacobian[physical * variable_count + variable]
+                / pressure_pa;
+        }
+    }
+    return result;
+}
+
+bool solve_square_system(
+    std::vector<double> matrix,
+    std::vector<double>& right_hand_side
+) {
+    const std::size_t dimension = right_hand_side.size();
+    if (matrix.size() != dimension * dimension) {
+        return false;
+    }
+    double matrix_scale = 0.0;
+    for (double value : matrix) {
+        matrix_scale = std::max(matrix_scale, std::abs(value));
+    }
+    const double tolerance = 4096.0 * std::numeric_limits<double>::epsilon()
+        * std::max(1.0, matrix_scale) * static_cast<double>(dimension);
+    for (std::size_t column = 0; column < dimension; ++column) {
+        std::size_t pivot = column;
+        for (std::size_t row = column + 1; row < dimension; ++row) {
+            if (std::abs(matrix[row * dimension + column])
+                > std::abs(matrix[pivot * dimension + column])) {
+                pivot = row;
+            }
+        }
+        if (std::abs(matrix[pivot * dimension + column]) <= tolerance) {
+            return false;
+        }
+        if (pivot != column) {
+            for (std::size_t entry = column; entry < dimension; ++entry) {
+                std::swap(
+                    matrix[pivot * dimension + entry],
+                    matrix[column * dimension + entry]
+                );
+            }
+            std::swap(right_hand_side[pivot], right_hand_side[column]);
+        }
+        for (std::size_t row = column + 1; row < dimension; ++row) {
+            const double factor = matrix[row * dimension + column]
+                / matrix[column * dimension + column];
+            for (std::size_t entry = column + 1; entry < dimension; ++entry) {
+                matrix[row * dimension + entry] -=
+                    factor * matrix[column * dimension + entry];
+            }
+            right_hand_side[row] -= factor * right_hand_side[column];
+        }
+    }
+    for (std::size_t row = dimension; row-- > 0;) {
+        for (std::size_t column = row + 1; column < dimension; ++column) {
+            right_hand_side[row] -=
+                matrix[row * dimension + column] * right_hand_side[column];
+        }
+        right_hand_side[row] /= matrix[row * dimension + row];
+    }
+    return std::all_of(
+        right_hand_side.begin(),
+        right_hand_side.end(),
+        [](double value) { return std::isfinite(value); }
+    );
+}
+
+bool polish_interior_kkt(
+    const AmountChart& chart,
+    const ConstraintRows& balances,
+    const DenseMatrix& reactions,
+    const std::vector<double>& g_ref,
+    double temperature_k,
+    double pressure_pa,
+    const PhaseEvaluator& phase_evaluator,
+    const ReactionDomain& domain,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    int max_iterations,
+    std::vector<double>& variables
+) {
+    const std::size_t dimension = variables.size();
+    if (kkt_polish_constraint_count(balances, reactions) != dimension) {
+        return false;
+    }
+    for (int iteration = 0; iteration < max_iterations; ++iteration) {
+        const KktPolishEvaluation evaluation = evaluate_kkt_polish(
+            chart,
+            balances,
+            reactions,
+            g_ref,
+            temperature_k,
+            pressure_pa,
+            phase_evaluator,
+            domain,
+            variables
+        );
+        const double residual = vector_inf_norm(evaluation.constraints);
+        if (residual <= kAffinityTolerance) {
+            return evaluation.domain_feasible;
+        }
+        std::vector<double> step = evaluation.constraints;
+        for (double& value : step) {
+            value = -value;
+        }
+        if (!solve_square_system(evaluation.jacobian, step)) {
+            return false;
+        }
+        double alpha = 1.0;
+        for (std::size_t index = 0; index < dimension; ++index) {
+            if (step[index] > 0.0) {
+                alpha = std::min(
+                    alpha, 0.99 * (upper[index] - variables[index]) / step[index]
+                );
+            } else if (step[index] < 0.0) {
+                alpha = std::min(
+                    alpha, 0.99 * (lower[index] - variables[index]) / step[index]
+                );
+            }
+        }
+        bool accepted_step = false;
+        for (int backtrack = 0; backtrack < 60 && alpha > 1.0e-12; ++backtrack) {
+            std::vector<double> candidate = variables;
+            for (std::size_t index = 0; index < dimension; ++index) {
+                candidate[index] += alpha * step[index];
+            }
+            try {
+                const KktPolishEvaluation trial = evaluate_kkt_polish(
+                    chart,
+                    balances,
+                    reactions,
+                    g_ref,
+                    temperature_k,
+                    pressure_pa,
+                    phase_evaluator,
+                    domain,
+                    candidate
+                );
+                if (trial.domain_feasible
+                    && vector_inf_norm(trial.constraints) < residual) {
+                    variables = std::move(candidate);
+                    accepted_step = true;
+                    break;
+                }
+            } catch (const std::exception&) {
+            }
+            alpha *= 0.5;
+        }
+        if (!accepted_step) {
+            return false;
+        }
+    }
+    return false;
+}
+
 class ReactionTnlp final : public Ipopt::TNLP {
 public:
     ReactionTnlp(
@@ -1141,6 +1412,35 @@ std::vector<std::vector<double>> nullspace_basis(
     return basis;
 }
 
+std::vector<double> recompute_equality_multipliers(
+    const ConstraintRows& balances,
+    const std::vector<double>& potentials
+) {
+    const std::size_t equality_count = balances.matrix.rows;
+    if (balances.matrix.columns != potentials.size()) {
+        throw std::invalid_argument("equality multiplier dimensions are inconsistent");
+    }
+    std::vector<double> gram(equality_count * equality_count, 0.0);
+    std::vector<double> right_hand_side(equality_count, 0.0);
+    for (std::size_t row = 0; row < equality_count; ++row) {
+        for (std::size_t other = 0; other < equality_count; ++other) {
+            for (std::size_t species = 0; species < potentials.size(); ++species) {
+                gram[row * equality_count + other] +=
+                    balances.matrix(row, species)
+                    * balances.matrix(other, species);
+            }
+        }
+        for (std::size_t species = 0; species < potentials.size(); ++species) {
+            right_hand_side[row] -=
+                balances.matrix(row, species) * potentials[species];
+        }
+    }
+    if (!solve_square_system(std::move(gram), right_hand_side)) {
+        throw std::domain_error("equality multiplier system is singular");
+    }
+    return right_hand_side;
+}
+
 bool reduced_hessian_positive(
     const ReactionNlpEvaluation& evaluation,
     std::size_t constraint_count
@@ -1425,9 +1725,85 @@ ChemicalSolveResult solve_reaction(
         return result;
     }
     const Ipopt::ApplicationReturnStatus status = application->OptimizeTNLP(problem);
+    std::vector<double> variables = raw_problem->solution();
+    bool polished = false;
+    if (status == Ipopt::Solve_Succeeded && max_iterations > 0) {
+        try {
+            const ReactionNlpEvaluation preliminary = evaluate_reaction_nlp(
+                chart,
+                balances,
+                g_ref,
+                temperature_k,
+                pressure_pa,
+                phase_evaluator,
+                domain,
+                variables,
+                raw_problem->constraint_multipliers()
+            );
+            const std::vector<double> preliminary_potentials =
+                chemical_potentials(preliminary, g_ref);
+            const double preliminary_affinity = vector_inf_norm(
+                matrix_vector(system.reaction_matrix, preliminary_potentials)
+            );
+            const double preliminary_balance = vector_inf_norm(std::vector<double>(
+                preliminary.constraints.begin(),
+                preliminary.constraints.begin()
+                    + static_cast<std::ptrdiff_t>(balances.matrix.rows)
+            ));
+            const double preliminary_pressure = std::abs(
+                preliminary.phase.mechanical.pressure_pa - pressure_pa
+            ) / pressure_pa;
+            if (preliminary_affinity > kAffinityTolerance
+                && preliminary_balance <= kBalanceTolerance
+                && preliminary_pressure <= kPressureTolerance
+                && preliminary.amount_chart.minimum_amount > trace_floor) {
+                std::vector<double> candidate = variables;
+                if (polish_interior_kkt(
+                    chart,
+                    balances,
+                    system.reaction_matrix,
+                    g_ref,
+                    temperature_k,
+                    pressure_pa,
+                    phase_evaluator,
+                    domain,
+                    lower,
+                    upper,
+                    max_iterations,
+                    candidate
+                )) {
+                    const ReactionNlpEvaluation polished_evaluation =
+                        evaluate_reaction_nlp(
+                            chart,
+                            balances,
+                            g_ref,
+                            temperature_k,
+                            pressure_pa,
+                            phase_evaluator,
+                            domain,
+                            candidate,
+                            std::vector<double>(
+                                reaction_constraint_count(balances, domain), 0.0
+                            )
+                        );
+                    const std::vector<double> polished_potentials =
+                        chemical_potentials(polished_evaluation, g_ref);
+                    const double polished_affinity = vector_inf_norm(matrix_vector(
+                        system.reaction_matrix, polished_potentials
+                    ));
+                    if (polished_affinity <= kAffinityTolerance) {
+                        variables = std::move(candidate);
+                        polished = true;
+                    }
+                }
+            }
+        } catch (const std::exception&) {
+            // The original minimization remains authoritative and fails its
+            // physical certificates when an interior polish is unavailable.
+        }
+    }
     result.solver_status = ipopt_status_name(status);
     result.callback_error = raw_problem->callback_error();
-    const std::vector<double>& variables = raw_problem->solution();
     ReactionNlpEvaluation evaluation;
     try {
         evaluation = evaluate_reaction_nlp(
@@ -1439,7 +1815,11 @@ ChemicalSolveResult solve_reaction(
             phase_evaluator,
             domain,
             variables,
-            raw_problem->constraint_multipliers()
+            polished
+                ? std::vector<double>(
+                    reaction_constraint_count(balances, domain), 0.0
+                )
+                : raw_problem->constraint_multipliers()
         );
     } catch (const std::exception& error) {
         result.callback_error = error.what();
@@ -1457,15 +1837,8 @@ ChemicalSolveResult solve_reaction(
     result.pressure_relative_residual = std::abs(
         evaluation.phase.mechanical.pressure_pa - pressure_pa
     ) / pressure_pa;
-    std::vector<double> chemical_potentials(
-        evaluation.phase.mechanical.gradient.begin(),
-        evaluation.phase.mechanical.gradient.begin()
-            + static_cast<std::ptrdiff_t>(system.species_ids.size())
-    );
-    for (std::size_t species = 0; species < chemical_potentials.size(); ++species) {
-        chemical_potentials[species] += g_ref[species];
-    }
-    std::vector<double> affinities = matrix_vector(system.reaction_matrix, chemical_potentials);
+    const std::vector<double> potentials = chemical_potentials(evaluation, g_ref);
+    std::vector<double> affinities = matrix_vector(system.reaction_matrix, potentials);
     result.reaction_affinity_inf_norm = vector_inf_norm(affinities);
     if (domain.enforce_packing) {
         result.packing_fraction = evaluation.phase.packing.value;
@@ -1489,17 +1862,6 @@ ChemicalSolveResult solve_reaction(
             result.provider_domain_status = "failed";
         }
     }
-    std::vector<double> stationarity = evaluation.gradient;
-    for (std::size_t variable = 0; variable < stationarity.size(); ++variable) {
-        for (std::size_t row = 0; row < raw_problem->constraint_multipliers().size(); ++row) {
-            stationarity[variable] += evaluation.jacobian[
-                row * stationarity.size() + variable
-            ] * raw_problem->constraint_multipliers()[row];
-        }
-        stationarity[variable] -= raw_problem->lower_multipliers()[variable];
-        stationarity[variable] += raw_problem->upper_multipliers()[variable];
-    }
-    result.kkt_stationarity_inf_norm = vector_inf_norm(stationarity);
     result.trace_status = evaluation.amount_chart.minimum_amount > trace_floor
         ? "interior"
         : "at_or_below_floor";
@@ -1507,23 +1869,27 @@ ChemicalSolveResult solve_reaction(
     bool sensitivity_interior = true;
     constexpr double kInactiveMargin = 1.0e-7;
     for (std::size_t variable = 0; variable < variables.size(); ++variable) {
-        complementarity = std::max(
-            complementarity,
-            std::abs(raw_problem->lower_multipliers()[variable]
-                * (variables[variable] - lower[variable]))
-        );
-        complementarity = std::max(
-            complementarity,
-            std::abs(raw_problem->upper_multipliers()[variable]
-                * (upper[variable] - variables[variable]))
-        );
+        if (!polished) {
+            complementarity = std::max(
+                complementarity,
+                std::abs(raw_problem->lower_multipliers()[variable]
+                    * (variables[variable] - lower[variable]))
+            );
+            complementarity = std::max(
+                complementarity,
+                std::abs(raw_problem->upper_multipliers()[variable]
+                    * (upper[variable] - variables[variable]))
+            );
+        }
         sensitivity_interior = sensitivity_interior
             && variables[variable] - lower[variable] > kInactiveMargin
             && upper[variable] - variables[variable] > kInactiveMargin;
     }
     for (std::size_t row = balances.matrix.rows; row < evaluation.constraints.size(); ++row) {
         const double value = evaluation.constraints[row];
-        const double multiplier = raw_problem->constraint_multipliers()[row];
+        const double multiplier = polished
+            ? 0.0
+            : raw_problem->constraint_multipliers()[row];
         const bool has_lower = evaluation.constraint_lower[row] > -0.5 * kInfinity;
         const bool has_upper = evaluation.constraint_upper[row] < 0.5 * kInfinity;
         if (multiplier < 0.0) {
@@ -1553,24 +1919,46 @@ ChemicalSolveResult solve_reaction(
         ? "equality_kkt_on_strict_interior"
         : "active_inequality_kkt_not_assembled";
     std::vector<double> equality_multipliers(
-        raw_problem->constraint_multipliers().size(), 0.0
+        reaction_constraint_count(balances, domain), 0.0
     );
-    std::copy_n(
-        raw_problem->constraint_multipliers().begin(),
-        balances.matrix.rows,
-        equality_multipliers.begin()
-    );
-    const ReactionNlpEvaluation equality_evaluation = evaluate_reaction_nlp(
-        chart,
-        balances,
-        g_ref,
-        temperature_k,
-        pressure_pa,
-        phase_evaluator,
-        domain,
-        variables,
-        equality_multipliers
-    );
+    std::vector<double> physical_multipliers;
+    ReactionNlpEvaluation equality_evaluation;
+    try {
+        const ReactionNlpEvaluation objective_evaluation = evaluate_reaction_nlp(
+            chart,
+            balances,
+            g_ref,
+            temperature_k,
+            pressure_pa,
+            phase_evaluator,
+            domain,
+            variables,
+            equality_multipliers
+        );
+        const std::vector<double> recomputed =
+            recompute_equality_multipliers(balances, potentials);
+        const ConstraintRows physical_balances{system.balance_matrix, {}};
+        physical_multipliers =
+            recompute_equality_multipliers(physical_balances, potentials);
+        std::copy(
+            recomputed.begin(), recomputed.end(), equality_multipliers.begin()
+        );
+        equality_evaluation = evaluate_reaction_nlp(
+            chart,
+            balances,
+            g_ref,
+            temperature_k,
+            pressure_pa,
+            phase_evaluator,
+            domain,
+            variables,
+            equality_multipliers
+        );
+    } catch (const std::exception& error) {
+        result.callback_error = error.what();
+        result.numerical_status = "failed";
+        return result;
+    }
     if (sensitivity_interior) {
         result.local_minimum_status = reduced_hessian_positive(
             equality_evaluation, balances.matrix.rows
@@ -1584,9 +1972,17 @@ ChemicalSolveResult solve_reaction(
         for (std::size_t row = 0; row < balances.matrix.rows; ++row) {
             equality_stationarity[variable] += equality_evaluation.jacobian[
                 row * equality_stationarity.size() + variable
-            ] * raw_problem->constraint_multipliers()[row];
+            ] * equality_multipliers[row];
         }
     }
+    std::vector<double> physical_stationarity = potentials;
+    for (std::size_t species = 0; species < physical_stationarity.size(); ++species) {
+        for (std::size_t row = 0; row < system.balance_matrix.rows; ++row) {
+            physical_stationarity[species] +=
+                system.balance_matrix(row, species) * physical_multipliers[row];
+        }
+    }
+    result.kkt_stationarity_inf_norm = vector_inf_norm(physical_stationarity);
     result.kkt_residual = equality_stationarity;
     result.kkt_residual.insert(
         result.kkt_residual.end(),
