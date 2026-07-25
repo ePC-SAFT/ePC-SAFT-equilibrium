@@ -82,6 +82,7 @@ add_library(
   cpp/src/held_stage_ii.cpp
   cpp/src/held_stage_iii.cpp
   cpp/src/held2.cpp
+  cpp/src/held2_algorithm.cpp
   cpp/src/held2_controller.cpp
   cpp/src/held2_progress.cpp
   cpp/src/held2_step1.cpp
@@ -91,6 +92,9 @@ add_library(
   cpp/src/held2_step5.cpp
   cpp/src/held2_step6.cpp
   cpp/src/held2_step7.cpp
+  cpp/src/held2_step8.cpp
+  cpp/src/held2_step9.cpp
+  cpp/src/held2_step10.cpp
   cpp/src/held2_stage_iii.cpp
   cpp/src/held2_stage_iii_generic.cpp
   cpp/src/saturation.cpp
@@ -126,6 +130,13 @@ if(EPCSAFT_EQUILIBRIUM_BUILD_DIAGNOSTIC)
     epcsaft-equilibrium-manufactured-check
     PRIVATE epcsaft_equilibrium_core
   )
+  enable_testing()
+  foreach(case_name IN ITEMS step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 workflow)
+    add_test(
+      NAME held2-${case_name}
+      COMMAND epcsaft-equilibrium-manufactured-check --case ${case_name}
+    )
+  endforeach()
   list(
     APPEND epcsaft_equilibrium_native_targets
     epcsaft-equilibrium-diagnostic

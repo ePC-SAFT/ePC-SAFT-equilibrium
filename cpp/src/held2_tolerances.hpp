@@ -137,6 +137,26 @@ inline constexpr Held2Tolerance kHeld2Step6Gradient{
     "step6_gradient", "stage_ii_step6", "fixed-volume gradient agreement failed",
     Held2ToleranceRelation::AbsAtMost, 1.0e-8, 1.0e-7,
 };
+inline constexpr Held2Tolerance kHeld2PaperStep6Gap{
+    "paper_step6_gap", "stage_ii_paper",
+    "Perdomo Eq. (66) upper/lower agreement failed",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-2, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2PaperStep6Derivative{
+    "paper_step6_derivative", "stage_ii_paper",
+    "Perdomo Eq. (66) derivative agreement failed",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.5,
+};
+inline constexpr Held2Tolerance kHeld2PaperStep6PackingDistinct{
+    "paper_step6_packing_distinct", "phase_identity",
+    "Perdomo Eq. (66) packing fractions are not distinct",
+    Held2ToleranceRelation::AtLeast, 1.0e-3, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2PaperStep6CompositionDistinct{
+    "paper_step6_composition_distinct", "phase_identity",
+    "Perdomo Eq. (66) modified compositions are not distinct",
+    Held2ToleranceRelation::AtLeast, 1.0e-3, 0.0,
+};
 inline constexpr Held2Tolerance kHeld2BasinDuplicateComposition{
     "basin_duplicate_composition", "numerical_identity", "composition is not a numerical duplicate",
     Held2ToleranceRelation::AbsAtMost, 1.0e-7, 0.0,
@@ -189,6 +209,16 @@ inline constexpr Held2Tolerance kHeld2Stage3FreeEnergyGap{
     "stage3_free_energy_gap", "stage_iii_physical", "reduced free-energy gap failed",
     Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
 };
+inline constexpr Held2Tolerance kHeld2PaperFreeEnergyGap{
+    "paper_free_energy_gap", "stage_iii_paper",
+    "Perdomo Eq. (68) free-energy convergence failed",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-6, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2PaperPotentialRatio{
+    "paper_potential_ratio", "stage_iii_paper",
+    "Perdomo Eq. (69) modified-potential convergence failed",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-6, 0.0,
+};
 inline constexpr Held2Tolerance kHeld2PhaseActivity{
     "phase_activity", "phase_identity", "phase amount is not confidently active",
     Held2ToleranceRelation::GreaterThan, 1.0e-8, 0.0,
@@ -218,7 +248,7 @@ inline constexpr Held2Tolerance kHeld2IpoptConstraint{
     Held2ToleranceRelation::SolverTarget, 1.0e-10, 0.0,
 };
 
-inline constexpr std::array<const Held2Tolerance*, 46> kHeld2ToleranceContract{{
+inline constexpr std::array<const Held2Tolerance*, 52> kHeld2ToleranceContract{{
     &kHeld2ChartContact,
     &kHeld2PolytopeFeasibility,
     &kHeld2CompositionSum,
@@ -245,6 +275,10 @@ inline constexpr std::array<const Held2Tolerance*, 46> kHeld2ToleranceContract{{
     &kHeld2Stage2Complementarity,
     &kHeld2Step6Gap,
     &kHeld2Step6Gradient,
+    &kHeld2PaperStep6Gap,
+    &kHeld2PaperStep6Derivative,
+    &kHeld2PaperStep6PackingDistinct,
+    &kHeld2PaperStep6CompositionDistinct,
     &kHeld2BasinDuplicateComposition,
     &kHeld2BasinDuplicateLogVolume,
     &kHeld2CandidateDistinctComposition,
@@ -258,6 +292,8 @@ inline constexpr std::array<const Held2Tolerance*, 46> kHeld2ToleranceContract{{
     &kHeld2Stage3DualSign,
     &kHeld2Stage3Complementarity,
     &kHeld2Stage3FreeEnergyGap,
+    &kHeld2PaperFreeEnergyGap,
+    &kHeld2PaperPotentialRatio,
     &kHeld2PhaseActivity,
     &kHeld2PhaseRetirementMargin,
     &kHeld2PhaseMerge,

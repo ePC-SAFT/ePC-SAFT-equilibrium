@@ -1250,6 +1250,275 @@ JsonValue held2_flash_to_json(const FlashResult& flash) {
     return result;
 }
 
+JsonValue paper_timing_to_json(const Held2StepTiming& timing) {
+    JsonValue result = JsonValue::object();
+    result["step"] = timing.step;
+    result["invocation_count"] = timing.invocation_count;
+    result["wall_seconds"] = timing.wall_seconds;
+    result["cpu_seconds"] = timing.cpu_seconds;
+    result["provider_evaluations"] = timing.provider_evaluations;
+    result["optimizer_solves"] = timing.optimizer_solves;
+    result["optimizer_iterations"] = timing.optimizer_iterations;
+    result["terminal_status"] = timing.terminal_status;
+    result["terminal_reason"] = timing.terminal_reason;
+    result["next_step"] = timing.next_step;
+    return result;
+}
+
+JsonValue paper_phase_to_json(const Held2Phase& phase) {
+    JsonValue result = JsonValue::object();
+    result["stable_id"] = phase.stable_id;
+    result["phase_fraction"] = phase.phase_fraction;
+    result["independent_modified_fractions"] =
+        phase.independent_modified_fractions;
+    result["mole_fractions"] =
+        phase.physical_fractions_provider_order;
+    result["molar_volume_m3_mol"] = phase.volume;
+    result["packing_fraction"] = phase.packing_fraction;
+    return result;
+}
+
+JsonValue paper_physical_certificate_to_json(
+    const Held2PhysicalCertificate& value
+) {
+    JsonValue result = JsonValue::object();
+    result["modified_balance_inf"] = value.modified_balance_inf;
+    result["ordinary_balance_inf"] = value.ordinary_balance_inf;
+    result["electroneutrality_inf"] = value.electroneutrality_inf;
+    result["pressure_residual_inf"] = value.pressure_residual_inf;
+    result["kkt_residual_inf"] = value.kkt_residual_inf;
+    result["accepted"] = value.accepted;
+    return result;
+}
+
+JsonValue paper_step8_to_json(const Held2Step8Result& step) {
+    JsonValue result = JsonValue::object();
+    result["outcome"] =
+        step.outcome == Held2Step8Outcome::CertifiedFeasible
+        ? "certified_feasible"
+        : step.outcome == Held2Step8Outcome::CertifiedInfeasible
+            ? "certified_infeasible"
+            : step.outcome == Held2Step8Outcome::InsufficientCandidates
+                ? "insufficient_candidates" : "indeterminate";
+    result["reason"] = step.reason;
+    result["total_reduced_gibbs"] = step.total_reduced_gibbs
+        ? JsonValue(*step.total_reduced_gibbs) : JsonValue(nullptr);
+    result["ordinary_balance_inf"] = step.ordinary_balance_inf;
+    result["electroneutrality_inf"] = step.electroneutrality_inf;
+    result["electroneutrality_scale"] = step.electroneutrality_scale;
+    result["pressure_residual_inf"] = step.pressure_residual_inf;
+    JsonValue phases = JsonValue::array();
+    for (const Held2Phase& phase : step.active_phases) {
+        phases.append(paper_phase_to_json(phase));
+    }
+    result["active_phases"] = std::move(phases);
+    if (step.feasibility) {
+        JsonValue certificate = JsonValue::object();
+        certificate["solver_status"] = step.feasibility->solver_status;
+        certificate["feasible"] = step.feasibility->feasible;
+        certificate["infeasible"] = step.feasibility->infeasible;
+        certificate["farkas_certificate_valid"] =
+            step.feasibility->farkas_certificate_valid;
+        certificate["primal_residual_inf"] =
+            step.feasibility->primal_residual_inf;
+        certificate["certificate_residual_inf"] =
+            step.feasibility->certificate_residual_inf;
+        result["feasibility"] = std::move(certificate);
+    } else {
+        result["feasibility"] = nullptr;
+    }
+    if (step.nlp) {
+        JsonValue certificate = JsonValue::object();
+        certificate["solver_status"] = step.nlp->solver_status;
+        certificate["primal_residual_inf"] = step.nlp->primal_residual_inf;
+        certificate["stationarity_residual_inf"] =
+            step.nlp->stationarity_residual_inf;
+        certificate["dual_sign_violation_inf"] =
+            step.nlp->dual_sign_violation_inf;
+        certificate["complementarity_inf"] =
+            step.nlp->complementarity_inf;
+        certificate["accepted"] = step.nlp->accepted;
+        result["nlp"] = std::move(certificate);
+    } else {
+        result["nlp"] = nullptr;
+    }
+    JsonValue lifecycle = JsonValue::array();
+    for (const Held2LifecycleDecision& value : step.lifecycle) {
+        JsonValue decision = JsonValue::object();
+        decision["stable_id"] = value.stable_id;
+        decision["action"] = value.action;
+        decision["reason"] = value.reason;
+        decision["reduced_resolve_accepted"] =
+            value.reduced_resolve_accepted;
+        lifecycle.append(std::move(decision));
+    }
+    result["lifecycle"] = std::move(lifecycle);
+    result["timing"] = paper_timing_to_json(step.timing);
+    return result;
+}
+
+JsonValue paper_step9_to_json(const Held2Step9Result& step) {
+    JsonValue result = JsonValue::object();
+    result["outcome"] = step.outcome == Held2Step9Outcome::Converged
+        ? "converged"
+        : step.outcome == Held2Step9Outcome::PaperConvergenceFailed
+            ? "paper_convergence_failed" : "indeterminate";
+    result["reason"] = step.reason;
+    result["free_energy_gap"] = step.free_energy_gap
+        ? JsonValue(*step.free_energy_gap) : JsonValue(nullptr);
+    result["physical"] = step.physical
+        ? paper_physical_certificate_to_json(*step.physical)
+        : JsonValue(nullptr);
+    JsonValue comparisons = JsonValue::array();
+    for (const Held2PotentialComparison& value : step.potential_comparisons) {
+        JsonValue comparison = JsonValue::object();
+        comparison["component_index"] = value.component_index;
+        comparison["left_phase_id"] = value.left_phase_id;
+        comparison["right_phase_id"] = value.right_phase_id;
+        comparison["numerator"] = value.numerator;
+        comparison["denominator"] = value.denominator;
+        comparison["ratio"] = value.ratio;
+        comparison["passed"] = value.passed;
+        comparisons.append(std::move(comparison));
+    }
+    result["potential_comparisons"] = std::move(comparisons);
+    result["timing"] = paper_timing_to_json(step.timing);
+    return result;
+}
+
+JsonValue paper_step10_to_json(const Held2Step10Result& step) {
+    JsonValue result = JsonValue::object();
+    result["status"] = step.status;
+    result["reason"] = step.reason;
+    JsonValue phases = JsonValue::array();
+    for (const Held2Phase& phase : step.phases) {
+        phases.append(paper_phase_to_json(phase));
+    }
+    result["phases"] = std::move(phases);
+    JsonValue refinements = JsonValue::array();
+    for (const Held2TraceRefinement& value : step.refinements) {
+        JsonValue refinement = JsonValue::object();
+        refinement["phase_id"] = value.phase_id;
+        refinement["component_index"] = value.component_index;
+        refinement["reference_phase_id"] = value.reference_phase_id;
+        refinement["initial_mole_fraction"] = value.initial_mole_fraction;
+        refinement["refined_mole_fraction"] = value.refined_mole_fraction;
+        refinement["final_potential_residual"] =
+            value.final_potential_residual;
+        refinement["status"] = value.status;
+        refinements.append(std::move(refinement));
+    }
+    result["refinements"] = std::move(refinements);
+    result["final_certificate"] = step.final_certificate
+        ? paper_physical_certificate_to_json(*step.final_certificate)
+        : JsonValue(nullptr);
+    result["timing"] = paper_timing_to_json(step.timing);
+    return result;
+}
+
+JsonValue paper_algorithm_to_json(
+    const Held2AlgorithmResult& solve,
+    const Held2Input& input,
+    const std::string& fingerprint
+) {
+    JsonValue result = JsonValue::object();
+    result["controller"] = "perdomo_held2_paper_steps_1_to_10_v1";
+    result["route"] = "held2";
+    result["parameter_fingerprint"] = fingerprint;
+    result["temperature_k"] = input.temperature_k;
+    result["pressure_pa"] = input.pressure_pa;
+    result["overall_mole_fractions"] =
+        input.overall_mole_fractions_provider_order;
+    result["outcome"] = solve.outcome;
+    result["failure_stage"] = solve.failure_stage.empty()
+        ? JsonValue(nullptr) : JsonValue(solve.failure_stage);
+    result["failure_reason"] = solve.failure_reason.empty()
+        ? JsonValue(nullptr) : JsonValue(solve.failure_reason);
+    result["globality_certificate"] = solve.globality_certificate;
+    result["phase_enumeration_certificate"] =
+        solve.phase_enumeration_certificate;
+    result["upper_solve_count"] = solve.upper_solve_count;
+    JsonValue tolerances = JsonValue::object();
+    tolerances["epsilon_b"] = kHeld2PaperStep6Gap.atol;
+    tolerances["epsilon_lambda"] = kHeld2PaperStep6Derivative.rtol;
+    tolerances["epsilon_lambda_floor"] =
+        kHeld2PaperStep6Derivative.atol;
+    tolerances["epsilon_eta"] = kHeld2PaperStep6PackingDistinct.atol;
+    tolerances["epsilon_x"] = kHeld2PaperStep6CompositionDistinct.atol;
+    tolerances["epsilon_g"] = kHeld2PaperFreeEnergyGap.atol;
+    tolerances["epsilon_mu"] = kHeld2PaperPotentialRatio.atol;
+    result["paper_default_tolerances"] = std::move(tolerances);
+
+    JsonValue phases = JsonValue::array();
+    for (const Held2Phase& phase : solve.phases) {
+        phases.append(paper_phase_to_json(phase));
+    }
+    result["phases"] = std::move(phases);
+    JsonValue timings = JsonValue::array();
+    for (const Held2StepTiming& timing : solve.step_timings) {
+        timings.append(paper_timing_to_json(timing));
+    }
+    result["step_timings"] = std::move(timings);
+
+    JsonValue step1 = JsonValue::object();
+    step1["status"] = solve.step1.status;
+    step1["reason"] = solve.step1.reason;
+    step1["independent_feed"] = solve.step1.independent_feed
+        ? JsonValue(*solve.step1.independent_feed) : JsonValue(nullptr);
+    step1["timing"] = paper_timing_to_json(solve.step1.timing);
+    result["step1"] = std::move(step1);
+
+    if (solve.step2) {
+        JsonValue step2 = JsonValue::object();
+        step2["reason"] = solve.step2->reason;
+        step2["globality_certificate"] =
+            solve.step2->globality_certificate;
+        step2["minimum_tpd"] = solve.step2->minimum_tpd
+            ? JsonValue(*solve.step2->minimum_tpd) : JsonValue(nullptr);
+        step2["reference_pressure_envelope"] =
+            solve.step2->reference_envelope
+            ? held2_pressure_envelope_to_json(
+                *solve.step2->reference_envelope
+            ) : JsonValue(nullptr);
+        step2["timing"] = paper_timing_to_json(solve.step2->timing);
+        result["step2"] = std::move(step2);
+    } else {
+        result["step2"] = nullptr;
+    }
+    const auto history = [](const auto& values) {
+        JsonValue items = JsonValue::array();
+        for (const auto& value : values) {
+            JsonValue item = JsonValue::object();
+            item["status"] = value.status;
+            item["reason"] = value.reason;
+            item["timing"] = paper_timing_to_json(value.timing);
+            items.append(std::move(item));
+        }
+        return items;
+    };
+    result["step4_history"] = history(solve.step4_history);
+    result["step5_history"] = history(solve.step5_history);
+    result["step6_history"] = history(solve.step6_history);
+    result["step7_history"] = history(solve.step7_history);
+
+    JsonValue step8_history = JsonValue::array();
+    for (const Held2Step8Result& value : solve.step8_history) {
+        step8_history.append(paper_step8_to_json(value));
+    }
+    result["step8_history"] = std::move(step8_history);
+    JsonValue step9_history = JsonValue::array();
+    for (const Held2Step9Result& value : solve.step9_history) {
+        step9_history.append(paper_step9_to_json(value));
+    }
+    result["step9_history"] = std::move(step9_history);
+    if (solve.step10) {
+        result["step10"] = paper_step10_to_json(*solve.step10);
+    } else {
+        result["step10"] = nullptr;
+    }
+    return result;
+}
+
 }  // namespace
 
 std::string flash_result_to_json(const FlashResult& result) {
@@ -1259,6 +1528,20 @@ std::string flash_result_to_json(const FlashResult& result) {
         result.route == FlashResult::Route::Held2
             ? held2_flash_to_json(result)
             : neutral_flash_to_json(result)
+    );
+    output << '\n';
+    return output.str();
+}
+
+std::string held2_algorithm_result_to_json(
+    const Held2AlgorithmResult& result,
+    const Held2Input& input,
+    const std::string& parameter_fingerprint
+) {
+    std::ostringstream output;
+    write_json(
+        output,
+        paper_algorithm_to_json(result, input, parameter_fingerprint)
     );
     output << '\n';
     return output.str();

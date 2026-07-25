@@ -2,6 +2,9 @@
 #include "held2_step4.hpp"
 #include "held2_step5.hpp"
 #include "held2_step7.hpp"
+#include "held2_step8.hpp"
+#include "held2_step9.hpp"
+#include "held2_step10.hpp"
 
 #include <array>
 #include <cmath>
@@ -346,6 +349,43 @@ Held2Step3Result appendix_c_result() {
     );
 }
 
+std::pair<Held2Step1Result, Held2Step6Result> stage_iii_fixture() {
+    Held2Step1Result prepared = step1(
+        {0.0, 1.0, -1.0},
+        {0.50, 0.25, 0.25},
+        [](const std::vector<double>&) {
+            return std::array<double, 2>{0.5, 1.5};
+        }
+    );
+    Held2Step6Result candidates;
+    candidates.status = "complete";
+    candidates.candidates = {
+        {7, {0.20}, 1.0, 0.20, 0.0, "manufactured"},
+        {9, {0.80}, 1.0, 0.80, 0.0, "manufactured"},
+    };
+    return {std::move(prepared), std::move(candidates)};
+}
+
+Held2Step8Result manufactured_step8(
+    const Held2Step1Result& prepared,
+    const Held2Step6Result& candidates
+) {
+    return run_held2_step8(
+        prepared,
+        candidates,
+        [coordinates = *prepared.coordinates](
+            const auto& composition, double log_volume
+        ) {
+            return evaluate_held2_manufactured_state(
+                coordinates, composition, log_volume
+            );
+        },
+        [](const auto& composition, double) {
+            return composition.front();
+        }
+    );
+}
+
 }  // namespace
 
 void run_held2_step1_checks() {
@@ -569,22 +609,226 @@ void run_held2_step7_checks() {
     Held2Step6Result step6;
     step6.status = "complete";
     const Held2Step7Result next = run_held2_step7(
-        state, step5, step6, {0, 8, 20, 10}
+        state, step5, step6, {0, 8, 20, 10}, false
     );
     require(
         next.status == "complete" && next.next_step == 4
             && state.major_iteration == 1,
         "Step 7 did not advance exactly one major iteration"
     );
+    step6.candidates.resize(2);
+    const Held2Step7Result feedback = run_held2_step7(
+        state, step5, step6, {0, 8, 20, 10}, true
+    );
+    require(
+        feedback.status == "complete" && feedback.next_step == 4
+            && state.major_iteration == 2,
+        "Stage-III feedback bypassed the Step-7 increment"
+    );
+    step6.candidates.clear();
     state.starts_consumed_in_epoch = 8;
     state.start_epoch_added_member = false;
     const Held2Step7Result stagnant = run_held2_step7(
-        state, step5, step6, {0, 8, 20, 10}
+        state, step5, step6, {0, 8, 20, 10}, false
     );
     require(
         stagnant.status == "indeterminate"
             && stagnant.reason == "stage_ii_stagnation",
         "Step-7 stagnation did not fail closed"
+    );
+}
+
+void run_held2_step8_checks() {
+    auto [prepared, candidates] = stage_iii_fixture();
+    const Held2Step8Result result =
+        manufactured_step8(prepared, candidates);
+    require(
+        result.outcome == Held2Step8Outcome::CertifiedFeasible
+            && result.feasibility->feasible
+            && result.nlp->accepted
+            && result.active_phases.size() == 2
+            && result.active_phases[0].stable_id == 7
+            && result.active_phases[1].stable_id == 9,
+        "Step-8 perspective LP or exact multiphase solve changed"
+    );
+
+    candidates.candidates[0].independent_modified_fractions = {0.10};
+    candidates.candidates[1].independent_modified_fractions = {0.20};
+    const Held2Step8Result infeasible =
+        manufactured_step8(prepared, candidates);
+    require(
+        infeasible.outcome == Held2Step8Outcome::CertifiedInfeasible
+            && infeasible.feasibility->farkas_certificate_valid,
+        "Step-8 infeasibility lacked a validated Farkas certificate"
+    );
+
+    candidates.candidates[0].independent_modified_fractions = {0.4998};
+    candidates.candidates[1].independent_modified_fractions = {0.5002};
+    require(
+        manufactured_step8(prepared, candidates).outcome
+            == Held2Step8Outcome::InsufficientCandidates,
+        "Step-8 collapsed phase set did not return through Step 7"
+    );
+}
+
+void run_held2_step9_checks() {
+    auto [prepared, candidates] = stage_iii_fixture();
+    const Held2Step8Result step8 =
+        manufactured_step8(prepared, candidates);
+    Held2Step4Result step4;
+    step4.status = "complete";
+    step4.upper_bound = step8.total_reduced_gibbs;
+    const auto evaluator = [coordinates = *prepared.coordinates](
+        const auto& composition, double log_volume
+    ) {
+        return evaluate_held2_manufactured_state(
+            coordinates, composition, log_volume
+        );
+    };
+    const Held2Step9Result converged =
+        run_held2_step9(step4, step8, evaluator);
+    require(
+        converged.outcome == Held2Step9Outcome::Converged
+            && converged.physical->accepted
+            && !converged.potential_comparisons.empty(),
+        "Step-9 Eqs. (68)-(69) convergence changed"
+    );
+    *step4.upper_bound += 1.0e-3;
+    require(
+        run_held2_step9(step4, step8, evaluator).outcome
+            == Held2Step9Outcome::PaperConvergenceFailed,
+        "Step-9 Eq. (68) failure did not return to Step 4"
+    );
+    *step4.upper_bound = *step8.total_reduced_gibbs;
+    const Held2Step9Result zero_denominator = run_held2_step9(
+        step4,
+        step8,
+        [evaluator](const auto& composition, double log_volume) {
+            Held2StateEvaluation state = evaluator(
+                composition, log_volume
+            );
+            state.modified_potentials = {
+                0.0, composition.front() < 0.5 ? 0.0 : 1.0,
+            };
+            return state;
+        }
+    );
+    require(
+        zero_denominator.outcome
+                == Held2Step9Outcome::PaperConvergenceFailed
+            && !zero_denominator.potential_comparisons.back().passed
+            && std::isinf(
+                zero_denominator.potential_comparisons.back().ratio
+            ),
+        "Step-9 exact-zero denominator rule changed"
+    );
+}
+
+void run_held2_step10_checks() {
+    auto [prepared, candidates] = stage_iii_fixture();
+    Held2Step8Result step8 = manufactured_step8(prepared, candidates);
+    Held2Step4Result step4;
+    step4.status = "complete";
+    step4.upper_bound = step8.total_reduced_gibbs;
+    const auto evaluator = [coordinates = *prepared.coordinates](
+        const auto& composition, double log_volume
+    ) {
+        return evaluate_held2_manufactured_state(
+            coordinates, composition, log_volume
+        );
+    };
+    const Held2Step9Result step9 =
+        run_held2_step9(step4, step8, evaluator);
+    const Held2Step10Result no_trace = run_held2_step10(
+        prepared, step8, step9, evaluator
+    );
+    require(
+        no_trace.status == "complete"
+            && no_trace.reason == "trace_refinement_not_required"
+            && no_trace.refinements.empty()
+            && no_trace.final_certificate->accepted,
+        "Step-10 no-trace path changed"
+    );
+    const double lower =
+        prepared.coordinates->independent_lower_bounds.front();
+    Held2Step8Result trace_step8 = step8;
+    Held2Phase& trace_phase = trace_step8.active_phases.front();
+    trace_phase.independent_modified_fractions.front() = lower;
+    trace_phase.physical_fractions_provider_order =
+        held2_lift_independent_fractions(
+            *prepared.coordinates,
+            trace_phase.independent_modified_fractions
+        );
+    Held2Phase& reference_phase = trace_step8.active_phases.back();
+    reference_phase.independent_modified_fractions.front() = 1.0 - lower;
+    reference_phase.physical_fractions_provider_order =
+        held2_lift_independent_fractions(
+            *prepared.coordinates,
+            reference_phase.independent_modified_fractions
+        );
+    const std::size_t provider =
+        prepared.coordinates->independent_indices.front();
+    const std::size_t retained = static_cast<std::size_t>(std::find(
+        prepared.coordinates->retained_indices.begin(),
+        prepared.coordinates->retained_indices.end(),
+        provider
+    ) - prepared.coordinates->retained_indices.begin());
+    const Held2Step10Result refined = run_held2_step10(
+        prepared,
+        trace_step8,
+        step9,
+        [evaluator, coordinates = *prepared.coordinates, provider, retained](
+            const auto& composition,
+            double log_volume
+        ) {
+            const std::vector<double> physical =
+                held2_lift_trace_fractions(coordinates, composition);
+            std::vector<double> bounded = composition;
+            for (std::size_t index = 0; index < bounded.size(); ++index) {
+                bounded[index] = std::max(
+                    bounded[index],
+                    coordinates.independent_lower_bounds[index]
+                );
+            }
+            Held2StateEvaluation state = evaluator(
+                bounded, log_volume
+            );
+            state.modified_fractions =
+                held2_transform_physical_fractions(coordinates, physical);
+            state.physical_amounts = physical;
+            const double fraction = physical[provider];
+            state.modified_potentials.assign(
+                coordinates.retained_indices.size(), 1.0
+            );
+            if (fraction <= 5.0e-10) {
+                state.modified_potentials[retained] +=
+                    std::log10(fraction / 1.0e-12);
+            }
+            return state;
+        }
+    );
+    require(
+        refined.status == "complete"
+            && refined.reason == "trace_refinement_complete"
+            && refined.refinements.size() == 1
+            && std::abs(
+                refined.refinements.front().refined_mole_fraction - 1.0e-12
+            ) <= 1.0e-18
+            && refined.final_certificate->accepted,
+        "Step-10 bounded trace root changed"
+    );
+    for (Held2Phase& phase : step8.active_phases) {
+        phase.independent_modified_fractions.front() = lower;
+        phase.physical_fractions_provider_order =
+            held2_lift_independent_fractions(
+                *prepared.coordinates,
+                phase.independent_modified_fractions
+            );
+    }
+    require(
+        run_held2_step10(prepared, step8, step9, evaluator).reason
+            == "trace_reference_absent",
+        "Step-10 absent trace reference did not fail closed"
     );
 }
 

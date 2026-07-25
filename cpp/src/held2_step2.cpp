@@ -317,11 +317,6 @@ Held2Step2Result run_held2_step2(
     progress.count = reference_envelope.selected_root_index;
     progress.status = "selected";
     observe_held2(observer, progress);
-    progress = {};
-    progress.kind = Held2ProgressKind::StageStart;
-    progress.stage = "STEP 2";
-    observe_held2(observer, progress);
-
     const std::size_t dimension =
         step1.coordinates->independent_indices.size();
     const Held2StageIReducedEvaluator reduced = [&](const auto& cube) {
@@ -338,7 +333,7 @@ Held2Step2Result run_held2_step2(
                 held2_map_unit_cube_to_independent_fractions(
                     *step1.coordinates,
                     composition_cube,
-                    std::numeric_limits<double>::quiet_NaN()
+                    step1.total_ion_mole_fraction_max
                 );
             ++result.timing.provider_evaluations;
             const std::array<double, 2> bounds = (*step1.volume_bounds)(

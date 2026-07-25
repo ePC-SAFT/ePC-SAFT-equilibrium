@@ -11,6 +11,8 @@ struct Held2Step1Result {
     std::string reason = "not_run";
     double temperature_k = 0.0;
     double pressure_pa = 0.0;
+    double total_ion_mole_fraction_max =
+        std::numeric_limits<double>::quiet_NaN();
     std::optional<Held2Coordinates> coordinates;
     std::optional<std::vector<double>> independent_feed;
     std::optional<Held2VolumeBoundsEvaluator> volume_bounds;
@@ -23,7 +25,9 @@ struct Held2Step1Result {
     double temperature_k,
     double pressure_pa,
     const std::vector<double>& physical_feed,
-    const Held2PhysicalVolumeBoundsEvaluator& physical_volume_bounds
+    const Held2PhysicalVolumeBoundsEvaluator& physical_volume_bounds,
+    double total_ion_mole_fraction_max =
+        std::numeric_limits<double>::quiet_NaN()
 );
 
 }  // namespace epcsaft_equilibrium

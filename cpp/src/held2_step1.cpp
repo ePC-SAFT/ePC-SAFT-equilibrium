@@ -552,13 +552,16 @@ Held2Step1Result run_held2_step1(
     double temperature_k,
     double pressure_pa,
     const std::vector<double>& physical_feed,
-    const Held2PhysicalVolumeBoundsEvaluator& physical_volume_bounds
+    const Held2PhysicalVolumeBoundsEvaluator& physical_volume_bounds,
+    double total_ion_mole_fraction_max
 ) {
     const auto wall_start = std::chrono::steady_clock::now();
     const std::clock_t cpu_start = std::clock();
     Held2Step1Result result;
     result.temperature_k = temperature_k;
     result.pressure_pa = pressure_pa;
+    result.total_ion_mole_fraction_max =
+        total_ion_mole_fraction_max;
     const auto finish = [&](const char* reason, int next_step = 0) {
         return finish_step1(
             std::move(result), reason, next_step, wall_start, cpu_start
@@ -593,6 +596,23 @@ Held2Step1Result run_held2_step1(
     Held2Coordinates coordinates;
     try {
         coordinates = make_held2_coordinates(charges, component_ids);
+        if (std::isfinite(total_ion_mole_fraction_max)) {
+            if (total_ion_mole_fraction_max <= 0.0
+                || total_ion_mole_fraction_max > 1.0) {
+                return finish("invalid_provider_ion_domain");
+            }
+            coordinates.polytope_constraints.push_back({
+                "provider_total_ion_mole_fraction_max",
+                physical_total_ion_coefficients(coordinates),
+                total_ion_mole_fraction_max,
+            });
+            require_complete_polytope(
+                coordinates,
+                polytope_anchor(
+                    coordinates, total_ion_mole_fraction_max
+                )
+            );
+        }
     } catch (const std::invalid_argument& error) {
         const std::string message = error.what();
         const char* reason = message.find("singular") != std::string::npos

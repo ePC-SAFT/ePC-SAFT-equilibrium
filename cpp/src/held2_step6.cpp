@@ -14,11 +14,6 @@ Held2Step6Result run_held2_step6(
     const Held2PackingFractionEvaluator& packing_fraction,
     Held2ProgressObserver*
 ) {
-    constexpr double kBoundGap = 1.0e-2;
-    constexpr double kDerivativeRelative = 0.5;
-    constexpr double kDerivativeFloor = 1.0e-8;
-    constexpr double kPackingDistinct = 1.0e-3;
-    constexpr double kCompositionDistinct = 1.0e-3;
     Held2Step6Result result;
     result.timing.invocation_count = 1;
     if (step4.status != "complete" || !step1.coordinates
@@ -40,8 +35,9 @@ Held2Step6Result run_held2_step6(
                 - point.independent_modified_fractions[index]
             );
         }
-        decision.gap_passed =
-            std::abs(state.upper_bound - lower) <= kBoundGap;
+        decision.gap_passed = audit_held2_tolerance(
+            kHeld2PaperStep6Gap, state.upper_bound - lower
+        ).passed;
         decision.derivative_passed = true;
         for (std::size_t index = 0; index < state.feed.size(); ++index) {
             if (point.independent_modified_fractions[index]
@@ -49,14 +45,12 @@ Held2Step6Result run_held2_step6(
                     + kHeld2BoundActivity.atol) {
                 continue;
             }
-            decision.derivative_passed =
-                decision.derivative_passed
-                && std::abs(
-                    evaluation.gradient[index] - state.multipliers[index]
-                ) <= std::max(
-                    kDerivativeFloor,
-                    kDerivativeRelative * std::abs(state.multipliers[index])
-                );
+            decision.derivative_passed = decision.derivative_passed
+                && audit_held2_tolerance(
+                    kHeld2PaperStep6Derivative,
+                    evaluation.gradient[index] - state.multipliers[index],
+                    std::abs(state.multipliers[index])
+                ).passed;
         }
         if (!decision.gap_passed || !decision.derivative_passed) {
             decision.reason = decision.gap_passed
@@ -77,14 +71,14 @@ Held2Step6Result run_held2_step6(
                 if (std::abs(
                         candidate.packing_fraction
                         - retained.packing_fraction
-                    ) >= kPackingDistinct) {
+                    ) >= kHeld2PaperStep6PackingDistinct.atol) {
                     return true;
                 }
                 for (std::size_t index = 0; index < state.feed.size(); ++index) {
                     if (std::abs(
                             candidate.independent_modified_fractions[index]
                             - retained.independent_modified_fractions[index]
-                        ) >= kCompositionDistinct) {
+                        ) >= kHeld2PaperStep6CompositionDistinct.atol) {
                         return true;
                     }
                 }

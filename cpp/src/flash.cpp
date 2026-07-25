@@ -1,5 +1,6 @@
 #include "flash.hpp"
 
+#include "held2_algorithm.hpp"
 #include "held2_tolerances.hpp"
 
 #include <algorithm>
@@ -7,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <utility>
 
@@ -165,8 +167,30 @@ public:
         const std::vector<double>& independent,
         double log_volume
     ) const {
-        const std::vector<double> amounts =
-            held2_lift_independent_fractions(coordinates_, independent);
+        return evaluate_physical(
+            independent,
+            held2_lift_independent_fractions(coordinates_, independent),
+            log_volume
+        );
+    }
+
+    [[nodiscard]] Held2StateEvaluation evaluate_trace(
+        const std::vector<double>& independent,
+        double log_volume
+    ) const {
+        return evaluate_physical(
+            independent,
+            held2_lift_trace_fractions(coordinates_, independent),
+            log_volume
+        );
+    }
+
+private:
+    [[nodiscard]] Held2StateEvaluation evaluate_physical(
+        const std::vector<double>& independent,
+        const std::vector<double>& amounts,
+        double log_volume
+    ) const {
         const MixturePhaseEvaluation provider_phase =
             provider_.evaluate_electrolyte(
                 input_.temperature_k, amounts, std::exp(log_volume)
@@ -185,6 +209,8 @@ public:
             block
         );
     }
+
+public:
 
     [[nodiscard]] std::array<double, 2> volume_bounds(
         const std::vector<double>& independent
@@ -221,6 +247,25 @@ public:
 
     [[nodiscard]] const std::vector<double>& independent_feed() const {
         return independent_feed_;
+    }
+
+    [[nodiscard]] std::vector<double> independent(
+        const std::vector<double>& physical
+    ) const {
+        const std::vector<double> modified =
+            held2_transform_physical_fractions(coordinates_, physical);
+        std::vector<double> result;
+        for (std::size_t provider : coordinates_.independent_indices) {
+            const auto retained = std::find(
+                coordinates_.retained_indices.begin(),
+                coordinates_.retained_indices.end(),
+                provider
+            );
+            result.push_back(modified[static_cast<std::size_t>(
+                retained - coordinates_.retained_indices.begin()
+            )]);
+        }
+        return result;
     }
 
     [[nodiscard]] double total_ion_mole_fraction_max() const {
@@ -573,6 +618,59 @@ Held2FlashResult solve_held2(
 }
 
 }  // namespace
+
+Held2ThermodynamicAccess make_installed_held2_access(
+    const ProviderContext& provider,
+    const Held2Input& input
+) {
+    require_held2_sdk(provider.sdk());
+    const FlashInput flash_input{
+        input.temperature_k,
+        input.pressure_pa,
+        input.overall_mole_fractions_provider_order,
+    };
+    validate_input(provider, flash_input);
+    const auto problem = std::make_shared<InstalledHeld2Problem>(
+        provider, flash_input
+    );
+    Held2ThermodynamicAccess result;
+    result.component_ids.reserve(provider.sdk().component_count);
+    result.charges.reserve(provider.sdk().component_count);
+    for (std::size_t component = 0;
+         component < provider.sdk().component_count;
+         ++component) {
+        const char* id = provider.sdk().component_ids[component];
+        if (id == nullptr || id[0] == '\0') {
+            throw std::invalid_argument(
+                "Provider electrolyte component ID must not be empty"
+            );
+        }
+        result.component_ids.emplace_back(id);
+        result.charges.push_back(static_cast<double>(
+            provider.sdk().component_charges[component]
+        ));
+    }
+    result.evaluate = [problem](const auto& composition, double log_volume) {
+        return problem->evaluate(composition, log_volume);
+    };
+    result.evaluate_trace = [problem](
+        const auto& composition, double log_volume
+    ) {
+        return problem->evaluate_trace(composition, log_volume);
+    };
+    result.volume_bounds_physical = [problem](const auto& physical) {
+        return problem->volume_bounds(problem->independent(physical));
+    };
+    result.packing_fraction = [problem](
+        const auto& composition, double volume
+    ) {
+        return kHeld2PackingFractionMinimum
+            * problem->volume_bounds(composition)[1] / volume;
+    };
+    result.total_ion_mole_fraction_max =
+        problem->total_ion_mole_fraction_max();
+    return result;
+}
 
 Held2ManufacturedWorkflowResult solve_held2_manufactured_workflow(
     const std::vector<double>& charges,

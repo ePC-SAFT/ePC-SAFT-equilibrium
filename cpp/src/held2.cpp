@@ -502,6 +502,9 @@ public:
         const Ipopt::IpoptData*,
         Ipopt::IpoptCalculatedQuantities*
     ) override {
+        optimizer_iterations_ = std::max(
+            optimizer_iterations_, static_cast<int>(iteration) + 1
+        );
         Held2ProgressEvent progress;
         progress.kind = Held2ProgressKind::LocalIteration;
         progress.stage = progress_stage_;
@@ -556,6 +559,7 @@ public:
             lower_bound_multipliers_,
             upper_bound_multipliers_,
             {},
+            optimizer_iterations_,
         };
     }
 
@@ -592,6 +596,7 @@ private:
     std::string progress_stage_;
     int progress_major_ = -1;
     int progress_attempt_ = -1;
+    int optimizer_iterations_ = 0;
 };
 
 Held2SearchRun solve_held2_vector_search(

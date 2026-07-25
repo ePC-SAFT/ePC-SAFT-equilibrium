@@ -17,10 +17,10 @@ using Held2PackingFractionEvaluator = std::function<double(
 )>;
 
 struct Held2ResourceProfile {
-    int step2_search_budget = 0;
-    int step5_start_epoch_size = 0;
-    int step5_total_start_cap = 0;
-    int step7_major_iteration_cap = 0;
+    int step2_search_budget = 50;
+    int step5_start_epoch_size = 8;
+    int step5_total_start_cap = 50;
+    int step7_major_iteration_cap = 24;
 };
 
 struct Held2LocalCertificate {

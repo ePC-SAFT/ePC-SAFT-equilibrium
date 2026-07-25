@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <iosfwd>
 #include <limits>
 #include <string>
@@ -51,6 +52,11 @@ struct Held2ProgressEvent {
     double dual_step = std::numeric_limits<double>::quiet_NaN();
     double primal_step = std::numeric_limits<double>::quiet_NaN();
     int line_search_steps = -1;
+    double wall_seconds = 0.0;
+    double cpu_seconds = 0.0;
+    std::uint64_t provider_evaluations = 0;
+    std::uint64_t optimizer_solves = 0;
+    std::uint64_t optimizer_iterations = 0;
 };
 
 class Held2ProgressObserver {

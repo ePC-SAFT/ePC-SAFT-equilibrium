@@ -258,35 +258,39 @@ Held2Step5Result run_held2_step5(
         * coordinates.modified_factors[static_cast<std::size_t>(
             dependent - coordinates.retained_indices.begin()
         )];
-    std::vector<std::vector<double>> starts;
-    for (const Held2MPoint& point : state.M) {
-        starts.push_back(point.independent_modified_fractions);
-    }
-    for (const auto& cube : held2_sobol_points(
-             dimension,
-             std::max(0, resources.step5_total_start_cap
-                 - static_cast<int>(starts.size()))
-         )) {
-        starts.push_back(held2_map_unit_cube_to_independent_fractions(
-            coordinates, cube, std::numeric_limits<double>::quiet_NaN()
-        ));
-    }
-    const std::size_t cap = std::min(
-        starts.size(),
-        static_cast<std::size_t>(resources.step5_total_start_cap)
+    const std::vector<std::vector<double>> sobol = held2_sobol_points(
+        dimension, resources.step5_total_start_cap
     );
+    const std::size_t begin = std::min(
+        static_cast<std::size_t>(state.next_start_ordinal), sobol.size()
+    );
+    const std::size_t cap = std::min(
+        sobol.size(),
+        begin + static_cast<std::size_t>(
+            std::max(1, resources.step5_start_epoch_size)
+        )
+    );
+    state.starts_consumed_in_epoch = 0;
+    state.start_epoch_added_member = false;
+    ++state.start_epoch_index;
     double best = std::numeric_limits<double>::infinity();
     Held2MPoint best_point;
-    for (std::size_t index = 0; index < cap; ++index) {
+    for (std::size_t index = begin; index < cap; ++index) {
         const std::uint64_t ordinal = state.next_start_ordinal++;
         ++result.starts_consumed;
+        const std::vector<double> start =
+            held2_map_unit_cube_to_independent_fractions(
+                coordinates,
+                sobol[index],
+                step1.total_ion_mole_fraction_max
+            );
         Held2LocalCertificate certificate;
         certificate.start_ordinal = ordinal;
         Held2PressureEnvelopeResult envelope;
         try {
             envelope = evaluate_held2_pressure_envelope(
-                starts[index],
-                (*step1.volume_bounds)(starts[index]),
+                start,
+                (*step1.volume_bounds)(start),
                 evaluator,
                 64
             );
@@ -315,7 +319,7 @@ Held2Step5Result run_held2_step5(
                 *step1.volume_bounds,
                 state.feed,
                 state.multipliers,
-                starts[index],
+                start,
                 branch,
                 initial_root.log_volume,
                 lower,
@@ -326,6 +330,8 @@ Held2Step5Result run_held2_step5(
                 static_cast<int>(ordinal)
             );
         ++result.timing.optimizer_solves;
+        result.timing.optimizer_iterations +=
+            static_cast<std::uint64_t>(run.optimizer_iterations);
         certificate.solver_status = run.solver_status;
         if (!run.solver_converged || !run.callback_error.empty()
             || run.variables.size() != dimension + 1) {

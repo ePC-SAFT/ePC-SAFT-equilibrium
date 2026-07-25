@@ -7,6 +7,7 @@ Held2Step7Result run_held2_step7(
     const Held2Step5Result& step5,
     const Held2Step6Result& step6,
     const Held2ResourceProfile& resources,
+    bool stage_iii_feedback,
     Held2ProgressObserver*
 ) {
     Held2Step7Result result;
@@ -15,7 +16,7 @@ Held2Step7Result run_held2_step7(
         result.reason = "invalid_step7_input";
         return result;
     }
-    if (step6.candidates.size() >= 2) {
+    if (step6.candidates.size() >= 2 && !stage_iii_feedback) {
         result.status = "complete";
         result.reason = "stage_iii_ready";
         result.next_step = 8;

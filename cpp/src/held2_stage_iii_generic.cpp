@@ -29,6 +29,7 @@ struct StageIIIRun {
     std::vector<double> equality_multipliers;
     std::vector<double> lower_bound_multipliers;
     std::vector<double> upper_bound_multipliers;
+    int optimizer_iterations = 0;
     int recoverable_domain_rejection_count = 0;
     std::string last_domain_rejection;
 };
@@ -705,6 +706,9 @@ public:
         const Ipopt::IpoptData*,
         Ipopt::IpoptCalculatedQuantities*
     ) override {
+        optimizer_iterations_ = std::max(
+            optimizer_iterations_, static_cast<int>(iteration) + 1
+        );
         Held2ProgressEvent progress;
         progress.kind = Held2ProgressKind::LocalIteration;
         progress.stage = "STAGE III IPOPT";
@@ -743,6 +747,7 @@ public:
             multipliers_,
             lower_,
             upper_,
+            optimizer_iterations_,
             recoverable_domain_rejection_count_,
             last_domain_rejection_,
         };
@@ -794,6 +799,7 @@ private:
     std::vector<std::array<double, 2>> phase_coordinate_bounds_;
     std::vector<double> initial_; bool solver_converged_ = false; std::string callback_error_;
     int recoverable_domain_rejection_count_ = 0;
+    int optimizer_iterations_ = 0;
     std::string last_domain_rejection_;
     std::vector<double> variables_, multipliers_, lower_, upper_;
     Held2ProgressObserver* observer_ = nullptr;
@@ -870,7 +876,10 @@ Held2StageIIIResult solve_held2_stage_iii(
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
     double free_energy_upper_bound,
     const std::string& free_energy_gap_provenance,
-    Held2ProgressObserver* observer
+    Held2ProgressObserver* observer,
+    const Held2StageIIIInitializer& initializer,
+    const std::function<double(const std::vector<double>&, double)>&
+        packing_fraction
 ) {
     Held2StageIIIResult result;
     result.input_candidate_count = static_cast<int>(candidates.size());
@@ -899,6 +908,7 @@ Held2StageIIIResult solve_held2_stage_iii(
     StageIIIRun accepted_run;
     Held2StageIIINlpEvaluation accepted_nlp;
     std::vector<Held2StateEvaluation> accepted_states;
+    std::vector<double> pending_initial;
     bool active_set_accepted = false;
 
     for (std::size_t lifecycle = 0; lifecycle <= candidates.size(); ++lifecycle) {
@@ -918,6 +928,19 @@ Held2StageIIIResult solve_held2_stage_iii(
             );
             initial[offset + 1 + dimension] = candidate.phase_coordinate;
         }
+        if (pending_initial.size() == initial.size()) {
+            initial = std::move(pending_initial);
+        } else if (initializer) {
+            Held2StageIIIFeasibilityStart start =
+                initializer(active_candidates);
+            if (start.status != "feasible"
+                || start.variables.size() != initial.size()) {
+                result.failure_reason =
+                    "stage_iii_feasible_start_uncertified";
+                return result;
+            }
+            initial = std::move(start.variables);
+        }
 
         StageIIIRun run = run_general_stage_iii(
             coordinates,
@@ -930,6 +953,7 @@ Held2StageIIIResult solve_held2_stage_iii(
             result.stage_iii_solve_count + 1
         );
         ++result.stage_iii_solve_count;
+        result.optimizer_iteration_count += run.optimizer_iterations;
         result.solver_status = run.solver_status;
         if (!run.solver_converged || !run.callback_error.empty()
             || run.variables.size() != initial.size()) {
@@ -1097,17 +1121,45 @@ Held2StageIIIResult solve_held2_stage_iii(
         bool active_set_changed = false;
         for (std::size_t phase = 0; phase < active_candidates.size(); ++phase) {
             const std::size_t offset = phase * block_size;
-            const bool remaining_feasible = remaining_candidate_balance_feasible(
-                feed, active_candidates, phase
-            );
-            const Held2StageIIIRetirementDecision decision =
+            Held2StageIIIRetirementDecision decision =
                 held2_stage_iii_retirement_decision(
                     run.variables[offset],
                     run.lower_bound_multipliers[offset],
                     run.upper_bound_multipliers[offset],
                     nlp.lagrangian_gradient[offset],
-                    remaining_feasible
+                    true
                 );
+            if (decision.retire) {
+                if (active_candidates.size() <= 2) {
+                    result.failure_reason = "collapsed_phase_set";
+                    return result;
+                }
+                if (initializer) {
+                    std::vector<Held2StageIICandidate> reduced =
+                        active_candidates;
+                    reduced.erase(
+                        reduced.begin() + static_cast<std::ptrdiff_t>(phase)
+                    );
+                    Held2StageIIIFeasibilityStart start =
+                        initializer(reduced);
+                    if (start.status == "uncertified") {
+                        result.failure_reason =
+                            "stage_iii_reduced_feasibility_uncertified";
+                        return result;
+                    }
+                    if (start.status != "feasible") {
+                        decision.retire = false;
+                        decision.reason = "remaining_balance_infeasible";
+                    } else {
+                        pending_initial = std::move(start.variables);
+                    }
+                } else if (!remaining_candidate_balance_feasible(
+                               feed, active_candidates, phase
+                           )) {
+                    decision.retire = false;
+                    decision.reason = "remaining_balance_infeasible";
+                }
+            }
             result.lifecycle.push_back(make_general_lifecycle_step(
                 result.stage_iii_solve_count,
                 active_candidates.size(),
@@ -1159,16 +1211,54 @@ Held2StageIIIResult solve_held2_stage_iii(
             for (std::size_t right = left + 1;
                  right < active_candidates.size();
                  ++right) {
-                const double merge_distance = std::max(
-                    maximum_abs_difference(
-                        states[left].modified_fractions,
-                        states[right].modified_fractions
-                    ),
-                    std::abs(
-                        std::log(states[left].volume)
-                            - std::log(states[right].volume)
-                    )
-                );
+                double merge_distance;
+                if (packing_fraction) {
+                    const std::vector<double> left_independent(
+                        run.variables.begin() + static_cast<std::ptrdiff_t>(
+                            left * block_size + 1
+                        ),
+                        run.variables.begin() + static_cast<std::ptrdiff_t>(
+                            left * block_size + 1 + dimension
+                        )
+                    );
+                    const std::vector<double> right_independent(
+                        run.variables.begin() + static_cast<std::ptrdiff_t>(
+                            right * block_size + 1
+                        ),
+                        run.variables.begin() + static_cast<std::ptrdiff_t>(
+                            right * block_size + 1 + dimension
+                        )
+                    );
+                    merge_distance = std::max(
+                        maximum_abs_difference(
+                            held2_lift_modified_fractions(
+                                coordinates, states[left].modified_fractions
+                            ),
+                            held2_lift_modified_fractions(
+                                coordinates, states[right].modified_fractions
+                            )
+                        ),
+                        std::abs(
+                            packing_fraction(
+                                left_independent, states[left].volume
+                            )
+                            - packing_fraction(
+                                right_independent, states[right].volume
+                            )
+                        )
+                    );
+                } else {
+                    merge_distance = std::max(
+                        maximum_abs_difference(
+                            states[left].modified_fractions,
+                            states[right].modified_fractions
+                        ),
+                        std::abs(
+                            std::log(states[left].volume)
+                                - std::log(states[right].volume)
+                        )
+                    );
+                }
                 if (!audit_held2_tolerance(
                         kHeld2PhaseMerge,
                         merge_distance
@@ -1179,11 +1269,42 @@ Held2StageIIIResult solve_held2_stage_iii(
                     run.variables[left * block_size]
                         <= run.variables[right * block_size]
                     ? left : right;
-                if (!remaining_candidate_balance_feasible(
-                        feed, active_candidates, removed
-                    )) {
+                if (active_candidates.size() <= 2) {
+                    result.failure_reason = "collapsed_phase_set";
+                    return result;
+                }
+                if (initializer) {
+                    std::vector<Held2StageIICandidate> reduced =
+                        active_candidates;
+                    reduced.erase(
+                        reduced.begin()
+                            + static_cast<std::ptrdiff_t>(removed)
+                    );
+                    const Held2StageIIIFeasibilityStart start =
+                        initializer(reduced);
+                    if (start.status == "uncertified") {
+                        result.failure_reason =
+                            "stage_iii_reduced_feasibility_uncertified";
+                        return result;
+                    }
+                    if (start.status != "feasible") continue;
+                } else if (!remaining_candidate_balance_feasible(
+                               feed, active_candidates, removed
+                           )) {
                     continue;
                 }
+                const std::size_t retained = removed == left ? right : left;
+                pending_initial = run.variables;
+                pending_initial[retained * block_size] +=
+                    pending_initial[removed * block_size];
+                pending_initial.erase(
+                    pending_initial.begin()
+                        + static_cast<std::ptrdiff_t>(removed * block_size),
+                    pending_initial.begin()
+                        + static_cast<std::ptrdiff_t>(
+                            (removed + 1) * block_size
+                        )
+                );
                 result.lifecycle.push_back(make_general_lifecycle_step(
                     result.stage_iii_solve_count,
                     active_candidates.size(),

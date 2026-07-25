@@ -1,7 +1,9 @@
 #include "flash.hpp"
+#include "held2_algorithm.hpp"
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -14,32 +16,55 @@ void run_held2_step4_checks();
 void run_held2_step5_checks();
 void run_held2_step6_checks();
 void run_held2_step7_checks();
+void run_held2_step8_checks();
+void run_held2_step9_checks();
+void run_held2_step10_checks();
 }
 
 namespace {
 
-void run_workflow_check() {
-    const epcsaft_equilibrium::Held2ManufacturedWorkflowResult result =
-        epcsaft_equilibrium::solve_held2_manufactured_workflow(
-            {0.0, 1.0, -1.0},
-            {0.5, 0.25, 0.25}
-        );
+void run_workflow_check(bool trace) {
+    using namespace epcsaft_equilibrium;
+    const std::vector<double> charges{0.0, 1.0, -1.0};
+    const Held2Coordinates coordinates = make_held2_coordinates(charges);
+    Held2TerminalProgress progress(std::cout);
+    const Held2AlgorithmResult result = run_held2_algorithm(
+        {
+            {"neutral", "cation", "anion"},
+            charges,
+            [coordinates](const auto& composition, double log_volume) {
+                Held2StateEvaluation state =
+                    evaluate_held2_manufactured_state(
+                    coordinates, composition, log_volume
+                );
+                state.pressure_stationarity_relative *= -1.0;
+                state.pressure_stationarity_derivative_log_volume *= -1.0;
+                return state;
+            },
+            [](const auto&) {
+                return std::array<double, 2>{0.5, 1.5};
+            },
+            [](const auto& composition, double) {
+                return composition.front();
+            },
+            std::numeric_limits<double>::quiet_NaN(),
+            {},
+        },
+        {298.15, 100000.0, {0.5, 0.25, 0.25}},
+        {200, 4, 20, 10},
+        trace ? &progress : nullptr
+    );
     if (
-        result.workflow.outcome != "physical_equilibrium_accepted"
-        || result.workflow.completed_step != 10
-        || result.workflow.transitions.size() != 4
-        || result.stage_i.outcome != "negative_witness_found"
-        || result.stage_ii.outcome != "candidate_set"
-        || result.stage_iii.physical_status != "accepted"
-        || !std::isfinite(result.stage_iii.objective)
-        || result.stage_iii.modified_balance_inf_norm >= 1.0e-9
-        || result.stage_iii.ordinary_balance_inf_norm >= 1.0e-9
-        || result.stage_iii.pressure_stationarity_inf_norm >= 1.0e-9
-        || result.stage_iii.modified_potential_mixed_gap >= 1.0e-9
+        result.outcome != "physical_equilibrium_accepted"
+        || !result.step10
+        || result.step10->status != "complete"
+        || result.phases.size() != 2
+        || !result.step10->final_certificate->accepted
         || result.globality_certificate != "not_guaranteed"
     ) {
         throw std::runtime_error(
-            "manufactured HELD2 workflow failed its scientific checks"
+            "manufactured HELD2 Steps 1-10 failed: "
+            + result.failure_stage + ": " + result.failure_reason
         );
     }
     std::cout << "workflow: pass\n";
@@ -54,7 +79,7 @@ int main(int argc, char** argv) {
                 || std::string(argv[1]) != "--case"
                 || (argc == 4 && std::string(argv[3]) != "--trace"))) {
             throw std::invalid_argument(
-                "usage: --case {step1|step2|workflow} [--trace]"
+                "usage: --case {step1|step2|step3|step4|step5|step6|step7|step8|step9|step10|workflow} [--trace]"
             );
         }
         const std::string check = argc == 1 ? "workflow" : argv[2];
@@ -84,8 +109,17 @@ int main(int argc, char** argv) {
         } else if (check == "step7") {
             epcsaft_equilibrium::test::run_held2_step7_checks();
             std::cout << "step7: pass\n";
+        } else if (check == "step8") {
+            epcsaft_equilibrium::test::run_held2_step8_checks();
+            std::cout << "step8: pass\n";
+        } else if (check == "step9") {
+            epcsaft_equilibrium::test::run_held2_step9_checks();
+            std::cout << "step9: pass\n";
+        } else if (check == "step10") {
+            epcsaft_equilibrium::test::run_held2_step10_checks();
+            std::cout << "step10: pass\n";
         } else if (check == "workflow") {
-            run_workflow_check();
+            run_workflow_check(trace);
         } else {
             throw std::invalid_argument("unknown manufactured check case");
         }

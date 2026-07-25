@@ -147,6 +147,13 @@ void Held2TerminalProgress::observe(const Held2ProgressEvent& event) {
                         << "  gap=" << std::setw(13)
                         << event.gap;
             }
+            if (event.stage.rfind("STEP ", 0) == 0) {
+                output_ << "  wall=" << event.wall_seconds << "s"
+                        << "  cpu=" << event.cpu_seconds << "s"
+                        << "  provider=" << event.provider_evaluations
+                        << "  solves=" << event.optimizer_solves
+                        << "  iterations=" << event.optimizer_iterations;
+            }
             output_ << '\n';
             break;
         case Held2ProgressKind::StageSkipped:
