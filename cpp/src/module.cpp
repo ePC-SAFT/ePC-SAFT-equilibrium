@@ -1939,25 +1939,6 @@ py::dict held2_stage_ii_to_dict(
         item["basin_id"] = attempt.basin_id;
         item["same_major_upper_bound"] = attempt.same_major_upper_bound;
         item["same_major_multipliers"] = attempt.same_major_multipliers;
-        py::list evaluations;
-        for (const auto& evaluation : attempt.evaluation_trace) {
-            py::dict trace;
-            trace["sequence"] = evaluation.sequence;
-            trace["callback"] = evaluation.callback;
-            trace["new_x"] = evaluation.new_x;
-            trace["callback_succeeded"] = evaluation.callback_succeeded;
-            trace["accepted_iterate"] = evaluation.accepted_iterate;
-            trace["raw_variables"] = evaluation.raw_variables;
-            trace["physical_variables"] = evaluation.physical_variables;
-            trace["maximum_bound_violation"] =
-                evaluation.maximum_bound_violation;
-            trace["mapping_status"] = evaluation.mapping_status;
-            trace["error"] = evaluation.error;
-            evaluations.append(std::move(trace));
-        }
-        item["evaluation_trace"] = std::move(evaluations);
-        item["last_valid_physical_variables"] =
-            attempt.last_valid_physical_variables;
         attempts.append(std::move(item));
         solver_converged_count += attempt.solver_converged ? 1 : 0;
         physical_kkt_passed_count += attempt.physical_kkt_passed ? 1 : 0;

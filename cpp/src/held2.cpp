@@ -17,8 +17,6 @@
 #include <utility>
 
 #include <coin/IpIpoptApplication.hpp>
-#include <coin/IpDenseVector.hpp>
-#include <coin/IpIpoptData.hpp>
 #include <coin/IpTNLP.hpp>
 
 namespace epcsaft_equilibrium {
@@ -196,7 +194,6 @@ struct Held2SearchRun {
     std::vector<double> lower_bound_multipliers;
     std::vector<double> upper_bound_multipliers;
     std::vector<double> coordinate_jacobian;
-    std::vector<Held2StageIILocalEvaluation> evaluation_trace;
 };
 
 struct Held2StageIISimplexChart {
@@ -448,16 +445,14 @@ public:
     bool eval_f(
         Ipopt::Index n,
         const Ipopt::Number* x,
-        bool new_x,
+        bool,
         Ipopt::Number& objective
     ) override {
         try {
             objective = evaluate(n, x).objective;
-            record_evaluation("eval_f", n, x, new_x, true, "");
             return true;
         } catch (const std::exception& error) {
             callback_error_ = error.what();
-            record_evaluation("eval_f", n, x, new_x, false, error.what());
             return false;
         }
     }
@@ -465,7 +460,7 @@ public:
     bool eval_grad_f(
         Ipopt::Index n,
         const Ipopt::Number* x,
-        bool new_x,
+        bool,
         Ipopt::Number* gradient
     ) override {
         try {
@@ -474,7 +469,6 @@ public:
             return true;
         } catch (const std::exception& error) {
             callback_error_ = error.what();
-            record_evaluation("eval_grad_f", n, x, new_x, false, error.what());
             return false;
         }
     }
@@ -505,7 +499,7 @@ public:
     bool eval_h(
         Ipopt::Index n,
         const Ipopt::Number* x,
-        bool new_x,
+        bool,
         Ipopt::Number objective_factor,
         Ipopt::Index m,
         const Ipopt::Number*,
@@ -541,7 +535,6 @@ public:
             return true;
         } catch (const std::exception& error) {
             callback_error_ = error.what();
-            record_evaluation("eval_h", n, x, new_x, false, error.what());
             return false;
         }
     }
@@ -558,7 +551,7 @@ public:
         Ipopt::Number dual_step,
         Ipopt::Number primal_step,
         Ipopt::Index line_search_steps,
-        const Ipopt::IpoptData* ip_data,
+        const Ipopt::IpoptData*,
         Ipopt::IpoptCalculatedQuantities*
     ) override {
         Held2ProgressEvent progress;
@@ -576,24 +569,6 @@ public:
         progress.primal_step = primal_step;
         progress.line_search_steps = static_cast<int>(line_search_steps);
         observe_held2(observer_, progress);
-        if (ip_data != nullptr && Ipopt::IsValid(ip_data->curr())
-            && Ipopt::IsValid(ip_data->curr()->x())) {
-            const auto* dense = dynamic_cast<const Ipopt::DenseVector*>(
-                Ipopt::GetRawPtr(ip_data->curr()->x())
-            );
-            if (dense != nullptr
-                && dense->Dim() == static_cast<Ipopt::Index>(initial_.size())) {
-                record_evaluation(
-                    "accepted_iterate",
-                    dense->Dim(),
-                    dense->Values(),
-                    true,
-                    true,
-                    "",
-                    true
-                );
-            }
-        }
         return true;
     }
 
@@ -610,7 +585,6 @@ public:
         const Ipopt::IpoptData*,
         Ipopt::IpoptCalculatedQuantities*
     ) override {
-        record_evaluation("terminal", n, x, true, true, "", true);
         variables_.assign(x, x + n);
         lower_bound_multipliers_.assign(z_lower, z_lower + n);
         upper_bound_multipliers_.assign(z_upper, z_upper + n);
@@ -634,42 +608,10 @@ public:
             lower_bound_multipliers_,
             upper_bound_multipliers_,
             {},
-            evaluation_trace_,
         };
     }
 
 private:
-    void record_evaluation(
-        const std::string& callback,
-        Ipopt::Index n,
-        const Ipopt::Number* x,
-        bool new_x,
-        bool succeeded,
-        const std::string& error,
-        bool accepted_iterate = false
-    ) {
-        Held2StageIILocalEvaluation record;
-        record.sequence = static_cast<int>(evaluation_trace_.size());
-        record.callback = callback;
-        record.new_x = new_x;
-        record.callback_succeeded = succeeded;
-        record.accepted_iterate = accepted_iterate;
-        record.error = error;
-        if (x != nullptr && n == static_cast<Ipopt::Index>(initial_.size())) {
-            record.raw_variables.assign(x, x + n);
-            for (Ipopt::Index index = 0; index < n; ++index) {
-                const double value = x[index];
-                record.maximum_bound_violation = std::max({
-                    record.maximum_bound_violation,
-                    lower_[static_cast<std::size_t>(index)] - value,
-                    value - upper_[static_cast<std::size_t>(index)],
-                });
-            }
-        }
-        record.mapping_status = succeeded ? "mapped" : "callback_failed";
-        evaluation_trace_.push_back(std::move(record));
-    }
-
     [[nodiscard]] Held2StateEvaluation evaluate(
         Ipopt::Index n,
         const Ipopt::Number* x
@@ -698,7 +640,6 @@ private:
     std::vector<double> variables_;
     std::vector<double> lower_bound_multipliers_;
     std::vector<double> upper_bound_multipliers_;
-    std::vector<Held2StageIILocalEvaluation> evaluation_trace_;
     Held2ProgressObserver* observer_ = nullptr;
     std::string progress_stage_;
     int progress_major_ = -1;
@@ -1239,37 +1180,6 @@ Held2SearchRun solve_stage_ii_pressure_root_local(
         major_iteration,
         attempt_index
     );
-    for (Held2StageIILocalEvaluation& evaluation : run.evaluation_trace) {
-        if (evaluation.raw_variables.size() != dimension) {
-            evaluation.mapping_status = "variables_unavailable";
-            continue;
-        }
-        try {
-            const Held2StageIISimplexChart mapped = evaluate_stage_ii_simplex_chart(
-                independent_lower,
-                independent_upper,
-                composition_sum_upper,
-                evaluation.raw_variables,
-                false,
-                charged_coordinates,
-                total_ion_mole_fraction_max
-            );
-            evaluation.physical_variables = mapped.physical_coordinates;
-            const Held2PressureRoot root = polish_stage_ii_stable_branch(
-                evaluator,
-                volume_bounds_evaluator,
-                mapped.physical_coordinates,
-                stable_branch_index,
-                branch_log_volume_hint
-            );
-            evaluation.physical_variables.push_back(root.log_volume);
-            evaluation.mapping_status = mapped.normalized_boundary_contact
-                ? "normalized_boundary_contact"
-                : "mapped";
-        } catch (const std::exception&) {
-            evaluation.mapping_status = "chart_out_of_bounds";
-        }
-    }
     if (run.variables.size() != dimension) {
         return run;
     }
@@ -3365,13 +3275,6 @@ Held2StageIIResult solve_held2_stage_ii(
                 attempt.internal_terminal = run.variables;
                 attempt.lower_bound_multipliers = run.lower_bound_multipliers;
                 attempt.upper_bound_multipliers = run.upper_bound_multipliers;
-                attempt.evaluation_trace = run.evaluation_trace;
-                for (const Held2StageIILocalEvaluation& evaluation : run.evaluation_trace) {
-                    if (!evaluation.physical_variables.empty()) {
-                        attempt.last_valid_physical_variables =
-                            evaluation.physical_variables;
-                    }
-                }
                 attempt.provider_status = evaluation_source;
                 if (!run.solver_converged || !run.callback_error.empty()
                     || run.variables.size() != dimension + 1) {

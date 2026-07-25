@@ -926,29 +926,6 @@ JsonValue held2_stage_ii_to_json(const Held2StageIIResult& evaluation) {
             attempt.same_major_upper_bound;
         item["same_major_multipliers"] =
             attempt.same_major_multipliers;
-
-        JsonValue evaluations = JsonValue::array();
-        for (const auto& evaluation_item : attempt.evaluation_trace) {
-            JsonValue trace = JsonValue::object();
-            trace["sequence"] = evaluation_item.sequence;
-            trace["callback"] = evaluation_item.callback;
-            trace["new_x"] = evaluation_item.new_x;
-            trace["callback_succeeded"] =
-                evaluation_item.callback_succeeded;
-            trace["accepted_iterate"] =
-                evaluation_item.accepted_iterate;
-            trace["raw_variables"] = evaluation_item.raw_variables;
-            trace["physical_variables"] =
-                evaluation_item.physical_variables;
-            trace["maximum_bound_violation"] =
-                evaluation_item.maximum_bound_violation;
-            trace["mapping_status"] = evaluation_item.mapping_status;
-            trace["error"] = evaluation_item.error;
-            evaluations.append(std::move(trace));
-        }
-        item["evaluation_trace"] = std::move(evaluations);
-        item["last_valid_physical_variables"] =
-            attempt.last_valid_physical_variables;
         attempts.append(std::move(item));
         solver_converged_count += attempt.solver_converged ? 1 : 0;
         physical_kkt_passed_count +=
