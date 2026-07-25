@@ -299,8 +299,8 @@ owners:
   pure_saturation_formulation_and_ipopt: cpp/src/saturation.cpp
   held_controller_and_local_acceptance: cpp/src/held.cpp and cpp/src/held_stage_i.cpp through held_stage_iii.cpp
   held2_private_development_implementation: >-
-    cpp/src/held2.cpp, cpp/src/held2_stage_i_direct.cpp,
-    cpp/src/held2_stage_ii_upper.cpp, cpp/src/held2_stage_ii_basin.cpp, and
+    cpp/src/held2.cpp, cpp/src/held2_step2.cpp,
+    cpp/src/held2_step4.cpp, cpp/src/held2_step5.cpp, and
     cpp/src/held2_stage_iii.cpp, cpp/src/held2_stage_iii_generic.cpp,
     cpp/src/held2_progress.cpp, and cpp/src/held2_progress.hpp
   held2_solver_ownership: >-

@@ -20,7 +20,6 @@ namespace {
 
 constexpr double kCandidateRadius = 1.0e-3;
 constexpr double kConstraintLowerInfinity = -1.0e19;
-constexpr double kHeld2ModifiedLowerScale = 1.0e-10;
 
 struct StageIIIRun {
     bool solver_converged = false;

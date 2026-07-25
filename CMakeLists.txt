@@ -84,9 +84,10 @@ add_library(
   cpp/src/held2.cpp
   cpp/src/held2_controller.cpp
   cpp/src/held2_progress.cpp
-  cpp/src/held2_stage_i_direct.cpp
-  cpp/src/held2_stage_ii_basin.cpp
-  cpp/src/held2_stage_ii_upper.cpp
+  cpp/src/held2_step1.cpp
+  cpp/src/held2_step2.cpp
+  cpp/src/held2_step4.cpp
+  cpp/src/held2_step5.cpp
   cpp/src/held2_stage_iii.cpp
   cpp/src/held2_stage_iii_generic.cpp
   cpp/src/saturation.cpp

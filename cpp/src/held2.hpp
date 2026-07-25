@@ -13,6 +13,7 @@ class Held2ProgressObserver;
 
 inline constexpr double kHeld2PackingFractionMinimum = 1.0e-6;
 inline constexpr double kHeld2PackingFractionMaximum = 0.74;
+inline constexpr double kHeld2ModifiedLowerScale = 1.0e-10;
 
 struct Held2Coordinates {
     std::vector<double> charges;
