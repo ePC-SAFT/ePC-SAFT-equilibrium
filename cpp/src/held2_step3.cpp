@@ -2,32 +2,49 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
+#include <stdexcept>
 
 namespace epcsaft_equilibrium {
 namespace {
 
-std::vector<double> independent_from_physical(
+std::vector<double> bounding_point(
     const Held2Coordinates& coordinates,
-    const std::vector<double>& physical
+    const std::vector<double>& feed,
+    std::size_t coordinate,
+    double direction
 ) {
-    const std::vector<double> modified =
-        held2_transform_physical_fractions(coordinates, physical);
-    std::vector<double> independent;
-    for (std::size_t provider : coordinates.independent_indices) {
-        const auto retained = std::find(
-            coordinates.retained_indices.begin(),
-            coordinates.retained_indices.end(),
-            provider
+    double distance = std::numeric_limits<double>::infinity();
+    for (const Held2PolytopeConstraint& constraint :
+         coordinates.polytope_constraints) {
+        const double slope =
+            direction * constraint.coefficients[coordinate];
+        if (slope <= 0.0) {
+            continue;
+        }
+        distance = std::min(
+            distance,
+            (
+                constraint.upper_bound
+                - std::inner_product(
+                    constraint.coefficients.begin(),
+                    constraint.coefficients.end(),
+                    feed.begin(),
+                    0.0
+                )
+            ) / slope
         );
-        independent.push_back(modified[static_cast<std::size_t>(
-            retained - coordinates.retained_indices.begin()
-        )]);
     }
+    if (!std::isfinite(distance) || distance <= 0.0) {
+        throw std::invalid_argument("feed does not have two-sided bounds");
+    }
+    std::vector<double> point = feed;
+    point[coordinate] += 0.5 * direction * distance;
     static_cast<void>(held2_lift_independent_fractions(
-        coordinates, independent
+        coordinates, point
     ));
-    return independent;
+    return point;
 }
 
 }  // namespace
@@ -54,10 +71,6 @@ Held2Step3Result run_held2_step3(
     }
     const Held2Coordinates& coordinates = *step1.coordinates;
     const std::size_t dimension = coordinates.independent_indices.size();
-    const std::vector<double> feed_physical =
-        held2_lift_independent_fractions(
-            coordinates, *step1.independent_feed
-        );
     Held2PersistentState state;
     state.feed = *step1.independent_feed;
     state.feed_reduced_gibbs = step2.reference->objective;
@@ -65,51 +78,20 @@ Held2Step3Result run_held2_step3(
     state.M.push_back({
         0, state.feed, step2.reference->volume,
         std::numeric_limits<double>::quiet_NaN(),
-        step2.reference->objective, "homogeneous_feed",
+        step2.reference->objective, step2.reference->gradient,
+        "homogeneous_feed",
     });
-    const double eliminated_charge =
-        coordinates.charges[coordinates.eliminated_index];
     for (std::size_t distinguished = 0;
          distinguished < dimension;
          ++distinguished) {
-        const std::size_t provider =
-            coordinates.independent_indices[distinguished];
         for (int side = 0; side < 2; ++side) {
-            std::vector<double> physical(coordinates.charges.size(), 0.0);
-            physical[provider] = side == 0
-                ? 0.5 * feed_physical[provider]
-                : 0.5 * (
-                    1.0 / (
-                        1.0 - coordinates.charges[provider]
-                            / eliminated_charge
-                    ) + feed_physical[provider]
-                );
-            for (std::size_t compact = 0; compact < dimension; ++compact) {
-                if (compact == distinguished) {
-                    continue;
-                }
-                const std::size_t other =
-                    coordinates.independent_indices[compact];
-                physical[other] = (
-                    1.0 / (
-                        1.0 - coordinates.charges[other]
-                            / eliminated_charge
-                    ) - physical[provider]
-                ) / static_cast<double>(coordinates.charges.size() - 1);
-            }
-            for (std::size_t other : coordinates.independent_indices) {
-                physical[coordinates.eliminated_index] -=
-                    coordinates.charges[other] / eliminated_charge
-                    * physical[other];
-            }
-            physical[coordinates.dependent_index] = 1.0
-                - std::accumulate(
-                    physical.begin(), physical.end(), 0.0
-                );
             std::vector<double> independent;
             try {
-                independent = independent_from_physical(
-                    coordinates, physical
+                independent = bounding_point(
+                    coordinates,
+                    state.feed,
+                    distinguished,
+                    side == 0 ? -1.0 : 1.0
                 );
             } catch (...) {
                 return fail("appendix_c_state_outside_domain");
@@ -138,6 +120,7 @@ Held2Step3Result run_held2_step3(
                 root.volume,
                 std::numeric_limits<double>::quiet_NaN(),
                 root.objective,
+                root.state.gradient,
                 side == 0 ? "appendix_c_lower" : "appendix_c_upper",
             });
         }

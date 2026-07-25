@@ -52,14 +52,22 @@ Held2Step1Result step1(
     const std::vector<double>& feed,
     const Held2PhysicalVolumeBoundsEvaluator& bounds = volume_bounds(),
     double temperature = 298.15,
-    double pressure = 100000.0
+    double pressure = 100000.0,
+    double total_ion_mole_fraction_max =
+        std::numeric_limits<double>::quiet_NaN()
 ) {
     std::vector<std::string> ids(charges.size());
     for (std::size_t index = 0; index < ids.size(); ++index) {
         ids[index] = "component-" + std::to_string(index);
     }
     return run_held2_step1(
-        ids, charges, temperature, pressure, feed, bounds
+        ids,
+        charges,
+        temperature,
+        pressure,
+        feed,
+        bounds,
+        total_ion_mole_fraction_max
     );
 }
 
@@ -320,6 +328,17 @@ Held2StateEvaluation tied_state(
     return state;
 }
 
+Held2StateEvaluation narrow_liquid_state(
+    const std::vector<double>& independent,
+    double log_volume
+) {
+    Held2StateEvaluation state = search_state(
+        independent, log_volume + 10.0, true
+    );
+    state.volume = std::exp(log_volume);
+    return state;
+}
+
 Held2Step3Result appendix_c_result() {
     const Held2Step1Result prepared = step1(
         {0.0, 1.0, -1.0},
@@ -349,6 +368,39 @@ Held2Step3Result appendix_c_result() {
     );
 }
 
+Held2Step3Result electrolyte_appendix_c_result() {
+    const Held2Step1Result prepared = step1(
+        {1.0, -1.0, 0.0, 0.0},
+        {
+            0.11052410423969840,
+            0.11052410423969840,
+            0.59895663485604511,
+            0.17999515666455806,
+        },
+        volume_bounds(),
+        298.15,
+        100000.0,
+        0.6
+    );
+    Held2Step2Result step2;
+    step2.outcome = Held2Step2Outcome::NegativeWitness;
+    step2.reference = search_state({0.2210482084793968, 0.5989566348560451}, 0.0, false);
+    return run_held2_step3(
+        prepared,
+        step2,
+        [](const std::vector<double>& independent) {
+            Held2PressureEnvelopeResult envelope;
+            envelope.outcome = "selected";
+            envelope.selected_root_index = 0;
+            Held2PressureRoot root;
+            root.volume = 1.0;
+            root.objective = independent.front();
+            envelope.roots.push_back(std::move(root));
+            return envelope;
+        }
+    );
+}
+
 std::pair<Held2Step1Result, Held2Step6Result> stage_iii_fixture() {
     Held2Step1Result prepared = step1(
         {0.0, 1.0, -1.0},
@@ -360,8 +412,8 @@ std::pair<Held2Step1Result, Held2Step6Result> stage_iii_fixture() {
     Held2Step6Result candidates;
     candidates.status = "complete";
     candidates.candidates = {
-        {7, {0.20}, 1.0, 0.20, 0.0, "manufactured"},
-        {9, {0.80}, 1.0, 0.80, 0.0, "manufactured"},
+        {7, {0.20}, 1.0, 0.20, 0.0, {}, "manufactured"},
+        {9, {0.80}, 1.0, 0.80, 0.0, {}, "manufactured"},
     };
     return {std::move(prepared), std::move(candidates)};
 }
@@ -472,6 +524,21 @@ std::string run_held2_step2_checks(Held2ProgressObserver* observer) {
             && negative.negative_witness->tpd < -1.0e-8,
         "Step 2 missed a strict negative TPD witness"
     );
+    const Held2Step1Result narrow_prepared = step1(
+        {0.0, 1.0, -1.0},
+        {0.50, 0.25, 0.25},
+        [](const std::vector<double>&) {
+            return std::array<double, 2>{
+                std::exp(-12.0), std::exp(3.0),
+            };
+        }
+    );
+    require(
+        run_held2_step2(
+            narrow_prepared, narrow_liquid_state, 50
+        ).outcome == Held2Step2Outcome::NegativeWitness,
+        "Step 2 missed a narrow pressure-root TPD witness"
+    );
     const Held2Step2Result nonnegative = run_held2_step2(
         prepared,
         [](const auto& composition, double log_volume) {
@@ -508,9 +575,9 @@ void run_held2_step3_checks() {
             result.state->M[1].independent_modified_fractions[0],
             result.state->M[2].independent_modified_fractions[0],
         },
-        {0.5, 0.25, 0.75},
+        {0.5, 0.2500000001, 0.74999999995},
         1.0e-12,
-        "corrected Appendix-C bracketing changed"
+        "polytope-aware Appendix-C bracketing changed"
     );
     require(
         result.state->M[0].insertion_id == 0
@@ -518,6 +585,23 @@ void run_held2_step3_checks() {
             && result.state->M[2].insertion_id == 2,
         "Appendix-C insertion order changed"
     );
+    const Held2Step3Result electrolyte = electrolyte_appendix_c_result();
+    require(
+        electrolyte.status == "complete"
+            && electrolyte.state->M.size() == 5,
+        "Appendix C left the four-component electroneutral simplex"
+    );
+    for (std::size_t coordinate = 0; coordinate < 2; ++coordinate) {
+        require(
+            electrolyte.state->M[1 + 2 * coordinate]
+                    .independent_modified_fractions[coordinate]
+                < electrolyte.state->feed[coordinate]
+                && electrolyte.state->M[2 + 2 * coordinate]
+                        .independent_modified_fractions[coordinate]
+                    > electrolyte.state->feed[coordinate],
+            "Appendix-C cuts do not bracket an electrolyte feed"
+        );
+    }
 }
 
 void run_held2_step4_checks() {
@@ -561,7 +645,7 @@ void run_held2_step5_checks() {
             return search_state(composition, log_volume, false);
         },
         [](const auto&, double) { return 0.1; },
-        {0, 4, 8, 10}
+        {0, 8, 10}
     );
     require(
         result.status == "complete" && result.lower_value <= step4.upper_bound
@@ -587,9 +671,6 @@ void run_held2_step6_checks() {
         prepared,
         step4,
         state,
-        [](const auto& composition, double log_volume) {
-            return search_state(composition, log_volume, false);
-        },
         [](const auto& composition, double) {
             return composition.front();
         }
@@ -609,32 +690,20 @@ void run_held2_step7_checks() {
     Held2Step6Result step6;
     step6.status = "complete";
     const Held2Step7Result next = run_held2_step7(
-        state, step5, step6, {0, 8, 20, 10}, false
+        state, step5, step6, {0, 20, 10}
     );
     require(
         next.status == "complete" && next.next_step == 4
             && state.major_iteration == 1,
         "Step 7 did not advance exactly one major iteration"
     );
-    step6.candidates.resize(2);
-    const Held2Step7Result feedback = run_held2_step7(
-        state, step5, step6, {0, 8, 20, 10}, true
+    const Held2Step7Result again = run_held2_step7(
+        state, step5, step6, {0, 20, 10}
     );
     require(
-        feedback.status == "complete" && feedback.next_step == 4
+        again.status == "complete" && again.next_step == 4
             && state.major_iteration == 2,
-        "Stage-III feedback bypassed the Step-7 increment"
-    );
-    step6.candidates.clear();
-    state.starts_consumed_in_epoch = 8;
-    state.start_epoch_added_member = false;
-    const Held2Step7Result stagnant = run_held2_step7(
-        state, step5, step6, {0, 8, 20, 10}, false
-    );
-    require(
-        stagnant.status == "indeterminate"
-            && stagnant.reason == "stage_ii_stagnation",
-        "Step-7 stagnation did not fail closed"
+        "Step 7 did not advance exactly one major iteration"
     );
 }
 
@@ -644,12 +713,11 @@ void run_held2_step8_checks() {
         manufactured_step8(prepared, candidates);
     require(
         result.outcome == Held2Step8Outcome::CertifiedFeasible
-            && result.feasibility->feasible
             && result.nlp->accepted
             && result.active_phases.size() == 2
             && result.active_phases[0].stable_id == 7
             && result.active_phases[1].stable_id == 9,
-        "Step-8 perspective LP or exact multiphase solve changed"
+        "Step-8 Eq. (67) solve changed"
     );
 
     candidates.candidates[0].independent_modified_fractions = {0.10};
@@ -657,9 +725,8 @@ void run_held2_step8_checks() {
     const Held2Step8Result infeasible =
         manufactured_step8(prepared, candidates);
     require(
-        infeasible.outcome == Held2Step8Outcome::CertifiedInfeasible
-            && infeasible.feasibility->farkas_certificate_valid,
-        "Step-8 infeasibility lacked a validated Farkas certificate"
+        infeasible.outcome == Held2Step8Outcome::CertifiedInfeasible,
+        "Step-8 Eq. (67) infeasibility did not return through Step 7"
     );
 
     candidates.candidates[0].independent_modified_fractions = {0.4998};
@@ -692,6 +759,12 @@ void run_held2_step9_checks() {
             && converged.physical->accepted
             && !converged.potential_comparisons.empty(),
         "Step-9 Eqs. (68)-(69) convergence changed"
+    );
+    *step4.upper_bound -= 1.0e-9;
+    require(
+        run_held2_step9(step4, step8, evaluator).outcome
+            == Held2Step9Outcome::Converged,
+        "Step-9 rejected a roundoff-scale negative Eq. (68) gap"
     );
     *step4.upper_bound += 1.0e-3;
     require(
@@ -748,6 +821,14 @@ void run_held2_step10_checks() {
             && no_trace.refinements.empty()
             && no_trace.final_certificate->accepted,
         "Step-10 no-trace path changed"
+    );
+    Held2Step9Result rejected_kkt = step9;
+    rejected_kkt.physical->accepted = false;
+    require(
+        run_held2_step10(
+            prepared, step8, rejected_kkt, evaluator
+        ).reason == "trace_final_certificate_failed",
+        "Step-10 accepted a rejected Stage-III KKT certificate"
     );
     const double lower =
         prepared.coordinates->independent_lower_bounds.front();

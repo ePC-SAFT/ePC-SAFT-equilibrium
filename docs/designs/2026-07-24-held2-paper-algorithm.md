@@ -449,60 +449,46 @@ the cited Pereira implementation.
 Initialize \(\mathcal M\) with the feed state and the Appendix-C bounding
 states.
 
-For every \(i\in\mathcal C^{(EC)}\), construct one lower-side physical
-composition \(\hat{\mathbf{x}}^i\):
+Appendix C's printed physical-coordinate formulas do not define the claimed
+bracketing vectors. In particular, its \(1/[2(C-1)]\) upper prefactor places
+both nominal bounding points below the feed for the four-component Table 5
+mixtures. Replacing only that prefactor by \(1/2\) makes the neutral-solvent
+upper point leave the electroneutral composition simplex. Clipping either
+result would invalidate the corresponding dual cut.
+
+The implementation therefore constructs the required opposing cuts directly
+in the modified-fraction polytope introduced by Eq. (30). Modified fractions
+already incorporate electroneutrality and are the coordinates of the
+\(C-2\)-dimensional dual problem. For every independent coordinate \(i\),
+find the exact distances \(\alpha_i^-\) and \(\alpha_i^+\) from the feed to
+the Step-1 polytope boundary along the negative and positive coordinate axes:
 
 \[
-\hat{x}^i_i=\frac{x_{o,i}}{2},
+\alpha_i^\pm =
+\max\left\{
+\alpha\geq0:
+\bar{\mathbf{x}}_o^{(EC)}
+\alpha(\pm\mathbf e_i)\in\bar X^{(EC)}
+\right\}.
 \]
 
-\[
-\hat{x}^i_k =
-\frac{1}{C-1}
-\left(
-\frac{1}{1-z_k/z_E}-\hat{x}^i_i
-\right),
-\quad k\in\mathcal C^{(EC)},\ k\ne i,
-\tag{C.1}
-\]
+Use the interior midpoint on each side:
 
 \[
-\hat{x}^i_E =
-\sum_{k\in\mathcal C^{(EC)}}-\frac{z_k}{z_E}\hat{x}^i_k,
+\hat{\bar{\mathbf{x}}}^{(EC),i}
+=\bar{\mathbf{x}}_o^{(EC)}
+-\frac{\alpha_i^-}{2}\mathbf e_i,
 \qquad
-\hat{x}^i_C=1-\sum_{k=1}^{C-1}\hat{x}^i_k.
+\tilde{\bar{\mathbf{x}}}^{(EC),i}
+=\bar{\mathbf{x}}_o^{(EC)}
++\frac{\alpha_i^+}{2}\mathbf e_i.
 \]
 
-Construct one upper-side composition
-\(\tilde{\mathbf{x}}^i\):
-
-\[
-\tilde{x}^i_i =
-\frac{1}{2}
-\left(
-\frac{1}{1-z_i/z_E}+x_{o,i}
-\right),
-\]
-
-\[
-\tilde{x}^i_k =
-\frac{1}{C-1}
-\left(
-\frac{1}{1-z_k/z_E}-\tilde{x}^i_i
-\right),
-\quad k\in\mathcal C^{(EC)},\ k\ne i,
-\tag{C.2}
-\]
-
-\[
-\tilde{x}^i_E =
-\sum_{k\in\mathcal C^{(EC)}}-\frac{z_k}{z_E}\tilde{x}^i_k,
-\qquad
-\tilde{x}^i_C=1-\sum_{k=1}^{C-1}\tilde{x}^i_k.
-\]
-
-Transform every vector with Eq. (30). Before any pressure solve, require the
-complete transformed vector to lie inside the Step-1 polytope, including
+This retains Appendix C's operational requirement—one lower and one upper
+dual cut per coordinate—while respecting every constraint that defines the
+actual Problem (65) domain, including a Provider-declared ion ceiling. Before
+any pressure solve, invert Eq. (30) and require the complete physical vector
+to lie inside the Step-1 polytope, including
 finite lower and upper bounds, closure-species bounds, reconstructed-ion
 nonnegativity, normalization, and electroneutrality. Do not clip or project an
 Appendix-C state. A violation terminates indeterminate with
@@ -530,18 +516,8 @@ one LP optimizer is not itself called a pair of numerical bounds. No separate
 finite box may be invented without a cited formula and a revision to this
 specification.
 
-Appendix C prints \(1/[2(C-1)]\) before the parenthesis in the first line of
-Eq. (C.2). That expression contradicts the stated requirement
-\(\tilde x_i^i>x_{o,i}\) and, when all charges are zero, does not reduce to the
-Pereira et al. (2012) construction cited by Appendix C. The cited construction
-is \(\tilde x_i^i=(1+x_{o,i})/2\). Requiring the charged expression to reduce
-to that result gives the \(1/2\) prefactor specified above. The rewrite must
-test both the lower/upper bracketing property and this neutral-limit
-reduction.
-
-The same printed line uses \(z_k\) even though \(k\) is free at that point.
-The distinguished coordinate is \(i\), so this specification uses \(z_i\).
-The bracketing and neutral-limit tests cover that correction as well.
+The rewrite must test lower/upper bracketing, exact simplex closure, the
+inverse Eq. (30) lift, and the four-component Table 5 coordinate layout.
 
 **Implementation policy:** if a constructed composition has multiple pressure
 roots, select the unique lowest-objective strict-stable root. A missing root or
@@ -636,21 +612,16 @@ be reported as a new cut.
 - maintain one tight physical-state equivalence rule for \(\mathcal M\)
   membership, expressed in modified composition and Provider packing
   fraction; keep Eq. (66) phase distinctness as a separate, looser rule;
-- if the qualifying solution is representation-equivalent, report an
-  unchanged mathematical set and proceed through Steps 6–7 without claiming a
-  new cut; the next major consumes the next unused start ordinal rather than
-  replaying the same search;
-- if one complete configured start-stream epoch adds no new member to
-  \(\mathcal M\), terminate with typed indeterminate
-  `stage_ii_stagnation` rather than cycling indefinitely; and
+- if the qualifying solution is representation-equivalent, proceed through
+  Steps 6–7 without claiming a new cut; the next major consumes the next
+  unused start ordinal rather than replaying the same search; and
 - if the declared multistart budget ends first, terminate indeterminate at
   Step 5.
 
 Within one invocation, this step does not seek two candidates and does not
 continue merely to find a different basin after its stop condition has been
 met. Algorithm 1 can return through Step 7 with an unchanged \(\mathcal M\);
-the persistent start ordinal makes that later invocation new work, while the
-epoch rule prevents unexplained spinning.
+the persistent start ordinal makes that later invocation new work.
 
 ### Step 6 — search all of \(\mathcal M\)
 
@@ -747,8 +718,10 @@ upper-level problems solved. Local NLP iterations and multistart attempts are
 separate work counters.
 
 **Implementation policy:** a configured major-iteration limit is a resource
-limit, not part of HELD2.0. Reaching it terminates indeterminate and reports the
-last completed Step 7.
+limit, not part of HELD2.0. The native validation profile permits 64 upper
+solves and 128 Step-5 starts, covering Table 5's reported maximum of 59 upper
+solves with a bounded margin. Reaching either limit terminates indeterminate
+and reports the last completed step.
 
 ## Stage III — acceleration and convergence
 
@@ -807,38 +780,30 @@ A Provider failure, optimizer failure, invalid terminal, or inability to
 certify either feasibility or infeasibility terminates indeterminate at
 Step 8. It is not Stage-II feedback.
 
-Duplicate removal and inactive-phase retirement are part of Step 8. They may
-not be performed earlier to manufacture a Step-6 candidate count.
+Duplicate removal is part of Step 8. It may not be performed earlier to
+manufacture a Step-6 candidate count.
 
-**Implementation policy for the active set:**
+**Implementation policy for duplicate phases:**
 
 1. Visit solved phases by stable candidate ID. Build a greedy maximal
    pairwise-distinct set using the named `phase_merge` test in physical
    composition and Provider packing fraction; do not apply a nontransitive
-   equivalence-class algorithm.
+   equivalence-class algorithm. Retain the larger-weight numerical
+   representative of a duplicate pair; break equal-weight ties by stable ID.
 2. Sum a removed numerical duplicate's phase fraction into its retained
-   representative only as an initialization. Then re-solve the reduced
-   Problem (67); tolerance-based state averaging is not accepted as a final
-   balance-preserving merge.
-3. A phase with \(\phi^m\leq10^{-8}\) is only a retirement candidate. Retire
-   one phase at a time only when its bound multiplier has the correct sign,
-   complementarity holds, its reduced derivative is non-descending, and the
-   remaining Problem-(67-feasibility) is certified feasible. Re-solve the
-   reduced Problem (67) after every retirement.
-4. Re-run the full balance, pressure, KKT, and physical certificates after
-   every reduced solve. If fewer than two active phases remain after a
-   negative Step-2 witness, return through Step 7 to seek an additional
-   candidate; do not accept a contradictory one-phase result.
-
-Every merge, fraction sum, retirement certificate, and reduced re-solve is
-recorded. Failure of an active-set re-solve or any auxiliary certificate is
-indeterminate, not paper infeasibility.
+   representative and re-run the full balance and physical certificates.
+3. Do not retire a distinct phase based on a small interior-point phase
+   fraction. Algorithm 1 removes duplicate phases only, and a second
+   same-major Problem-(67) solve is not part of the paper workflow.
 
 ### Step 9 — convergence tests
 
 **Paper source:** Algorithm 1; Eqs. (68)–(69); Section 4.4.
 
 Apply both tests to the Step-8 solution.
+
+The reported Eq. (68) gap remains signed. Its numerical lower-bound test
+allows negative roundoff up to \(\epsilon_g\); larger negative gaps fail.
 
 Order active phases by stable candidate ID before evaluating adjacent pairs.
 This ordering is deterministic and does not change the all-phases equality
@@ -990,10 +955,7 @@ held2(T, P0, x0):
         s5 = step5_lower_multistart(state)
         if not s5.completed:
             return indeterminate(step=5)
-        insertion = state.M.insert_by_representation(s5.best_terminal)
-        update_start_epoch(state, insertion)
-        if start_epoch_stagnated(state):
-            return indeterminate(step=5, reason=stage_ii_stagnation)
+        state.M.insert_by_representation(s5.best_terminal)
 
         s6 = step6_search_all_M(state)
         if size(s6.M_star) < 2:
@@ -1145,11 +1107,12 @@ preparation into a unique species mole-fraction vector. Perdomo also does not
 state that its selected Table-5 algorithm inputs are those experimental
 equal-volume preparations.
 
-Consequently, no overall Table-5 feed vector is authoritative yet. In
-particular, the previously tried vectors with water mole fraction near 0.6
-were an arbitrary lever-rule choice and are rejected. Their
-\(x_{\mathrm{Li}^+}/x_{\mathrm{water}}\) ratios do not reproduce the labeled
-molalities.
+Consequently, no overall Table-5 feed vector is authoritative yet. The three
+user-authorized vectors reconstructed by applying a lever rule to the rounded
+Table-5 phase endpoints are useful synthetic diagnostics, but the unpublished
+phase fraction remains an assumed quantity. They must be labelled
+`reverse_engineered_synthetic`, not source-reported or uniquely reconstructed,
+and cannot satisfy the product cutover gate.
 
 Before a Table-5 run is accepted, its input record must contain:
 
@@ -1185,6 +1148,27 @@ Different EOS formulations and parameter sets preclude exact phase-composition
 parity. Algorithm-flow, work-count meaning, conservation, equilibrium
 certificates, deterministic replay, and absence of wasted work remain valid
 acceptance criteria.
+
+The native Release-build audit of those three synthetic feeds at 298.15 K and
+101300 Pa produced:
+
+| molality label | native outcome | Step-4 solves | wall / s | Step 5 / s | Step 8 / s |
+|---:|---|---:|---:|---:|---:|
+| 4.58 | accepted two-phase | 63 | 21.7 | 6.86 | 13.52 |
+| 4.95 | indeterminate: active-set balance | 60 | 22.3 | 6.33 | 14.76 |
+| 5.74 | indeterminate: 64-solve resource limit | 64 | 19.2 | 6.88 | 11.11 |
+
+These are diagnostic results for the installed, unfitted ePC-SAFT model, not
+reproductions of the SAFT-\(\gamma\) Mie phase compositions. The dominant
+measured cost is not repeated HELD2 control flow: Step 8 invokes the Provider
+electrolyte callback 14,291--18,203 times across changing candidate sets. The
+installed v1 callback always retapes CppAD and computes value, gradient, and
+Hessian, including objective-only Ipopt line-search trials. Equilibrium cannot
+remove that work without duplicating Provider thermodynamics. A sub-10-second
+performance campaign therefore requires a separately versioned installed
+Provider transport that can evaluate the derivative level requested by the
+solver; solver shortcuts that changed the active-set certificate were tested
+and rejected.
 
 ### Public Python cutover
 

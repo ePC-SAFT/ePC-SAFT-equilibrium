@@ -211,8 +211,7 @@ struct Held2Step1Result {
 
 struct Held2ResourceProfile {
     int step2_search_budget;
-    int step5_start_epoch_size;
-    int step5_total_start_cap;
+    int step5_start_cap;
     int step7_major_iteration_cap;
 };
 
@@ -456,13 +455,10 @@ struct Held2StageIIIFeedback {
 struct Held2PersistentState {
     int major_iteration;
     int upper_solve_count;
-    std::uint64_t next_start_ordinal;
-    int start_epoch_index;
-    int starts_consumed_in_epoch;
-    bool start_epoch_added_member;
     double feed_reduced_gibbs;
     double upper_bound;
     double lower_value;
+    std::uint64_t next_start_ordinal;
     std::vector<double> multipliers;
     std::vector<Held2MPoint> M;
     std::optional<Held2StageIIIFeedback> stage_iii_feedback;
@@ -625,7 +621,6 @@ struct Held2Step5Result {
     std::string reason;
     std::optional<double> lower_value;
     std::optional<Held2MPoint> terminal;
-    bool mathematical_set_changed;
     std::uint64_t starts_consumed;
     std::vector<Held2LocalCertificate> attempts;
     Held2StepTiming timing;
@@ -750,8 +745,7 @@ multipliers, all non-bound independent coordinates to use Eq. (66), Provider
 packing fraction to distinguish branches, and a greedy maximal
 pairwise-distinct candidate set. Include the nontransitive A-near-B,
 B-near-C, A-distinct-C case. Verify `k` increments once, \(\mathcal M\)
-persists, start ordinals persist, and a completed unchanged epoch returns
-`stage_ii_stagnation`.
+persists, and start ordinals persist.
 
 - [ ] **Step 2: Run native RED**
 

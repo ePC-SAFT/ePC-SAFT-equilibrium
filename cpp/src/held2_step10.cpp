@@ -275,7 +275,8 @@ Held2Step10Result run_held2_step10(
         maximum_abs_difference(modified_balance, modified_feed);
     certificate.electroneutrality_inf = charge;
     certificate.pressure_residual_inf = pressure;
-    certificate.accepted = audit_held2_tolerance(
+    certificate.accepted = step9.physical->accepted
+        && audit_held2_tolerance(
         kHeld2Stage3ModifiedBalance, certificate.modified_balance_inf
     ).passed && audit_held2_tolerance(
         kHeld2Stage3ExplicitBalance, certificate.ordinary_balance_inf

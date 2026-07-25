@@ -16,7 +16,6 @@ struct Held2Step7Result {
     const Held2Step5Result& step5,
     const Held2Step6Result& step6,
     const Held2ResourceProfile& resources,
-    bool stage_iii_feedback = false,
     Held2ProgressObserver* observer = nullptr
 );
 

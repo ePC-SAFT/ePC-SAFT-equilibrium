@@ -513,17 +513,9 @@ struct Held2StageIIIResult {
     bool phase_identity_evidence_available = false;
     bool free_energy_gap_available = false;
     std::vector<Held2StageIIIPhase> phases;
+    std::vector<double> solution_variables;
     std::vector<Held2StageIIILifecycleStep> lifecycle;
 };
-
-struct Held2StageIIIFeasibilityStart {
-    std::string status = "uncertified";
-    std::vector<double> variables;
-};
-
-using Held2StageIIIInitializer = std::function<Held2StageIIIFeasibilityStart(
-    const std::vector<Held2StageIICandidate>&
-)>;
 
 [[nodiscard]] Held2StageIIIRetirementDecision held2_stage_iii_retirement_decision(
     double phase_fraction,
@@ -585,10 +577,7 @@ using Held2StageIIIInitializer = std::function<Held2StageIIIFeasibilityStart(
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
     double free_energy_upper_bound,
     const std::string& free_energy_gap_provenance,
-    Held2ProgressObserver* observer = nullptr,
-    const Held2StageIIIInitializer& initializer = {},
-    const std::function<double(const std::vector<double>&, double)>&
-        packing_fraction = {}
+    std::vector<double> initial = {}
 );
 
 }  // namespace epcsaft_equilibrium

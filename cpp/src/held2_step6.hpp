@@ -25,7 +25,6 @@ struct Held2Step6Result {
     const Held2Step1Result& step1,
     const Held2Step4Result& step4,
     const Held2PersistentState& state,
-    const Held2StateEvaluator& evaluator,
     const Held2PackingFractionEvaluator& packing_fraction,
     Held2ProgressObserver* observer = nullptr
 );

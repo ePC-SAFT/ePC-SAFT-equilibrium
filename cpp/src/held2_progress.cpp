@@ -139,6 +139,10 @@ void Held2TerminalProgress::observe(const Held2ProgressEvent& event) {
                 output_ << "  comp=" << std::setw(13)
                         << event.complementarity;
             }
+            if (event.stage == "STEP 5 LOCAL") {
+                output_ << "  P rel.=" << std::setw(13)
+                        << event.pressure_residual;
+            }
             if (std::isfinite(event.gap)) {
                 output_ << "  objective=" << std::setw(13)
                         << event.objective

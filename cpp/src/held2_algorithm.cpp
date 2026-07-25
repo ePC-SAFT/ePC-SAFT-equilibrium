@@ -129,6 +129,7 @@ Held2AlgorithmResult run_held2_algorithm(
         }, observer));
         result.step_timings.push_back(result.step4_history.back().timing);
         const Held2Step4Result& step4 = result.step4_history.back();
+        result.upper_solve_count = state.upper_solve_count;
         if (step4.status != "complete") {
             result.final_state = state;
             return fail("step4", step4.reason);
@@ -155,7 +156,6 @@ Held2AlgorithmResult run_held2_algorithm(
                 result.step1,
                 step4,
                 state,
-                thermodynamics.evaluate,
                 thermodynamics.packing_fraction,
                 observer
             );
@@ -166,14 +166,13 @@ Held2AlgorithmResult run_held2_algorithm(
             result.final_state = state;
             return fail("step6", step6.reason);
         }
-        const auto continue_stage_ii = [&](bool stage_iii_feedback) {
+        const auto continue_stage_ii = [&] {
             result.step7_history.push_back(run_step(7, [&] {
                 return run_held2_step7(
                     state,
                     step5,
                     step6,
                     resources,
-                    stage_iii_feedback,
                     observer
                 );
             }, observer));
@@ -183,19 +182,35 @@ Held2AlgorithmResult run_held2_algorithm(
             return result.step7_history.back().status == "complete";
         };
         if (step6.candidates.size() < 2) {
-            if (!continue_stage_ii(false)) {
+            if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail("step7", result.step7_history.back().reason);
             }
             continue;
         }
+        const Held2Step8Result* previous = result.step8_history.empty()
+            ? nullptr : &result.step8_history.back();
+        std::vector<std::uint64_t> candidate_ids;
+        for (const Held2MPoint& candidate : step6.candidates) {
+            candidate_ids.push_back(candidate.insertion_id);
+        }
         result.step8_history.push_back(run_step(8, [&] {
-            return run_held2_step8(
-                result.step1,
-                step6,
-                thermodynamics.evaluate,
-                thermodynamics.packing_fraction,
-                observer
+            if (previous && previous->candidate_ids == candidate_ids) {
+                Held2Step8Result unchanged = *previous;
+                unchanged.timing = {};
+                unchanged.timing.invocation_count = 1;
+                unchanged.timing.terminal_status = "complete";
+                unchanged.timing.terminal_reason =
+                    "unchanged_problem_67";
+                unchanged.timing.next_step = 9;
+                return unchanged;
+            }
+                return run_held2_step8(
+                    result.step1,
+                    step6,
+                    thermodynamics.evaluate,
+                    thermodynamics.packing_fraction,
+                    previous
             );
         }, observer));
         result.step_timings.push_back(result.step8_history.back().timing);
@@ -206,7 +221,7 @@ Held2AlgorithmResult run_held2_algorithm(
         }
         if (step8.outcome == Held2Step8Outcome::CertifiedInfeasible
             || step8.outcome == Held2Step8Outcome::InsufficientCandidates) {
-            if (!continue_stage_ii(true)) {
+            if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail(
                     "step7", result.step7_history.back().reason
@@ -226,7 +241,7 @@ Held2AlgorithmResult run_held2_algorithm(
             return fail("step9", step9.reason);
         }
         if (step9.outcome == Held2Step9Outcome::PaperConvergenceFailed) {
-            if (!continue_stage_ii(true)) {
+            if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail(
                     "step7", result.step7_history.back().reason

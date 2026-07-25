@@ -51,7 +51,7 @@ void run_workflow_check(bool trace) {
             {},
         },
         {298.15, 100000.0, {0.5, 0.25, 0.25}},
-        {200, 4, 20, 10},
+        {200, 20, 10},
         trace ? &progress : nullptr
     );
     if (

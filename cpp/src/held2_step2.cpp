@@ -322,36 +322,36 @@ Held2Step2Result run_held2_step2(
     const Held2StageIReducedEvaluator reduced = [&](const auto& cube) {
         Held2StageIReducedEvaluation evaluation;
         try {
-            if (cube.size() != dimension + 1) {
+            if (cube.size() != dimension) {
                 throw std::invalid_argument("invalid Step-2 search point");
             }
-            const std::vector<double> composition_cube(
-                cube.begin(),
-                cube.begin() + static_cast<std::ptrdiff_t>(dimension)
-            );
             evaluation.independent_modified_fractions =
                 held2_map_unit_cube_to_independent_fractions(
                     *step1.coordinates,
-                    composition_cube,
+                    cube,
                     step1.total_ion_mole_fraction_max
                 );
-            ++result.timing.provider_evaluations;
-            const std::array<double, 2> bounds = (*step1.volume_bounds)(
+            evaluation.pressure_envelope = envelope(
                 evaluation.independent_modified_fractions
             );
-            const double lower = std::log(bounds[0]);
-            const double log_volume =
-                lower + cube.back() * (std::log(bounds[1]) - lower);
-            const Held2StateEvaluation trial = counted(
-                evaluation.independent_modified_fractions, log_volume
-            );
+            if (evaluation.pressure_envelope.outcome != "selected"
+                || evaluation.pressure_envelope.selected_root_index < 0) {
+                throw std::runtime_error(
+                    evaluation.pressure_envelope.failure_reason
+                );
+            }
+            const Held2PressureRoot& trial =
+                evaluation.pressure_envelope.roots[
+                    static_cast<std::size_t>(
+                        evaluation.pressure_envelope.selected_root_index
+                    )
+                ];
             evaluation.trial_volume = trial.volume;
-            evaluation.trial_pressure_residual =
-                trial.pressure_stationarity_relative;
+            evaluation.trial_pressure_residual = trial.pressure_residual;
             evaluation.tpd = evaluate_held2_tpd(
                 *result.reference,
                 feed,
-                trial,
+                trial.state,
                 evaluation.independent_modified_fractions
             ).value;
             evaluation.certified = std::isfinite(evaluation.tpd);
@@ -362,7 +362,7 @@ Held2Step2Result run_held2_step2(
     };
     ++result.timing.optimizer_solves;
     const Held2StageIDirectResult search = solve_held2_stage_i_direct(
-        dimension + 1,
+        dimension,
         search_budget,
         -kHeld2TpdNegativeMargin.atol,
         reduced,

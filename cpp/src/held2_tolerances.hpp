@@ -7,6 +7,8 @@
 
 namespace epcsaft_equilibrium {
 
+inline constexpr double kHeld2Problem67Radius = 1.0e-3;
+
 enum class Held2ToleranceRelation {
     AbsAtMost,
     AtLeast,

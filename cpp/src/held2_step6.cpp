@@ -10,25 +10,24 @@ Held2Step6Result run_held2_step6(
     const Held2Step1Result& step1,
     const Held2Step4Result& step4,
     const Held2PersistentState& state,
-    const Held2StateEvaluator& evaluator,
     const Held2PackingFractionEvaluator& packing_fraction,
     Held2ProgressObserver*
 ) {
     Held2Step6Result result;
     result.timing.invocation_count = 1;
     if (step4.status != "complete" || !step1.coordinates
-        || !evaluator || !packing_fraction) {
+        || !packing_fraction) {
         result.reason = "invalid_step6_input";
         return result;
     }
     for (const Held2MPoint& point : state.M) {
+        if (point.reduced_gibbs_gradient.size() < state.feed.size()) {
+            result.reason = "missing_step6_gradient";
+            return result;
+        }
         Held2CandidateDecision decision;
         decision.insertion_id = point.insertion_id;
-        const Held2StateEvaluation evaluation = evaluator(
-            point.independent_modified_fractions, std::log(point.volume)
-        );
-        ++result.timing.provider_evaluations;
-        double lower = evaluation.objective;
+        double lower = point.reduced_gibbs;
         for (std::size_t index = 0; index < state.feed.size(); ++index) {
             lower += state.multipliers[index] * (
                 state.feed[index]
@@ -48,7 +47,8 @@ Held2Step6Result run_held2_step6(
             decision.derivative_passed = decision.derivative_passed
                 && audit_held2_tolerance(
                     kHeld2PaperStep6Derivative,
-                    evaluation.gradient[index] - state.multipliers[index],
+                    point.reduced_gibbs_gradient[index]
+                        - state.multipliers[index],
                     std::abs(state.multipliers[index])
                 ).passed;
         }
@@ -60,7 +60,6 @@ Held2Step6Result run_held2_step6(
             continue;
         }
         Held2MPoint candidate = point;
-        candidate.reduced_gibbs = evaluation.objective;
         candidate.packing_fraction = packing_fraction(
             point.independent_modified_fractions, point.volume
         );

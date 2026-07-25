@@ -20,16 +20,6 @@ struct Held2Phase {
     double packing_fraction = 0.0;
 };
 
-struct Held2FeasibilityCertificate {
-    std::string solver_status = "not_run";
-    bool feasible = false;
-    bool infeasible = false;
-    bool farkas_certificate_valid = false;
-    double primal_residual_inf = std::numeric_limits<double>::infinity();
-    double certificate_residual_inf =
-        std::numeric_limits<double>::infinity();
-};
-
 struct Held2NlpCertificate {
     std::string solver_status = "not_run";
     double primal_residual_inf = std::numeric_limits<double>::infinity();
@@ -41,25 +31,18 @@ struct Held2NlpCertificate {
     bool accepted = false;
 };
 
-struct Held2LifecycleDecision {
-    std::uint64_t stable_id = 0;
-    std::string action;
-    std::string reason;
-    bool reduced_resolve_accepted = false;
-};
-
 struct Held2Step8Result {
     Held2Step8Outcome outcome = Held2Step8Outcome::Indeterminate;
     std::string reason = "not_run";
+    std::vector<std::uint64_t> candidate_ids;
+    std::vector<double> continuation_variables;
     std::optional<double> total_reduced_gibbs;
     double ordinary_balance_inf = std::numeric_limits<double>::infinity();
     double electroneutrality_inf = std::numeric_limits<double>::infinity();
     double electroneutrality_scale = 0.0;
     double pressure_residual_inf = std::numeric_limits<double>::infinity();
     std::vector<Held2Phase> active_phases;
-    std::optional<Held2FeasibilityCertificate> feasibility;
     std::optional<Held2NlpCertificate> nlp;
-    std::vector<Held2LifecycleDecision> lifecycle;
     Held2StepTiming timing;
 };
 
@@ -68,7 +51,7 @@ struct Held2Step8Result {
     const Held2Step6Result& step6,
     const Held2StateEvaluator& evaluator,
     const Held2PackingFractionEvaluator& packing_fraction,
-    Held2ProgressObserver* observer = nullptr
+    const Held2Step8Result* previous = nullptr
 );
 
 }  // namespace epcsaft_equilibrium

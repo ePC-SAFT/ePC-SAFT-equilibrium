@@ -1301,6 +1301,7 @@ JsonValue paper_step8_to_json(const Held2Step8Result& step) {
             : step.outcome == Held2Step8Outcome::InsufficientCandidates
                 ? "insufficient_candidates" : "indeterminate";
     result["reason"] = step.reason;
+    result["candidate_ids"] = step.candidate_ids;
     result["total_reduced_gibbs"] = step.total_reduced_gibbs
         ? JsonValue(*step.total_reduced_gibbs) : JsonValue(nullptr);
     result["ordinary_balance_inf"] = step.ordinary_balance_inf;
@@ -1312,21 +1313,6 @@ JsonValue paper_step8_to_json(const Held2Step8Result& step) {
         phases.append(paper_phase_to_json(phase));
     }
     result["active_phases"] = std::move(phases);
-    if (step.feasibility) {
-        JsonValue certificate = JsonValue::object();
-        certificate["solver_status"] = step.feasibility->solver_status;
-        certificate["feasible"] = step.feasibility->feasible;
-        certificate["infeasible"] = step.feasibility->infeasible;
-        certificate["farkas_certificate_valid"] =
-            step.feasibility->farkas_certificate_valid;
-        certificate["primal_residual_inf"] =
-            step.feasibility->primal_residual_inf;
-        certificate["certificate_residual_inf"] =
-            step.feasibility->certificate_residual_inf;
-        result["feasibility"] = std::move(certificate);
-    } else {
-        result["feasibility"] = nullptr;
-    }
     if (step.nlp) {
         JsonValue certificate = JsonValue::object();
         certificate["solver_status"] = step.nlp->solver_status;
@@ -1342,17 +1328,6 @@ JsonValue paper_step8_to_json(const Held2Step8Result& step) {
     } else {
         result["nlp"] = nullptr;
     }
-    JsonValue lifecycle = JsonValue::array();
-    for (const Held2LifecycleDecision& value : step.lifecycle) {
-        JsonValue decision = JsonValue::object();
-        decision["stable_id"] = value.stable_id;
-        decision["action"] = value.action;
-        decision["reason"] = value.reason;
-        decision["reduced_resolve_accepted"] =
-            value.reduced_resolve_accepted;
-        lifecycle.append(std::move(decision));
-    }
-    result["lifecycle"] = std::move(lifecycle);
     result["timing"] = paper_timing_to_json(step.timing);
     return result;
 }

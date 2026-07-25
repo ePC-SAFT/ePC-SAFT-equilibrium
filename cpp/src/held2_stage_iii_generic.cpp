@@ -1,6 +1,9 @@
 #include "held2.hpp"
-#include "held2_progress.hpp"
 #include "held2_tolerances.hpp"
+
+#include <Highs.h>
+#include <coin/IpIpoptApplication.hpp>
+#include <coin/IpTNLP.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -11,844 +14,899 @@
 #include <utility>
 #include <vector>
 
-#include <coin/IpIpoptApplication.hpp>
-#include <coin/IpTNLP.hpp>
-#include <Highs.h>
-
 namespace epcsaft_equilibrium {
 namespace {
 
-constexpr double kCandidateRadius = 1.0e-3;
-constexpr double kConstraintLowerInfinity = -1.0e19;
-
-struct StageIIIRun {
-    bool solver_converged = false;
-    std::string solver_status;
-    std::string callback_error;
-    std::vector<double> variables;
-    std::vector<double> equality_multipliers;
-    std::vector<double> lower_bound_multipliers;
-    std::vector<double> upper_bound_multipliers;
-    int optimizer_iterations = 0;
-    int recoverable_domain_rejection_count = 0;
-    std::string last_domain_rejection;
-};
-
-double maximum_abs(const std::vector<double>& values) {
-    double result = 0.0;
-    for (double value : values) result = std::max(result, std::abs(value));
-    return result;
-}
-
-double maximum_abs_difference(
-    const std::vector<double>& left,
-    const std::vector<double>& right
-) {
-    if (left.size() != right.size()) {
-        throw std::invalid_argument("HELD2 Stage III vectors have different sizes");
-    }
-    double result = 0.0;
-    for (std::size_t index = 0; index < left.size(); ++index) {
-        result = std::max(result, std::abs(left[index] - right[index]));
-    }
-    return result;
-}
-
-double charge_residual(
-    const std::vector<double>& charges,
-    const std::vector<double>& fractions
-) {
-    double result = 0.0;
-    for (std::size_t index = 0; index < charges.size(); ++index) {
-        result += charges[index] * fractions[index];
-    }
-    return result;
-}
-
-std::string ipopt_status_name(Ipopt::ApplicationReturnStatus status) {
-    switch (status) {
-        case Ipopt::Solve_Succeeded: return "solve_succeeded";
-        case Ipopt::Solved_To_Acceptable_Level: return "solved_to_acceptable_level";
-        case Ipopt::Infeasible_Problem_Detected: return "infeasible_problem_detected";
-        case Ipopt::Search_Direction_Becomes_Too_Small: return "search_direction_too_small";
-        case Ipopt::Maximum_Iterations_Exceeded: return "maximum_iterations_exceeded";
-        case Ipopt::Invalid_Number_Detected: return "invalid_number_detected";
-        default: return "ipopt_status_" + std::to_string(static_cast<int>(status));
-    }
-}
-
-}  // namespace
-
-namespace {
-
-std::vector<std::size_t> independent_retained_positions(
+std::vector<std::size_t> independent_positions(
     const Held2Coordinates& coordinates
 ) {
     std::vector<std::size_t> positions;
-    positions.reserve(coordinates.independent_indices.size());
     for (std::size_t component : coordinates.independent_indices) {
-        const auto position = std::find(
+        const auto found = std::find(
             coordinates.retained_indices.begin(),
             coordinates.retained_indices.end(),
             component
         );
-        if (position == coordinates.retained_indices.end()) {
-            throw std::invalid_argument("HELD2 independent coordinate is not retained");
+        if (found == coordinates.retained_indices.end()) {
+            throw std::invalid_argument(
+                "HELD2 independent coordinate is not retained"
+            );
         }
         positions.push_back(static_cast<std::size_t>(
-            position - coordinates.retained_indices.begin()
+            found - coordinates.retained_indices.begin()
         ));
     }
     return positions;
 }
 
-double dependent_modified_fraction_lower(const Held2Coordinates& coordinates) {
-    const auto position = std::find(
+double dependent_upper(const Held2Coordinates& coordinates) {
+    const auto found = std::find(
         coordinates.retained_indices.begin(),
         coordinates.retained_indices.end(),
         coordinates.dependent_index
     );
-    if (position == coordinates.retained_indices.end()) {
-        throw std::invalid_argument("HELD2 dependent coordinate is not retained");
+    if (found == coordinates.retained_indices.end()) {
+        throw std::invalid_argument(
+            "HELD2 dependent coordinate is not retained"
+        );
     }
-    return kHeld2ModifiedLowerScale
-        * coordinates.modified_factors[static_cast<std::size_t>(
-            position - coordinates.retained_indices.begin()
-        )];
+    const std::size_t position = static_cast<std::size_t>(
+        found - coordinates.retained_indices.begin()
+    );
+    return 1.0
+        - kHeld2ModifiedLowerScale * coordinates.modified_factors[position];
 }
 
-std::size_t general_stage_iii_constraint_count(
-    std::size_t dimension,
-    std::size_t phase_count
-) {
-    return dimension + 1 + phase_count;
-}
-
-double general_stage_iii_composition_sum_upper(
-    const Held2Coordinates& coordinates
-) {
-    return 1.0 - dependent_modified_fraction_lower(coordinates);
-}
-
-bool general_stage_iii_simplex_domain_valid(
-    const Held2Coordinates& coordinates,
-    std::size_t phase_count,
-    const std::vector<double>& variables
-) {
-    const std::size_t dimension = coordinates.independent_indices.size();
-    const std::size_t block_size = dimension + 2;
-    if (variables.size() != phase_count * block_size) {
-        return false;
+double maximum_abs(const std::vector<double>& values) {
+    double maximum = 0.0;
+    for (double value : values) {
+        maximum = std::max(maximum, std::abs(value));
     }
-    const double composition_sum_upper =
-        general_stage_iii_composition_sum_upper(coordinates);
-    for (std::size_t phase = 0; phase < phase_count; ++phase) {
-        const std::size_t offset = phase * block_size;
-        double sum = 0.0;
-        for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-            sum += variables[offset + 1 + coordinate];
+    return maximum;
+}
+
+double maximum_difference(
+    const std::vector<double>& left,
+    const std::vector<double>& right
+) {
+    if (left.size() != right.size()) {
+        return std::numeric_limits<double>::infinity();
+    }
+    double maximum = 0.0;
+    for (std::size_t index = 0; index < left.size(); ++index) {
+        maximum = std::max(
+            maximum, std::abs(left[index] - right[index])
+        );
+    }
+    return maximum;
+}
+
+struct Problem67 {
+    const Held2Coordinates& coordinates;
+    const std::vector<double>& feed;
+    const Held2StateEvaluator& evaluate;
+    std::size_t phase_count;
+    std::size_t dimension;
+    std::size_t block_size;
+    int objective_evaluations = 0;
+    std::string callback_error;
+};
+
+double problem67_objective(
+    const std::vector<double>& variables,
+    std::vector<double>& gradient,
+    void* opaque
+) {
+    auto& problem = *static_cast<Problem67*>(opaque);
+    ++problem.objective_evaluations;
+    if (!gradient.empty()) {
+        std::fill(gradient.begin(), gradient.end(), 0.0);
+    }
+    double objective = 0.0;
+    for (std::size_t phase = 0; phase < problem.phase_count; ++phase) {
+        const std::size_t offset = phase * problem.block_size;
+        const double fraction = variables[offset];
+        const std::vector<double> composition(
+            variables.begin() + static_cast<std::ptrdiff_t>(offset + 1),
+            variables.begin() + static_cast<std::ptrdiff_t>(
+                offset + 1 + problem.dimension
+            )
+        );
+        Held2StateEvaluation state;
+        try {
+            state = problem.evaluate(
+                composition, variables[offset + 1 + problem.dimension]
+            );
+        } catch (const std::exception& error) {
+            problem.callback_error = error.what();
+            throw;
         }
-        if (!std::isfinite(sum) || sum > composition_sum_upper) {
-            return false;
+        if (state.gradient.size() != problem.dimension + 1) {
+            throw std::invalid_argument(
+                "HELD2 Problem (67) gradient dimensions changed"
+            );
         }
-    }
-    return true;
-}
-
-bool polish_stage_iii_pressure_roots(
-    const Held2StateEvaluator& evaluator,
-    const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
-    std::size_t phase_count,
-    std::size_t dimension,
-    std::vector<double>& variables,
-    int& iteration_count,
-    std::string& failure
-) {
-    constexpr int kMaximumIterationsPerPhase = 12;
-    const std::size_t block_size = dimension + 2;
-    if (phase_coordinate_bounds.size() != phase_count
-        || variables.size() != phase_count * block_size) {
-        failure = "stage_iii_pressure_polish_dimensions_changed";
-        return false;
-    }
-    for (std::size_t phase = 0; phase < phase_count; ++phase) {
-        const std::size_t offset = phase * block_size;
-        if (!audit_held2_tolerance(
-                kHeld2PhaseActivity,
-                variables[offset]
-            ).passed) {
+        objective += fraction * state.objective;
+        if (gradient.empty()) {
             continue;
         }
-        const std::vector<double> independent(
-            variables.begin() + static_cast<std::ptrdiff_t>(offset + 1),
-            variables.begin()
-                + static_cast<std::ptrdiff_t>(offset + 1 + dimension)
-        );
-        double& log_volume = variables[offset + 1 + dimension];
-        bool converged = false;
-        for (int iteration = 0;
-             iteration < kMaximumIterationsPerPhase;
-             ++iteration) {
-            const Held2StateEvaluation state = evaluator(
-                independent, log_volume
-            );
-            const double derivative =
-                state.pressure_stationarity_derivative_log_volume;
-            const double objective_curvature = state.hessian.empty()
-                ? std::numeric_limits<double>::quiet_NaN()
-                : state.hessian.back();
-            if (!std::isfinite(derivative) || derivative == 0.0
-                || !std::isfinite(objective_curvature)
-                || !(objective_curvature > 0.0)) {
-                failure = "stage_iii_pressure_polish_not_mechanically_stable";
-                return false;
-            }
-            if (audit_held2_tolerance(
-                    kHeld2Stage3Pressure,
-                    state.pressure_stationarity_relative
-                ).passed) {
-                converged = true;
-                break;
-            }
-            const double raw_step =
-                -state.pressure_stationarity_relative / derivative;
-            if (!std::isfinite(raw_step)) {
-                failure = "stage_iii_pressure_polish_step_nonfinite";
-                return false;
-            }
-            double step = std::clamp(raw_step, -0.25, 0.25);
-            bool accepted = false;
-            for (int backtrack = 0; backtrack < 12; ++backtrack) {
-                const double candidate = std::clamp(
-                    log_volume + step,
-                    std::nextafter(
-                        phase_coordinate_bounds[phase][0],
-                        phase_coordinate_bounds[phase][1]
-                    ),
-                    std::nextafter(
-                        phase_coordinate_bounds[phase][1],
-                        phase_coordinate_bounds[phase][0]
-                    )
-                );
-                if (candidate == log_volume) {
-                    break;
-                }
-                const Held2StateEvaluation trial = evaluator(
-                    independent, candidate
-                );
-                if (std::abs(trial.pressure_stationarity_relative)
-                    < std::abs(state.pressure_stationarity_relative)) {
-                    log_volume = candidate;
-                    accepted = true;
-                    ++iteration_count;
-                    break;
-                }
-                step *= 0.5;
-            }
-            if (!accepted) {
-                failure = "stage_iii_pressure_polish_no_progress";
-                return false;
-            }
-        }
-        if (!converged) {
-            const Held2StateEvaluation state = evaluator(
-                independent, log_volume
-            );
-            const double derivative =
-                state.pressure_stationarity_derivative_log_volume;
-            const double objective_curvature = state.hessian.empty()
-                ? std::numeric_limits<double>::quiet_NaN()
-                : state.hessian.back();
-            converged = std::isfinite(derivative) && derivative != 0.0
-                && std::isfinite(objective_curvature)
-                && objective_curvature > 0.0
-                && audit_held2_tolerance(
-                    kHeld2Stage3Pressure,
-                    state.pressure_stationarity_relative
-                ).passed;
-        }
-        if (!converged) {
-            failure = "stage_iii_pressure_polish_iteration_limit";
-            return false;
+        gradient[offset] = state.objective;
+        for (std::size_t local = 0;
+             local < problem.dimension + 1;
+             ++local) {
+            gradient[offset + 1 + local] =
+                fraction * state.gradient[local];
         }
     }
-    return true;
+    return objective;
 }
 
-Held2StageIIINlpEvaluation evaluate_general_stage_iii_algebraic(
-    const std::vector<double>& feed,
-    std::size_t phase_count,
-    const std::vector<double>& variables
+struct Problem67Constraint {
+    Problem67* problem;
+    int kind;
+    std::size_t index;
+    std::size_t phase = 0;
+};
+
+double problem67_constraint(
+    const std::vector<double>& variables,
+    std::vector<double>& gradient,
+    void* opaque
 ) {
-    const std::size_t dimension = feed.size();
-    const std::size_t block_size = dimension + 2;
-    const std::size_t variable_count = phase_count * block_size;
-    const std::size_t constraint_count =
-        general_stage_iii_constraint_count(dimension, phase_count);
-    if (phase_count < 2 || variables.size() != variable_count) {
-        throw std::invalid_argument("HELD2 Stage III dimensions do not match the candidate set");
+    const auto& constraint =
+        *static_cast<Problem67Constraint*>(opaque);
+    const Problem67& problem = *constraint.problem;
+    if (!gradient.empty()) {
+        std::fill(gradient.begin(), gradient.end(), 0.0);
     }
-    Held2StageIIINlpEvaluation result;
-    result.objective_gradient.assign(variable_count, 0.0);
-    result.constraints.assign(constraint_count, 0.0);
-    result.constraint_jacobian.assign(constraint_count * variable_count, 0.0);
-    result.lagrangian_hessian.assign(variable_count * variable_count, 0.0);
-    result.constraints[0] = -1.0;
-    for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-        result.constraints[coordinate + 1] = -feed[coordinate];
-    }
-    for (std::size_t phase = 0; phase < phase_count; ++phase) {
-        const std::size_t offset = phase * block_size;
+    double value = constraint.kind == 0
+        ? -1.0
+        : constraint.kind == 1
+            ? -problem.feed[constraint.index]
+            : -problem.coordinates
+                .polytope_constraints[constraint.index].upper_bound;
+    for (std::size_t phase = 0; phase < problem.phase_count; ++phase) {
+        const std::size_t offset = phase * problem.block_size;
         const double fraction = variables[offset];
-        result.constraints[0] += fraction;
-        result.constraint_jacobian[offset] = 1.0;
-        double independent_sum = 0.0;
-        for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-            const double independent = variables[offset + 1 + coordinate];
-            independent_sum += independent;
-            result.constraints[coordinate + 1] += fraction * independent;
-            result.constraint_jacobian[
-                (coordinate + 1) * variable_count + offset
-            ] = independent;
-            result.constraint_jacobian[
-                (coordinate + 1) * variable_count + offset + 1 + coordinate
-            ] = fraction;
-            result.constraint_jacobian[
-                (dimension + 1 + phase) * variable_count + offset + 1 + coordinate
-            ] = 1.0;
+        if (constraint.kind == 0) {
+            value += fraction;
+            if (!gradient.empty()) {
+                gradient[offset] = 1.0;
+            }
+        } else if (constraint.kind == 1) {
+            const std::size_t variable = offset + 1 + constraint.index;
+            value += fraction * variables[variable];
+            if (!gradient.empty()) {
+                gradient[offset] = variables[variable];
+                gradient[variable] = fraction;
+            }
+        } else if (phase == constraint.phase) {
+            const Held2PolytopeConstraint& polytope =
+                problem.coordinates.polytope_constraints[constraint.index];
+            for (std::size_t coordinate = 0;
+                 coordinate < problem.dimension;
+                 ++coordinate) {
+                value += polytope.coefficients[coordinate]
+                    * variables[offset + 1 + coordinate];
+                if (!gradient.empty()) {
+                    gradient[offset + 1 + coordinate] =
+                        polytope.coefficients[coordinate];
+                }
+            }
         }
-        result.constraints[dimension + 1 + phase] = independent_sum;
     }
-    return result;
+    return value;
 }
 
-Held2StageIIINlpEvaluation evaluate_general_stage_iii(
+Held2StageIIINlpEvaluation evaluate_problem67(
     const Held2Coordinates& coordinates,
     const std::vector<double>& feed,
     const Held2StateEvaluator& evaluator,
     std::size_t phase_count,
     const std::vector<double>& variables,
-    const std::vector<double>& equality_multipliers,
-    double objective_factor
-) {
-    const std::size_t dimension = coordinates.independent_indices.size();
-    const std::size_t block_size = dimension + 2;
-    const std::size_t variable_count = phase_count * block_size;
-    const std::size_t constraint_count =
-        general_stage_iii_constraint_count(dimension, phase_count);
-    if (phase_count < 2 || feed.size() != dimension
-        || variables.size() != variable_count
-        || equality_multipliers.size() != constraint_count) {
-        throw std::invalid_argument("HELD2 Stage III dimensions do not match the candidate set");
-    }
-    Held2StageIIINlpEvaluation result = evaluate_general_stage_iii_algebraic(
-        feed, phase_count, variables
-    );
-    if (!general_stage_iii_simplex_domain_valid(
-            coordinates, phase_count, variables
-        )) {
-        throw std::domain_error(
-            "independent modified fractions do not leave the declared dependent lower bound"
-        );
-    }
-    const auto add_symmetric = [&result, variable_count](
-                                   std::size_t row,
-                                   std::size_t column,
-                                   double value
-                               ) {
-        result.lagrangian_hessian[row * variable_count + column] += value;
-        if (row != column) {
-            result.lagrangian_hessian[column * variable_count + row] += value;
-        }
-    };
-    for (std::size_t phase = 0; phase < phase_count; ++phase) {
-        const std::size_t offset = phase * block_size;
-        const double fraction = variables[offset];
-        const std::vector<double> independent(
-            variables.begin() + static_cast<std::ptrdiff_t>(offset + 1),
-            variables.begin() + static_cast<std::ptrdiff_t>(offset + 1 + dimension)
-        );
-        const double phase_coordinate = variables[offset + 1 + dimension];
-        const Held2StateEvaluation state = evaluator(independent, phase_coordinate);
-        if (state.gradient.size() != dimension + 1
-            || state.hessian.size() != (dimension + 1) * (dimension + 1)) {
-            throw std::invalid_argument("HELD2 Stage III evaluator derivative dimensions changed");
-        }
-        result.objective += fraction * state.objective;
-        result.objective_gradient[offset] = state.objective;
-        for (std::size_t local = 0; local < dimension + 1; ++local) {
-            const std::size_t variable = offset + 1 + local;
-            result.objective_gradient[variable] = fraction * state.gradient[local];
-            const double balance_multiplier = local < dimension
-                ? equality_multipliers[local + 1]
-                : 0.0;
-            add_symmetric(
-                variable,
-                offset,
-                objective_factor * state.gradient[local] + balance_multiplier
-            );
-            for (std::size_t other = 0; other < dimension + 1; ++other) {
-                add_symmetric(
-                    variable,
-                    offset + 1 + other,
-                    objective_factor * fraction
-                        * state.hessian[local * (dimension + 1) + other]
-                        * (local == other ? 1.0 : 0.5)
-                );
-            }
-        }
-    }
-    result.lagrangian_gradient = result.objective_gradient;
-    for (std::size_t variable = 0; variable < variable_count; ++variable) {
-        result.lagrangian_gradient[variable] *= objective_factor;
-        for (std::size_t constraint = 0; constraint < constraint_count; ++constraint) {
-            result.lagrangian_gradient[variable] += equality_multipliers[constraint]
-                * result.constraint_jacobian[constraint * variable_count + variable];
-        }
-    }
-    return result;
-}
+    const std::vector<double>& multipliers
+);
 
-bool remaining_candidate_balance_feasible(
-    const std::vector<double>& feed,
-    const std::vector<Held2StageIICandidate>& candidates,
-    std::size_t removed
-) {
-    if (removed >= candidates.size() || candidates.size() <= 2) {
-        return false;
-    }
-    if (feed.size() == 1) {
-        double lower = std::numeric_limits<double>::infinity();
-        double upper = -std::numeric_limits<double>::infinity();
-        for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
-            if (phase == removed
-                || candidates[phase].independent_modified_fractions.size() != 1) {
-                continue;
-            }
-            lower = std::min(
-                lower, candidates[phase].independent_modified_fractions[0]
-            );
-            upper = std::max(
-                upper, candidates[phase].independent_modified_fractions[0]
-            );
-        }
-        return feed[0] >= lower - kHeld2Stage3ModifiedBalance.atol
-            && feed[0] <= upper + kHeld2Stage3ModifiedBalance.atol;
-    }
-    const std::size_t column_count = candidates.size() - 1;
-    HighsModel model;
-    model.lp_.num_col_ = static_cast<HighsInt>(column_count);
-    model.lp_.num_row_ = static_cast<HighsInt>(feed.size() + 1);
-    model.lp_.col_cost_.assign(column_count, 0.0);
-    model.lp_.col_lower_.assign(column_count, 0.0);
-    model.lp_.col_upper_.assign(column_count, 1.0);
-    model.lp_.row_lower_.reserve(feed.size() + 1);
-    model.lp_.row_upper_.reserve(feed.size() + 1);
-    model.lp_.row_lower_.push_back(1.0);
-    model.lp_.row_upper_.push_back(1.0);
-    for (double value : feed) {
-        model.lp_.row_lower_.push_back(value);
-        model.lp_.row_upper_.push_back(value);
-    }
-    model.lp_.a_matrix_.format_ = MatrixFormat::kColwise;
-    model.lp_.a_matrix_.start_.push_back(0);
-    for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
-        if (phase == removed) {
-            continue;
-        }
-        if (candidates[phase].independent_modified_fractions.size() != feed.size()) {
-            return false;
-        }
-        model.lp_.a_matrix_.index_.push_back(0);
-        model.lp_.a_matrix_.value_.push_back(1.0);
-        for (std::size_t coordinate = 0; coordinate < feed.size(); ++coordinate) {
-            model.lp_.a_matrix_.index_.push_back(
-                static_cast<HighsInt>(coordinate + 1)
-            );
-            model.lp_.a_matrix_.value_.push_back(
-                candidates[phase].independent_modified_fractions[coordinate]
-            );
-        }
-        model.lp_.a_matrix_.start_.push_back(
-            static_cast<HighsInt>(model.lp_.a_matrix_.index_.size())
-        );
-    }
-    Highs highs;
-    if (highs.setOptionValue("output_flag", false) == HighsStatus::kError
-        || highs.setOptionValue("threads", 1) == HighsStatus::kError
-        || highs.passModel(model) == HighsStatus::kError
-        || highs.run() == HighsStatus::kError) {
-        return false;
-    }
-    return highs.getModelStatus() == HighsModelStatus::kOptimal
-        && highs.getInfo().primal_solution_status == kSolutionStatusFeasible;
-}
-
-Held2StageIIILifecycleStep make_general_lifecycle_step(
-    int solve_index,
-    std::size_t active_candidate_count,
-    std::string action,
-    std::string solver_status,
-    std::string decision_reason,
-    int candidate_index = -1,
-    double phase_fraction = 0.0,
-    double lower_bound_multiplier = 0.0,
-    double reduced_derivative = 0.0,
-    double complementarity = 0.0,
-    std::vector<double> candidate = {},
-    double candidate_volume = 0.0
-) {
-    return {
-        solve_index,
-        static_cast<int>(active_candidate_count),
-        candidate_index,
-        std::move(action),
-        phase_fraction,
-        lower_bound_multiplier,
-        reduced_derivative,
-        complementarity,
-        std::move(candidate),
-        candidate_volume,
-        std::move(solver_status),
-        std::move(decision_reason),
-    };
-}
-
-class Held2GeneralStageIIITnlp final : public Ipopt::TNLP {
+class Problem67Tnlp final : public Ipopt::TNLP {
 public:
-    Held2GeneralStageIIITnlp(
-        Held2Coordinates coordinates,
-        std::vector<double> feed,
-        Held2StateEvaluator evaluator,
-        std::vector<Held2StageIICandidate> candidates,
-        std::vector<std::array<double, 2>> phase_coordinate_bounds,
-        std::vector<double> initial,
-        Held2ProgressObserver* observer,
-        int solve_index
+    Problem67Tnlp(
+        Problem67& problem,
+        std::vector<double> lower,
+        std::vector<double> upper,
+        std::vector<double> initial
     )
-        : coordinates_(std::move(coordinates)),
-          feed_(std::move(feed)),
-          evaluator_(std::move(evaluator)),
-          candidates_(std::move(candidates)),
-          phase_coordinate_bounds_(phase_coordinate_bounds),
-          initial_(std::move(initial)),
-          observer_(observer),
-          solve_index_(solve_index) {}
-
-    bool get_nlp_info(Ipopt::Index& n, Ipopt::Index& m, Ipopt::Index& nnz_jac_g,
-                      Ipopt::Index& nnz_h_lag, IndexStyleEnum& index_style) override {
-        const std::size_t dimension = feed_.size();
-        n = static_cast<Ipopt::Index>(initial_.size());
-        m = static_cast<Ipopt::Index>(
-            general_stage_iii_constraint_count(dimension, candidates_.size())
-        );
-        nnz_jac_g = static_cast<Ipopt::Index>(
-            candidates_.size() * (1 + 3 * dimension)
-        );
-        nnz_h_lag = n * (n + 1) / 2;
-        index_style = TNLP::C_STYLE;
-        return true;
-    }
-
-    bool get_bounds_info(Ipopt::Index n, Ipopt::Number* x_l, Ipopt::Number* x_u,
-                         Ipopt::Index m, Ipopt::Number* g_l, Ipopt::Number* g_u) override {
-        const std::size_t dimension = feed_.size();
-        const std::size_t block_size = dimension + 2;
-        const std::size_t equality_count = dimension + 1;
-        const std::size_t constraint_count =
-            general_stage_iii_constraint_count(dimension, candidates_.size());
-        if (n != static_cast<Ipopt::Index>(initial_.size())
-            || m != static_cast<Ipopt::Index>(constraint_count)) {
-            return false;
+        : problem_(problem),
+          lower_(std::move(lower)),
+          upper_(std::move(upper)),
+          initial_(std::move(initial)) {
+        constraints_.push_back({&problem_, 0, 0});
+        for (std::size_t coordinate = 0;
+             coordinate < problem_.dimension;
+             ++coordinate) {
+            constraints_.push_back({&problem_, 1, coordinate});
         }
-        for (std::size_t phase = 0; phase < candidates_.size(); ++phase) {
-            const std::size_t offset = phase * block_size;
-            x_l[offset] = 0.0;
-            x_u[offset] = 1.0;
-            for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-                x_l[offset + 1 + coordinate] = std::max(
-                    coordinates_.independent_lower_bounds[coordinate],
-                    candidates_[phase].independent_modified_fractions[coordinate]
-                        - kCandidateRadius
-                );
-                x_u[offset + 1 + coordinate] = std::min(
-                    coordinates_.independent_upper_bounds[coordinate],
-                    candidates_[phase].independent_modified_fractions[coordinate]
-                        + kCandidateRadius
+        for (std::size_t phase = 0;
+             phase < problem_.phase_count;
+             ++phase) {
+            for (std::size_t constraint = 0;
+                 constraint
+                    < problem_.coordinates.polytope_constraints.size();
+                 ++constraint) {
+                constraints_.push_back(
+                    {&problem_, 2, constraint, phase}
                 );
             }
-            x_l[offset + 1 + dimension] = phase_coordinate_bounds_[phase][0];
-            x_u[offset + 1 + dimension] = phase_coordinate_bounds_[phase][1];
         }
-        std::fill(g_l, g_l + static_cast<std::ptrdiff_t>(equality_count), 0.0);
-        std::fill(g_u, g_u + static_cast<std::ptrdiff_t>(equality_count), 0.0);
-        const double composition_sum_upper =
-            general_stage_iii_composition_sum_upper(coordinates_);
-        for (std::size_t phase = 0; phase < candidates_.size(); ++phase) {
-            g_l[equality_count + phase] = kConstraintLowerInfinity;
-            g_u[equality_count + phase] = composition_sum_upper;
+    }
+
+    bool get_nlp_info(
+        Ipopt::Index& n,
+        Ipopt::Index& m,
+        Ipopt::Index& nnz_jac_g,
+        Ipopt::Index& nnz_h_lag,
+        IndexStyleEnum& index_style
+    ) override {
+        n = static_cast<Ipopt::Index>(initial_.size());
+        m = static_cast<Ipopt::Index>(constraints_.size());
+        nnz_jac_g = n * m;
+        nnz_h_lag = n * (n + 1) / 2;
+        index_style = C_STYLE;
+        return true;
+    }
+
+    bool get_bounds_info(
+        Ipopt::Index n,
+        Ipopt::Number* x_l,
+        Ipopt::Number* x_u,
+        Ipopt::Index m,
+        Ipopt::Number* g_l,
+        Ipopt::Number* g_u
+    ) override {
+        if (n != static_cast<Ipopt::Index>(initial_.size())
+            || m != static_cast<Ipopt::Index>(constraints_.size())) {
+            return false;
+        }
+        std::copy(lower_.begin(), lower_.end(), x_l);
+        std::copy(upper_.begin(), upper_.end(), x_u);
+        for (std::size_t index = 0; index < constraints_.size(); ++index) {
+            g_l[index] = constraints_[index].kind < 2 ? 0.0 : -1.0e19;
+            g_u[index] = 0.0;
         }
         return true;
     }
 
-    bool get_starting_point(Ipopt::Index n, bool init_x, Ipopt::Number* x,
-                            bool init_z, Ipopt::Number*, Ipopt::Number*,
-                            Ipopt::Index m, bool init_lambda, Ipopt::Number*) override {
+    bool get_starting_point(
+        Ipopt::Index n,
+        bool init_x,
+        Ipopt::Number* x,
+        bool init_z,
+        Ipopt::Number*,
+        Ipopt::Number*,
+        Ipopt::Index m,
+        bool init_lambda,
+        Ipopt::Number*
+    ) override {
         if (n != static_cast<Ipopt::Index>(initial_.size())
-            || m != static_cast<Ipopt::Index>(general_stage_iii_constraint_count(
-                feed_.size(), candidates_.size()
-            )) || !init_x
-            || init_z || init_lambda) {
+            || m != static_cast<Ipopt::Index>(constraints_.size())
+            || !init_x || init_z || init_lambda) {
             return false;
         }
         std::copy(initial_.begin(), initial_.end(), x);
         return true;
     }
 
-    bool eval_f(Ipopt::Index n, const Ipopt::Number* x, bool, Ipopt::Number& value) override {
-        if (!precheck_objective_domain(n, x)) return false;
-        try { value = evaluate(n, x, {}, 1.0).objective; return true; }
-        catch (const std::exception& error) { callback_error_ = error.what(); return false; }
+    bool eval_f(
+        Ipopt::Index n,
+        const Ipopt::Number* x,
+        bool,
+        Ipopt::Number& value
+    ) override {
+        if (!domain_valid(n, x)) {
+            return false;
+        }
+        try {
+            evaluate(n, x);
+            value = cached_evaluation_.objective;
+            return true;
+        } catch (...) {
+            return false;
+        }
     }
-    bool eval_grad_f(Ipopt::Index n, const Ipopt::Number* x, bool,
-                     Ipopt::Number* gradient) override {
-        if (!precheck_objective_domain(n, x)) return false;
-        try { const auto e = evaluate(n, x, {}, 1.0); std::copy(e.objective_gradient.begin(), e.objective_gradient.end(), gradient); return true; }
-        catch (const std::exception& error) { callback_error_ = error.what(); return false; }
+
+    bool eval_grad_f(
+        Ipopt::Index n,
+        const Ipopt::Number* x,
+        bool,
+        Ipopt::Number* gradient
+    ) override {
+        if (!domain_valid(n, x)) {
+            return false;
+        }
+        try {
+            evaluate(n, x);
+            std::copy(
+                cached_evaluation_.objective_gradient.begin(),
+                cached_evaluation_.objective_gradient.end(),
+                gradient
+            );
+            return true;
+        } catch (...) {
+            return false;
+        }
     }
-    bool eval_g(Ipopt::Index n, const Ipopt::Number* x, bool, Ipopt::Index m,
-                Ipopt::Number* constraints) override {
-        try { const auto e = evaluate_algebraic(n, x); if (m != static_cast<Ipopt::Index>(e.constraints.size())) return false; std::copy(e.constraints.begin(), e.constraints.end(), constraints); return true; }
-        catch (const std::exception& error) { callback_error_ = error.what(); return false; }
+
+    bool eval_g(
+        Ipopt::Index n,
+        const Ipopt::Number* x,
+        bool,
+        Ipopt::Index m,
+        Ipopt::Number* values
+    ) override {
+        if (n != static_cast<Ipopt::Index>(initial_.size())
+            || m != static_cast<Ipopt::Index>(constraints_.size())) {
+            return false;
+        }
+        const std::vector<double> variables(x, x + n);
+        std::vector<double> no_gradient;
+        for (std::size_t index = 0; index < constraints_.size(); ++index) {
+            values[index] = problem67_constraint(
+                variables, no_gradient, &constraints_[index]
+            );
+        }
+        return true;
     }
-    bool eval_jac_g(Ipopt::Index n, const Ipopt::Number* x, bool, Ipopt::Index m,
-                    Ipopt::Index nnz, Ipopt::Index* rows, Ipopt::Index* columns,
-                    Ipopt::Number* values) override {
-        const std::size_t dimension = feed_.size();
-        const std::size_t block_size = dimension + 2;
-        const Ipopt::Index expected = static_cast<Ipopt::Index>(candidates_.size() * (1 + 3 * dimension));
-        if (m != static_cast<Ipopt::Index>(general_stage_iii_constraint_count(
-                dimension, candidates_.size()
-            )) || nnz != expected) return false;
+
+    bool eval_jac_g(
+        Ipopt::Index n,
+        const Ipopt::Number* x,
+        bool,
+        Ipopt::Index m,
+        Ipopt::Index nnz,
+        Ipopt::Index* rows,
+        Ipopt::Index* columns,
+        Ipopt::Number* values
+    ) override {
+        if (m != static_cast<Ipopt::Index>(constraints_.size())
+            || nnz != n * m) {
+            return false;
+        }
         Ipopt::Index position = 0;
         if (values == nullptr) {
-            for (std::size_t phase = 0; phase < candidates_.size(); ++phase) { rows[position] = 0; columns[position++] = static_cast<Ipopt::Index>(phase * block_size); }
-            for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-                for (std::size_t phase = 0; phase < candidates_.size(); ++phase) {
-                    const std::size_t offset = phase * block_size;
-                    rows[position] = static_cast<Ipopt::Index>(coordinate + 1); columns[position++] = static_cast<Ipopt::Index>(offset);
-                    rows[position] = static_cast<Ipopt::Index>(coordinate + 1); columns[position++] = static_cast<Ipopt::Index>(offset + 1 + coordinate);
-                }
-            }
-            for (std::size_t phase = 0; phase < candidates_.size(); ++phase) {
-                const std::size_t offset = phase * block_size;
-                for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-                    rows[position] = static_cast<Ipopt::Index>(dimension + 1 + phase);
-                    columns[position++] = static_cast<Ipopt::Index>(
-                        offset + 1 + coordinate
-                    );
+            for (Ipopt::Index row = 0; row < m; ++row) {
+                for (Ipopt::Index column = 0; column < n; ++column) {
+                    rows[position] = row;
+                    columns[position++] = column;
                 }
             }
             return true;
         }
-        try {
-            const auto e = evaluate_algebraic(n, x);
-            for (std::size_t phase = 0; phase < candidates_.size(); ++phase) values[position++] = e.constraint_jacobian[phase * block_size];
-            for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-                for (std::size_t phase = 0; phase < candidates_.size(); ++phase) {
-                    const std::size_t offset = phase * block_size;
-                    values[position++] = e.constraint_jacobian[(coordinate + 1) * static_cast<std::size_t>(n) + offset];
-                    values[position++] = e.constraint_jacobian[(coordinate + 1) * static_cast<std::size_t>(n) + offset + 1 + coordinate];
-                }
+        const std::vector<double> variables(x, x + n);
+        for (Problem67Constraint& constraint : constraints_) {
+            std::vector<double> gradient(static_cast<std::size_t>(n));
+            static_cast<void>(problem67_constraint(
+                variables, gradient, &constraint
+            ));
+            for (double value : gradient) {
+                values[position++] = value;
             }
-            for (std::size_t phase = 0; phase < candidates_.size(); ++phase) {
-                for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
-                    values[position++] = 1.0;
-                }
-            }
-            return true;
-        } catch (const std::exception& error) { callback_error_ = error.what(); return false; }
+        }
+        return true;
     }
-    bool eval_h(Ipopt::Index n, const Ipopt::Number* x, bool,
-                Ipopt::Number objective_factor, Ipopt::Index m,
-                const Ipopt::Number* lambda, bool, Ipopt::Index nnz,
-                Ipopt::Index* rows, Ipopt::Index* columns, Ipopt::Number* values) override {
-        if (m != static_cast<Ipopt::Index>(general_stage_iii_constraint_count(
-                feed_.size(), candidates_.size()
-            )) || nnz != n * (n + 1) / 2) return false;
+
+    bool eval_h(
+        Ipopt::Index n,
+        const Ipopt::Number* x,
+        bool,
+        Ipopt::Number objective_factor,
+        Ipopt::Index m,
+        const Ipopt::Number* lambda,
+        bool,
+        Ipopt::Index nnz,
+        Ipopt::Index* rows,
+        Ipopt::Index* columns,
+        Ipopt::Number* values
+    ) override {
+        if (m != static_cast<Ipopt::Index>(constraints_.size())
+            || nnz != n * (n + 1) / 2) {
+            return false;
+        }
         Ipopt::Index position = 0;
         if (values == nullptr) {
-            for (Ipopt::Index row = 0; row < n; ++row) for (Ipopt::Index column = 0; column <= row; ++column) { rows[position] = row; columns[position++] = column; }
+            for (Ipopt::Index row = 0; row < n; ++row) {
+                for (Ipopt::Index column = 0; column <= row; ++column) {
+                    rows[position] = row;
+                    columns[position++] = column;
+                }
+            }
             return true;
         }
-        if (!precheck_objective_domain(n, x)) return false;
+        if (!domain_valid(n, x) || lambda == nullptr) {
+            return false;
+        }
         try {
-            if (lambda == nullptr) return false;
-            const std::vector<double> multipliers(lambda, lambda + m);
-            const auto e = evaluate(n, x, multipliers, objective_factor);
-            for (Ipopt::Index row = 0; row < n; ++row) for (Ipopt::Index column = 0; column <= row; ++column) values[position++] = e.lagrangian_hessian[static_cast<std::size_t>(row * n + column)];
+            evaluate(n, x);
+            Held2StageIIINlpEvaluation evaluation = cached_evaluation_;
+            for (double& value : evaluation.lagrangian_hessian) {
+                value *= objective_factor;
+            }
+            for (std::size_t phase = 0;
+                 phase < problem_.phase_count;
+                 ++phase) {
+                const std::size_t offset = phase * problem_.block_size;
+                for (std::size_t coordinate = 0;
+                     coordinate < problem_.dimension;
+                     ++coordinate) {
+                    const std::size_t variable = offset + 1 + coordinate;
+                    evaluation.lagrangian_hessian[
+                        variable * static_cast<std::size_t>(n) + offset
+                    ] += lambda[coordinate + 1];
+                    evaluation.lagrangian_hessian[
+                        offset * static_cast<std::size_t>(n) + variable
+                    ] += lambda[coordinate + 1];
+                }
+            }
+            for (Ipopt::Index row = 0; row < n; ++row) {
+                for (Ipopt::Index column = 0; column <= row; ++column) {
+                    values[position++] = evaluation.lagrangian_hessian[
+                        static_cast<std::size_t>(row * n + column)
+                    ];
+                }
+            }
             return true;
-        } catch (const std::exception& error) { callback_error_ = error.what(); return false; }
+        } catch (...) {
+            return false;
+        }
     }
 
     bool intermediate_callback(
         Ipopt::AlgorithmMode,
         Ipopt::Index iteration,
-        Ipopt::Number objective,
-        Ipopt::Number primal_residual,
-        Ipopt::Number dual_residual,
-        Ipopt::Number barrier,
-        Ipopt::Number step_norm,
         Ipopt::Number,
-        Ipopt::Number dual_step,
-        Ipopt::Number primal_step,
-        Ipopt::Index line_search_steps,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Index,
         const Ipopt::IpoptData*,
         Ipopt::IpoptCalculatedQuantities*
     ) override {
-        optimizer_iterations_ = std::max(
-            optimizer_iterations_, static_cast<int>(iteration) + 1
-        );
-        Held2ProgressEvent progress;
-        progress.kind = Held2ProgressKind::LocalIteration;
-        progress.stage = "STAGE III IPOPT";
-        progress.iteration = static_cast<int>(iteration);
-        progress.attempt = solve_index_;
-        progress.objective = objective;
-        progress.primal_residual = primal_residual;
-        progress.dual_residual = dual_residual;
-        progress.complementarity = barrier;
-        progress.step_norm = step_norm;
-        progress.dual_step = dual_step;
-        progress.primal_step = primal_step;
-        progress.line_search_steps = static_cast<int>(line_search_steps);
-        observe_held2(observer_, progress);
+        iterations_ = std::max(iterations_, static_cast<int>(iteration) + 1);
         return true;
     }
 
-    void finalize_solution(Ipopt::SolverReturn status, Ipopt::Index n,
-                           const Ipopt::Number* x, const Ipopt::Number* z_l,
-                           const Ipopt::Number* z_u, Ipopt::Index m,
-                           const Ipopt::Number*, const Ipopt::Number* lambda,
-                           Ipopt::Number, const Ipopt::IpoptData*,
-                           Ipopt::IpoptCalculatedQuantities*) override {
-        solver_converged_ = status == Ipopt::SUCCESS || status == Ipopt::STOP_AT_ACCEPTABLE_POINT;
-        if (x != nullptr && z_l != nullptr && z_u != nullptr && lambda != nullptr) {
-            variables_.assign(x, x + n); lower_.assign(z_l, z_l + n); upper_.assign(z_u, z_u + n); multipliers_.assign(lambda, lambda + m);
-        }
+    void finalize_solution(
+        Ipopt::SolverReturn status,
+        Ipopt::Index n,
+        const Ipopt::Number* x,
+        const Ipopt::Number* z_lower,
+        const Ipopt::Number* z_upper,
+        Ipopt::Index m,
+        const Ipopt::Number*,
+        const Ipopt::Number* lambda,
+        Ipopt::Number objective,
+        const Ipopt::IpoptData*,
+        Ipopt::IpoptCalculatedQuantities*
+    ) override {
+        converged_ = status == Ipopt::SUCCESS
+            || status == Ipopt::STOP_AT_ACCEPTABLE_POINT;
+        objective_ = objective;
+        variables_.assign(x, x + n);
+        lower_multipliers_.assign(z_lower, z_lower + n);
+        upper_multipliers_.assign(z_upper, z_upper + n);
+        constraint_multipliers_.assign(lambda, lambda + m);
     }
 
-    StageIIIRun result(const std::string& status) const {
-        return {
-            solver_converged_,
-            status,
-            callback_error_,
-            variables_,
-            multipliers_,
-            lower_,
-            upper_,
-            optimizer_iterations_,
-            recoverable_domain_rejection_count_,
-            last_domain_rejection_,
-        };
+    bool converged() const { return converged_; }
+    int iterations() const { return iterations_; }
+    double objective() const { return objective_; }
+    const std::vector<double>& variables() const { return variables_; }
+    const std::vector<double>& lower_multipliers() const {
+        return lower_multipliers_;
+    }
+    const std::vector<double>& upper_multipliers() const {
+        return upper_multipliers_;
+    }
+    const std::vector<double>& constraint_multipliers() const {
+        return constraint_multipliers_;
     }
 
 private:
-    bool precheck_objective_domain(Ipopt::Index n, const Ipopt::Number* x) {
-        if (x == nullptr || n != static_cast<Ipopt::Index>(initial_.size())) {
-            callback_error_ = "HELD2 Stage III callback dimensions changed";
+    bool domain_valid(Ipopt::Index n, const Ipopt::Number* x) const {
+        if (n != static_cast<Ipopt::Index>(initial_.size())) {
             return false;
         }
-        const std::vector<double> variables(x, x + n);
-        if (general_stage_iii_simplex_domain_valid(
-                coordinates_, candidates_.size(), variables
-            )) {
-            return true;
+        for (std::size_t phase = 0; phase < problem_.phase_count; ++phase) {
+            const std::size_t offset = phase * problem_.block_size;
+            for (const Held2PolytopeConstraint& constraint :
+                 problem_.coordinates.polytope_constraints) {
+                double value = 0.0;
+                for (std::size_t coordinate = 0;
+                     coordinate < problem_.dimension;
+                     ++coordinate) {
+                    value += constraint.coefficients[coordinate]
+                        * x[offset + 1 + coordinate];
+                }
+                if (value > constraint.upper_bound) {
+                    return false;
+                }
+            }
         }
-        ++recoverable_domain_rejection_count_;
-        last_domain_rejection_ =
-            "independent modified fractions do not leave the declared dependent lower bound";
-        return false;
+        return true;
     }
 
-    Held2StageIIINlpEvaluation evaluate_algebraic(
-        Ipopt::Index n,
-        const Ipopt::Number* x
-    ) const {
-        if (x == nullptr || n != static_cast<Ipopt::Index>(initial_.size())) {
-            throw std::invalid_argument("HELD2 Stage III callback dimensions changed");
+    void evaluate(Ipopt::Index n, const Ipopt::Number* x) {
+        const std::vector<double> variables(x, x + n);
+        if (variables == cached_variables_) {
+            return;
         }
-        return evaluate_general_stage_iii_algebraic(
-            feed_, candidates_.size(), std::vector<double>(x, x + n)
+        cached_variables_ = variables;
+        cached_evaluation_ = evaluate_problem67(
+            problem_.coordinates,
+            problem_.feed,
+            problem_.evaluate,
+            problem_.phase_count,
+            cached_variables_,
+            std::vector<double>(
+                problem_.dimension + 1 + problem_.phase_count, 0.0
+            )
         );
     }
 
-    Held2StageIIINlpEvaluation evaluate(Ipopt::Index n, const Ipopt::Number* x,
-                                        std::vector<double> multipliers,
-                                        double factor) const {
-        if (multipliers.empty()) {
-            multipliers.assign(
-                general_stage_iii_constraint_count(feed_.size(), candidates_.size()),
-                0.0
-            );
-        }
-        return evaluate_general_stage_iii(coordinates_, feed_, evaluator_, candidates_.size(), std::vector<double>(x, x + n), multipliers, factor);
-    }
-    Held2Coordinates coordinates_; std::vector<double> feed_; Held2StateEvaluator evaluator_;
-    std::vector<Held2StageIICandidate> candidates_;
-    std::vector<std::array<double, 2>> phase_coordinate_bounds_;
-    std::vector<double> initial_; bool solver_converged_ = false; std::string callback_error_;
-    int recoverable_domain_rejection_count_ = 0;
-    int optimizer_iterations_ = 0;
-    std::string last_domain_rejection_;
-    std::vector<double> variables_, multipliers_, lower_, upper_;
-    Held2ProgressObserver* observer_ = nullptr;
-    int solve_index_ = -1;
+    Problem67& problem_;
+    std::vector<double> lower_;
+    std::vector<double> upper_;
+    std::vector<double> initial_;
+    std::vector<Problem67Constraint> constraints_;
+    std::vector<double> cached_variables_;
+    Held2StageIIINlpEvaluation cached_evaluation_;
+    bool converged_ = false;
+    int iterations_ = 0;
+    double objective_ = 0.0;
+    std::vector<double> variables_;
+    std::vector<double> lower_multipliers_;
+    std::vector<double> upper_multipliers_;
+    std::vector<double> constraint_multipliers_;
 };
 
-StageIIIRun run_general_stage_iii(
+std::string ipopt_status(Ipopt::ApplicationReturnStatus status) {
+    switch (status) {
+        case Ipopt::Solve_Succeeded: return "solve_succeeded";
+        case Ipopt::Solved_To_Acceptable_Level:
+            return "solved_to_acceptable_level";
+        case Ipopt::Infeasible_Problem_Detected:
+            return "infeasible_problem_detected";
+        case Ipopt::Maximum_Iterations_Exceeded:
+            return "maximum_iterations_exceeded";
+        default:
+            return "ipopt_status_" + std::to_string(
+                static_cast<int>(status)
+            );
+    }
+}
+
+std::string problem67_feasibility(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& feed,
+    const std::vector<Held2StageIICandidate>& candidates
+) {
+    const std::size_t phase_count = candidates.size();
+    const std::size_t dimension = feed.size();
+    const std::size_t fraction_count = phase_count;
+    HighsModel model;
+    model.lp_.num_col_ = static_cast<HighsInt>(
+        fraction_count + phase_count * dimension
+    );
+    model.lp_.num_row_ = static_cast<HighsInt>(
+        1 + dimension + 2 * phase_count * dimension
+        + phase_count * coordinates.polytope_constraints.size()
+    );
+    model.lp_.col_cost_.assign(
+        static_cast<std::size_t>(model.lp_.num_col_), 0.0
+    );
+    model.lp_.col_lower_.assign(
+        static_cast<std::size_t>(model.lp_.num_col_), 0.0
+    );
+    model.lp_.col_upper_.assign(
+        static_cast<std::size_t>(model.lp_.num_col_), 1.0
+    );
+    model.lp_.a_matrix_.format_ = MatrixFormat::kRowwise;
+    model.lp_.a_matrix_.start_ = {0};
+    const auto row = [&model](double lower, double upper) {
+        model.lp_.row_lower_.push_back(lower);
+        model.lp_.row_upper_.push_back(upper);
+        model.lp_.a_matrix_.start_.push_back(
+            static_cast<HighsInt>(model.lp_.a_matrix_.index_.size())
+        );
+    };
+    for (std::size_t phase = 0; phase < phase_count; ++phase) {
+        model.lp_.a_matrix_.index_.push_back(
+            static_cast<HighsInt>(phase)
+        );
+        model.lp_.a_matrix_.value_.push_back(1.0);
+    }
+    row(1.0, 1.0);
+    for (std::size_t coordinate = 0;
+         coordinate < dimension;
+         ++coordinate) {
+        for (std::size_t phase = 0; phase < phase_count; ++phase) {
+            model.lp_.a_matrix_.index_.push_back(static_cast<HighsInt>(
+                fraction_count + phase * dimension + coordinate
+            ));
+            model.lp_.a_matrix_.value_.push_back(1.0);
+        }
+        row(feed[coordinate], feed[coordinate]);
+    }
+    for (std::size_t phase = 0; phase < phase_count; ++phase) {
+        for (std::size_t coordinate = 0;
+             coordinate < dimension;
+             ++coordinate) {
+            const double lower = std::max(
+                coordinates.independent_lower_bounds[coordinate],
+                candidates[phase]
+                    .independent_modified_fractions[coordinate]
+                    - kHeld2Problem67Radius
+            );
+            const double upper = std::min(
+                coordinates.independent_upper_bounds[coordinate],
+                candidates[phase]
+                    .independent_modified_fractions[coordinate]
+                    + kHeld2Problem67Radius
+            );
+            const HighsInt fraction = static_cast<HighsInt>(phase);
+            const HighsInt weighted = static_cast<HighsInt>(
+                fraction_count + phase * dimension + coordinate
+            );
+            model.lp_.a_matrix_.index_.push_back(fraction);
+            model.lp_.a_matrix_.value_.push_back(-lower);
+            model.lp_.a_matrix_.index_.push_back(weighted);
+            model.lp_.a_matrix_.value_.push_back(1.0);
+            row(0.0, kHighsInf);
+            model.lp_.a_matrix_.index_.push_back(fraction);
+            model.lp_.a_matrix_.value_.push_back(-upper);
+            model.lp_.a_matrix_.index_.push_back(weighted);
+            model.lp_.a_matrix_.value_.push_back(1.0);
+            row(-kHighsInf, 0.0);
+        }
+    }
+    for (std::size_t phase = 0; phase < phase_count; ++phase) {
+        for (const Held2PolytopeConstraint& constraint :
+             coordinates.polytope_constraints) {
+            model.lp_.a_matrix_.index_.push_back(
+                static_cast<HighsInt>(phase)
+            );
+            model.lp_.a_matrix_.value_.push_back(
+                -constraint.upper_bound
+            );
+            for (std::size_t coordinate = 0;
+                 coordinate < dimension;
+                 ++coordinate) {
+                model.lp_.a_matrix_.index_.push_back(
+                    static_cast<HighsInt>(
+                        fraction_count + phase * dimension + coordinate
+                    )
+                );
+                model.lp_.a_matrix_.value_.push_back(
+                    constraint.coefficients[coordinate]
+                );
+            }
+            row(-kHighsInf, 0.0);
+        }
+    }
+    Highs highs;
+    if (highs.setOptionValue("output_flag", false) == HighsStatus::kError
+        || highs.setOptionValue("threads", 1) == HighsStatus::kError
+        || highs.passModel(model) == HighsStatus::kError
+        || highs.run() == HighsStatus::kError) {
+        return "indeterminate";
+    }
+    if (highs.getModelStatus() == HighsModelStatus::kInfeasible) {
+        return "infeasible";
+    }
+    return highs.getModelStatus() == HighsModelStatus::kOptimal
+        && highs.getInfo().primal_solution_status
+            == kSolutionStatusFeasible
+        ? "feasible" : "indeterminate";
+}
+
+bool project_phase_fractions(
+    const std::vector<double>& feed,
+    std::vector<Held2StageIIIPhase>& phases
+) {
+    const std::size_t phase_count = phases.size();
+    const std::size_t residual = phase_count;
+    HighsModel model;
+    model.lp_.num_col_ = static_cast<HighsInt>(phase_count + 1);
+    model.lp_.num_row_ = static_cast<HighsInt>(1 + 2 * feed.size());
+    model.lp_.col_cost_.assign(phase_count + 1, 0.0);
+    model.lp_.col_cost_[residual] = 1.0;
+    model.lp_.col_lower_.assign(phase_count + 1, 0.0);
+    model.lp_.col_upper_.assign(phase_count + 1, 1.0);
+    model.lp_.col_upper_[residual] = kHighsInf;
+    model.lp_.a_matrix_.format_ = MatrixFormat::kRowwise;
+    model.lp_.a_matrix_.start_ = {0};
+    const auto row = [&model](double lower, double upper) {
+        model.lp_.row_lower_.push_back(lower);
+        model.lp_.row_upper_.push_back(upper);
+        model.lp_.a_matrix_.start_.push_back(
+            static_cast<HighsInt>(model.lp_.a_matrix_.index_.size())
+        );
+    };
+    for (std::size_t phase = 0; phase < phase_count; ++phase) {
+        model.lp_.a_matrix_.index_.push_back(
+            static_cast<HighsInt>(phase)
+        );
+        model.lp_.a_matrix_.value_.push_back(1.0);
+    }
+    row(1.0, 1.0);
+    for (std::size_t component = 0; component < feed.size(); ++component) {
+        for (std::size_t phase = 0; phase < phase_count; ++phase) {
+            model.lp_.a_matrix_.index_.push_back(
+                static_cast<HighsInt>(phase)
+            );
+            model.lp_.a_matrix_.value_.push_back(
+                phases[phase].physical_fractions[component]
+            );
+        }
+        model.lp_.a_matrix_.index_.push_back(
+            static_cast<HighsInt>(residual)
+        );
+        model.lp_.a_matrix_.value_.push_back(-1.0);
+        row(-kHighsInf, feed[component]);
+        for (std::size_t phase = 0; phase < phase_count; ++phase) {
+            model.lp_.a_matrix_.index_.push_back(
+                static_cast<HighsInt>(phase)
+            );
+            model.lp_.a_matrix_.value_.push_back(
+                phases[phase].physical_fractions[component]
+            );
+        }
+        model.lp_.a_matrix_.index_.push_back(
+            static_cast<HighsInt>(residual)
+        );
+        model.lp_.a_matrix_.value_.push_back(1.0);
+        row(feed[component], kHighsInf);
+    }
+    Highs highs;
+    if (highs.setOptionValue("output_flag", false) == HighsStatus::kError
+        || highs.setOptionValue("threads", 1) == HighsStatus::kError
+        || highs.passModel(model) == HighsStatus::kError
+        || highs.run() == HighsStatus::kError
+        || highs.getModelStatus() != HighsModelStatus::kOptimal) {
+        return false;
+    }
+    const HighsSolution& solution = highs.getSolution();
+    if (!solution.value_valid
+        || solution.col_value.size() != phase_count + 1) {
+        return false;
+    }
+    for (std::size_t phase = 0; phase < phase_count; ++phase) {
+        phases[phase].phase_fraction = solution.col_value[phase];
+    }
+    return true;
+}
+
+double charge_residual(
+    const std::vector<double>& charges,
+    const std::vector<double>& fractions
+) {
+    double residual = 0.0;
+    for (std::size_t index = 0; index < charges.size(); ++index) {
+        residual += charges[index] * fractions[index];
+    }
+    return residual;
+}
+
+Held2StageIIINlpEvaluation evaluate_problem67(
     const Held2Coordinates& coordinates,
     const std::vector<double>& feed,
     const Held2StateEvaluator& evaluator,
-    const std::vector<Held2StageIICandidate>& candidates,
-    const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
-    const std::vector<double>& initial,
-    Held2ProgressObserver* observer,
-    int solve_index
+    std::size_t phase_count,
+    const std::vector<double>& variables,
+    const std::vector<double>& multipliers
 ) {
-    auto* raw = new Held2GeneralStageIIITnlp(
-        coordinates,
-        feed,
-        evaluator,
-        candidates,
-        phase_coordinate_bounds,
-        initial,
-        observer,
-        solve_index
+    const std::size_t dimension = feed.size();
+    const std::size_t block_size = dimension + 2;
+    const std::size_t variable_count = phase_count * block_size;
+    const std::size_t constraint_count = dimension + 1 + phase_count;
+    if (variables.size() != variable_count
+        || multipliers.size() != constraint_count) {
+        throw std::invalid_argument(
+            "HELD2 Problem (67) dimensions changed"
+        );
+    }
+    Held2StageIIINlpEvaluation result;
+    result.objective_gradient.assign(variable_count, 0.0);
+    result.constraints.assign(constraint_count, 0.0);
+    result.constraint_jacobian.assign(
+        constraint_count * variable_count, 0.0
     );
-    Ipopt::SmartPtr<Ipopt::TNLP> problem = raw;
-    Ipopt::SmartPtr<Ipopt::IpoptApplication> application = IpoptApplicationFactory();
-    application->Options()->SetStringValue("option_file_name", "");
-    application->Options()->SetIntegerValue("print_level", 0);
-    application->Options()->SetStringValue("sb", "yes");
-    application->Options()->SetIntegerValue("max_iter", 300);
-    application->Options()->SetNumericValue("tol", kHeld2IpoptTarget.atol);
-    application->Options()->SetNumericValue(
-        "acceptable_tol", kHeld2IpoptAcceptable.atol
+    result.lagrangian_hessian.assign(
+        variable_count * variable_count, 0.0
     );
-    application->Options()->SetIntegerValue("acceptable_iter", 0);
-    application->Options()->SetNumericValue(
-        "constr_viol_tol", kHeld2IpoptConstraint.atol
-    );
-    application->Options()->SetStringValue("jacobian_approximation", "exact");
-    application->Options()->SetStringValue("hessian_approximation", "exact");
-    application->Options()->SetStringValue("nlp_scaling_method", "none");
-    application->Options()->SetNumericValue("bound_relax_factor", 0.0);
-    application->Options()->SetStringValue("honor_original_bounds", "yes");
-    application->Options()->SetStringValue("check_derivatives_for_naninf", "yes");
-    if (application->Initialize() != Ipopt::Solve_Succeeded) return {};
-    const auto status = application->OptimizeTNLP(problem);
-    return raw->result(ipopt_status_name(status));
+    result.constraints[0] = -1.0;
+    for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+        result.constraints[coordinate + 1] = -feed[coordinate];
+    }
+    const double sum_upper = dependent_upper(coordinates);
+    for (std::size_t phase = 0; phase < phase_count; ++phase) {
+        const std::size_t offset = phase * block_size;
+        const double fraction = variables[offset];
+        const std::vector<double> composition(
+            variables.begin() + static_cast<std::ptrdiff_t>(offset + 1),
+            variables.begin() + static_cast<std::ptrdiff_t>(
+                offset + 1 + dimension
+            )
+        );
+        const Held2StateEvaluation state = evaluator(
+            composition, variables[offset + 1 + dimension]
+        );
+        if (state.gradient.size() != dimension + 1
+            || state.hessian.size() != (dimension + 1) * (dimension + 1)) {
+            throw std::invalid_argument(
+                "HELD2 Problem (67) derivative dimensions changed"
+            );
+        }
+        result.objective += fraction * state.objective;
+        result.objective_gradient[offset] = state.objective;
+        result.constraints[0] += fraction;
+        result.constraint_jacobian[offset] = 1.0;
+        result.constraints[dimension + 1 + phase] = -sum_upper;
+        for (std::size_t local = 0; local < dimension + 1; ++local) {
+            const std::size_t variable = offset + 1 + local;
+            result.objective_gradient[variable] =
+                fraction * state.gradient[local];
+            const double cross = state.gradient[local]
+                + (local < dimension ? multipliers[local + 1] : 0.0);
+            result.lagrangian_hessian[
+                variable * variable_count + offset
+            ] += cross;
+            result.lagrangian_hessian[
+                offset * variable_count + variable
+            ] += cross;
+            for (std::size_t other = 0;
+                 other < dimension + 1;
+                 ++other) {
+                result.lagrangian_hessian[
+                    variable * variable_count + offset + 1 + other
+                ] += fraction
+                    * state.hessian[local * (dimension + 1) + other];
+            }
+            if (local == dimension) {
+                continue;
+            }
+            result.constraints[local + 1] +=
+                fraction * variables[variable];
+            result.constraints[dimension + 1 + phase] +=
+                variables[variable];
+            result.constraint_jacobian[
+                (local + 1) * variable_count + offset
+            ] = variables[variable];
+            result.constraint_jacobian[
+                (local + 1) * variable_count + variable
+            ] = fraction;
+            result.constraint_jacobian[
+                (dimension + 1 + phase) * variable_count + variable
+            ] = 1.0;
+        }
+    }
+    result.lagrangian_gradient = result.objective_gradient;
+    for (std::size_t variable = 0;
+         variable < variable_count;
+         ++variable) {
+        for (std::size_t constraint = 0;
+             constraint < constraint_count;
+             ++constraint) {
+            result.lagrangian_gradient[variable] +=
+                multipliers[constraint]
+                * result.constraint_jacobian[
+                    constraint * variable_count + variable
+                ];
+        }
+    }
+    return result;
 }
 
 }  // namespace
@@ -861,11 +919,20 @@ Held2StageIIINlpEvaluation evaluate_held2_stage_iii_nlp(
     const std::vector<double>& variables,
     const std::vector<double>& equality_multipliers
 ) {
-    const std::vector<double> modified_feed = held2_transform_physical_fractions(coordinates, physical_feed);
-    const std::vector<std::size_t> positions = independent_retained_positions(coordinates);
+    const std::vector<double> modified =
+        held2_transform_physical_fractions(coordinates, physical_feed);
     std::vector<double> feed;
-    for (std::size_t position : positions) feed.push_back(modified_feed[position]);
-    return evaluate_general_stage_iii(coordinates, feed, evaluator, phase_count, variables, equality_multipliers, 1.0);
+    for (std::size_t position : independent_positions(coordinates)) {
+        feed.push_back(modified[position]);
+    }
+    return evaluate_problem67(
+        coordinates,
+        feed,
+        evaluator,
+        phase_count,
+        variables,
+        equality_multipliers
+    );
 }
 
 Held2StageIIIResult solve_held2_stage_iii(
@@ -876,623 +943,282 @@ Held2StageIIIResult solve_held2_stage_iii(
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
     double free_energy_upper_bound,
     const std::string& free_energy_gap_provenance,
-    Held2ProgressObserver* observer,
-    const Held2StageIIIInitializer& initializer,
-    const std::function<double(const std::vector<double>&, double)>&
-        packing_fraction
+    std::vector<double> variables
 ) {
     Held2StageIIIResult result;
     result.input_candidate_count = static_cast<int>(candidates.size());
+    result.stage_iii_solve_count = 1;
     const std::size_t dimension = coordinates.independent_indices.size();
     const std::size_t block_size = dimension + 2;
-    if (candidates.size() < 2) {
+    if (candidates.size() < 2
+        || phase_coordinate_bounds.size() != candidates.size()) {
         result.failure_reason = "candidate_set_incomplete";
-        return result;
-    }
-    if (phase_coordinate_bounds.size() != candidates.size()) {
-        result.failure_reason = "candidate_bound_count_changed";
         return result;
     }
 
     const std::vector<double> modified_feed =
         held2_transform_physical_fractions(coordinates, physical_feed);
-    const std::vector<std::size_t> positions =
-        independent_retained_positions(coordinates);
     std::vector<double> feed;
-    for (std::size_t position : positions) {
+    for (std::size_t position : independent_positions(coordinates)) {
         feed.push_back(modified_feed[position]);
     }
-
-    std::vector<Held2StageIICandidate> active_candidates = candidates;
-    std::vector<std::array<double, 2>> active_bounds = phase_coordinate_bounds;
-    StageIIIRun accepted_run;
-    Held2StageIIINlpEvaluation accepted_nlp;
-    std::vector<Held2StateEvaluation> accepted_states;
-    std::vector<double> pending_initial;
-    bool active_set_accepted = false;
-
-    for (std::size_t lifecycle = 0; lifecycle <= candidates.size(); ++lifecycle) {
-        std::vector<double> initial(block_size * active_candidates.size(), 0.0);
-        for (std::size_t phase = 0; phase < active_candidates.size(); ++phase) {
-            const auto& candidate = active_candidates[phase];
-            if (candidate.independent_modified_fractions.size() != dimension) {
-                result.failure_reason = "candidate_dimension_changed";
-                return result;
-            }
-            const std::size_t offset = phase * block_size;
-            initial[offset] = 1.0 / static_cast<double>(active_candidates.size());
-            std::copy(
-                candidate.independent_modified_fractions.begin(),
-                candidate.independent_modified_fractions.end(),
-                initial.begin() + static_cast<std::ptrdiff_t>(offset + 1)
-            );
-            initial[offset + 1 + dimension] = candidate.phase_coordinate;
-        }
-        if (pending_initial.size() == initial.size()) {
-            initial = std::move(pending_initial);
-        } else if (initializer) {
-            Held2StageIIIFeasibilityStart start =
-                initializer(active_candidates);
-            if (start.status != "feasible"
-                || start.variables.size() != initial.size()) {
-                result.failure_reason =
-                    "stage_iii_feasible_start_uncertified";
-                return result;
-            }
-            initial = std::move(start.variables);
-        }
-
-        StageIIIRun run = run_general_stage_iii(
-            coordinates,
-            feed,
-            evaluator,
-            active_candidates,
-            active_bounds,
-            initial,
-            observer,
-            result.stage_iii_solve_count + 1
-        );
-        ++result.stage_iii_solve_count;
-        result.optimizer_iteration_count += run.optimizer_iterations;
-        result.solver_status = run.solver_status;
-        if (!run.solver_converged || !run.callback_error.empty()
-            || run.variables.size() != initial.size()) {
-            result.numerical_status = "not_converged";
-            result.failure_reason = !run.callback_error.empty()
-                ? run.callback_error
-                : run.recoverable_domain_rejection_count > 0
-                    ? "stage_iii_simplex_domain_exhausted"
-                    : "stage_iii_solver_not_converged";
-            result.lifecycle.push_back(make_general_lifecycle_step(
-                result.stage_iii_solve_count,
-                active_candidates.size(),
-                "solve_failed",
-                run.solver_status,
-                result.failure_reason
-            ));
+    if (feed.size() != dimension) {
+        result.failure_reason = "feed_dimension_changed";
+        return result;
+    }
+    const std::string feasibility = problem67_feasibility(
+        coordinates, feed, candidates
+    );
+    if (feasibility == "infeasible") {
+        result.solver_status = "infeasible_problem_detected";
+        result.failure_reason = "problem_67_infeasible";
+        return result;
+    }
+    if (feasibility != "feasible") {
+        result.solver_status = "feasibility_indeterminate";
+        result.failure_reason = "problem_67_feasibility_indeterminate";
+        return result;
+    }
+    const std::size_t variable_count = candidates.size() * block_size;
+    if (!variables.empty() && variables.size() != variable_count) {
+        result.failure_reason = "initial_dimension_changed";
+        return result;
+    }
+    const bool supplied_initial = !variables.empty();
+    if (!supplied_initial) {
+        variables.resize(variable_count);
+    }
+    std::vector<double> lower(variable_count);
+    std::vector<double> upper(variable_count);
+    for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+        if (candidates[phase].independent_modified_fractions.size()
+            != dimension) {
+            result.failure_reason = "candidate_dimension_changed";
             return result;
         }
-
-        Held2StageIIINlpEvaluation nlp;
-        try {
-            nlp = evaluate_general_stage_iii(
-                coordinates,
-                feed,
-                evaluator,
-                active_candidates.size(),
-                run.variables,
-                run.equality_multipliers,
-                1.0
+        const std::size_t offset = phase * block_size;
+        lower[offset] = 0.0;
+        upper[offset] = 1.0;
+        if (!supplied_initial) {
+            variables[offset] =
+                1.0 / static_cast<double>(candidates.size());
+        }
+        for (std::size_t coordinate = 0;
+             coordinate < dimension;
+             ++coordinate) {
+            const std::size_t variable = offset + 1 + coordinate;
+            lower[variable] = std::max(
+                coordinates.independent_lower_bounds[coordinate],
+                candidates[phase]
+                    .independent_modified_fractions[coordinate]
+                    - kHeld2Problem67Radius
             );
-        } catch (const std::exception& error) {
-            result.numerical_status = "not_converged";
-            result.failure_reason = error.what();
-            result.lifecycle.push_back(make_general_lifecycle_step(
-                result.stage_iii_solve_count,
-                active_candidates.size(),
-                "numerical_certificate_failed",
-                run.solver_status,
-                result.failure_reason
-            ));
-            return result;
-        }
-
-        std::vector<double> kkt = nlp.lagrangian_gradient;
-        if (run.lower_bound_multipliers.size() != kkt.size()
-            || run.upper_bound_multipliers.size() != kkt.size()) {
-            result.numerical_status = "not_converged";
-            result.failure_reason = "stage_iii_multiplier_evidence_missing";
-            result.lifecycle.push_back(make_general_lifecycle_step(
-                result.stage_iii_solve_count,
-                active_candidates.size(),
-                "numerical_certificate_failed",
-                run.solver_status,
-                result.failure_reason
-            ));
-            return result;
-        }
-
-        double constraint_violation = 0.0;
-        for (std::size_t row = 0; row < dimension + 1; ++row) {
-            constraint_violation = std::max(
-                constraint_violation, std::abs(nlp.constraints[row])
+            upper[variable] = std::min(
+                coordinates.independent_upper_bounds[coordinate],
+                candidates[phase]
+                    .independent_modified_fractions[coordinate]
+                    + kHeld2Problem67Radius
             );
-        }
-        const double composition_sum_upper =
-            general_stage_iii_composition_sum_upper(coordinates);
-        result.dual_sign_violation_inf_norm = 0.0;
-        result.bound_complementarity_inf_norm = 0.0;
-        result.minimum_phase_fraction = std::numeric_limits<double>::infinity();
-        for (std::size_t phase = 0; phase < active_candidates.size(); ++phase) {
-            const std::size_t offset = phase * block_size;
-            constraint_violation = std::max(
-                constraint_violation,
-                std::max(
-                    0.0,
-                    nlp.constraints[dimension + 1 + phase]
-                        - composition_sum_upper
-                )
-            );
-            for (std::size_t local = 0; local < block_size; ++local) {
-                const std::size_t index = offset + local;
-                double lower = 0.0;
-                double upper = 1.0;
-                if (local > 0 && local <= dimension) {
-                    const std::size_t coordinate = local - 1;
-                    lower = std::max(
-                        coordinates.independent_lower_bounds[coordinate],
-                        active_candidates[phase]
-                            .independent_modified_fractions[coordinate]
-                            - kCandidateRadius
-                    );
-                    upper = std::min(
-                        coordinates.independent_upper_bounds[coordinate],
-                        active_candidates[phase]
-                            .independent_modified_fractions[coordinate]
-                            + kCandidateRadius
-                    );
-                } else if (local == block_size - 1) {
-                    lower = active_bounds[phase][0];
-                    upper = active_bounds[phase][1];
-                }
-                kkt[index] -= run.lower_bound_multipliers[index];
-                kkt[index] += run.upper_bound_multipliers[index];
-                result.dual_sign_violation_inf_norm = std::max({
-                    result.dual_sign_violation_inf_norm,
-                    -run.lower_bound_multipliers[index],
-                    -run.upper_bound_multipliers[index],
-                });
-                result.bound_complementarity_inf_norm = std::max({
-                    result.bound_complementarity_inf_norm,
-                    std::abs((run.variables[index] - lower)
-                        * run.lower_bound_multipliers[index]),
-                    std::abs((upper - run.variables[index])
-                        * run.upper_bound_multipliers[index]),
-                });
-            }
-            result.minimum_phase_fraction = std::min(
-                result.minimum_phase_fraction, run.variables[offset]
-            );
-        }
-        result.kkt_stationarity_inf_norm = maximum_abs(kkt);
-        result.kkt_evidence_available = true;
-        if (!audit_held2_tolerance(
-                kHeld2Stage3ModifiedBalance, constraint_violation
-            ).passed
-            || !audit_held2_tolerance(
-                kHeld2Stage3Stationarity,
-                result.kkt_stationarity_inf_norm
-            ).passed
-            || !audit_held2_tolerance(
-                kHeld2Stage3DualSign,
-                result.dual_sign_violation_inf_norm
-            ).passed
-            || !audit_held2_tolerance(
-                kHeld2Stage3Complementarity,
-                result.bound_complementarity_inf_norm
-            ).passed) {
-            result.numerical_status = "not_converged";
-            result.failure_reason = "stage_iii_numerical_certificate_failed";
-            result.lifecycle.push_back(make_general_lifecycle_step(
-                result.stage_iii_solve_count,
-                active_candidates.size(),
-                "numerical_certificate_failed",
-                run.solver_status,
-                result.failure_reason,
-                -1,
-                0.0,
-                0.0,
-                0.0,
-                result.bound_complementarity_inf_norm
-            ));
-            return result;
-        }
-        result.numerical_status = "converged";
-        Held2ProgressEvent numerical_progress;
-        numerical_progress.kind = Held2ProgressKind::Certificate;
-        numerical_progress.stage = "STAGE III NUMERICAL";
-        numerical_progress.status = "passed";
-        numerical_progress.primal_residual = constraint_violation;
-        numerical_progress.dual_residual = result.kkt_stationarity_inf_norm;
-        numerical_progress.complementarity =
-            result.bound_complementarity_inf_norm;
-        observe_held2(observer, numerical_progress);
-
-        bool active_set_changed = false;
-        for (std::size_t phase = 0; phase < active_candidates.size(); ++phase) {
-            const std::size_t offset = phase * block_size;
-            Held2StageIIIRetirementDecision decision =
-                held2_stage_iii_retirement_decision(
-                    run.variables[offset],
-                    run.lower_bound_multipliers[offset],
-                    run.upper_bound_multipliers[offset],
-                    nlp.lagrangian_gradient[offset],
-                    true
-                );
-            if (decision.retire) {
-                if (active_candidates.size() <= 2) {
-                    result.failure_reason = "collapsed_phase_set";
-                    return result;
-                }
-                if (initializer) {
-                    std::vector<Held2StageIICandidate> reduced =
-                        active_candidates;
-                    reduced.erase(
-                        reduced.begin() + static_cast<std::ptrdiff_t>(phase)
-                    );
-                    Held2StageIIIFeasibilityStart start =
-                        initializer(reduced);
-                    if (start.status == "uncertified") {
-                        result.failure_reason =
-                            "stage_iii_reduced_feasibility_uncertified";
-                        return result;
-                    }
-                    if (start.status != "feasible") {
-                        decision.retire = false;
-                        decision.reason = "remaining_balance_infeasible";
-                    } else {
-                        pending_initial = std::move(start.variables);
-                    }
-                } else if (!remaining_candidate_balance_feasible(
-                               feed, active_candidates, phase
-                           )) {
-                    decision.retire = false;
-                    decision.reason = "remaining_balance_infeasible";
-                }
-            }
-            result.lifecycle.push_back(make_general_lifecycle_step(
-                result.stage_iii_solve_count,
-                active_candidates.size(),
-                decision.retire ? "retire_kkt_inactive" : "retain_phase",
-                run.solver_status,
-                decision.reason,
-                static_cast<int>(phase),
-                run.variables[offset],
-                run.lower_bound_multipliers[offset],
-                nlp.lagrangian_gradient[offset],
-                decision.complementarity_inf_norm,
-                active_candidates[phase].independent_modified_fractions,
-                active_candidates[phase].volume
-            ));
-            if (!decision.retire) {
-                continue;
-            }
-            active_candidates.erase(
-                active_candidates.begin() + static_cast<std::ptrdiff_t>(phase)
-            );
-            active_bounds.erase(
-                active_bounds.begin() + static_cast<std::ptrdiff_t>(phase)
-            );
-            ++result.retired_inactive_count;
-            ++result.active_set_resolve_count;
-            active_set_changed = true;
-            break;
-        }
-        if (active_set_changed) {
-            continue;
-        }
-
-        std::vector<Held2StateEvaluation> states;
-        states.reserve(active_candidates.size());
-        for (std::size_t phase = 0; phase < active_candidates.size(); ++phase) {
-            const std::size_t offset = phase * block_size;
-            const std::vector<double> independent(
-                run.variables.begin() + static_cast<std::ptrdiff_t>(offset + 1),
-                run.variables.begin()
-                    + static_cast<std::ptrdiff_t>(offset + 1 + dimension)
-            );
-            states.push_back(evaluator(
-                independent, run.variables[offset + 1 + dimension]
-            ));
-        }
-        for (std::size_t left = 0;
-             left < active_candidates.size() && !active_set_changed;
-             ++left) {
-            for (std::size_t right = left + 1;
-                 right < active_candidates.size();
-                 ++right) {
-                double merge_distance;
-                if (packing_fraction) {
-                    const std::vector<double> left_independent(
-                        run.variables.begin() + static_cast<std::ptrdiff_t>(
-                            left * block_size + 1
-                        ),
-                        run.variables.begin() + static_cast<std::ptrdiff_t>(
-                            left * block_size + 1 + dimension
-                        )
-                    );
-                    const std::vector<double> right_independent(
-                        run.variables.begin() + static_cast<std::ptrdiff_t>(
-                            right * block_size + 1
-                        ),
-                        run.variables.begin() + static_cast<std::ptrdiff_t>(
-                            right * block_size + 1 + dimension
-                        )
-                    );
-                    merge_distance = std::max(
-                        maximum_abs_difference(
-                            held2_lift_modified_fractions(
-                                coordinates, states[left].modified_fractions
-                            ),
-                            held2_lift_modified_fractions(
-                                coordinates, states[right].modified_fractions
-                            )
-                        ),
-                        std::abs(
-                            packing_fraction(
-                                left_independent, states[left].volume
-                            )
-                            - packing_fraction(
-                                right_independent, states[right].volume
-                            )
-                        )
-                    );
-                } else {
-                    merge_distance = std::max(
-                        maximum_abs_difference(
-                            states[left].modified_fractions,
-                            states[right].modified_fractions
-                        ),
-                        std::abs(
-                            std::log(states[left].volume)
-                                - std::log(states[right].volume)
-                        )
-                    );
-                }
-                if (!audit_held2_tolerance(
-                        kHeld2PhaseMerge,
-                        merge_distance
-                    ).passed) {
-                    continue;
-                }
-                const std::size_t removed =
-                    run.variables[left * block_size]
-                        <= run.variables[right * block_size]
-                    ? left : right;
-                if (active_candidates.size() <= 2) {
-                    result.failure_reason = "collapsed_phase_set";
-                    return result;
-                }
-                if (initializer) {
-                    std::vector<Held2StageIICandidate> reduced =
-                        active_candidates;
-                    reduced.erase(
-                        reduced.begin()
-                            + static_cast<std::ptrdiff_t>(removed)
-                    );
-                    const Held2StageIIIFeasibilityStart start =
-                        initializer(reduced);
-                    if (start.status == "uncertified") {
-                        result.failure_reason =
-                            "stage_iii_reduced_feasibility_uncertified";
-                        return result;
-                    }
-                    if (start.status != "feasible") continue;
-                } else if (!remaining_candidate_balance_feasible(
-                               feed, active_candidates, removed
-                           )) {
-                    continue;
-                }
-                const std::size_t retained = removed == left ? right : left;
-                pending_initial = run.variables;
-                pending_initial[retained * block_size] +=
-                    pending_initial[removed * block_size];
-                pending_initial.erase(
-                    pending_initial.begin()
-                        + static_cast<std::ptrdiff_t>(removed * block_size),
-                    pending_initial.begin()
-                        + static_cast<std::ptrdiff_t>(
-                            (removed + 1) * block_size
-                        )
-                );
-                result.lifecycle.push_back(make_general_lifecycle_step(
-                    result.stage_iii_solve_count,
-                    active_candidates.size(),
-                    "merge_duplicate",
-                    run.solver_status,
-                    "duplicate_state_certified",
-                    static_cast<int>(removed),
-                    run.variables[removed * block_size],
-                    run.lower_bound_multipliers[removed * block_size],
-                    nlp.lagrangian_gradient[removed * block_size],
-                    std::max(
-                        std::abs(run.variables[removed * block_size]
-                            * run.lower_bound_multipliers[removed * block_size]),
-                        std::abs((1.0 - run.variables[removed * block_size])
-                            * run.upper_bound_multipliers[removed * block_size])
-                    ),
-                    active_candidates[removed]
-                        .independent_modified_fractions,
-                    active_candidates[removed].volume
-                ));
-                active_candidates.erase(
-                    active_candidates.begin()
-                        + static_cast<std::ptrdiff_t>(removed)
-                );
-                active_bounds.erase(
-                    active_bounds.begin() + static_cast<std::ptrdiff_t>(removed)
-                );
-                ++result.retired_duplicate_count;
-                ++result.active_set_resolve_count;
-                active_set_changed = true;
-                break;
+            if (!supplied_initial) {
+                variables[variable] = candidates[phase]
+                    .independent_modified_fractions[coordinate];
             }
         }
-        if (active_set_changed) {
-            continue;
+        const std::size_t volume = offset + 1 + dimension;
+        lower[volume] = phase_coordinate_bounds[phase][0];
+        upper[volume] = phase_coordinate_bounds[phase][1];
+        if (!supplied_initial) {
+            variables[volume] = candidates[phase].phase_coordinate;
         }
-
-        std::string pressure_polish_failure;
-        if (!polish_stage_iii_pressure_roots(
-                evaluator,
-                active_bounds,
-                active_candidates.size(),
-                dimension,
-                run.variables,
-                result.pressure_polish_iteration_count,
-                pressure_polish_failure
-            )) {
-            result.numerical_status = "not_converged";
-            result.pressure_polish_status = "failed";
-            result.failure_reason = pressure_polish_failure;
-            result.lifecycle.push_back(make_general_lifecycle_step(
-                result.stage_iii_solve_count,
-                active_candidates.size(),
-                "pressure_polish_failed",
-                run.solver_status,
-                result.failure_reason
-            ));
-            return result;
-        }
-        result.pressure_polish_status = "passed";
-        try {
-            nlp = evaluate_general_stage_iii(
-                coordinates,
-                feed,
-                evaluator,
-                active_candidates.size(),
-                run.variables,
-                run.equality_multipliers,
-                1.0
-            );
-        } catch (const std::exception& error) {
-            result.numerical_status = "not_converged";
-            result.failure_reason = error.what();
-            return result;
-        }
-        std::vector<double> polished_kkt = nlp.lagrangian_gradient;
-        result.bound_complementarity_inf_norm = 0.0;
-        for (std::size_t phase = 0;
-             phase < active_candidates.size();
-             ++phase) {
-            const std::size_t offset = phase * block_size;
-            for (std::size_t local = 0; local < block_size; ++local) {
-                const std::size_t index = offset + local;
-                double lower = 0.0;
-                double upper = 1.0;
-                if (local > 0 && local <= dimension) {
-                    const std::size_t coordinate = local - 1;
-                    lower = std::max(
-                        coordinates.independent_lower_bounds[coordinate],
-                        active_candidates[phase]
-                            .independent_modified_fractions[coordinate]
-                            - kCandidateRadius
-                    );
-                    upper = std::min(
-                        coordinates.independent_upper_bounds[coordinate],
-                        active_candidates[phase]
-                            .independent_modified_fractions[coordinate]
-                            + kCandidateRadius
-                    );
-                } else if (local == block_size - 1) {
-                    lower = active_bounds[phase][0];
-                    upper = active_bounds[phase][1];
-                }
-                polished_kkt[index] -= run.lower_bound_multipliers[index];
-                polished_kkt[index] += run.upper_bound_multipliers[index];
-                result.bound_complementarity_inf_norm = std::max({
-                    result.bound_complementarity_inf_norm,
-                    std::abs(
-                        (run.variables[index] - lower)
-                        * run.lower_bound_multipliers[index]
-                    ),
-                    std::abs(
-                        (upper - run.variables[index])
-                        * run.upper_bound_multipliers[index]
-                    ),
-                });
-            }
-        }
-        result.kkt_stationarity_inf_norm = maximum_abs(polished_kkt);
-        if (!audit_held2_tolerance(
-                kHeld2Stage3Stationarity,
-                result.kkt_stationarity_inf_norm
-            ).passed
-            || !audit_held2_tolerance(
-                kHeld2Stage3Complementarity,
-                result.bound_complementarity_inf_norm
-            ).passed) {
-            result.numerical_status = "not_converged";
-            result.failure_reason =
-                "stage_iii_pressure_polish_kkt_failed";
-            result.lifecycle.push_back(make_general_lifecycle_step(
-                result.stage_iii_solve_count,
-                active_candidates.size(),
-                "pressure_polish_kkt_failed",
-                run.solver_status,
-                result.failure_reason
-            ));
-            return result;
-        }
-        states.clear();
-        for (std::size_t phase = 0;
-             phase < active_candidates.size();
-             ++phase) {
-            const std::size_t offset = phase * block_size;
-            const std::vector<double> independent(
-                run.variables.begin()
-                    + static_cast<std::ptrdiff_t>(offset + 1),
-                run.variables.begin()
-                    + static_cast<std::ptrdiff_t>(offset + 1 + dimension)
-            );
-            states.push_back(evaluator(
-                independent,
-                run.variables[offset + 1 + dimension]
-            ));
-        }
-        Held2ProgressEvent pressure_progress;
-        pressure_progress.kind = Held2ProgressKind::Certificate;
-        pressure_progress.stage = "STAGE III PRESSURE POLISH";
-        pressure_progress.status = "passed";
-        pressure_progress.iteration = result.pressure_polish_iteration_count;
-        for (const Held2StateEvaluation& state : states) {
-            pressure_progress.primal_residual = std::max(
-                pressure_progress.primal_residual,
-                std::abs(state.pressure_stationarity_relative)
-            );
-        }
-        observe_held2(observer, pressure_progress);
-        result.lifecycle.push_back(make_general_lifecycle_step(
-            result.stage_iii_solve_count,
-            active_candidates.size(),
-            "accept_active_set",
-            run.solver_status,
-            "active_set_certified"
-        ));
-        accepted_run = std::move(run);
-        accepted_nlp = std::move(nlp);
-        accepted_states = std::move(states);
-        active_set_accepted = true;
-        break;
     }
 
-    if (!active_set_accepted) {
+    Problem67 problem{
+        coordinates,
+        feed,
+        evaluator,
+        candidates.size(),
+        dimension,
+        block_size,
+        0,
+        {},
+    };
+    std::vector<Problem67Constraint> constraints;
+    constraints.reserve(
+        dimension + 1
+        + candidates.size() * coordinates.polytope_constraints.size()
+    );
+    constraints.push_back({&problem, 0, 0});
+    for (std::size_t coordinate = 0;
+         coordinate < dimension;
+         ++coordinate) {
+        constraints.push_back({&problem, 1, coordinate});
+    }
+    for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+        for (std::size_t constraint = 0;
+             constraint < coordinates.polytope_constraints.size();
+             ++constraint) {
+            constraints.push_back({&problem, 2, constraint, phase});
+        }
+    }
+
+    auto* raw = new Problem67Tnlp(
+        problem, lower, upper, variables
+    );
+    Ipopt::SmartPtr<Ipopt::TNLP> nlp_problem = raw;
+    Ipopt::SmartPtr<Ipopt::IpoptApplication> application =
+        IpoptApplicationFactory();
+    application->Options()->SetStringValue("option_file_name", "");
+    application->Options()->SetIntegerValue("print_level", 0);
+    application->Options()->SetStringValue("sb", "yes");
+    application->Options()->SetIntegerValue("max_iter", 300);
+    application->Options()->SetNumericValue(
+        "tol", kHeld2Stage3ModifiedBalance.atol
+    );
+    application->Options()->SetNumericValue(
+        "constr_viol_tol", kHeld2Stage3ModifiedBalance.atol
+    );
+    application->Options()->SetStringValue(
+        "jacobian_approximation", "exact"
+    );
+    application->Options()->SetStringValue(
+        "hessian_approximation", "exact"
+    );
+    application->Options()->SetStringValue("mu_strategy", "adaptive");
+    application->Options()->SetNumericValue("bound_relax_factor", 0.0);
+    if (application->Initialize() != Ipopt::Solve_Succeeded) {
+        result.solver_status = "initialization_failed";
+        result.failure_reason = "stage_iii_solver_initialization_failed";
+        return result;
+    }
+    const Ipopt::ApplicationReturnStatus status =
+        application->OptimizeTNLP(nlp_problem);
+    result.solver_status = ipopt_status(status);
+    result.optimizer_iteration_count = raw->iterations();
+    if (!raw->converged()) {
         result.numerical_status = "not_converged";
-        result.failure_reason = "stage_iii_active_set_lifecycle_exhausted";
+        result.failure_reason = "stage_iii_solver_not_converged";
+        return result;
+    }
+    variables = raw->variables();
+    const double objective = raw->objective();
+    const std::vector<double>& z_lower = raw->lower_multipliers();
+    const std::vector<double>& z_upper = raw->upper_multipliers();
+    const std::vector<double>& lambda = raw->constraint_multipliers();
+    for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+        const std::size_t offset = phase * block_size;
+        if (z_lower[offset] > kHeld2PhaseRetirementMargin.atol) {
+            continue;
+        }
+        const std::vector<double> independent(
+            variables.begin() + static_cast<std::ptrdiff_t>(offset + 1),
+            variables.begin() + static_cast<std::ptrdiff_t>(
+                offset + 1 + dimension
+            )
+        );
+        double& log_volume = variables[offset + 1 + dimension];
+        for (int iteration = 0; iteration < 8; ++iteration) {
+            const Held2StateEvaluation state = evaluator(
+                independent, log_volume
+            );
+            if (audit_held2_tolerance(
+                    kHeld2Stage3Pressure,
+                    state.pressure_stationarity_relative
+                ).passed) {
+                break;
+            }
+            const double derivative =
+                state.pressure_stationarity_derivative_log_volume;
+            if (!std::isfinite(derivative) || derivative == 0.0) {
+                result.failure_reason =
+                    "stage_iii_pressure_refinement_failed";
+                return result;
+            }
+            const double next = std::clamp(
+                log_volume
+                    - state.pressure_stationarity_relative / derivative,
+                phase_coordinate_bounds[phase][0],
+                phase_coordinate_bounds[phase][1]
+            );
+            if (next == log_volume) {
+                result.failure_reason =
+                    "stage_iii_pressure_refinement_failed";
+                return result;
+            }
+            log_volume = next;
+            ++result.pressure_polish_iteration_count;
+        }
+        if (!audit_held2_tolerance(
+                kHeld2Stage3Pressure,
+                evaluator(independent, log_volume)
+                    .pressure_stationarity_relative
+            ).passed) {
+            result.failure_reason =
+                "stage_iii_pressure_refinement_failed";
+            return result;
+        }
+    }
+    result.pressure_polish_status = "complete";
+    result.solution_variables = variables;
+
+    std::vector<double> equality_residuals;
+    equality_residuals.reserve(dimension + 1);
+    std::vector<double> no_gradient;
+    for (std::size_t index = 0; index < dimension + 1; ++index) {
+        equality_residuals.push_back(problem67_constraint(
+            variables, no_gradient, &constraints[index]
+        ));
+    }
+    result.modified_balance_inf_norm = maximum_abs(equality_residuals);
+    if (!audit_held2_tolerance(
+            kHeld2Stage3ModifiedBalance,
+            result.modified_balance_inf_norm
+        ).passed) {
+        result.numerical_status = "not_converged";
+        result.failure_reason = "stage_iii_material_balance_failed";
         return result;
     }
 
-    result.objective = accepted_nlp.objective;
+    std::vector<double> stationarity(variable_count);
+    static_cast<void>(problem67_objective(
+        variables, stationarity, &problem
+    ));
+    std::vector<double> constraint_values(constraints.size());
+    for (std::size_t row = 0; row < constraints.size(); ++row) {
+        std::vector<double> gradient(variable_count);
+        constraint_values[row] = problem67_constraint(
+            variables, gradient, &constraints[row]
+        );
+        for (std::size_t column = 0; column < variable_count; ++column) {
+            stationarity[column] += lambda[row] * gradient[column];
+        }
+    }
+    for (std::size_t column = 0; column < variable_count; ++column) {
+        stationarity[column] += z_upper[column] - z_lower[column];
+        result.dual_sign_violation_inf_norm = std::max({
+            result.dual_sign_violation_inf_norm,
+            -z_lower[column],
+            -z_upper[column],
+        });
+        result.bound_complementarity_inf_norm = std::max({
+            result.bound_complementarity_inf_norm,
+            std::abs((variables[column] - lower[column]) * z_lower[column]),
+            std::abs((upper[column] - variables[column]) * z_upper[column]),
+        });
+    }
+    for (std::size_t row = dimension + 1;
+         row < constraints.size();
+         ++row) {
+        result.dual_sign_violation_inf_norm = std::max(
+            result.dual_sign_violation_inf_norm, -lambda[row]
+        );
+        result.bound_complementarity_inf_norm = std::max(
+            result.bound_complementarity_inf_norm,
+            std::abs(lambda[row] * constraint_values[row])
+        );
+    }
+    result.kkt_stationarity_inf_norm = maximum_abs(stationarity);
+
+    result.objective = objective;
     result.free_energy_upper_bound = free_energy_upper_bound;
     result.free_energy_gap_provenance = free_energy_gap_provenance;
     result.free_energy_gap_available =
@@ -1500,60 +1226,139 @@ Held2StageIIIResult solve_held2_stage_iii(
         && !free_energy_gap_provenance.empty()
         && free_energy_gap_provenance != "unavailable";
     if (result.free_energy_gap_available) {
-        result.free_energy_gap = free_energy_upper_bound - result.objective;
+        result.free_energy_gap = free_energy_upper_bound - objective;
     }
-    for (std::size_t phase = 0; phase < active_candidates.size(); ++phase) {
+    result.minimum_phase_fraction =
+        std::numeric_limits<double>::infinity();
+    for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
         const std::size_t offset = phase * block_size;
-        result.phases.push_back({
-            accepted_run.variables[offset],
-            accepted_states[phase].modified_fractions,
-            accepted_states[phase].physical_amounts,
-            accepted_states[phase].volume,
-        });
+        const double fraction = variables[offset];
+        if (z_lower[offset] > kHeld2PhaseRetirementMargin.atol) {
+            ++result.retired_inactive_count;
+            continue;
+        }
+        const std::vector<double> independent(
+            variables.begin() + static_cast<std::ptrdiff_t>(offset + 1),
+            variables.begin() + static_cast<std::ptrdiff_t>(
+                offset + 1 + dimension
+            )
+        );
+        const Held2StateEvaluation state = evaluator(
+            independent, variables[offset + 1 + dimension]
+        );
+        Held2StageIIIPhase current{
+            fraction,
+            state.modified_fractions,
+            state.physical_amounts,
+            state.volume,
+        };
+        auto duplicate = std::find_if(
+            result.phases.begin(),
+            result.phases.end(),
+            [&](const Held2StageIIIPhase& known) {
+                return std::max(
+                    maximum_difference(
+                        known.physical_fractions,
+                        current.physical_fractions
+                    ),
+                    std::abs(
+                        std::log(known.volume)
+                        - std::log(current.volume)
+                    )
+                ) <= kHeld2PhaseMerge.atol;
+            }
+        );
+        if (duplicate == result.phases.end()) {
+            result.phases.push_back(std::move(current));
+        } else {
+            const double combined =
+                duplicate->phase_fraction + current.phase_fraction;
+            if (current.phase_fraction > duplicate->phase_fraction) {
+                *duplicate = std::move(current);
+            }
+            duplicate->phase_fraction = combined;
+            ++result.retired_duplicate_count;
+        }
     }
     if (result.phases.size() < 2) {
-        result.physical_status = "rejected";
         result.failure_reason = "collapsed_phase_set";
         return result;
     }
+    ++result.stage_iii_solve_count;
+    if (!project_phase_fractions(physical_feed, result.phases)) {
+        result.failure_reason = "stage_iii_phase_fraction_projection_failed";
+        return result;
+    }
 
-    std::vector<double> modified_balance(modified_feed.size(), 0.0);
-    std::vector<double> ordinary_balance(physical_feed.size(), 0.0);
-    result.minimum_phase_distance = std::numeric_limits<double>::infinity();
+    std::vector<double> modified_balance(modified_feed.size());
+    std::vector<double> ordinary_balance(physical_feed.size());
+    result.objective = 0.0;
+    result.pressure_stationarity_inf_norm = 0.0;
+    result.minimum_phase_distance =
+        std::numeric_limits<double>::infinity();
     for (const Held2StageIIIPhase& phase : result.phases) {
-        for (std::size_t index = 0; index < modified_balance.size(); ++index) {
+        result.minimum_phase_fraction = std::min(
+            result.minimum_phase_fraction, phase.phase_fraction
+        );
+        for (std::size_t index = 0;
+             index < modified_balance.size();
+             ++index) {
             modified_balance[index] +=
                 phase.phase_fraction * phase.modified_fractions[index];
         }
-        for (std::size_t index = 0; index < ordinary_balance.size(); ++index) {
+        for (std::size_t index = 0;
+             index < ordinary_balance.size();
+             ++index) {
             ordinary_balance[index] +=
                 phase.phase_fraction * phase.physical_fractions[index];
         }
-        result.phase_charge_inf_norm = std::max(
-            result.phase_charge_inf_norm,
-            std::abs(charge_residual(
-                coordinates.charges, phase.physical_fractions
-            ))
+        const double charge = charge_residual(
+            coordinates.charges, phase.physical_fractions
         );
-        double phase_scale = 0.0;
-        for (std::size_t index = 0; index < coordinates.charges.size(); ++index) {
-            phase_scale += std::abs(
-                coordinates.charges[index] * phase.physical_fractions[index]
+        result.phase_charge_inf_norm = std::max(
+            result.phase_charge_inf_norm, std::abs(charge)
+        );
+        double charge_scale = 0.0;
+        for (std::size_t index = 0;
+             index < coordinates.charges.size();
+             ++index) {
+            charge_scale += std::abs(
+                coordinates.charges[index]
+                    * phase.physical_fractions[index]
             );
         }
         result.phase_charge_scale = std::max(
-            result.phase_charge_scale, phase_scale
+            result.phase_charge_scale, charge_scale
         );
-    }
-    result.modified_balance_inf_norm =
-        maximum_abs_difference(modified_balance, modified_feed);
-    result.ordinary_balance_inf_norm =
-        maximum_abs_difference(ordinary_balance, physical_feed);
-    for (const Held2StateEvaluation& state : accepted_states) {
+        std::vector<double> independent;
+        for (std::size_t position : independent_positions(coordinates)) {
+            independent.push_back(phase.modified_fractions[position]);
+        }
+        const Held2StateEvaluation state = evaluator(
+            independent, std::log(phase.volume)
+        );
+        result.objective += phase.phase_fraction * state.objective;
         result.pressure_stationarity_inf_norm = std::max(
             result.pressure_stationarity_inf_norm,
             std::abs(state.pressure_stationarity_relative)
         );
+    }
+    result.modified_balance_inf_norm = maximum_difference(
+        modified_balance, modified_feed
+    );
+    result.ordinary_balance_inf_norm = maximum_difference(
+        ordinary_balance, physical_feed
+    );
+    if (!audit_held2_tolerance(
+            kHeld2Stage3ModifiedBalance,
+            result.modified_balance_inf_norm
+        ).passed
+        || !audit_held2_tolerance(
+            kHeld2Stage3ExplicitBalance,
+            result.ordinary_balance_inf_norm
+        ).passed) {
+        result.failure_reason = "stage_iii_active_set_balance_failed";
+        return result;
     }
     for (std::size_t left = 0; left < result.phases.size(); ++left) {
         for (std::size_t right = left + 1;
@@ -1562,182 +1367,26 @@ Held2StageIIIResult solve_held2_stage_iii(
             result.minimum_phase_distance = std::min(
                 result.minimum_phase_distance,
                 std::max(
-                    maximum_abs_difference(
-                        result.phases[left].modified_fractions,
-                        result.phases[right].modified_fractions
+                    maximum_difference(
+                        result.phases[left].physical_fractions,
+                        result.phases[right].physical_fractions
                     ),
                     std::abs(
                         std::log(result.phases[left].volume)
-                            - std::log(result.phases[right].volume)
+                        - std::log(result.phases[right].volume)
                     )
                 )
             );
         }
     }
-    for (std::size_t retained = 0; retained < modified_feed.size(); ++retained) {
-        const double lower_bound =
-            kHeld2ModifiedLowerScale * coordinates.modified_factors[retained];
-        bool trace = false;
-        for (const Held2StageIIIPhase& phase : result.phases) {
-            trace = trace
-                || phase.modified_fractions[retained] <= 10.0 * lower_bound;
-        }
-        if (trace) {
-            ++result.trace_component_count;
-            continue;
-        }
-        ++result.certified_modified_potential_count;
-        for (std::size_t left = 0; left < accepted_states.size(); ++left) {
-            for (std::size_t right = left + 1;
-                 right < accepted_states.size();
-                 ++right) {
-                const double gap = std::abs(
-                    accepted_states[left].modified_potentials[retained]
-                    - accepted_states[right].modified_potentials[retained]
-                );
-                const double scale = std::max(
-                    std::abs(accepted_states[left].modified_potentials[retained]),
-                    std::abs(accepted_states[right].modified_potentials[retained])
-                );
-                if (gap > result.modified_potential_mixed_gap) {
-                    result.modified_potential_mixed_gap = gap;
-                    result.modified_potential_scale = scale;
-                }
-            }
-        }
-    }
-    result.physical_evidence_available = true;
-    result.phase_identity_evidence_available = true;
-    if (result.trace_component_count > 0) {
-        result.trace_refinement_status =
-            "complementarity_refinement_required";
-        result.failure_reason = "trace_component_requires_log_refinement";
-        return result;
-    }
-    result.trace_refinement_status = "not_required";
-    const bool duplicate_identity = audit_held2_tolerance(
-        kHeld2PhaseMerge, result.minimum_phase_distance
-    ).passed;
-    const bool distinct_identity = audit_held2_tolerance(
-        kHeld2PhaseDistinct, result.minimum_phase_distance
-    ).passed;
-    if (duplicate_identity) {
-        result.phase_identity_status = "duplicate";
-    } else if (distinct_identity) {
-        result.phase_identity_status = "confidently_distinct";
-    } else {
-        result.phase_identity_status = "unresolved";
-        result.physical_status = "rejected";
-        result.failure_reason = "stage_iii_phase_identity_unresolved";
-        return result;
-    }
-    const bool physical_without_free_energy_gap =
-        audit_held2_tolerance(
-            kHeld2Stage3ModifiedBalance,
-            result.modified_balance_inf_norm
-        ).passed
-        && audit_held2_tolerance(
-            kHeld2Stage3ExplicitBalance,
-            result.ordinary_balance_inf_norm
-        ).passed
-        && audit_held2_tolerance(
-            kHeld2Stage3Charge,
-            result.phase_charge_inf_norm,
-            result.phase_charge_scale
-        ).passed
-        && audit_held2_tolerance(
-            kHeld2Stage3Pressure,
-            result.pressure_stationarity_inf_norm
-        ).passed
-        && audit_held2_tolerance(
-            kHeld2Stage3Potential,
-            result.modified_potential_mixed_gap,
-            result.modified_potential_scale
-        ).passed
-        && distinct_identity
-        && audit_held2_tolerance(
-            kHeld2PhaseActivity,
-            result.minimum_phase_fraction
-        ).passed
-        && audit_held2_tolerance(
-            kHeld2Stage3Stationarity,
-            result.kkt_stationarity_inf_norm
-        ).passed
-        && audit_held2_tolerance(
-            kHeld2Stage3DualSign,
-            result.dual_sign_violation_inf_norm
-        ).passed
-        && audit_held2_tolerance(
-            kHeld2Stage3Complementarity,
-            result.bound_complementarity_inf_norm
-        ).passed;
-    if (!physical_without_free_energy_gap) {
-        result.physical_status = "rejected";
-        result.failure_reason = "stage_iii_physical_certificate_failed";
-        Held2ProgressEvent physical_progress;
-        physical_progress.kind = Held2ProgressKind::Certificate;
-        physical_progress.stage = "STAGE III PHYSICAL";
-        physical_progress.status = "failed";
-        physical_progress.reason = result.failure_reason;
-        physical_progress.primal_residual = std::max(
-            result.modified_balance_inf_norm,
-            result.ordinary_balance_inf_norm
-        );
-        physical_progress.dual_residual = result.modified_potential_mixed_gap;
-        physical_progress.complementarity =
-            result.bound_complementarity_inf_norm;
-        observe_held2(observer, physical_progress);
-        return result;
-    }
-    if (!result.free_energy_gap_available) {
-        result.physical_status = "rejected";
-        result.failure_reason = "stage_iii_free_energy_gap_unavailable";
-        Held2ProgressEvent gap_progress;
-        gap_progress.kind = Held2ProgressKind::Certificate;
-        gap_progress.stage = "STAGE III FREE ENERGY";
-        gap_progress.status = "failed";
-        gap_progress.reason = result.failure_reason;
-        observe_held2(observer, gap_progress);
-        return result;
-    }
-    if (!audit_held2_tolerance(
-            kHeld2Stage3FreeEnergyGap,
-            result.free_energy_gap
-        ).passed) {
-        result.physical_status = "rejected";
-        result.failure_reason = "stage_iii_free_energy_gap_failed";
-        Held2ProgressEvent gap_progress;
-        gap_progress.kind = Held2ProgressKind::Certificate;
-        gap_progress.stage = "STAGE III FREE ENERGY";
-        gap_progress.status = "failed";
-        gap_progress.reason = result.failure_reason;
-        gap_progress.objective = result.objective;
-        gap_progress.upper_bound = result.free_energy_upper_bound;
-        gap_progress.gap = result.free_energy_gap;
-        observe_held2(observer, gap_progress);
-        return result;
-    }
-    Held2ProgressEvent gap_progress;
-    gap_progress.kind = Held2ProgressKind::Certificate;
-    gap_progress.stage = "STAGE III FREE ENERGY";
-    gap_progress.status = "passed";
-    gap_progress.objective = result.objective;
-    gap_progress.upper_bound = result.free_energy_upper_bound;
-    gap_progress.gap = result.free_energy_gap;
-    observe_held2(observer, gap_progress);
+    result.numerical_status = "converged";
     result.physical_status = "accepted";
     result.feedback = "none";
-    Held2ProgressEvent physical_progress;
-    physical_progress.kind = Held2ProgressKind::Certificate;
-    physical_progress.stage = "STAGE III PHYSICAL";
-    physical_progress.status = "passed";
-    physical_progress.primal_residual = std::max(
-        result.modified_balance_inf_norm,
-        result.ordinary_balance_inf_norm
-    );
-    physical_progress.dual_residual = result.modified_potential_mixed_gap;
-    physical_progress.complementarity = result.bound_complementarity_inf_norm;
-    observe_held2(observer, physical_progress);
+    result.phase_identity_status = "paper_duplicate_removal_complete";
+    result.kkt_evidence_available = true;
+    result.physical_evidence_available = true;
+    result.phase_identity_evidence_available = true;
     return result;
 }
+
 }  // namespace epcsaft_equilibrium

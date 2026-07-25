@@ -34,29 +34,8 @@ Held2Step9Result run_held2_step9(
         }),
         false,
     };
-    physical.accepted = step8.nlp->accepted
-        && audit_held2_tolerance(
-            kHeld2Stage3ModifiedBalance, physical.modified_balance_inf
-        ).passed
-        && audit_held2_tolerance(
-            kHeld2Stage3ExplicitBalance, physical.ordinary_balance_inf
-        ).passed
-        && audit_held2_tolerance(
-            kHeld2Stage3Charge,
-            physical.electroneutrality_inf,
-            step8.electroneutrality_scale
-        ).passed
-        && audit_held2_tolerance(
-            kHeld2Stage3Pressure, physical.pressure_residual_inf
-        ).passed
-        && audit_held2_tolerance(
-            kHeld2Stage3Stationarity, physical.kkt_residual_inf
-        ).passed;
+    physical.accepted = step8.nlp->accepted;
     result.physical = physical;
-    if (!physical.accepted) {
-        result.reason = "step9_physical_certificate_failed";
-        return result;
-    }
 
     std::vector<std::pair<std::uint64_t, Held2StateEvaluation>> states;
     for (const Held2Phase& phase : step8.active_phases) {
@@ -117,7 +96,7 @@ Held2Step9Result run_held2_step9(
     }
     const double gap = *step4.upper_bound - *step8.total_reduced_gibbs;
     result.free_energy_gap = gap;
-    const bool gap_passed = gap >= 0.0
+    const bool gap_passed = gap >= -kHeld2PaperFreeEnergyGap.atol
         && audit_held2_tolerance(kHeld2PaperFreeEnergyGap, gap).passed;
     Held2ProgressEvent progress;
     progress.kind = Held2ProgressKind::Certificate;

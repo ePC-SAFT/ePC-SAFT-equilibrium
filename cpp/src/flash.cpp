@@ -191,14 +191,14 @@ private:
         const std::vector<double>& amounts,
         double log_volume
     ) const {
-        const MixturePhaseEvaluation provider_phase =
+        MixturePhaseEvaluation provider_phase =
             provider_.evaluate_electrolyte(
                 input_.temperature_k, amounts, std::exp(log_volume)
             );
         Held2PhysicalPhaseBlock block;
         block.helmholtz_over_rt = provider_phase.value;
-        block.gradient = provider_phase.gradient;
-        block.hessian = provider_phase.hessian;
+        block.gradient = std::move(provider_phase.gradient);
+        block.hessian = std::move(provider_phase.hessian);
         block.pressure_pa = provider_phase.pressure_pa;
         return evaluate_held2_phase_block(
             coordinates_,
@@ -593,8 +593,7 @@ Held2FlashResult solve_held2(
         evaluator,
         phase_coordinate_bounds,
         free_energy_upper_bound,
-        free_energy_gap_provenance,
-        observer
+        free_energy_gap_provenance
     );
     next_action = workflow.complete_stage_iii(*result.stage_iii);
     if (next_action != Held2NextAction::AcceptMultiphase) {
