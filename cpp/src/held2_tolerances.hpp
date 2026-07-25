@@ -89,6 +89,10 @@ inline constexpr Held2Tolerance kHeld2TpdNegativeMargin{
     "tpd_negative_margin", "stage_i", "TPD is not materially negative",
     Held2ToleranceRelation::LessThanNegative, 1.0e-8, 0.0,
 };
+inline constexpr Held2Tolerance kHeld2TpdReferenceZero{
+    "tpd_reference_zero", "stage_i", "TPD is nonzero at its tangent point",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-12, 0.0,
+};
 inline constexpr Held2Tolerance kHeld2LpPrimal{
     "lp_primal", "stage_ii_lp", "upper LP primal feasibility failed",
     Held2ToleranceRelation::AbsAtMost, 1.0e-9, 1.0e-8,
@@ -214,7 +218,7 @@ inline constexpr Held2Tolerance kHeld2IpoptConstraint{
     Held2ToleranceRelation::SolverTarget, 1.0e-10, 0.0,
 };
 
-inline constexpr std::array<const Held2Tolerance*, 45> kHeld2ToleranceContract{{
+inline constexpr std::array<const Held2Tolerance*, 46> kHeld2ToleranceContract{{
     &kHeld2ChartContact,
     &kHeld2PolytopeFeasibility,
     &kHeld2CompositionSum,
@@ -229,6 +233,7 @@ inline constexpr std::array<const Held2Tolerance*, 45> kHeld2ToleranceContract{{
     &kHeld2MechanicalMargin,
     &kHeld2StableObjectiveTie,
     &kHeld2TpdNegativeMargin,
+    &kHeld2TpdReferenceZero,
     &kHeld2LpPrimal,
     &kHeld2LpDual,
     &kHeld2LpComplementarity,

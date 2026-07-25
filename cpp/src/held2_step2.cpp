@@ -4,7 +4,9 @@
 #include <nlopt.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <ctime>
 #include <stdexcept>
 
 namespace epcsaft_equilibrium {
@@ -66,6 +68,9 @@ double direct_objective(
         ];
         progress.volume = selected.volume;
         progress.pressure_residual = selected.pressure_residual;
+    } else if (retained.trial_volume > 0.0) {
+        progress.volume = retained.trial_volume;
+        progress.pressure_residual = retained.trial_pressure_residual;
     }
     observe_held2(context.observer, progress);
     if (!retained.certified || !std::isfinite(retained.tpd)) {
@@ -141,6 +146,272 @@ Held2StateEvaluation evaluate_simple_manufactured_state(
 }
 
 }  // namespace
+
+Held2TpdEvaluation evaluate_held2_tpd(
+    const Held2StateEvaluation& reference,
+    const std::vector<double>& feed,
+    const Held2StateEvaluation& trial,
+    const std::vector<double>& independent
+) {
+    const std::size_t dimension = feed.size();
+    if (dimension == 0 || independent.size() != dimension
+        || reference.gradient.size() != dimension + 1
+        || trial.gradient.size() != dimension + 1
+        || trial.hessian.size() != (dimension + 1) * (dimension + 1)
+        || !std::isfinite(reference.objective)
+        || !std::isfinite(trial.objective)) {
+        throw std::invalid_argument("HELD2 Step-2 TPD evidence is incomplete");
+    }
+    Held2TpdEvaluation result;
+    result.value = trial.objective - reference.objective;
+    result.gradient = trial.gradient;
+    for (std::size_t index = 0; index < dimension; ++index) {
+        result.value -= reference.gradient[index]
+            * (independent[index] - feed[index]);
+        result.gradient[index] -= reference.gradient[index];
+    }
+    result.hessian = trial.hessian;
+    return result;
+}
+
+Held2Step2Result run_held2_step2(
+    const Held2Step1Result& step1,
+    const Held2StateEvaluator& evaluator,
+    int search_budget,
+    Held2ProgressObserver* observer
+) {
+    constexpr int kPressureIntervals = 64;
+    constexpr int kPressureSubdivisionDepth = 8;
+    const auto wall_start = std::chrono::steady_clock::now();
+    const std::clock_t cpu_start = std::clock();
+    Held2Step2Result result;
+    const auto finish = [&](Held2Step2Outcome outcome,
+                            const std::string& reason) {
+        result.outcome = outcome;
+        result.reason = reason;
+        result.timing.invocation_count = 1;
+        result.timing.wall_seconds = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - wall_start
+        ).count();
+        result.timing.cpu_seconds = static_cast<double>(
+            std::clock() - cpu_start
+        ) / static_cast<double>(CLOCKS_PER_SEC);
+        result.timing.terminal_status =
+            outcome == Held2Step2Outcome::Indeterminate
+            ? "indeterminate"
+            : "complete";
+        result.timing.terminal_reason = reason;
+        result.timing.next_step =
+            outcome == Held2Step2Outcome::NegativeWitness ? 3 : 0;
+        return result;
+    };
+    if (step1.status != "complete" || !step1.coordinates
+        || !step1.independent_feed || !step1.volume_bounds
+        || !evaluator || search_budget < 1) {
+        return finish(
+            Held2Step2Outcome::Indeterminate, "invalid_step2_input"
+        );
+    }
+    const std::vector<double>& feed = *step1.independent_feed;
+    const Held2StateEvaluator counted = [&](const auto& composition,
+                                             double log_volume) {
+        ++result.timing.provider_evaluations;
+        return evaluator(composition, log_volume);
+    };
+    const auto envelope = [&](const std::vector<double>& composition) {
+        ++result.timing.provider_evaluations;
+        return evaluate_held2_pressure_envelope(
+            composition,
+            (*step1.volume_bounds)(composition),
+            counted,
+            kPressureIntervals,
+            kPressureSubdivisionDepth
+        );
+    };
+
+    Held2ProgressEvent progress;
+    progress.kind = Held2ProgressKind::ReferenceStart;
+    observe_held2(observer, progress);
+    try {
+        result.reference_envelope = envelope(feed);
+    } catch (...) {
+        return finish(
+            Held2Step2Outcome::Indeterminate,
+            "reference_evaluation_failed"
+        );
+    }
+    for (std::size_t index = 0;
+         index < result.reference_envelope->roots.size();
+         ++index) {
+        const Held2PressureRoot& root =
+            result.reference_envelope->roots[index];
+        progress = {};
+        progress.kind = Held2ProgressKind::ReferenceRoot;
+        progress.count = static_cast<int>(index);
+        progress.volume = root.volume;
+        progress.objective = root.objective;
+        progress.pressure_residual = root.pressure_residual;
+        progress.mechanical_class = root.mechanical_class;
+        observe_held2(observer, progress);
+    }
+    const Held2PressureEnvelopeResult& reference_envelope =
+        *result.reference_envelope;
+    if (reference_envelope.outcome != "selected"
+        || reference_envelope.selected_root_index < 0) {
+        return finish(
+            Held2Step2Outcome::Indeterminate,
+            reference_envelope.failure_reason.empty()
+            ? "reference_root_indeterminate"
+            : reference_envelope.failure_reason
+        );
+    }
+    const Held2PressureRoot& selected = reference_envelope.roots[
+        static_cast<std::size_t>(reference_envelope.selected_root_index)
+    ];
+    for (const Held2PressureScanPoint& point :
+         reference_envelope.scan_points) {
+        const bool boundary = audit_held2_tolerance(
+            kHeld2RootBoundary,
+            point.log_volume - reference_envelope.lower_log_volume
+        ).passed || audit_held2_tolerance(
+            kHeld2RootBoundary,
+            reference_envelope.upper_log_volume - point.log_volume
+        ).passed;
+        if (!boundary) {
+            continue;
+        }
+        if (!point.valid) {
+            return finish(
+                Held2Step2Outcome::Indeterminate,
+                "reference_boundary_evaluation_failed"
+            );
+        }
+        const double scale = std::max(
+            std::abs(point.objective), std::abs(selected.objective)
+        );
+        if (point.objective < selected.objective
+            || audit_held2_tolerance(
+                kHeld2StableObjectiveTie,
+                point.objective - selected.objective,
+                scale
+            ).passed) {
+            return finish(
+                Held2Step2Outcome::Indeterminate,
+                "reference_boundary_truncation"
+            );
+        }
+    }
+    result.reference = selected.state;
+    if (!audit_held2_tolerance(
+            kHeld2TpdReferenceZero,
+            evaluate_held2_tpd(
+                *result.reference, feed, *result.reference, feed
+            ).value
+        ).passed) {
+        return finish(
+            Held2Step2Outcome::Indeterminate, "reference_tpd_nonzero"
+        );
+    }
+    progress = {};
+    progress.kind = Held2ProgressKind::ReferenceSelected;
+    progress.count = reference_envelope.selected_root_index;
+    progress.status = "selected";
+    observe_held2(observer, progress);
+    progress = {};
+    progress.kind = Held2ProgressKind::StageStart;
+    progress.stage = "STEP 2";
+    observe_held2(observer, progress);
+
+    const std::size_t dimension =
+        step1.coordinates->independent_indices.size();
+    const Held2StageIReducedEvaluator reduced = [&](const auto& cube) {
+        Held2StageIReducedEvaluation evaluation;
+        try {
+            if (cube.size() != dimension + 1) {
+                throw std::invalid_argument("invalid Step-2 search point");
+            }
+            const std::vector<double> composition_cube(
+                cube.begin(),
+                cube.begin() + static_cast<std::ptrdiff_t>(dimension)
+            );
+            evaluation.independent_modified_fractions =
+                held2_map_unit_cube_to_independent_fractions(
+                    *step1.coordinates,
+                    composition_cube,
+                    std::numeric_limits<double>::quiet_NaN()
+                );
+            ++result.timing.provider_evaluations;
+            const std::array<double, 2> bounds = (*step1.volume_bounds)(
+                evaluation.independent_modified_fractions
+            );
+            const double lower = std::log(bounds[0]);
+            const double log_volume =
+                lower + cube.back() * (std::log(bounds[1]) - lower);
+            const Held2StateEvaluation trial = counted(
+                evaluation.independent_modified_fractions, log_volume
+            );
+            evaluation.trial_volume = trial.volume;
+            evaluation.trial_pressure_residual =
+                trial.pressure_stationarity_relative;
+            evaluation.tpd = evaluate_held2_tpd(
+                *result.reference,
+                feed,
+                trial,
+                evaluation.independent_modified_fractions
+            ).value;
+            evaluation.certified = std::isfinite(evaluation.tpd);
+        } catch (...) {
+            evaluation.failure_reason = "trial_evaluation_failed";
+        }
+        return evaluation;
+    };
+    ++result.timing.optimizer_solves;
+    const Held2StageIDirectResult search = solve_held2_stage_i_direct(
+        dimension + 1,
+        search_budget,
+        -kHeld2TpdNegativeMargin.atol,
+        reduced,
+        observer
+    );
+    result.timing.optimizer_iterations =
+        static_cast<std::uint64_t>(search.evaluations.size());
+    if (std::isfinite(search.minimum_tpd)) {
+        result.minimum_tpd = search.minimum_tpd;
+    }
+    if (search.outcome == "negative_witness_found"
+        && search.negative_witness_index >= 0) {
+        const Held2StageIReducedEvaluation& witness = search.evaluations[
+            static_cast<std::size_t>(search.negative_witness_index)
+        ];
+        result.negative_witness = Held2StageICandidate{
+            held2_transform_physical_fractions(
+                *step1.coordinates,
+                held2_lift_independent_fractions(
+                    *step1.coordinates,
+                    witness.independent_modified_fractions
+                )
+            ),
+            witness.trial_volume,
+            witness.tpd,
+        };
+        return finish(
+            Held2Step2Outcome::NegativeWitness,
+            "negative_tpd_witness"
+        );
+    }
+    if (search.outcome == "no_negative_witness_detected") {
+        return finish(
+            Held2Step2Outcome::NoNegativeWitnessDetected,
+            "declared_search_complete"
+        );
+    }
+    return finish(
+        Held2Step2Outcome::Indeterminate,
+        search.termination_reason.empty()
+        ? "step2_search_failed"
+        : search.termination_reason
+    );
+}
 
 Held2StageIDirectResult solve_held2_stage_i_direct(
     std::size_t composition_dimension,

@@ -8,6 +8,7 @@
 
 namespace epcsaft_equilibrium::test {
 void run_held2_step1_checks();
+std::string run_held2_step2_checks(Held2ProgressObserver*);
 }
 
 namespace {
@@ -44,13 +45,25 @@ void run_workflow_check() {
 int main(int argc, char** argv) {
     try {
         if (argc != 1
-            && (argc != 3 || std::string(argv[1]) != "--case")) {
-            throw std::invalid_argument("usage: --case {step1|workflow}");
+            && (argc < 3 || argc > 4
+                || std::string(argv[1]) != "--case"
+                || (argc == 4 && std::string(argv[3]) != "--trace"))) {
+            throw std::invalid_argument(
+                "usage: --case {step1|step2|workflow} [--trace]"
+            );
         }
         const std::string check = argc == 1 ? "workflow" : argv[2];
+        const bool trace = argc == 4;
         if (check == "step1") {
             epcsaft_equilibrium::test::run_held2_step1_checks();
             std::cout << "step1: pass\n";
+        } else if (check == "step2") {
+            epcsaft_equilibrium::Held2TerminalProgress progress(std::cout);
+            const std::string hash =
+                epcsaft_equilibrium::test::run_held2_step2_checks(
+                    trace ? &progress : nullptr
+                );
+            std::cout << "step2: pass result_hash=" << hash << '\n';
         } else if (check == "workflow") {
             run_workflow_check();
         } else {

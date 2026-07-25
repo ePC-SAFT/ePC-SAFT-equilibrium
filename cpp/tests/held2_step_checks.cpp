@@ -1,7 +1,8 @@
-#include "held2_step1.hpp"
+#include "held2_step2.hpp"
 
 #include <array>
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -244,12 +245,183 @@ void check_failures() {
     require(rejected, "deferred Provider domain failure was ignored");
 }
 
+Held2StateEvaluation quadratic_state(
+    const std::vector<double>& independent,
+    double log_volume
+) {
+    const double composition = independent.front();
+    const double shifted = composition - 0.4;
+    Held2StateEvaluation state;
+    state.modified_fractions = {1.0 - composition, composition};
+    state.physical_amounts = state.modified_fractions;
+    state.volume = std::exp(log_volume);
+    state.objective = 5.0 * shifted + 2.0 * shifted * shifted
+        + 3.0 * shifted * log_volume + 4.0 * log_volume * log_volume;
+    state.gradient = {
+        5.0 + 4.0 * shifted + 3.0 * log_volume,
+        3.0 * shifted + 8.0 * log_volume,
+    };
+    state.hessian = {4.0, 3.0, 3.0, 8.0};
+    state.pressure_stationarity_relative = -state.gradient.back();
+    state.pressure_stationarity_derivative_log_volume = -8.0;
+    return state;
+}
+
+Held2StateEvaluation search_state(
+    const std::vector<double>& independent,
+    double log_volume,
+    bool negative
+) {
+    const double composition = independent.front();
+    const double delta = composition - 0.5;
+    double objective = delta * delta;
+    double gradient = 2.0 * delta;
+    double curvature = 2.0;
+    if (negative) {
+        const double scaled = (composition - 0.75) / 0.08;
+        const double well = std::exp(-scaled * scaled);
+        objective -= 0.10 * well;
+        gradient += 0.2 * scaled * well / 0.08;
+        curvature += 0.2 * well * (1.0 - 2.0 * scaled * scaled)
+            / (0.08 * 0.08);
+    }
+    Held2StateEvaluation state;
+    state.modified_fractions = {1.0 - composition, composition};
+    state.physical_amounts = state.modified_fractions;
+    state.volume = std::exp(log_volume);
+    state.objective = objective + 0.5 * log_volume * log_volume;
+    state.gradient = {gradient, log_volume};
+    state.hessian = {curvature, 0.0, 0.0, 1.0};
+    state.pressure_stationarity_relative = -log_volume;
+    state.pressure_stationarity_derivative_log_volume = -1.0;
+    return state;
+}
+
+Held2StateEvaluation tied_state(
+    const std::vector<double>& independent,
+    double log_volume
+) {
+    Held2StateEvaluation state = search_state(
+        independent, log_volume, false
+    );
+    state.objective += 0.25 * std::pow(log_volume, 4)
+        - 0.5 * log_volume * log_volume;
+    state.gradient.back() = log_volume * (log_volume * log_volume - 1.0);
+    state.hessian.back() = 3.0 * log_volume * log_volume - 1.0;
+    state.pressure_stationarity_relative = -state.gradient.back();
+    state.pressure_stationarity_derivative_log_volume =
+        -state.hessian.back();
+    return state;
+}
+
 }  // namespace
 
 void run_held2_step1_checks() {
     check_coordinates();
     check_polytope();
     check_failures();
+}
+
+std::string run_held2_step2_checks(Held2ProgressObserver* observer) {
+    const Held2StateEvaluation reference = quadratic_state({0.4}, 0.0);
+    const Held2TpdEvaluation tpd = evaluate_held2_tpd(
+        reference, {0.4}, quadratic_state({0.6}, 0.1), {0.6}
+    );
+    require(
+        std::abs(evaluate_held2_tpd(
+            reference, {0.4}, reference, {0.4}
+        ).value) <= 1.0e-12,
+        "TPD is not zero at the reference"
+    );
+    require_close(
+        tpd.gradient, {1.1, 1.4}, 1.0e-12,
+        "corrected Eq. (62) gradient changed"
+    );
+    require_close(
+        tpd.hessian, {4.0, 3.0, 3.0, 8.0}, 1.0e-12,
+        "corrected Eq. (62) Hessian changed"
+    );
+    constexpr double step = 1.0e-6;
+    const auto evaluate = [&](double composition, double log_volume) {
+        return evaluate_held2_tpd(
+            reference,
+            {0.4},
+            quadratic_state({composition}, log_volume),
+            {composition}
+        );
+    };
+    require_close(
+        {
+            (evaluate(0.6 + step, 0.1).value
+                - evaluate(0.6 - step, 0.1).value) / (2.0 * step),
+            (evaluate(0.6, 0.1 + step).value
+                - evaluate(0.6, 0.1 - step).value) / (2.0 * step),
+        },
+        tpd.gradient,
+        1.0e-9,
+        "TPD centered gradient check failed"
+    );
+    const Held2TpdEvaluation plus = evaluate(
+        0.6 + 0.6 * step, 0.1 - 0.8 * step
+    );
+    const Held2TpdEvaluation minus = evaluate(
+        0.6 - 0.6 * step, 0.1 + 0.8 * step
+    );
+    require_close(
+        {
+            (plus.gradient[0] - minus.gradient[0]) / (2.0 * step),
+            (plus.gradient[1] - minus.gradient[1]) / (2.0 * step),
+        },
+        {0.0, -4.6},
+        1.0e-9,
+        "TPD Hessian-vector check failed"
+    );
+
+    const Held2Step1Result prepared = step1(
+        {0.0, 1.0, -1.0},
+        {0.50, 0.25, 0.25},
+        [](const std::vector<double>&) {
+            return std::array<double, 2>{
+                std::exp(-1.5), std::exp(1.5),
+            };
+        }
+    );
+    const Held2Step2Result negative = run_held2_step2(
+        prepared,
+        [](const auto& composition, double log_volume) {
+            return search_state(composition, log_volume, true);
+        },
+        200,
+        observer
+    );
+    require(
+        negative.outcome == Held2Step2Outcome::NegativeWitness
+            && negative.negative_witness.has_value()
+            && negative.negative_witness->tpd < -1.0e-8,
+        "Step 2 missed a strict negative TPD witness"
+    );
+    const Held2Step2Result nonnegative = run_held2_step2(
+        prepared,
+        [](const auto& composition, double log_volume) {
+            return search_state(composition, log_volume, false);
+        },
+        80
+    );
+    require(
+        nonnegative.outcome
+                == Held2Step2Outcome::NoNegativeWitnessDetected
+            && nonnegative.globality_certificate == "not_guaranteed"
+            && nonnegative.reference_envelope->selected_root_index >= 0,
+        "finite Step-2 search semantics changed"
+    );
+    require(
+        run_held2_step2(prepared, tied_state, 80).outcome
+            == Held2Step2Outcome::Indeterminate,
+        "tied reference roots did not fail closed"
+    );
+    const std::string summary = negative.reason + '|'
+        + nonnegative.reason + "|stable_objective_tie";
+    return std::to_string(std::hash<std::string>{}(summary));
 }
 
 }  // namespace epcsaft_equilibrium::test
