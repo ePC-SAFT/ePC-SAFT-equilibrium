@@ -1,11 +1,14 @@
 #include "flash.hpp"
-#include "held2_step_checks.hpp"
 
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+namespace epcsaft_equilibrium::test {
+void run_held2_step1_checks();
+}
 
 namespace {
 
@@ -36,21 +39,15 @@ void run_workflow_check() {
     std::cout << "workflow: pass\n";
 }
 
-std::string selected_case(int argc, char** argv) {
-    if (argc == 1) {
-        return "workflow";
-    }
-    if (argc == 3 && std::string(argv[1]) == "--case") {
-        return argv[2];
-    }
-    throw std::invalid_argument("usage: --case {step1|workflow}");
-}
-
 }  // namespace
 
 int main(int argc, char** argv) {
     try {
-        const std::string check = selected_case(argc, argv);
+        if (argc != 1
+            && (argc != 3 || std::string(argv[1]) != "--case")) {
+            throw std::invalid_argument("usage: --case {step1|workflow}");
+        }
+        const std::string check = argc == 1 ? "workflow" : argv[2];
         if (check == "step1") {
             epcsaft_equilibrium::test::run_held2_step1_checks();
             std::cout << "step1: pass\n";

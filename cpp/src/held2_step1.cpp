@@ -43,6 +43,23 @@ double charge_scale(
     return scale;
 }
 
+std::size_t retained_position(
+    const Held2Coordinates& coordinates,
+    std::size_t provider_index
+) {
+    const auto position = std::find(
+        coordinates.retained_indices.begin(),
+        coordinates.retained_indices.end(),
+        provider_index
+    );
+    if (position == coordinates.retained_indices.end()) {
+        throw std::invalid_argument("species is absent from HELD2 coordinates");
+    }
+    return static_cast<std::size_t>(
+        position - coordinates.retained_indices.begin()
+    );
+}
+
 void require_complete_polytope(
     const Held2Coordinates& coordinates,
     const std::vector<double>& independent
@@ -89,15 +106,8 @@ std::vector<double> physical_total_ion_coefficients(
         coordinates.charges[coordinates.eliminated_index];
     for (std::size_t compact = 0; compact < coefficients.size(); ++compact) {
         const std::size_t provider = coordinates.independent_indices[compact];
-        const auto retained = std::find(
-            coordinates.retained_indices.begin(),
-            coordinates.retained_indices.end(),
-            provider
-        );
         const double factor = coordinates.modified_factors[
-            static_cast<std::size_t>(
-                retained - coordinates.retained_indices.begin()
-            )
+            retained_position(coordinates, provider)
         ];
         if (coordinates.charges[provider] != 0.0) {
             coefficients[compact] += 1.0 / factor;
@@ -175,31 +185,21 @@ std::vector<double> independent_from_modified(
     std::vector<double> independent;
     independent.reserve(coordinates.independent_indices.size());
     for (std::size_t provider_index : coordinates.independent_indices) {
-        const auto retained = std::find(
-            coordinates.retained_indices.begin(),
-            coordinates.retained_indices.end(),
-            provider_index
+        independent.push_back(
+            modified[retained_position(coordinates, provider_index)]
         );
-        if (retained == coordinates.retained_indices.end()) {
-            throw std::invalid_argument(
-                "HELD2 compact coordinate is absent from retained species"
-            );
-        }
-        independent.push_back(modified[static_cast<std::size_t>(
-            retained - coordinates.retained_indices.begin()
-        )]);
     }
     return independent;
 }
 
 Held2Step1Result finish_step1(
     Held2Step1Result result,
-    const char* status,
     const char* reason,
     int next_step,
     const std::chrono::steady_clock::time_point& wall_start,
     std::clock_t cpu_start
 ) {
+    const char* status = next_step == 0 ? "indeterminate" : "complete";
     result.status = status;
     result.reason = reason;
     result.timing.invocation_count = 1;
@@ -368,15 +368,10 @@ Held2Coordinates make_held2_coordinates(
             result.independent_upper_bounds[compact],
         });
     }
-    const auto dependent_retained = std::find(
-        result.retained_indices.begin(),
-        result.retained_indices.end(),
-        result.dependent_index
-    );
     const double dependent_lower = kHeld2ModifiedLowerScale
-        * result.modified_factors[static_cast<std::size_t>(
-            dependent_retained - result.retained_indices.begin()
-        )];
+        * result.modified_factors[
+            retained_position(result, result.dependent_index)
+        ];
     result.polytope_constraints.push_back({
         "closure_species_lower_bound",
         std::vector<double>(dimension, 1.0),
@@ -385,15 +380,8 @@ Held2Coordinates make_held2_coordinates(
     std::vector<double> eliminated_nonnegative(dimension, 0.0);
     for (std::size_t compact = 0; compact < dimension; ++compact) {
         const std::size_t provider = result.independent_indices[compact];
-        const auto retained = std::find(
-            result.retained_indices.begin(),
-            result.retained_indices.end(),
-            provider
-        );
         const double factor = result.modified_factors[
-            static_cast<std::size_t>(
-                retained - result.retained_indices.begin()
-            )
+            retained_position(result, provider)
         ];
         eliminated_nonnegative[compact] =
             charges[provider] / (charges[eliminated] * factor);
@@ -543,22 +531,14 @@ std::vector<double> held2_lift_independent_fractions(
          independent < independent_count;
          ++independent) {
         const double value = independent_modified_fractions[independent];
-        const auto retained = static_cast<std::size_t>(
-            std::find(
-                coordinates.retained_indices.begin(),
-                coordinates.retained_indices.end(),
-                coordinates.independent_indices[independent]
-            ) - coordinates.retained_indices.begin()
+        const std::size_t retained = retained_position(
+            coordinates, coordinates.independent_indices[independent]
         );
         modified_fractions[retained] = value;
         independent_sum += value;
     }
-    const auto dependent_retained = static_cast<std::size_t>(
-        std::find(
-            coordinates.retained_indices.begin(),
-            coordinates.retained_indices.end(),
-            coordinates.dependent_index
-        ) - coordinates.retained_indices.begin()
+    const std::size_t dependent_retained = retained_position(
+        coordinates, coordinates.dependent_index
     );
     modified_fractions[dependent_retained] = 1.0 - independent_sum;
     return held2_lift_modified_fractions(
@@ -579,27 +559,23 @@ Held2Step1Result run_held2_step1(
     Held2Step1Result result;
     result.temperature_k = temperature_k;
     result.pressure_pa = pressure_pa;
-    if (!std::isfinite(temperature_k) || temperature_k <= 0.0) {
+    const auto finish = [&](const char* reason, int next_step = 0) {
         return finish_step1(
-            std::move(result), "indeterminate", "invalid_temperature", 0,
-            wall_start, cpu_start
+            std::move(result), reason, next_step, wall_start, cpu_start
         );
+    };
+    if (!std::isfinite(temperature_k) || temperature_k <= 0.0) {
+        return finish("invalid_temperature");
     }
     if (!std::isfinite(pressure_pa) || pressure_pa <= 0.0) {
-        return finish_step1(
-            std::move(result), "indeterminate", "invalid_pressure", 0,
-            wall_start, cpu_start
-        );
+        return finish("invalid_pressure");
     }
     if (
         component_ids.size() != charges.size()
         || physical_feed.size() != charges.size()
         || component_ids.empty()
     ) {
-        return finish_step1(
-            std::move(result), "indeterminate",
-            "invalid_component_metadata", 0, wall_start, cpu_start
-        );
+        return finish("invalid_component_metadata");
     }
     for (std::size_t index = 0; index < component_ids.size(); ++index) {
         if (
@@ -610,10 +586,7 @@ Held2Step1Result run_held2_step1(
                 component_ids[index]
             ) != component_ids.begin() + static_cast<std::ptrdiff_t>(index)
         ) {
-            return finish_step1(
-                std::move(result), "indeterminate",
-                "invalid_component_metadata", 0, wall_start, cpu_start
-            );
+            return finish("invalid_component_metadata");
         }
     }
 
@@ -625,10 +598,7 @@ Held2Step1Result run_held2_step1(
         const char* reason = message.find("singular") != std::string::npos
             ? "unsupported_singular_charge_transformation"
             : "unsupported_charge_topology";
-        return finish_step1(
-            std::move(result), "indeterminate", reason, 0,
-            wall_start, cpu_start
-        );
+        return finish(reason);
     }
 
     std::vector<double> independent_feed;
@@ -641,16 +611,10 @@ Held2Step1Result run_held2_step1(
             coordinates, independent_feed
         );
     } catch (const std::invalid_argument&) {
-        return finish_step1(
-            std::move(result), "indeterminate", "invalid_feed", 0,
-            wall_start, cpu_start
-        );
+        return finish("invalid_feed");
     }
     if (!physical_volume_bounds) {
-        return finish_step1(
-            std::move(result), "indeterminate",
-            "missing_physical_volume_bounds", 0, wall_start, cpu_start
-        );
+        return finish("missing_physical_volume_bounds");
     }
     try {
         ++result.timing.provider_evaluations;
@@ -659,18 +623,13 @@ Held2Step1Result run_held2_step1(
         ));
     } catch (const std::invalid_argument& error) {
         const std::string reason = error.what();
-        return finish_step1(
-            std::move(result), "indeterminate",
+        return finish(
             reason == "empty_physical_volume_domain"
-                ? "empty_physical_volume_domain"
-                : "provider_volume_domain_failure",
-            0, wall_start, cpu_start
+            ? "empty_physical_volume_domain"
+            : "provider_volume_domain_failure"
         );
     } catch (...) {
-        return finish_step1(
-            std::move(result), "indeterminate",
-            "provider_volume_domain_failure", 0, wall_start, cpu_start
-        );
+        return finish("provider_volume_domain_failure");
     }
 
     result.coordinates = coordinates;
@@ -685,10 +644,7 @@ Held2Step1Result run_held2_step1(
             );
         }
     );
-    return finish_step1(
-        std::move(result), "complete", "step1_complete", 2,
-        wall_start, cpu_start
-    );
+    return finish("step1_complete", 2);
 }
 
 std::vector<double> held2_map_unit_cube_to_independent_fractions(
@@ -875,24 +831,16 @@ Held2StateEvaluation evaluate_held2_phase_block(
          ++independent) {
         const double value =
             independent_modified_fractions[independent];
-        const auto retained = static_cast<std::size_t>(
-            std::find(
-                coordinates.retained_indices.begin(),
-                coordinates.retained_indices.end(),
-                coordinates.independent_indices[independent]
-            ) - coordinates.retained_indices.begin()
+        const std::size_t retained = retained_position(
+            coordinates, coordinates.independent_indices[independent]
         );
         result.modified_fractions[retained] = value;
     }
     result.physical_amounts = held2_lift_independent_fractions(
         coordinates, independent_modified_fractions
     );
-    const auto dependent_retained = static_cast<std::size_t>(
-        std::find(
-            coordinates.retained_indices.begin(),
-            coordinates.retained_indices.end(),
-            coordinates.dependent_index
-        ) - coordinates.retained_indices.begin()
+    const std::size_t dependent_retained = retained_position(
+        coordinates, coordinates.dependent_index
     );
     result.modified_fractions[dependent_retained] =
         1.0 - std::accumulate(

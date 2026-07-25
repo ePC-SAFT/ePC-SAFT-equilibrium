@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,13 +47,6 @@ struct Held2StepTiming {
     std::string terminal_status = "not_run";
     std::string terminal_reason = "not_run";
     int next_step = 0;
-};
-
-struct Held2ResourceProfile {
-    int step2_search_budget = 0;
-    int step5_start_epoch_size = 0;
-    int step5_total_start_cap = 0;
-    int step7_major_iteration_cap = 0;
 };
 
 struct Held2StateEvaluation;
@@ -106,16 +98,6 @@ struct Held2PhysicalPhaseBlock {
     std::vector<double> hessian;
     double pressure_pa = 0.0;
 };
-
-using Held2PackingFractionEvaluator = std::function<double(
-    const std::vector<double>&,
-    double
-)>;
-
-using Held2PhysicalEvaluator = std::function<Held2PhysicalPhaseBlock(
-    const std::vector<double>&,
-    double
-)>;
 
 using Held2PhysicalVolumeBoundsEvaluator =
     std::function<std::array<double, 2>(const std::vector<double>&)>;
@@ -242,10 +224,6 @@ struct Held2PressureEnvelopeResult {
     std::vector<Held2PressureScanInterval> intervals;
     std::vector<Held2PressureRoot> roots;
 };
-
-using Held2PressureRootEvaluator = std::function<Held2PressureEnvelopeResult(
-    const std::vector<double>&
-)>;
 
 [[nodiscard]] Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
     const std::vector<double>& independent_modified_fractions,
