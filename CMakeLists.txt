@@ -86,6 +86,7 @@ add_library(
   cpp/src/held2_progress.cpp
   cpp/src/held2_step1.cpp
   cpp/src/held2_step2.cpp
+  cpp/src/held2_step3.cpp
   cpp/src/held2_step4.cpp
   cpp/src/held2_step5.cpp
   cpp/src/held2_stage_iii.cpp

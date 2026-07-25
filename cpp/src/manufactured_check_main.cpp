@@ -9,6 +9,8 @@
 namespace epcsaft_equilibrium::test {
 void run_held2_step1_checks();
 std::string run_held2_step2_checks(Held2ProgressObserver*);
+void run_held2_step3_checks();
+void run_held2_step4_checks();
 }
 
 namespace {
@@ -64,6 +66,12 @@ int main(int argc, char** argv) {
                     trace ? &progress : nullptr
                 );
             std::cout << "step2: pass result_hash=" << hash << '\n';
+        } else if (check == "step3") {
+            epcsaft_equilibrium::test::run_held2_step3_checks();
+            std::cout << "step3: pass\n";
+        } else if (check == "step4") {
+            epcsaft_equilibrium::test::run_held2_step4_checks();
+            std::cout << "step4: pass\n";
         } else if (check == "workflow") {
             run_workflow_check();
         } else {

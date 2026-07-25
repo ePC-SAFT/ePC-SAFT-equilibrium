@@ -341,4 +341,74 @@ Held2StageIIUpperResult solve_held2_stage_ii_upper_analytic_1d(
     return result;
 }
 
+Held2Step4Result run_held2_step4(
+    Held2PersistentState& state,
+    Held2ProgressObserver* observer
+) {
+    Held2Step4Result result;
+    result.timing.invocation_count = 1;
+    Held2StageIIUpperProblem problem;
+    const std::size_t dimension = state.feed.size();
+    problem.multiplier_lower_bounds.assign(
+        dimension, -std::numeric_limits<double>::infinity()
+    );
+    problem.multiplier_upper_bounds.assign(
+        dimension, std::numeric_limits<double>::infinity()
+    );
+    for (const Held2MPoint& point : state.M) {
+        std::vector<double> slopes(dimension);
+        for (std::size_t index = 0; index < dimension; ++index) {
+            slopes[index] =
+                state.feed[index] - point.independent_modified_fractions[index];
+        }
+        problem.cuts.push_back({
+            static_cast<int>(point.insertion_id),
+            point.reduced_gibbs,
+            std::move(slopes),
+        });
+    }
+    problem.cuts.push_back({
+        -1, state.feed_reduced_gibbs, std::vector<double>(dimension, 0.0),
+    });
+    const Held2StageIIUpperResult upper =
+        solve_held2_stage_ii_upper_highs(problem);
+    result.certificate = Held2LpCertificate{
+        upper.primal_feasible,
+        upper.dual_feasible,
+        upper.primal_residual_inf,
+        upper.dual_residual_inf,
+        upper.complementarity_inf,
+    };
+    if (upper.outcome != "optimal"
+        || !upper.primal_feasible || !upper.dual_feasible) {
+        result.reason = "upper_lp_uncertified";
+        result.timing.terminal_status = "indeterminate";
+        result.timing.terminal_reason = result.reason;
+        return result;
+    }
+    state.upper_bound = upper.upper_bound;
+    state.multipliers = upper.multipliers;
+    ++state.upper_solve_count;
+    result.status = "complete";
+    result.reason = "step4_complete";
+    result.upper_bound = upper.upper_bound;
+    result.multipliers = upper.multipliers;
+    result.active_cut_ids = upper.active_cut_ids;
+    result.timing.optimizer_solves = 1;
+    result.timing.optimizer_iterations = 1;
+    result.timing.terminal_status = result.status;
+    result.timing.terminal_reason = result.reason;
+    result.timing.next_step = 5;
+    Held2ProgressEvent progress;
+    progress.kind = Held2ProgressKind::StageIIUpper;
+    progress.major_iteration = state.major_iteration;
+    progress.upper_bound = upper.upper_bound;
+    progress.primal_residual = upper.primal_residual_inf;
+    progress.dual_residual = upper.dual_residual_inf;
+    progress.count = static_cast<int>(state.M.size());
+    progress.status = "certified";
+    observe_held2(observer, progress);
+    return result;
+}
+
 }  // namespace epcsaft_equilibrium

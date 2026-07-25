@@ -1,4 +1,5 @@
 #include "held2_step2.hpp"
+#include "held2_step4.hpp"
 
 #include <array>
 #include <cmath>
@@ -314,6 +315,35 @@ Held2StateEvaluation tied_state(
     return state;
 }
 
+Held2Step3Result appendix_c_result() {
+    const Held2Step1Result prepared = step1(
+        {0.0, 1.0, -1.0},
+        {0.50, 0.25, 0.25},
+        [](const std::vector<double>&) {
+            return std::array<double, 2>{
+                std::exp(-1.5), std::exp(1.5),
+            };
+        }
+    );
+    Held2Step2Result step2;
+    step2.outcome = Held2Step2Outcome::NegativeWitness;
+    step2.reference = search_state({0.5}, 0.0, false);
+    return run_held2_step3(
+        prepared,
+        step2,
+        [](const std::vector<double>& independent) {
+            return evaluate_held2_pressure_envelope(
+                independent,
+                {std::exp(-1.5), std::exp(1.5)},
+                [](const auto& composition, double log_volume) {
+                    return search_state(composition, log_volume, false);
+                },
+                64
+            );
+        }
+    );
+}
+
 }  // namespace
 
 void run_held2_step1_checks() {
@@ -422,6 +452,51 @@ std::string run_held2_step2_checks(Held2ProgressObserver* observer) {
     const std::string summary = negative.reason + '|'
         + nonnegative.reason + "|stable_objective_tie";
     return std::to_string(std::hash<std::string>{}(summary));
+}
+
+void run_held2_step3_checks() {
+    const Held2Step3Result result = appendix_c_result();
+    require(
+        result.status == "complete" && result.state->M.size() == 3,
+        "Appendix C did not create 1 + 2(C - 2) points"
+    );
+    require_close(
+        {
+            result.state->M[0].independent_modified_fractions[0],
+            result.state->M[1].independent_modified_fractions[0],
+            result.state->M[2].independent_modified_fractions[0],
+        },
+        {0.5, 0.25, 0.75},
+        1.0e-12,
+        "corrected Appendix-C bracketing changed"
+    );
+    require(
+        result.state->M[0].insertion_id == 0
+            && result.state->M[1].insertion_id == 1
+            && result.state->M[2].insertion_id == 2,
+        "Appendix-C insertion order changed"
+    );
+}
+
+void run_held2_step4_checks() {
+    Held2PersistentState state = std::move(*appendix_c_result().state);
+    const Held2Step4Result result = run_held2_step4(state);
+    require(
+        result.status == "complete" && result.certificate->primal_feasible
+            && result.certificate->dual_feasible
+            && state.upper_solve_count == 1,
+        "Step-4 LP was not certified exactly once"
+    );
+    require_close(
+        {*result.upper_bound},
+        {0.0},
+        1.0e-10,
+        "Step-4 analytic envelope changed"
+    );
+    require(
+        std::abs(result.multipliers->front()) <= 0.25 + 1.0e-10,
+        "Step-4 multiplier left the analytic optimum face"
+    );
 }
 
 }  // namespace epcsaft_equilibrium::test
