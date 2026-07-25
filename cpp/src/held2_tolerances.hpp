@@ -36,6 +36,11 @@ inline constexpr Held2Tolerance kHeld2ChartContact{
     "chart_contact", "representation", "chart contact exceeds numerical allowance",
     Held2ToleranceRelation::AbsAtMost, 1.0e-9, 0.0,
 };
+inline constexpr Held2Tolerance kHeld2PolytopeFeasibility{
+    "polytope_feasibility", "representation",
+    "modified composition is outside the complete Step-1 polytope",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-12, 0.0,
+};
 inline constexpr Held2Tolerance kHeld2CompositionSum{
     "composition_sum", "representation", "composition normalization unresolved",
     Held2ToleranceRelation::AbsAtMost, 1.0e-9, 0.0,
@@ -209,8 +214,9 @@ inline constexpr Held2Tolerance kHeld2IpoptConstraint{
     Held2ToleranceRelation::SolverTarget, 1.0e-10, 0.0,
 };
 
-inline constexpr std::array<const Held2Tolerance*, 44> kHeld2ToleranceContract{{
+inline constexpr std::array<const Held2Tolerance*, 45> kHeld2ToleranceContract{{
     &kHeld2ChartContact,
+    &kHeld2PolytopeFeasibility,
     &kHeld2CompositionSum,
     &kHeld2ChargeBalance,
     &kHeld2ReconstructedIon,

@@ -117,6 +117,11 @@ if(EPCSAFT_EQUILIBRIUM_BUILD_DIAGNOSTIC)
   add_executable(
     epcsaft-equilibrium-manufactured-check
     cpp/src/manufactured_check_main.cpp
+    cpp/tests/held2_step_checks.cpp
+  )
+  target_include_directories(
+    epcsaft-equilibrium-manufactured-check
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/cpp/tests"
   )
   target_link_libraries(
     epcsaft-equilibrium-manufactured-check

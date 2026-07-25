@@ -1,8 +1,10 @@
-#include "held2.hpp"
+#include "held2_step1.hpp"
 #include "held2_tolerances.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <ctime>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
@@ -41,11 +43,191 @@ double charge_scale(
     return scale;
 }
 
+void require_complete_polytope(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent
+) {
+    for (const Held2PolytopeConstraint& constraint :
+         coordinates.polytope_constraints) {
+        if (constraint.coefficients.size() != independent.size()) {
+            throw std::invalid_argument(
+                "HELD2 Step-1 polytope dimensions are invalid"
+            );
+        }
+        const double value = std::inner_product(
+            constraint.coefficients.begin(),
+            constraint.coefficients.end(),
+            independent.begin(),
+            0.0
+        );
+        const double violation = std::max(
+            0.0, value - constraint.upper_bound
+        );
+        if (!std::isfinite(value) || !audit_held2_tolerance(
+                kHeld2PolytopeFeasibility, violation
+            ).passed) {
+            throw std::invalid_argument(
+                "independent modified composition violates "
+                + constraint.name
+            );
+        }
+    }
+}
+
+std::vector<double> independent_from_modified(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& modified
+);
+
+std::vector<double> physical_total_ion_coefficients(
+    const Held2Coordinates& coordinates
+) {
+    std::vector<double> coefficients(
+        coordinates.independent_indices.size(), 0.0
+    );
+    const double eliminated_charge =
+        coordinates.charges[coordinates.eliminated_index];
+    for (std::size_t compact = 0; compact < coefficients.size(); ++compact) {
+        const std::size_t provider = coordinates.independent_indices[compact];
+        const auto retained = std::find(
+            coordinates.retained_indices.begin(),
+            coordinates.retained_indices.end(),
+            provider
+        );
+        const double factor = coordinates.modified_factors[
+            static_cast<std::size_t>(
+                retained - coordinates.retained_indices.begin()
+            )
+        ];
+        if (coordinates.charges[provider] != 0.0) {
+            coefficients[compact] += 1.0 / factor;
+        }
+        coefficients[compact] -= coordinates.charges[provider]
+            / (eliminated_charge * factor);
+    }
+    return coefficients;
+}
+
+std::vector<double> polytope_anchor(
+    const Held2Coordinates& coordinates,
+    double total_ion_mole_fraction_max
+) {
+    std::size_t positive_count = 0;
+    std::size_t negative_count = 0;
+    std::size_t neutral_count = 0;
+    for (double charge : coordinates.charges) {
+        positive_count += charge > 0.0 ? 1U : 0U;
+        negative_count += charge < 0.0 ? 1U : 0U;
+        neutral_count += charge == 0.0 ? 1U : 0U;
+    }
+    const double ion_total = std::isfinite(total_ion_mole_fraction_max)
+        ? 0.5 * total_ion_mole_fraction_max
+        : 0.5;
+    double charge_weight_sum = 0.0;
+    for (double charge : coordinates.charges) {
+        if (charge > 0.0) {
+            charge_weight_sum += 1.0
+                / (static_cast<double>(positive_count) * charge);
+        } else if (charge < 0.0) {
+            charge_weight_sum += 1.0
+                / (static_cast<double>(negative_count) * -charge);
+        }
+    }
+    const double charge_amount = ion_total / charge_weight_sum;
+    std::vector<double> physical(coordinates.charges.size(), 0.0);
+    for (std::size_t index = 0; index < physical.size(); ++index) {
+        const double charge = coordinates.charges[index];
+        if (charge > 0.0) {
+            physical[index] = charge_amount
+                / (static_cast<double>(positive_count) * charge);
+        } else if (charge < 0.0) {
+            physical[index] = charge_amount
+                / (static_cast<double>(negative_count) * -charge);
+        } else {
+            physical[index] =
+                (1.0 - ion_total) / static_cast<double>(neutral_count);
+        }
+    }
+    return independent_from_modified(
+        coordinates,
+        held2_transform_physical_fractions(coordinates, physical)
+    );
+}
+
+std::array<double, 2> checked_volume_bounds(
+    const Held2PhysicalVolumeBoundsEvaluator& evaluator,
+    const std::vector<double>& physical
+) {
+    const std::array<double, 2> bounds = evaluator(physical);
+    if (
+        !std::isfinite(bounds[0]) || !std::isfinite(bounds[1])
+        || bounds[0] <= 0.0 || bounds[1] <= bounds[0]
+    ) {
+        throw std::invalid_argument("empty_physical_volume_domain");
+    }
+    return bounds;
+}
+
+std::vector<double> independent_from_modified(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& modified
+) {
+    std::vector<double> independent;
+    independent.reserve(coordinates.independent_indices.size());
+    for (std::size_t provider_index : coordinates.independent_indices) {
+        const auto retained = std::find(
+            coordinates.retained_indices.begin(),
+            coordinates.retained_indices.end(),
+            provider_index
+        );
+        if (retained == coordinates.retained_indices.end()) {
+            throw std::invalid_argument(
+                "HELD2 compact coordinate is absent from retained species"
+            );
+        }
+        independent.push_back(modified[static_cast<std::size_t>(
+            retained - coordinates.retained_indices.begin()
+        )]);
+    }
+    return independent;
+}
+
+Held2Step1Result finish_step1(
+    Held2Step1Result result,
+    const char* status,
+    const char* reason,
+    int next_step,
+    const std::chrono::steady_clock::time_point& wall_start,
+    std::clock_t cpu_start
+) {
+    result.status = status;
+    result.reason = reason;
+    result.timing.invocation_count = 1;
+    result.timing.wall_seconds = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - wall_start
+    ).count();
+    result.timing.cpu_seconds = static_cast<double>(
+        std::clock() - cpu_start
+    ) / static_cast<double>(CLOCKS_PER_SEC);
+    result.timing.terminal_status = status;
+    result.timing.terminal_reason = reason;
+    result.timing.next_step = next_step;
+    return result;
+}
+
 }  // namespace
 
-Held2Coordinates make_held2_coordinates(const std::vector<double>& charges) {
+Held2Coordinates make_held2_coordinates(
+    const std::vector<double>& charges,
+    const std::vector<std::string>& component_ids
+) {
     if (charges.size() < 3) {
         throw std::invalid_argument("HELD2 requires at least three species");
+    }
+    if (!component_ids.empty() && component_ids.size() != charges.size()) {
+        throw std::invalid_argument(
+            "component IDs and charge numbers must have equal size"
+        );
     }
     require_finite_vector(charges, "charge numbers");
     std::size_t charged_count = 0;
@@ -96,7 +278,38 @@ Held2Coordinates make_held2_coordinates(const std::vector<double>& charges) {
     Held2Coordinates result;
     result.charges = charges;
     result.eliminated_index = eliminated;
+    result.dependent_index = charges.size();
+
     for (std::size_t index = 0; index < charges.size(); ++index) {
+        if (charges[index] != 0.0 && index != eliminated) {
+            result.paper_to_provider_indices.push_back(index);
+        }
+    }
+    result.paper_to_provider_indices.push_back(eliminated);
+    for (std::size_t index = 0; index < charges.size(); ++index) {
+        if (charges[index] == 0.0) {
+            result.dependent_index = index;
+        }
+    }
+    for (std::size_t index = 0; index < charges.size(); ++index) {
+        if (charges[index] == 0.0 && index != result.dependent_index) {
+            result.paper_to_provider_indices.push_back(index);
+        }
+    }
+    result.paper_to_provider_indices.push_back(result.dependent_index);
+    result.provider_to_paper_indices.assign(charges.size(), charges.size());
+    for (std::size_t paper = 0;
+         paper < result.paper_to_provider_indices.size();
+         ++paper) {
+        result.provider_to_paper_indices[
+            result.paper_to_provider_indices[paper]
+        ] = paper;
+    }
+
+    for (std::size_t paper = 0;
+         paper < result.paper_to_provider_indices.size();
+         ++paper) {
+        const std::size_t index = result.paper_to_provider_indices[paper];
         if (index == eliminated) {
             continue;
         }
@@ -104,19 +317,12 @@ Held2Coordinates make_held2_coordinates(const std::vector<double>& charges) {
         result.modified_factors.push_back(
             1.0 - charges[index] / charges[eliminated]
         );
-        if (charges[index] == 0.0) {
-            result.dependent_index = index;
-        }
-    }
-    for (std::size_t retained = 0;
-         retained < result.retained_indices.size();
-         ++retained) {
-        const std::size_t index = result.retained_indices[retained];
         if (index == result.dependent_index) {
             continue;
         }
+        result.compact_to_paper_indices.push_back(paper);
         result.independent_indices.push_back(index);
-        const double factor = result.modified_factors[retained];
+        const double factor = result.modified_factors.back();
         result.independent_lower_bounds.push_back(
             kHeld2ModifiedLowerScale * factor
         );
@@ -141,6 +347,62 @@ Held2Coordinates make_held2_coordinates(const std::vector<double>& charges) {
             / (std::abs(charges[index]) + largest_opposite);
         result.independent_upper_bounds.push_back(factor * physical_upper);
     }
+
+    const std::size_t dimension = result.independent_indices.size();
+    for (std::size_t compact = 0; compact < dimension; ++compact) {
+        std::vector<double> lower(dimension, 0.0);
+        lower[compact] = -1.0;
+        const std::string coordinate_name = component_ids.empty()
+            ? std::to_string(result.independent_indices[compact])
+            : component_ids[result.independent_indices[compact]];
+        result.polytope_constraints.push_back({
+            "lower_bound:" + coordinate_name,
+            std::move(lower),
+            -result.independent_lower_bounds[compact],
+        });
+        std::vector<double> upper(dimension, 0.0);
+        upper[compact] = 1.0;
+        result.polytope_constraints.push_back({
+            "upper_bound:" + coordinate_name,
+            std::move(upper),
+            result.independent_upper_bounds[compact],
+        });
+    }
+    const auto dependent_retained = std::find(
+        result.retained_indices.begin(),
+        result.retained_indices.end(),
+        result.dependent_index
+    );
+    const double dependent_lower = kHeld2ModifiedLowerScale
+        * result.modified_factors[static_cast<std::size_t>(
+            dependent_retained - result.retained_indices.begin()
+        )];
+    result.polytope_constraints.push_back({
+        "closure_species_lower_bound",
+        std::vector<double>(dimension, 1.0),
+        1.0 - dependent_lower,
+    });
+    std::vector<double> eliminated_nonnegative(dimension, 0.0);
+    for (std::size_t compact = 0; compact < dimension; ++compact) {
+        const std::size_t provider = result.independent_indices[compact];
+        const auto retained = std::find(
+            result.retained_indices.begin(),
+            result.retained_indices.end(),
+            provider
+        );
+        const double factor = result.modified_factors[
+            static_cast<std::size_t>(
+                retained - result.retained_indices.begin()
+            )
+        ];
+        eliminated_nonnegative[compact] =
+            charges[provider] / (charges[eliminated] * factor);
+    }
+    result.polytope_constraints.push_back({
+        "eliminated_ion_nonnegative",
+        std::move(eliminated_nonnegative),
+        0.0,
+    });
     return result;
 }
 
@@ -270,6 +532,9 @@ std::vector<double> held2_lift_independent_fractions(
         independent_modified_fractions,
         "independent modified fractions"
     );
+    require_complete_polytope(
+        coordinates, independent_modified_fractions
+    );
     std::vector<double> modified_fractions(
         coordinates.retained_indices.size(), 0.0
     );
@@ -278,12 +543,6 @@ std::vector<double> held2_lift_independent_fractions(
          independent < independent_count;
          ++independent) {
         const double value = independent_modified_fractions[independent];
-        if (value < coordinates.independent_lower_bounds[independent]
-            || value > coordinates.independent_upper_bounds[independent]) {
-            throw std::invalid_argument(
-                "independent modified fraction is outside its source bound"
-            );
-        }
         const auto retained = static_cast<std::size_t>(
             std::find(
                 coordinates.retained_indices.begin(),
@@ -293,11 +552,6 @@ std::vector<double> held2_lift_independent_fractions(
         );
         modified_fractions[retained] = value;
         independent_sum += value;
-    }
-    if (!(independent_sum < 1.0)) {
-        throw std::invalid_argument(
-            "independent modified fractions must leave a positive dependent fraction"
-        );
     }
     const auto dependent_retained = static_cast<std::size_t>(
         std::find(
@@ -309,6 +563,131 @@ std::vector<double> held2_lift_independent_fractions(
     modified_fractions[dependent_retained] = 1.0 - independent_sum;
     return held2_lift_modified_fractions(
         coordinates, modified_fractions
+    );
+}
+
+Held2Step1Result run_held2_step1(
+    const std::vector<std::string>& component_ids,
+    const std::vector<double>& charges,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& physical_feed,
+    const Held2PhysicalVolumeBoundsEvaluator& physical_volume_bounds
+) {
+    const auto wall_start = std::chrono::steady_clock::now();
+    const std::clock_t cpu_start = std::clock();
+    Held2Step1Result result;
+    result.temperature_k = temperature_k;
+    result.pressure_pa = pressure_pa;
+    if (!std::isfinite(temperature_k) || temperature_k <= 0.0) {
+        return finish_step1(
+            std::move(result), "indeterminate", "invalid_temperature", 0,
+            wall_start, cpu_start
+        );
+    }
+    if (!std::isfinite(pressure_pa) || pressure_pa <= 0.0) {
+        return finish_step1(
+            std::move(result), "indeterminate", "invalid_pressure", 0,
+            wall_start, cpu_start
+        );
+    }
+    if (
+        component_ids.size() != charges.size()
+        || physical_feed.size() != charges.size()
+        || component_ids.empty()
+    ) {
+        return finish_step1(
+            std::move(result), "indeterminate",
+            "invalid_component_metadata", 0, wall_start, cpu_start
+        );
+    }
+    for (std::size_t index = 0; index < component_ids.size(); ++index) {
+        if (
+            component_ids[index].empty()
+            || std::find(
+                component_ids.begin(),
+                component_ids.begin() + static_cast<std::ptrdiff_t>(index),
+                component_ids[index]
+            ) != component_ids.begin() + static_cast<std::ptrdiff_t>(index)
+        ) {
+            return finish_step1(
+                std::move(result), "indeterminate",
+                "invalid_component_metadata", 0, wall_start, cpu_start
+            );
+        }
+    }
+
+    Held2Coordinates coordinates;
+    try {
+        coordinates = make_held2_coordinates(charges, component_ids);
+    } catch (const std::invalid_argument& error) {
+        const std::string message = error.what();
+        const char* reason = message.find("singular") != std::string::npos
+            ? "unsupported_singular_charge_transformation"
+            : "unsupported_charge_topology";
+        return finish_step1(
+            std::move(result), "indeterminate", reason, 0,
+            wall_start, cpu_start
+        );
+    }
+
+    std::vector<double> independent_feed;
+    std::vector<double> lifted_feed;
+    try {
+        const std::vector<double> modified =
+            held2_transform_physical_fractions(coordinates, physical_feed);
+        independent_feed = independent_from_modified(coordinates, modified);
+        lifted_feed = held2_lift_independent_fractions(
+            coordinates, independent_feed
+        );
+    } catch (const std::invalid_argument&) {
+        return finish_step1(
+            std::move(result), "indeterminate", "invalid_feed", 0,
+            wall_start, cpu_start
+        );
+    }
+    if (!physical_volume_bounds) {
+        return finish_step1(
+            std::move(result), "indeterminate",
+            "missing_physical_volume_bounds", 0, wall_start, cpu_start
+        );
+    }
+    try {
+        ++result.timing.provider_evaluations;
+        static_cast<void>(checked_volume_bounds(
+            physical_volume_bounds, lifted_feed
+        ));
+    } catch (const std::invalid_argument& error) {
+        const std::string reason = error.what();
+        return finish_step1(
+            std::move(result), "indeterminate",
+            reason == "empty_physical_volume_domain"
+                ? "empty_physical_volume_domain"
+                : "provider_volume_domain_failure",
+            0, wall_start, cpu_start
+        );
+    } catch (...) {
+        return finish_step1(
+            std::move(result), "indeterminate",
+            "provider_volume_domain_failure", 0, wall_start, cpu_start
+        );
+    }
+
+    result.coordinates = coordinates;
+    result.independent_feed = independent_feed;
+    result.volume_bounds = Held2VolumeBoundsEvaluator(
+        [coordinates, physical_volume_bounds](
+            const std::vector<double>& independent
+        ) {
+            return checked_volume_bounds(
+                physical_volume_bounds,
+                held2_lift_independent_fractions(coordinates, independent)
+            );
+        }
+    );
+    return finish_step1(
+        std::move(result), "complete", "step1_complete", 2,
+        wall_start, cpu_start
     );
 }
 
@@ -328,55 +707,15 @@ std::vector<double> held2_map_unit_cube_to_independent_fractions(
     require_finite_vector(
         unit_cube_coordinates, "HELD2 simplex cube coordinates"
     );
-    const auto dependent_retained = static_cast<std::size_t>(
-        std::find(
-            coordinates.retained_indices.begin(),
-            coordinates.retained_indices.end(),
-            coordinates.dependent_index
-        ) - coordinates.retained_indices.begin()
-    );
-    const double composition_sum_upper = 1.0
-        - kHeld2ModifiedLowerScale
-            * coordinates.modified_factors[dependent_retained];
-    const double lower_sum = std::accumulate(
-        coordinates.independent_lower_bounds.begin(),
-        coordinates.independent_lower_bounds.end(),
-        0.0
-    );
-    double remaining_composition = composition_sum_upper - lower_sum;
-    if (!(remaining_composition > 0.0)) {
-        throw std::invalid_argument(
-            "HELD2 simplex chart has no feasible interior"
-        );
-    }
-    double charged_lower_sum = 0.0;
-    for (std::size_t index = 0; index < dimension; ++index) {
-        if (coordinates.charges[
-                coordinates.independent_indices[index]
-            ] != 0.0) {
-            charged_lower_sum +=
-                coordinates.independent_lower_bounds[index];
-        }
-    }
     if (!std::isnan(total_ion_mole_fraction_max)
         && (!std::isfinite(total_ion_mole_fraction_max)
-            || total_ion_mole_fraction_max <= charged_lower_sum
+            || total_ion_mole_fraction_max <= 0.0
             || total_ion_mole_fraction_max > 1.0)) {
         throw std::invalid_argument(
             "HELD2 Provider total-ion mole-fraction ceiling is invalid or infeasible"
         );
     }
-    double remaining_ion = std::isnan(total_ion_mole_fraction_max)
-        ? std::numeric_limits<double>::infinity()
-        : total_ion_mole_fraction_max - charged_lower_sum;
     for (std::size_t index = 0; index < dimension; ++index) {
-        if (coordinates.independent_lower_bounds[index] < 0.0
-            || coordinates.independent_upper_bounds[index]
-                < coordinates.independent_lower_bounds[index]) {
-            throw std::invalid_argument(
-                "HELD2 simplex chart bounds are invalid"
-            );
-        }
         if (unit_cube_coordinates[index] < 0.0
             || unit_cube_coordinates[index] > 1.0) {
             throw std::invalid_argument(
@@ -385,28 +724,65 @@ std::vector<double> held2_map_unit_cube_to_independent_fractions(
         }
     }
 
-    std::vector<double> independent(dimension, 0.0);
+    std::vector<Held2PolytopeConstraint> constraints =
+        coordinates.polytope_constraints;
+    if (std::isfinite(total_ion_mole_fraction_max)) {
+        constraints.push_back({
+            "provider_total_ion_mole_fraction_max",
+            physical_total_ion_coefficients(coordinates),
+            total_ion_mole_fraction_max,
+        });
+    }
+    const std::vector<double> anchor = polytope_anchor(
+        coordinates, total_ion_mole_fraction_max
+    );
+    require_complete_polytope(coordinates, anchor);
+    std::vector<double> direction(dimension, 0.0);
+    double radial_fraction = 0.0;
     for (std::size_t index = 0; index < dimension; ++index) {
-        const bool charged =
-            coordinates.charges[
-                coordinates.independent_indices[index]
-            ] != 0.0;
-        double available = charged
-            ? std::min(remaining_composition, remaining_ion)
-            : remaining_composition;
-        available = std::min(
-            available,
-            coordinates.independent_upper_bounds[index]
-                - coordinates.independent_lower_bounds[index]
+        direction[index] = 2.0 * unit_cube_coordinates[index] - 1.0;
+        radial_fraction = std::max(
+            radial_fraction, std::abs(direction[index])
         );
-        const double shifted = available * unit_cube_coordinates[index];
-        independent[index] =
-            coordinates.independent_lower_bounds[index] + shifted;
-        remaining_composition -= shifted;
-        if (charged) {
-            remaining_ion -= shifted;
+    }
+    if (radial_fraction == 0.0) {
+        return anchor;
+    }
+    for (double& value : direction) {
+        value /= radial_fraction;
+    }
+    double boundary_distance = std::numeric_limits<double>::infinity();
+    for (const Held2PolytopeConstraint& constraint : constraints) {
+        const double anchor_value = std::inner_product(
+            constraint.coefficients.begin(),
+            constraint.coefficients.end(),
+            anchor.begin(),
+            0.0
+        );
+        const double direction_value = std::inner_product(
+            constraint.coefficients.begin(),
+            constraint.coefficients.end(),
+            direction.begin(),
+            0.0
+        );
+        if (direction_value > 0.0) {
+            boundary_distance = std::min(
+                boundary_distance,
+                (constraint.upper_bound - anchor_value) / direction_value
+            );
         }
     }
+    if (!std::isfinite(boundary_distance) || boundary_distance < 0.0) {
+        throw std::invalid_argument(
+            "HELD2 complete polytope has no radial boundary"
+        );
+    }
+    std::vector<double> independent = anchor;
+    for (std::size_t index = 0; index < dimension; ++index) {
+        independent[index] +=
+            radial_fraction * boundary_distance * direction[index];
+    }
+    require_complete_polytope(coordinates, independent);
     return independent;
 }
 

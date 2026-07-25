@@ -18,54 +18,75 @@ def _figiel_brine_model() -> epcsaft.EPCSAFT:
     return epcsaft.EPCSAFT(parameters)
 
 
-def test_modified_mole_coordinates_preserve_charge_and_galvani_gauge() -> None:
-    chemical_potentials = (3.0, -2.0, 4.0)
+@pytest.mark.parametrize(
+    (
+        "charges",
+        "physical_feed",
+        "expected_eliminated",
+        "expected_factors",
+        "expected_modified_feed",
+    ),
+    [
+        (
+            (0.0, 1.0, -1.0),
+            (0.50, 0.25, 0.25),
+            2,
+            (2.0, 1.0),
+            (0.50, 0.50),
+        ),
+        (
+            (0.0, -1.0, 2.0),
+            (0.85, 0.10, 0.05),
+            2,
+            (1.5, 1.0),
+            (0.15, 0.85),
+        ),
+    ],
+)
+def test_step1_coordinates_round_trip_and_preserve_galvani_gauge(
+    charges: tuple[float, ...],
+    physical_feed: tuple[float, ...],
+    expected_eliminated: int,
+    expected_factors: tuple[float, ...],
+    expected_modified_feed: tuple[float, ...],
+) -> None:
+    chemical_potentials = tuple(
+        3.0 - 2.0 * index for index in range(len(charges))
+    )
     baseline = _equilibrium._held2_coordinates(
-        CHARGES,
-        PHYSICAL_FEED,
+        charges,
+        physical_feed,
         chemical_potentials,
     )
     shifted = _equilibrium._held2_coordinates(
-        CHARGES,
-        PHYSICAL_FEED,
+        charges,
+        physical_feed,
         tuple(
             potential + 17.0 * charge
             for potential, charge in zip(
-                chemical_potentials, CHARGES, strict=True
+                chemical_potentials, charges, strict=True
             )
         ),
     )
 
-    assert baseline["eliminated_index"] == 2
-    assert baseline["independent_indices"] == [1]
-    assert baseline["modified_factors"] == pytest.approx([1.0, 2.0])
-    assert baseline["modified_feed"] == pytest.approx([0.5, 0.5])
-    assert baseline["lifted_feed"] == pytest.approx(PHYSICAL_FEED, abs=1.0e-15)
+    assert baseline["eliminated_index"] == expected_eliminated
+    assert baseline["modified_factors"] == pytest.approx(expected_factors)
+    assert baseline["modified_feed"] == pytest.approx(expected_modified_feed)
+    assert baseline["lifted_feed"] == pytest.approx(
+        physical_feed, abs=1.0e-15
+    )
     assert shifted["transformed_modified_potentials"] == pytest.approx(
         baseline["transformed_modified_potentials"], abs=1.0e-12
     )
 
 
-@pytest.mark.parametrize(
-    ("cube", "ceiling", "expected"),
-    [
-        ((0.0,), 0.38, (2.0e-10,)),
-        ((0.5,), 0.38, (0.1900000001,)),
-        ((1.0,), 0.38, (0.38,)),
-        ((0.5,), math.nan, (0.5,)),
-    ],
-)
-def test_stage_i_domain_map_enforces_only_the_provider_ionic_ceiling(
-    cube: tuple[float, ...],
-    ceiling: float,
-    expected: tuple[float, ...],
-) -> None:
-    result = _equilibrium._held2_stage_i_domain(CHARGES, cube, ceiling)
-
-    assert result["independent_modified_fractions"] == pytest.approx(expected)
-    assert result["physical_total_ion_mole_fraction"] == pytest.approx(
-        expected[0]
-    )
+def test_step1_rejects_singular_charge_transformation() -> None:
+    with pytest.raises(ValueError, match="singular"):
+        _equilibrium._held2_coordinates(
+            (1.0, 1.0, -1.0, -1.0, 0.0),
+            (0.10, 0.10, 0.10, 0.10, 0.60),
+            (0.0, 0.0, 0.0, 0.0, 0.0),
+        )
 
 
 def test_installed_phase_block_has_exact_reduced_first_and_second_derivatives() -> None:

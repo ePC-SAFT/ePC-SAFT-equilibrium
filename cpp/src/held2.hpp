@@ -2,8 +2,10 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -15,21 +17,51 @@ inline constexpr double kHeld2PackingFractionMinimum = 1.0e-6;
 inline constexpr double kHeld2PackingFractionMaximum = 0.74;
 inline constexpr double kHeld2ModifiedLowerScale = 1.0e-10;
 
+struct Held2PolytopeConstraint {
+    std::string name;
+    std::vector<double> coefficients;
+    double upper_bound = 0.0;
+};
+
 struct Held2Coordinates {
     std::vector<double> charges;
     std::size_t eliminated_index = 0;
     std::size_t dependent_index = 0;
+    std::vector<std::size_t> paper_to_provider_indices;
+    std::vector<std::size_t> provider_to_paper_indices;
+    std::vector<std::size_t> compact_to_paper_indices;
     std::vector<std::size_t> retained_indices;
     std::vector<std::size_t> independent_indices;
     std::vector<double> modified_factors;
     std::vector<double> independent_lower_bounds;
     std::vector<double> independent_upper_bounds;
+    std::vector<Held2PolytopeConstraint> polytope_constraints;
+};
+
+struct Held2StepTiming {
+    int invocation_count = 0;
+    double wall_seconds = 0.0;
+    double cpu_seconds = 0.0;
+    std::uint64_t provider_evaluations = 0;
+    std::uint64_t optimizer_solves = 0;
+    std::uint64_t optimizer_iterations = 0;
+    std::string terminal_status = "not_run";
+    std::string terminal_reason = "not_run";
+    int next_step = 0;
+};
+
+struct Held2ResourceProfile {
+    int step2_search_budget = 0;
+    int step5_start_epoch_size = 0;
+    int step5_total_start_cap = 0;
+    int step7_major_iteration_cap = 0;
 };
 
 struct Held2StateEvaluation;
 
 [[nodiscard]] Held2Coordinates make_held2_coordinates(
-    const std::vector<double>& charges
+    const std::vector<double>& charges,
+    const std::vector<std::string>& component_ids = {}
 );
 
 [[nodiscard]] std::vector<double> held2_transform_physical_fractions(
@@ -74,6 +106,19 @@ struct Held2PhysicalPhaseBlock {
     std::vector<double> hessian;
     double pressure_pa = 0.0;
 };
+
+using Held2PackingFractionEvaluator = std::function<double(
+    const std::vector<double>&,
+    double
+)>;
+
+using Held2PhysicalEvaluator = std::function<Held2PhysicalPhaseBlock(
+    const std::vector<double>&,
+    double
+)>;
+
+using Held2PhysicalVolumeBoundsEvaluator =
+    std::function<std::array<double, 2>(const std::vector<double>&)>;
 
 struct Held2StateEvaluation {
     std::vector<double> modified_fractions;
@@ -197,6 +242,10 @@ struct Held2PressureEnvelopeResult {
     std::vector<Held2PressureScanInterval> intervals;
     std::vector<Held2PressureRoot> roots;
 };
+
+using Held2PressureRootEvaluator = std::function<Held2PressureEnvelopeResult(
+    const std::vector<double>&
+)>;
 
 [[nodiscard]] Held2PressureEnvelopeResult evaluate_held2_pressure_envelope(
     const std::vector<double>& independent_modified_fractions,
