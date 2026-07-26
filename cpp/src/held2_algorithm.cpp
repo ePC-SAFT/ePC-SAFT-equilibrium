@@ -100,7 +100,11 @@ Held2AlgorithmResult run_held2_algorithm(
             thermodynamics.packing_fraction(
                 *result.step1.independent_feed, reference.volume
             ),
+            reference.helmholtz_over_rt_reference_amount,
+            reference.pressure_pa,
+            reference.chemical_potentials_over_rt,
         }};
+        result.total_free_energy_over_rt = reference.objective;
         result.outcome = "one_phase_no_negative_witness_detected";
         return result;
     }
@@ -205,12 +209,13 @@ Held2AlgorithmResult run_held2_algorithm(
                 unchanged.timing.next_step = 9;
                 return unchanged;
             }
-                return run_held2_step8(
-                    result.step1,
-                    step6,
-                    thermodynamics.evaluate,
-                    thermodynamics.packing_fraction,
-                    previous
+            return run_held2_step8(
+                result.step1,
+                step6,
+                thermodynamics.evaluate,
+                thermodynamics.packing_fraction,
+                previous,
+                thermodynamics.evaluate_value
             );
         }, observer));
         result.step_timings.push_back(result.step8_history.back().timing);
@@ -267,6 +272,8 @@ Held2AlgorithmResult run_held2_algorithm(
             return fail("step10", result.step10->reason);
         }
         result.phases = result.step10->phases;
+        result.total_free_energy_over_rt =
+            result.step10->total_free_energy_over_rt;
         result.outcome = "physical_equilibrium_accepted";
         return result;
     }

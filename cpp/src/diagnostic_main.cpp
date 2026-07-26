@@ -200,9 +200,7 @@ int main(int argc, char** argv) {
                         options.temperature_k,
                         options.pressure_pa,
                         options.feed,
-                    },
-                    {},
-                    options.trace ? &progress : nullptr
+                    }
                 );
             json = epcsaft_equilibrium::flash_result_to_json(result);
         }

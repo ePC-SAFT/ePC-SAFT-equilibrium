@@ -18,6 +18,9 @@ struct Held2Phase {
     std::vector<double> physical_fractions_provider_order;
     double volume = 0.0;
     double packing_fraction = 0.0;
+    double helmholtz_over_rt_reference_amount = 0.0;
+    double pressure_pa = 0.0;
+    std::vector<double> chemical_potentials_over_rt;
 };
 
 struct Held2NlpCertificate {
@@ -51,7 +54,8 @@ struct Held2Step8Result {
     const Held2Step6Result& step6,
     const Held2StateEvaluator& evaluator,
     const Held2PackingFractionEvaluator& packing_fraction,
-    const Held2Step8Result* previous = nullptr
+    const Held2Step8Result* previous = nullptr,
+    const Held2StateValueEvaluator& value_evaluator = {}
 );
 
 }  // namespace epcsaft_equilibrium

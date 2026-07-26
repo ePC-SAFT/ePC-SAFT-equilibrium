@@ -230,7 +230,8 @@ Held2Step10Result run_held2_step10(
     );
     double charge = 0.0;
     double pressure = 0.0;
-    for (const Held2Phase& phase : result.phases) {
+    double total_free_energy = 0.0;
+    for (Held2Phase& phase : result.phases) {
         for (std::size_t component = 0;
              component < material_balance.size();
              ++component) {
@@ -259,10 +260,17 @@ Held2Step10Result run_held2_step10(
             std::log(phase.volume)
         );
         ++result.timing.provider_evaluations;
+        phase.helmholtz_over_rt_reference_amount =
+            state.helmholtz_over_rt_reference_amount;
+        phase.pressure_pa = state.pressure_pa;
+        phase.chemical_potentials_over_rt =
+            state.chemical_potentials_over_rt;
+        total_free_energy += phase.phase_fraction * state.objective;
         pressure = std::max(
             pressure, std::abs(state.pressure_stationarity_relative)
         );
     }
+    result.total_free_energy_over_rt = total_free_energy;
     const std::vector<double> feed = held2_lift_independent_fractions(
         coordinates, *step1.independent_feed
     );

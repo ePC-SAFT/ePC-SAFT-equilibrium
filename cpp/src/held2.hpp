@@ -113,9 +113,16 @@ struct Held2StateEvaluation {
     std::vector<double> modified_potentials;
     double pressure_stationarity_relative = 0.0;
     double pressure_stationarity_derivative_log_volume = 0.0;
+    double helmholtz_over_rt_reference_amount = 0.0;
+    double pressure_pa = 0.0;
+    std::vector<double> chemical_potentials_over_rt;
 };
 
 using Held2StateEvaluator = std::function<Held2StateEvaluation(
+    const std::vector<double>&,
+    double
+)>;
+using Held2StateValueEvaluator = std::function<double(
     const std::vector<double>&,
     double
 )>;
@@ -577,7 +584,8 @@ struct Held2StageIIIResult {
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
     double free_energy_upper_bound,
     const std::string& free_energy_gap_provenance,
-    std::vector<double> initial = {}
+    std::vector<double> initial = {},
+    const Held2StateValueEvaluator& value_evaluator = {}
 );
 
 }  // namespace epcsaft_equilibrium

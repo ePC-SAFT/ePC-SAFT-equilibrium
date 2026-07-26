@@ -49,6 +49,7 @@ void run_workflow_check(bool trace) {
             },
             std::numeric_limits<double>::quiet_NaN(),
             {},
+            {},
         },
         {298.15, 100000.0, {0.5, 0.25, 0.25}},
         {200, 20, 10},

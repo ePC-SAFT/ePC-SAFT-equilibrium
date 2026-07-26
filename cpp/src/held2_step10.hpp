@@ -21,6 +21,7 @@ struct Held2Step10Result {
     std::vector<Held2Phase> phases;
     std::vector<Held2TraceRefinement> refinements;
     std::optional<Held2PhysicalCertificate> final_certificate;
+    std::optional<double> total_free_energy_over_rt;
     Held2StepTiming timing;
 };
 

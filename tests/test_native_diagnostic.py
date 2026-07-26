@@ -42,7 +42,10 @@ def _diagnostic_executable() -> Path:
 
 def _normalize_json(value: object) -> object:
     if isinstance(value, dict):
-        return {key: _normalize_json(item) for key, item in value.items()}
+        return {
+            key: 0.0 if key in {"wall_seconds", "cpu_seconds"} else _normalize_json(item)
+            for key, item in value.items()
+        }
     if isinstance(value, (list, tuple)):
         return [_normalize_json(item) for item in value]
     if isinstance(value, float) and not math.isfinite(value):
@@ -100,8 +103,8 @@ def test_native_diagnostic_matches_python_payload(
         model.parameter_fingerprint,
     )
 
-    assert json.loads(first.stdout) == _normalize_json(python_payload)
-    assert second.stdout == first.stdout
+    assert _normalize_json(json.loads(first.stdout)) == _normalize_json(python_payload)
+    assert _normalize_json(json.loads(second.stdout)) == _normalize_json(json.loads(first.stdout))
     assert first.stderr == second.stderr == ""
 
 
@@ -132,8 +135,9 @@ def test_native_diagnostic_streams_trace_and_writes_json(tmp_path: Path) -> None
     )
 
     assert completed.stdout == ""
-    assert "HELD2.0  case=installed-held2-controller" in completed.stderr
+    assert "HELD2.0  case=installed-held2-paper-rewrite" in completed.stderr
+    assert "STEP 1" in completed.stderr
+    assert "STEP 2" in completed.stderr
     assert "REFERENCE PRESSURE ROOTS" in completed.stderr
-    assert "STAGE I - DIRECT-L TPD SEARCH" in completed.stderr
-    assert "STAGE II - SKIPPED" in completed.stderr
+    assert "reason=declared_search_complete" in completed.stderr
     assert json.loads(output.read_text())["globality_certificate"] == "not_guaranteed"

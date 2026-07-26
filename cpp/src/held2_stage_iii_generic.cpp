@@ -85,12 +85,33 @@ struct Problem67 {
     const Held2Coordinates& coordinates;
     const std::vector<double>& feed;
     const Held2StateEvaluator& evaluate;
+    const Held2StateValueEvaluator& evaluate_value;
     std::size_t phase_count;
     std::size_t dimension;
     std::size_t block_size;
     int objective_evaluations = 0;
     std::string callback_error;
 };
+
+double problem67_value(
+    const Problem67& problem,
+    const std::vector<double>& variables
+) {
+    double objective = 0.0;
+    for (std::size_t phase = 0; phase < problem.phase_count; ++phase) {
+        const std::size_t offset = phase * problem.block_size;
+        const std::vector<double> composition(
+            variables.begin() + static_cast<std::ptrdiff_t>(offset + 1),
+            variables.begin() + static_cast<std::ptrdiff_t>(
+                offset + 1 + problem.dimension
+            )
+        );
+        objective += variables[offset] * problem.evaluate_value(
+            composition, variables[offset + 1 + problem.dimension]
+        );
+    }
+    return objective;
+}
 
 double problem67_objective(
     const std::vector<double>& variables,
@@ -305,8 +326,14 @@ public:
             return false;
         }
         try {
-            evaluate(n, x);
-            value = cached_evaluation_.objective;
+            if (problem_.evaluate_value) {
+                value = problem67_value(
+                    problem_, std::vector<double>(x, x + n)
+                );
+            } else {
+                evaluate(n, x);
+                value = cached_evaluation_.objective;
+            }
             return true;
         } catch (...) {
             return false;
@@ -943,7 +970,8 @@ Held2StageIIIResult solve_held2_stage_iii(
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
     double free_energy_upper_bound,
     const std::string& free_energy_gap_provenance,
-    std::vector<double> variables
+    std::vector<double> variables,
+    const Held2StateValueEvaluator& value_evaluator
 ) {
     Held2StageIIIResult result;
     result.input_candidate_count = static_cast<int>(candidates.size());
@@ -1036,6 +1064,7 @@ Held2StageIIIResult solve_held2_stage_iii(
         coordinates,
         feed,
         evaluator,
+        value_evaluator,
         candidates.size(),
         dimension,
         block_size,

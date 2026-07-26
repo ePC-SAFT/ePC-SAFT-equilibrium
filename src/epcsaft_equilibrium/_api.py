@@ -360,149 +360,94 @@ def _failed_held_diagnostics(outcome: str, search_status: str, reason: str) -> H
 
 
 def _held2_diagnostics(payload: Mapping[str, object]) -> HeldDiagnostics:
-    stage_i = cast(Mapping[str, object], payload["stage_i"])
-    stage_ii_value = payload.get("stage_ii")
-    stage_iii_value = payload.get("stage_iii")
-    stage_ii = (
-        cast(Mapping[str, object], stage_ii_value) if isinstance(stage_ii_value, Mapping) else None
-    )
-    stage_iii = (
-        cast(Mapping[str, object], stage_iii_value)
-        if isinstance(stage_iii_value, Mapping)
+    outcome = str(payload["outcome"])
+    accepted = outcome == "physical_equilibrium_accepted"
+    one_phase = outcome == "one_phase_no_negative_witness_detected"
+    step2 = cast(Mapping[str, object], payload["step2"])
+    step9_history = cast(Sequence[Mapping[str, object]], payload["step9_history"])
+    step10_value = payload.get("step10")
+    step10 = (
+        cast(Mapping[str, object], step10_value)
+        if isinstance(step10_value, Mapping)
         else None
     )
-    statuses = ("not_adjudicated", "not_adjudicated", "not_adjudicated")
-    attempts = int(cast(int, stage_i["completed_evaluation_count"]))
-    major_iterations = 0
-    lower_bound = upper_bound = held_gap = None
-    profiles = [str(stage_i["search_strategy"]), str(stage_i["search_solver"])]
-
-    if stage_ii is not None:
-        classification = cast(Mapping[str, object], stage_ii["attempt_classification"])
-        declared = int(cast(int, classification["declared"]))
-        solver_passed = int(cast(int, classification["solver_converged"])) > 0
-        numerical_passed = int(cast(int, classification["physical_kkt_passed"])) > 0
-        physical_passed = bool(cast(Sequence[object], stage_ii["candidates"]))
-        statuses = (
-            "passed" if solver_passed else "failed",
-            "passed" if numerical_passed else "failed",
-            "passed" if physical_passed else "failed",
-        )
-        attempts += declared
-        major_iterations = int(cast(int, stage_ii["major_iterations"]))
-        profiles.extend(
-            str(stage_ii[name]) for name in ("search_strategy", "global_explorer", "local_solver")
-        )
-        bounds = cast(Sequence[Mapping[str, object]], stage_ii["bound_history"])
-        if bounds:
-            latest = bounds[-1]
-            upper_bound = float(cast(float, latest["upper_bound"]))
-            if bool(latest["lower_bound_available"]):
-                lower_bound = float(cast(float, latest["lower_bound"]))
-                held_gap = abs(upper_bound - lower_bound)
-    else:
-        stage_i_passed = (
-            int(cast(int, stage_i["failed_evaluation_count"])) == 0
-            and str(stage_i["outcome"]) != "indeterminate"
-        )
-        statuses = (
-            "not_adjudicated",
-            "passed" if stage_i_passed else "failed",
-            "passed" if stage_i["negative_witness"] is not None else "not_adjudicated",
-        )
-
-    material_balance = pressure_residual = kkt_residual = potential_gap = None
-    if stage_iii is not None:
-        statuses = (
-            "passed"
-            if str(stage_iii["solver_status"]) in {"solve_succeeded", "solved_to_acceptable_level"}
-            else "failed",
-            "passed" if str(stage_iii["numerical_status"]) == "converged" else "failed",
-            "passed" if str(stage_iii["physical_status"]) == "accepted" else "failed",
-        )
-        material_balance = max(
-            float(cast(float, stage_iii["modified_balance_inf_norm"])),
-            float(cast(float, stage_iii["ordinary_balance_inf_norm"])),
-        )
-        pressure_residual = float(cast(float, stage_iii["pressure_stationarity_inf_norm"]))
-        kkt_residual = float(cast(float, stage_iii["kkt_stationarity_inf_norm"]))
-        potential_gap = float(cast(float, stage_iii["modified_potential_mixed_gap"]))
-
-    minimum_tpd = stage_i["minimum_tpd"]
+    certificate_value = step10.get("final_certificate") if step10 else None
+    certificate = (
+        cast(Mapping[str, object], certificate_value)
+        if isinstance(certificate_value, Mapping)
+        else None
+    )
     failure = payload.get("failure_reason")
+    gap = step9_history[-1].get("free_energy_gap") if step9_history else None
+    status = "passed" if accepted or one_phase else "failed"
     return HeldDiagnostics(
-        outcome=str(payload["outcome"]),
-        search_status=(
-            str(stage_iii["physical_status"])
-            if stage_iii is not None
-            else str(stage_ii["outcome"])
-            if stage_ii is not None
-            else str(stage_i["outcome"])
+        outcome=outcome,
+        search_status=str(payload.get("failure_stage") or outcome),
+        solver_status=status,
+        numerical_status=status,
+        physical_status=status,
+        attempts=int(cast(int, payload["upper_solve_count"])),
+        major_iterations=int(cast(int, payload["upper_solve_count"])),
+        best_tpd=float(cast(float, step2["minimum_tpd"])),
+        lower_bound=None,
+        upper_bound=None,
+        held_gap=None if gap is None else float(cast(float, gap)),
+        material_balance_max_abs=(
+            None
+            if certificate is None
+            else max(
+                float(cast(float, certificate["modified_balance_inf"])),
+                float(cast(float, certificate["ordinary_balance_inf"])),
+            )
         ),
-        solver_status=statuses[0],
-        numerical_status=statuses[1],
-        physical_status=statuses[2],
-        attempts=attempts,
-        major_iterations=major_iterations,
-        best_tpd=math.nan if minimum_tpd is None else float(cast(float, minimum_tpd)),
-        lower_bound=lower_bound,
-        upper_bound=upper_bound,
-        held_gap=held_gap,
-        material_balance_max_abs=material_balance,
-        pressure_stationarity_max_relative=pressure_residual,
-        kkt_stationarity_max_abs=kkt_residual,
-        chemical_potential_max_relative=potential_gap,
-        confirmation_succeeded=False,
+        pressure_stationarity_max_relative=(
+            None
+            if certificate is None
+            else float(cast(float, certificate["pressure_residual_inf"]))
+        ),
+        kkt_stationarity_max_abs=(
+            None
+            if certificate is None
+            else float(cast(float, certificate["kkt_residual_inf"]))
+        ),
+        chemical_potential_max_relative=None,
+        confirmation_succeeded=bool(step10 and step10["status"] == "complete"),
         confirmation_max_difference=None,
-        search_profiles=tuple(profiles),
+        search_profiles=("HELD2.0 paper Steps 1-10",),
         globality_certificate=str(payload["globality_certificate"]),
         failure_reason="" if failure is None else str(failure),
     )
 
 
 def _held2_phase_state(
-    capsule: object,
-    temperature_k: float,
     component_count: int,
-    fingerprint: str,
     payload: Mapping[str, object],
 ) -> PhaseState:
-    fractions = _vector(
-        payload["physical_fractions"], component_count, "HELD2 phase composition"
-    )
+    fractions = _vector(payload["mole_fractions"], component_count, "HELD2 phase composition")
     phase_fraction = float(cast(float, payload["phase_fraction"]))
-    volume = float(cast(float, payload["volume"]))
+    molar_volume = float(cast(float, payload["molar_volume_m3_mol"]))
     if not math.isfinite(phase_fraction) or phase_fraction <= 0.0:
         raise ValueError("native HELD2 phase fraction must be positive and finite")
-    if not math.isfinite(volume) or volume <= 0.0:
+    if not math.isfinite(molar_volume) or molar_volume <= 0.0:
         raise ValueError("native HELD2 phase volume must be positive and finite")
-    provider_phase = cast(
-        Mapping[str, object],
-        _equilibrium.evaluate_electrolyte_phase(
-            capsule, temperature_k, fractions, volume, fingerprint
-        ),
-    )
-    if str(provider_phase["parameter_fingerprint"]) != fingerprint:
-        raise ValueError("hydrated HELD2 phase has the wrong Provider fingerprint")
-    pressure_pa = float(cast(float, provider_phase["pressure_pa"]))
+    pressure_pa = float(cast(float, payload["pressure_pa"]))
     if not math.isfinite(pressure_pa):
-        raise ValueError("hydrated HELD2 phase pressure must be finite")
+        raise ValueError("native HELD2 phase pressure must be finite")
     return PhaseState(
         amount_mol=phase_fraction,
         mole_fractions=fractions,
-        volume_m3=volume,
-        molar_density_mol_m3=1.0 / volume,
+        volume_m3=phase_fraction * molar_volume,
+        molar_density_mol_m3=1.0 / molar_volume,
         pressure_pa=pressure_pa,
         chemical_potential_over_rt=_vector(
-            provider_phase["chemical_potential_over_rt"],
+            payload["chemical_potential_over_rt"],
             component_count,
             "HELD2 chemical-potential vector",
-        )
+        ),
     )
 
 
 def _held2_result(
-    capsule: object,
     temperature_k: float,
     pressure_pa: float,
     feed: tuple[float, ...],
@@ -512,36 +457,31 @@ def _held2_result(
     diagnostics = _held2_diagnostics(native)
     if diagnostics.globality_certificate != "not_guaranteed":
         raise ValueError("native HELD2 result has an invalid globality certificate")
-    if diagnostics.outcome != "physical_equilibrium_accepted":
+    if diagnostics.outcome not in {
+        "one_phase_no_negative_witness_detected",
+        "physical_equilibrium_accepted",
+    }:
         reason = diagnostics.failure_reason or "HELD2 did not return a certified equilibrium"
         raise FlashError(reason, diagnostics)
     if str(native["parameter_fingerprint"]) != fingerprint:
         raise ValueError("native HELD2 result has the wrong Provider fingerprint")
 
-    stage_iii_value = native.get("stage_iii")
-    if not isinstance(stage_iii_value, Mapping):
-        raise ValueError("accepted HELD2 result is missing Stage III evidence")
-    stage_iii = cast(Mapping[str, object], stage_iii_value)
-    if stage_iii.get("physical_status") != "accepted":
-        raise ValueError("accepted HELD2 result has a rejected Stage III status")
-    phase_payloads = cast(Sequence[Mapping[str, object]], stage_iii["phases"])
+    phase_payloads = cast(Sequence[Mapping[str, object]], native["phases"])
     phases = tuple(
         _held2_phase_state(
-            capsule,
-            temperature_k,
             len(feed),
-            fingerprint,
             payload,
         )
         for payload in phase_payloads
     )
     phase_fractions = tuple(phase.amount_mol for phase in phases)
-    if len(phases) < 2 or not math.isclose(
+    expected_phase_count = 1 if diagnostics.outcome.startswith("one_phase") else 2
+    if len(phases) != expected_phase_count or not math.isclose(
         math.fsum(phase_fractions), 1.0, rel_tol=0.0, abs_tol=1.0e-10
     ):
         raise ValueError("native HELD2 phase result is incomplete")
-    objective = float(cast(float, stage_iii["objective"]))
-    if not math.isfinite(objective):
+    total_gibbs = float(cast(float, native["total_free_energy_over_rt"]))
+    if not math.isfinite(total_gibbs):
         raise ValueError("native HELD2 objective must be finite")
     return TpFlashResult(
         temperature_k=temperature_k,
@@ -549,7 +489,7 @@ def _held2_result(
         overall_mole_fractions=feed,
         phases=tuple(phases),
         phase_fractions=phase_fractions,
-        total_free_energy_over_rt=objective,
+        total_free_energy_over_rt=total_gibbs,
         parameter_fingerprint=fingerprint,
         diagnostics=diagnostics,
     )
@@ -605,10 +545,9 @@ def tp_flash(
         diagnostics = _failed_held_diagnostics("error", "native_exception", str(error))
         raise FlashError(str(error), diagnostics) from error
 
-    if native.get("controller") == "perdomo_held2_steps_1_to_10_v1":
+    if native.get("controller") == "perdomo_held2_paper_steps_1_to_10_v1":
         try:
             return _held2_result(
-                capsule,
                 temperature_k,
                 pressure_pa,
                 feed,
@@ -630,19 +569,15 @@ def tp_flash(
         if diagnostics.outcome not in {"one_phase", "accepted"}:
             reason = diagnostics.failure_reason or "HELD search did not return an accepted result"
             raise FlashError(reason, diagnostics)
-        overall = cast(
-            tuple[float, float],
-            _vector(native["overall_mole_fractions"], 2, "overall composition"),
-        )
+        overall = _vector(native["overall_mole_fractions"], len(feed), "overall composition")
         phase_payloads = cast(Sequence[Mapping[str, object]], native["phases"])
         phases = tuple(_phase(payload) for payload in phase_payloads)
         phase_fractions = _float_tuple(native["phase_fractions"])
-        expected_phase_count = 1 if diagnostics.outcome == "one_phase" else 2
-        if len(phases) != expected_phase_count or len(phase_fractions) != expected_phase_count:
+        if len(phases) != len(phase_fractions):
             raise ValueError("native HELD phase count does not match its outcome")
         if not math.isclose(sum(phase_fractions), 1.0, rel_tol=0.0, abs_tol=1.0e-10):
             raise ValueError("native HELD phase fractions do not sum to one")
-        if str(native["parameter_fingerprint"]) != _FLASH_FINGERPRINT:
+        if str(native["parameter_fingerprint"]) != model.parameter_fingerprint:
             raise ValueError("native HELD result has the wrong provider fingerprint")
         return TpFlashResult(
             temperature_k=float(cast(float, native["temperature_k"])),

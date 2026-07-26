@@ -978,6 +978,10 @@ Held2StateEvaluation evaluate_held2_phase_block(
     result.pressure_stationarity_derivative_log_volume =
         (result.gradient.back() - result.hessian.back())
         / (pressure_over_rt * result.volume);
+    result.helmholtz_over_rt_reference_amount =
+        block.helmholtz_over_rt;
+    result.pressure_pa = block.pressure_pa;
+    result.chemical_potentials_over_rt = std::move(physical_potentials);
     return result;
 }
 

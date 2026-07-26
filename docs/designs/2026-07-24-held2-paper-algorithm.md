@@ -1138,7 +1138,7 @@ repeated search or diagnostic replay.
 Perdomo’s published SAFT-\(\gamma\) Mie results are comparison references, not
 numerical acceptance targets for the installed ePC-SAFT model:
 
-| molality | paper Step-4 solves | paper CPU / s |
+| molality | paper upper-level solves | paper CPU / s |
 |---:|---:|---:|
 | 4.58 | 59 | 2.58 |
 | 4.95 | 54 | 2.60 |
@@ -1154,30 +1154,40 @@ The native Release-build audit of those three synthetic feeds at 298.15 K and
 
 | molality label | native outcome | Step-4 solves | wall / s | Step 5 / s | Step 8 / s |
 |---:|---|---:|---:|---:|---:|
-| 4.58 | accepted two-phase | 63 | 21.7 | 6.86 | 13.52 |
-| 4.95 | indeterminate: active-set balance | 60 | 22.3 | 6.33 | 14.76 |
-| 5.74 | indeterminate: 64-solve resource limit | 64 | 19.2 | 6.88 | 11.11 |
+| 4.58 | accepted two-phase | 63 | 14.33 | 6.70 | 6.36 |
+| 4.95 | indeterminate: active-set balance | 60 | 16.03 | 6.50 | 8.24 |
+| 5.74 | indeterminate: 64-solve resource limit | 64 | 13.76 | 7.06 | 5.40 |
 
 These are diagnostic results for the installed, unfitted ePC-SAFT model, not
 reproductions of the SAFT-\(\gamma\) Mie phase compositions. The dominant
-measured cost is not repeated HELD2 control flow: Step 8 invokes the Provider
-electrolyte callback 14,291--18,203 times across changing candidate sets. The
-installed v1 callback always retapes CppAD and computes value, gradient, and
-Hessian, including objective-only Ipopt line-search trials. Equilibrium cannot
-remove that work without duplicating Provider thermodynamics. A sub-10-second
-performance campaign therefore requires a separately versioned installed
-Provider transport that can evaluate the derivative level requested by the
-solver; solver shortcuts that changed the active-set certificate were tested
-and rejected.
+measured cost is not repeated HELD2 control flow. Provider commit `e545ed2`
+adds an append-only installed value endpoint that uses the same CppAD
+zero-order tape as the derivative endpoint and returns before Jacobian,
+site-sensitivity, and Hessian work. Step 8 uses it only for objective callbacks;
+all gradients, Hessians, KKT checks, pressure polish, and Steps 9–10 retain the
+full endpoint. This preserves the accepted 4.58 result bit for bit while
+reducing Step 8 by 5.7–7.2 seconds. Step 5 still costs 6.5–7.1 seconds and the
+remaining exact Step-8 derivative work costs 5.4–8.2 seconds, so the requested
+sub-10-second wall target is not met. No unexplained controller replay or
+failed shortcut remains.
 
 ### Public Python cutover
 
-Only after all three native cases pass:
+After the three native synthetic diagnostics established unchanged scientific
+outcomes and the accepted 4.58 case preserved every reported phase and
+certificate field:
 
 1. route the public Python API to the same new native controller;
 2. compare native and Python scientific payloads field-for-field;
-3. remove the temporary legacy comparison engine; and
-4. run installed-wheel validation as the promotion route.
+3. remove the old public charged serializer and postprocessing fork; and
+4. run installed-wheel validation as the public route.
+
+The installed-wheel public route returns the same accepted 4.58 two-phase
+result with 63 upper-level solves. The native and Python JSON contracts differ
+only in nondeterministic wall and CPU measurements from independent runs. The
+native payload owns phase pressure, chemical potentials, molar volume, and
+total free energy, so Python performs typed conversion without a second
+Provider evaluation or scientific reclassification.
 
 Python may convert native structures to public Python objects. It may not
 reclassify phases, reject feeds by component count or charge pattern, invent a

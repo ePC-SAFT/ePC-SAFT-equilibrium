@@ -22,6 +22,7 @@ struct Held2ThermodynamicAccess {
     double total_ion_mole_fraction_max =
         std::numeric_limits<double>::quiet_NaN();
     Held2StateEvaluator evaluate_trace;
+    Held2StateValueEvaluator evaluate_value;
 };
 
 struct Held2AlgorithmResult {
@@ -43,6 +44,7 @@ struct Held2AlgorithmResult {
     std::optional<Held2Step10Result> step10;
     std::optional<Held2PersistentState> final_state;
     std::vector<Held2Phase> phases;
+    std::optional<double> total_free_energy_over_rt;
     std::vector<Held2StepTiming> step_timings;
     int upper_solve_count = 0;
 };

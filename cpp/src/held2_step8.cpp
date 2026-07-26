@@ -61,7 +61,8 @@ Held2Step8Result run_held2_step8(
     const Held2Step6Result& step6,
     const Held2StateEvaluator& evaluator,
     const Held2PackingFractionEvaluator& packing_fraction,
-    const Held2Step8Result* previous
+    const Held2Step8Result* previous,
+    const Held2StateValueEvaluator& value_evaluator
 ) {
     Held2Step8Result result;
     result.timing.invocation_count = 1;
@@ -103,6 +104,18 @@ Held2Step8Result run_held2_step8(
             ++provider_evaluations;
             return evaluator(composition, log_volume);
         };
+    const Held2StateValueEvaluator counted_value =
+        value_evaluator
+        ? Held2StateValueEvaluator(
+            [&value_evaluator, &provider_evaluations](
+                const std::vector<double>& composition,
+                double log_volume
+            ) {
+                ++provider_evaluations;
+                return value_evaluator(composition, log_volume);
+            }
+        )
+        : Held2StateValueEvaluator{};
     std::vector<double> initial;
     const std::size_t dimension =
         step1.coordinates->independent_indices.size();
@@ -175,7 +188,8 @@ Held2Step8Result run_held2_step8(
         bounds,
         std::numeric_limits<double>::quiet_NaN(),
         "unavailable",
-        std::move(initial)
+        std::move(initial),
+        counted_value
     );
     result.timing.provider_evaluations = provider_evaluations;
     result.timing.optimizer_solves =
@@ -241,6 +255,9 @@ Held2Step8Result run_held2_step8(
             phase.physical_fractions,
             phase.volume,
             packing_fraction(composition, phase.volume),
+            0.0,
+            0.0,
+            {},
         });
         ++provider_evaluations;
     }

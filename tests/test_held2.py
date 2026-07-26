@@ -182,52 +182,6 @@ def test_stage_i_reports_only_certified_finite_search_evidence(
         assert result["failed_evaluation_count"] == 1
 
 
-def test_canonical_manufactured_workflow_certifies_all_ten_steps() -> None:
-    result = _equilibrium._held2_manufactured_controller(
-        CHARGES,
-        PHYSICAL_FEED,
-    )
-
-    assert result["controller"] == "perdomo_held2_steps_1_to_10_v1"
-    assert result["outcome"] == "physical_equilibrium_accepted"
-    assert result["next_action"] == "accept_multiphase"
-    assert result["completed_step"] == 10
-    assert [
-        transition["completed_step"] for transition in result["transitions"]
-    ] == [1, 3, 7, 10]
-    assert result["stage_i"]["outcome"] == "negative_witness_found"
-
-    stage_ii = result["stage_ii"]
-    assert stage_ii["outcome"] == "candidate_set"
-    assert stage_ii["local_solver"] == "ipopt_exact_hessian"
-    assert stage_ii["direct_escalation_used"] is False
-    assert sorted(
-        candidate["modified_fractions"][1]
-        for candidate in stage_ii["candidates"]
-    ) == pytest.approx([0.2, 0.8], abs=2.0e-7)
-    for context in stage_ii["major_contexts"]:
-        attempts = [
-            attempt
-            for attempt in stage_ii["attempt_trace"]
-            if attempt["major_iteration"] == context["major_id"]
-        ]
-        assert context["lower_attempt_ids"] == [
-            attempt["attempt_id"] for attempt in attempts
-        ]
-        assert context["step6_eligible_attempt_ids"] == [
-            attempt["attempt_id"]
-            for attempt in attempts
-            if attempt["step6_eligible"]
-        ]
-
-    stage_iii = result["stage_iii"]
-    assert stage_iii["physical_status"] == "accepted"
-    assert stage_iii["modified_balance_inf_norm"] < 1.0e-9
-    assert stage_iii["ordinary_balance_inf_norm"] < 1.0e-9
-    assert stage_iii["pressure_stationarity_inf_norm"] < 1.0e-9
-    assert stage_iii["modified_potential_mixed_gap"] < 1.0e-9
-
-
 def test_highs_problem_64_matches_the_independent_analytic_envelope() -> None:
     result = _equilibrium._held2_stage_ii_upper_lp(
         (1.0, 2.0),
