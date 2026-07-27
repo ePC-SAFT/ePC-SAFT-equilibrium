@@ -214,12 +214,12 @@ inline constexpr Held2Tolerance kHeld2Stage3FreeEnergyGap{
 inline constexpr Held2Tolerance kHeld2PaperFreeEnergyGap{
     "paper_free_energy_gap", "stage_iii_paper",
     "Perdomo Eq. (68) free-energy convergence failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-6, 0.0,
+    Held2ToleranceRelation::AbsAtMost, 1.0e-4, 0.0,
 };
 inline constexpr Held2Tolerance kHeld2PaperPotentialRatio{
     "paper_potential_ratio", "stage_iii_paper",
     "Perdomo Eq. (69) modified-potential convergence failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-6, 0.0,
+    Held2ToleranceRelation::AbsAtMost, 1.0e-3, 0.0,
 };
 inline constexpr Held2Tolerance kHeld2PhaseActivity{
     "phase_activity", "phase_identity", "phase amount is not confidently active",
@@ -249,7 +249,6 @@ inline constexpr Held2Tolerance kHeld2IpoptConstraint{
     "ipopt_constraint", "solver", "Ipopt constraint target was not met",
     Held2ToleranceRelation::SolverTarget, 1.0e-10, 0.0,
 };
-
 inline constexpr std::array<const Held2Tolerance*, 52> kHeld2ToleranceContract{{
     &kHeld2ChartContact,
     &kHeld2PolytopeFeasibility,

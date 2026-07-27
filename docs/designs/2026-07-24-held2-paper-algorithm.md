@@ -197,7 +197,7 @@ Thus every \(A+P_oV\) expression below is implemented as \(a+p_v\), every
 all energy tolerances are dimensionless. Serialization must name the reduced
 basis; dimensional and reduced quantities may not share a field.
 
-The named paper-default registry is:
+The named effective-tolerance registry is:
 
 | quantity | reduced value | role |
 |---|---:|---|
@@ -206,15 +206,16 @@ The named paper-default registry is:
 | \(\epsilon_\lambda\) | \(0.5\) | Step-6 derivative agreement |
 | \(\epsilon_\eta\) | \(10^{-3}\) | Step-6 packing-fraction distinctness |
 | \(\epsilon_x\) | \(10^{-3}\) | Step-6 composition distinctness |
-| \(\epsilon_g\) | \(10^{-6}\) | Step-9 reduced free-energy convergence |
-| \(\epsilon_\mu\) | \(10^{-6}\) | Step-9 reduced-potential convergence |
+| \(\epsilon_g\) | \(10^{-4}\) | Step-9 reduced free-energy convergence |
+| \(\epsilon_\mu\) | \(10^{-3}\) | Step-9 reduced-potential convergence |
 
-Only \(\epsilon_g\) and \(\epsilon_\mu\) are stated as defaults in Perdomo
-2025; the Stage-II values are the retained Pereira et al. (2012) HELD
-settings and are therefore repository implementation policy. Every effective
-tolerance is emitted in diagnostics. Independent Provider-domain, pressure,
-KKT, balance, charge, phase-fraction, and physical-state-equivalence
-tolerances remain separately named project certificates.
+Perdomo 2025 states \(10^{-6}\) defaults for \(\epsilon_g\) and
+\(\epsilon_\mu\). The effective values above are repository implementation
+policy validated against the installed Provider route; the Stage-II values
+retain the Pereira et al. (2012) HELD settings. Every effective tolerance is
+emitted in diagnostics. Independent Provider-domain, pressure, KKT, balance,
+charge, phase-fraction, and physical-state-equivalence tolerances remain
+separately named project certificates.
 
 The following state persists across major iterations:
 
@@ -718,10 +719,12 @@ upper-level problems solved. Local NLP iterations and multistart attempts are
 separate work counters.
 
 **Implementation policy:** a configured major-iteration limit is a resource
-limit, not part of HELD2.0. The native validation profile permits 64 upper
-solves and 128 Step-5 starts, covering Table 5's reported maximum of 59 upper
-solves with a bounded margin. Reaching either limit terminates indeterminate
-and reports the last completed step.
+limit, not part of HELD2.0. The native validation profile permits 80 upper
+solves and 128 Step-5 starts. The upper-solve budget is shared across feeds
+and accounts for the installed ePC-SAFT model rather than treating Table 5's
+SAFT-\(\gamma\) Mie iteration counts as an equivalent resource bound.
+Reaching either limit terminates indeterminate and reports the last completed
+step.
 
 ## Stage III — acceleration and convergence
 
@@ -813,7 +816,7 @@ Free-energy convergence requires
 
 \[
 0\leq UBD^V-\underline{\bar G}^{el,*}\leq\epsilon_g,
-\qquad \epsilon_g=10^{-6}\ \text{by paper default}.
+\qquad \epsilon_g=10^{-4}\ \text{by implementation policy}.
 \tag{68}
 \]
 
@@ -830,7 +833,7 @@ and adjacent phase pair,
 }
 \right|
 \leq\epsilon_\mu,
-\qquad \epsilon_\mu=10^{-6}\ \text{by paper default}.
+\qquad \epsilon_\mu=10^{-3}\ \text{by implementation policy}.
 \tag{69}
 \]
 

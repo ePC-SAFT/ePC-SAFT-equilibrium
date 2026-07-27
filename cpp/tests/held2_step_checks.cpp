@@ -714,12 +714,47 @@ void run_held2_step8_checks() {
     require(
         result.outcome == Held2Step8Outcome::CertifiedFeasible
             && result.nlp->accepted
+            && result.timing.optimizer_solves == 1
             && result.active_phases.size() == 2
             && result.active_phases[0].stable_id == 7
             && result.active_phases[1].stable_id == 9,
         "Step-8 Eq. (67) solve changed"
     );
 
+    candidates.candidates.push_back(
+        {10, {0.50}, 1.0, 0.50, 0.0, {}, "manufactured"}
+    );
+    const Held2Step8Result expanded =
+        manufactured_step8(prepared, candidates);
+    candidates.candidates.push_back(
+        {11, {0.55}, 1.0, 0.55, 0.0, {}, "manufactured"}
+    );
+    const Held2Step8Result continued = run_held2_step8(
+        prepared,
+        candidates,
+        [coordinates = *prepared.coordinates](
+            const auto& composition, double log_volume
+        ) {
+            return evaluate_held2_manufactured_state(
+                coordinates, composition, log_volume
+            );
+        },
+        [](const auto& composition, double) {
+            return composition.front();
+        },
+        &expanded
+    );
+    require(
+        continued.outcome == Held2Step8Outcome::CertifiedFeasible
+            && std::find(
+                continued.candidate_ids.begin(),
+                continued.candidate_ids.end(),
+                10
+            ) == continued.candidate_ids.end(),
+        "Step-8 continuation retained a certified inactive candidate"
+    );
+
+    candidates.candidates.resize(2);
     candidates.candidates[0].independent_modified_fractions = {0.10};
     candidates.candidates[1].independent_modified_fractions = {0.20};
     const Held2Step8Result infeasible =
@@ -766,7 +801,13 @@ void run_held2_step9_checks() {
             == Held2Step9Outcome::Converged,
         "Step-9 rejected a roundoff-scale negative Eq. (68) gap"
     );
-    *step4.upper_bound += 1.0e-3;
+    *step4.upper_bound = *step8.total_reduced_gibbs + 5.0e-5;
+    require(
+        run_held2_step9(step4, step8, evaluator).outcome
+            == Held2Step9Outcome::Converged,
+        "Step-9 rejected an Eq. (68) gap within the paper tolerance"
+    );
+    *step4.upper_bound = *step8.total_reduced_gibbs + 2.0e-4;
     require(
         run_held2_step9(step4, step8, evaluator).outcome
             == Held2Step9Outcome::PaperConvergenceFailed,

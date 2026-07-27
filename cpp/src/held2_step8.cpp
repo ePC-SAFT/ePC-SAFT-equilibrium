@@ -72,16 +72,46 @@ Held2Step8Result run_held2_step8(
         result.reason = "invalid_step8_input";
         return result;
     }
+    std::vector<Held2MPoint> selected_points;
+    const bool continue_active_set = previous
+        && previous->outcome == Held2Step8Outcome::CertifiedFeasible
+        && previous->nlp && previous->nlp->accepted
+        && !previous->candidate_ids.empty();
+    const std::uint64_t newest_id = std::max_element(
+        step6.candidates.begin(),
+        step6.candidates.end(),
+        [](const Held2MPoint& left, const Held2MPoint& right) {
+            return left.insertion_id < right.insertion_id;
+        }
+    )->insertion_id;
     for (const Held2MPoint& point : step6.candidates) {
+        const bool active = continue_active_set
+            && std::any_of(
+                previous->active_phases.begin(),
+                previous->active_phases.end(),
+                [&point](const Held2Phase& phase) {
+                    return phase.stable_id == point.insertion_id;
+                }
+            );
+        if (!continue_active_set || active
+            || point.insertion_id == newest_id) {
+            selected_points.push_back(point);
+        }
+    }
+    if (selected_points.size() < 2) {
+        result.reason = "active_set_incomplete";
+        return result;
+    }
+    for (const Held2MPoint& point : selected_points) {
         result.candidate_ids.push_back(point.insertion_id);
     }
 
     std::vector<Held2StageIICandidate> candidates;
     std::vector<std::array<double, 2>> bounds;
-    candidates.reserve(step6.candidates.size());
-    bounds.reserve(step6.candidates.size());
+    candidates.reserve(selected_points.size());
+    bounds.reserve(selected_points.size());
     std::uint64_t provider_evaluations = 0;
-    for (const Held2MPoint& point : step6.candidates) {
+    for (const Held2MPoint& point : selected_points) {
         const std::array<double, 2> physical_bounds =
             (*step1.volume_bounds)(point.independent_modified_fractions);
         ++provider_evaluations;
@@ -130,7 +160,7 @@ Held2Step8Result run_held2_step8(
             const auto known = std::find(
                 previous->candidate_ids.begin(),
                 previous->candidate_ids.end(),
-                step6.candidates[phase].insertion_id
+                selected_points[phase].insertion_id
             );
             const bool found = known != previous->candidate_ids.end();
             const std::size_t previous_offset = found
@@ -197,32 +227,10 @@ Held2Step8Result run_held2_step8(
     result.timing.optimizer_iterations =
         static_cast<std::uint64_t>(solved.optimizer_iteration_count);
     result.continuation_variables = solved.solution_variables;
-
-    if (solved.solver_status == "infeasible_problem_detected") {
-        result.outcome = Held2Step8Outcome::CertifiedInfeasible;
-        result.reason = "problem_67_infeasible";
-        result.timing.terminal_status = "complete";
-        result.timing.terminal_reason = result.reason;
-        result.timing.next_step = 7;
-        return result;
-    }
-    if (solved.failure_reason == "collapsed_phase_set") {
-        result.outcome = Held2Step8Outcome::InsufficientCandidates;
-        result.reason = solved.failure_reason;
-        result.timing.terminal_status = "complete";
-        result.timing.terminal_reason = result.reason;
-        result.timing.next_step = 7;
-        return result;
-    }
-    if (solved.numerical_status != "converged"
-        || solved.phases.size() < 2) {
-        result.reason = solved.failure_reason.empty()
-            ? "problem_67_not_converged" : solved.failure_reason;
-        result.timing.terminal_status = "indeterminate";
-        result.timing.terminal_reason = result.reason;
-        return result;
-    }
-
+    result.ordinary_balance_inf = solved.ordinary_balance_inf_norm;
+    result.electroneutrality_inf = solved.phase_charge_inf_norm;
+    result.electroneutrality_scale = solved.phase_charge_scale;
+    result.pressure_residual_inf = solved.pressure_stationarity_inf_norm;
     const bool nlp_accepted = audit_held2_tolerance(
         kHeld2Stage3ModifiedBalance, solved.modified_balance_inf_norm
     ).passed && audit_held2_tolerance(
@@ -241,15 +249,38 @@ Held2Step8Result run_held2_step8(
         solved.bound_complementarity_inf_norm,
         nlp_accepted,
     };
-    result.ordinary_balance_inf = solved.ordinary_balance_inf_norm;
-    result.electroneutrality_inf = solved.phase_charge_inf_norm;
-    result.electroneutrality_scale = solved.phase_charge_scale;
-    result.pressure_residual_inf = solved.pressure_stationarity_inf_norm;
+
+    if (solved.solver_status == "infeasible_problem_detected") {
+        result.outcome = Held2Step8Outcome::CertifiedInfeasible;
+        result.reason = "problem_67_infeasible";
+        result.timing.terminal_status = "complete";
+        result.timing.terminal_reason = result.reason;
+        result.timing.next_step = 7;
+        return result;
+    }
+    if (solved.failure_reason == "collapsed_phase_set") {
+        result.outcome = Held2Step8Outcome::InsufficientCandidates;
+        result.reason = solved.failure_reason;
+        result.timing.terminal_status = "complete";
+        result.timing.terminal_reason = result.reason;
+        result.timing.next_step = 7;
+        return result;
+    }
+    if (solved.numerical_status != "converged"
+        || !nlp_accepted
+        || solved.phases.size() < 2) {
+        result.reason = solved.failure_reason.empty()
+            ? "problem_67_not_converged" : solved.failure_reason;
+        result.timing.terminal_status = "indeterminate";
+        result.timing.terminal_reason = result.reason;
+        return result;
+    }
+
     for (const Held2StageIIIPhase& phase : solved.phases) {
         const std::vector<double> composition =
             independent(*step1.coordinates, phase.modified_fractions);
         result.active_phases.push_back({
-            nearest_id(step6.candidates, composition),
+            nearest_id(selected_points, composition),
             phase.phase_fraction,
             composition,
             phase.physical_fractions,

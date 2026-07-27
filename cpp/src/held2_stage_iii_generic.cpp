@@ -725,6 +725,9 @@ std::string problem67_feasibility(
     Highs highs;
     if (highs.setOptionValue("output_flag", false) == HighsStatus::kError
         || highs.setOptionValue("threads", 1) == HighsStatus::kError
+        || highs.setOptionValue(
+            "primal_feasibility_tolerance", kHeld2IpoptConstraint.atol
+        ) == HighsStatus::kError
         || highs.passModel(model) == HighsStatus::kError
         || highs.run() == HighsStatus::kError) {
         return "indeterminate";
@@ -738,63 +741,57 @@ std::string problem67_feasibility(
         ? "feasible" : "indeterminate";
 }
 
-bool project_phase_fractions(
+double charge_residual(
+    const std::vector<double>& charges,
+    const std::vector<double>& fractions
+) {
+    double residual = 0.0;
+    for (std::size_t index = 0; index < charges.size(); ++index) {
+        residual += charges[index] * fractions[index];
+    }
+    return residual;
+}
+
+bool recover_phase_fractions(
     const std::vector<double>& feed,
     std::vector<Held2StageIIIPhase>& phases
 ) {
-    const std::size_t phase_count = phases.size();
-    const std::size_t residual = phase_count;
+    const HighsInt count = static_cast<HighsInt>(phases.size());
     HighsModel model;
-    model.lp_.num_col_ = static_cast<HighsInt>(phase_count + 1);
-    model.lp_.num_row_ = static_cast<HighsInt>(1 + 2 * feed.size());
-    model.lp_.col_cost_.assign(phase_count + 1, 0.0);
-    model.lp_.col_cost_[residual] = 1.0;
-    model.lp_.col_lower_.assign(phase_count + 1, 0.0);
-    model.lp_.col_upper_.assign(phase_count + 1, 1.0);
-    model.lp_.col_upper_[residual] = kHighsInf;
+    model.lp_.num_col_ = count;
+    model.lp_.num_row_ = static_cast<HighsInt>(feed.size() + 1);
+    model.lp_.col_lower_.assign(phases.size(), 0.0);
+    model.lp_.col_upper_.assign(phases.size(), 1.0);
     model.lp_.a_matrix_.format_ = MatrixFormat::kRowwise;
     model.lp_.a_matrix_.start_ = {0};
-    const auto row = [&model](double lower, double upper) {
-        model.lp_.row_lower_.push_back(lower);
-        model.lp_.row_upper_.push_back(upper);
+    model.hessian_.dim_ = count;
+    model.hessian_.start_ = {0};
+    for (HighsInt phase = 0; phase < count; ++phase) {
+        const double fraction =
+            phases[static_cast<std::size_t>(phase)].phase_fraction;
+        model.lp_.col_cost_.push_back(-fraction);
+        model.hessian_.index_.push_back(phase);
+        model.hessian_.value_.push_back(1.0);
+        model.hessian_.start_.push_back(phase + 1);
+        model.lp_.a_matrix_.index_.push_back(phase);
+        model.lp_.a_matrix_.value_.push_back(1.0);
+    }
+    model.lp_.row_lower_.push_back(1.0);
+    model.lp_.row_upper_.push_back(1.0);
+    model.lp_.a_matrix_.start_.push_back(count);
+    for (std::size_t coordinate = 0; coordinate < feed.size(); ++coordinate) {
+        for (HighsInt phase = 0; phase < count; ++phase) {
+            model.lp_.a_matrix_.index_.push_back(phase);
+            model.lp_.a_matrix_.value_.push_back(
+                phases[static_cast<std::size_t>(phase)]
+                    .physical_fractions[coordinate]
+            );
+        }
+        model.lp_.row_lower_.push_back(feed[coordinate]);
+        model.lp_.row_upper_.push_back(feed[coordinate]);
         model.lp_.a_matrix_.start_.push_back(
             static_cast<HighsInt>(model.lp_.a_matrix_.index_.size())
         );
-    };
-    for (std::size_t phase = 0; phase < phase_count; ++phase) {
-        model.lp_.a_matrix_.index_.push_back(
-            static_cast<HighsInt>(phase)
-        );
-        model.lp_.a_matrix_.value_.push_back(1.0);
-    }
-    row(1.0, 1.0);
-    for (std::size_t component = 0; component < feed.size(); ++component) {
-        for (std::size_t phase = 0; phase < phase_count; ++phase) {
-            model.lp_.a_matrix_.index_.push_back(
-                static_cast<HighsInt>(phase)
-            );
-            model.lp_.a_matrix_.value_.push_back(
-                phases[phase].physical_fractions[component]
-            );
-        }
-        model.lp_.a_matrix_.index_.push_back(
-            static_cast<HighsInt>(residual)
-        );
-        model.lp_.a_matrix_.value_.push_back(-1.0);
-        row(-kHighsInf, feed[component]);
-        for (std::size_t phase = 0; phase < phase_count; ++phase) {
-            model.lp_.a_matrix_.index_.push_back(
-                static_cast<HighsInt>(phase)
-            );
-            model.lp_.a_matrix_.value_.push_back(
-                phases[phase].physical_fractions[component]
-            );
-        }
-        model.lp_.a_matrix_.index_.push_back(
-            static_cast<HighsInt>(residual)
-        );
-        model.lp_.a_matrix_.value_.push_back(1.0);
-        row(feed[component], kHighsInf);
     }
     Highs highs;
     if (highs.setOptionValue("output_flag", false) == HighsStatus::kError
@@ -806,24 +803,13 @@ bool project_phase_fractions(
     }
     const HighsSolution& solution = highs.getSolution();
     if (!solution.value_valid
-        || solution.col_value.size() != phase_count + 1) {
+        || solution.col_value.size() != phases.size()) {
         return false;
     }
-    for (std::size_t phase = 0; phase < phase_count; ++phase) {
+    for (std::size_t phase = 0; phase < phases.size(); ++phase) {
         phases[phase].phase_fraction = solution.col_value[phase];
     }
     return true;
-}
-
-double charge_residual(
-    const std::vector<double>& charges,
-    const std::vector<double>& fractions
-) {
-    double residual = 0.0;
-    for (std::size_t index = 0; index < charges.size(); ++index) {
-        residual += charges[index] * fractions[index];
-    }
-    return residual;
 }
 
 Held2StageIIINlpEvaluation evaluate_problem67(
@@ -1101,10 +1087,10 @@ Held2StageIIIResult solve_held2_stage_iii(
     application->Options()->SetStringValue("sb", "yes");
     application->Options()->SetIntegerValue("max_iter", 300);
     application->Options()->SetNumericValue(
-        "tol", kHeld2Stage3ModifiedBalance.atol
+        "tol", kHeld2IpoptTarget.atol
     );
     application->Options()->SetNumericValue(
-        "constr_viol_tol", kHeld2Stage3ModifiedBalance.atol
+        "constr_viol_tol", kHeld2IpoptConstraint.atol
     );
     application->Options()->SetStringValue(
         "jacobian_approximation", "exact"
@@ -1123,7 +1109,8 @@ Held2StageIIIResult solve_held2_stage_iii(
         application->OptimizeTNLP(nlp_problem);
     result.solver_status = ipopt_status(status);
     result.optimizer_iteration_count = raw->iterations();
-    if (!raw->converged()) {
+    if (!raw->converged()
+        && raw->variables().size() != variable_count) {
         result.numerical_status = "not_converged";
         result.failure_reason = "stage_iii_solver_not_converged";
         return result;
@@ -1302,9 +1289,27 @@ Held2StageIIIResult solve_held2_stage_iii(
         } else {
             const double combined =
                 duplicate->phase_fraction + current.phase_fraction;
-            if (current.phase_fraction > duplicate->phase_fraction) {
-                *duplicate = std::move(current);
+            const double retained_weight =
+                duplicate->phase_fraction / combined;
+            const double current_weight =
+                current.phase_fraction / combined;
+            for (std::size_t index = 0;
+                 index < duplicate->modified_fractions.size();
+                 ++index) {
+                duplicate->modified_fractions[index] =
+                    retained_weight * duplicate->modified_fractions[index]
+                    + current_weight * current.modified_fractions[index];
             }
+            for (std::size_t index = 0;
+                 index < duplicate->physical_fractions.size();
+                 ++index) {
+                duplicate->physical_fractions[index] =
+                    retained_weight * duplicate->physical_fractions[index]
+                    + current_weight * current.physical_fractions[index];
+            }
+            duplicate->volume =
+                retained_weight * duplicate->volume
+                + current_weight * current.volume;
             duplicate->phase_fraction = combined;
             ++result.retired_duplicate_count;
         }
@@ -1313,10 +1318,28 @@ Held2StageIIIResult solve_held2_stage_iii(
         result.failure_reason = "collapsed_phase_set";
         return result;
     }
-    ++result.stage_iii_solve_count;
-    if (!project_phase_fractions(physical_feed, result.phases)) {
-        result.failure_reason = "stage_iii_phase_fraction_projection_failed";
-        return result;
+    if (result.retired_inactive_count > 0) {
+        ++result.stage_iii_solve_count;
+        if (!recover_phase_fractions(
+                physical_feed, result.phases
+            )) {
+            result.failure_reason =
+                "stage_iii_phase_fraction_recovery_failed";
+            return result;
+        }
+        result.phases.erase(
+            std::remove_if(
+                result.phases.begin(),
+                result.phases.end(),
+            [](const Held2StageIIIPhase& phase) {
+                return phase.phase_fraction <= 0.0;
+            }),
+            result.phases.end()
+        );
+        if (result.phases.size() < 2) {
+            result.failure_reason = "collapsed_phase_set";
+            return result;
+        }
     }
 
     std::vector<double> modified_balance(modified_feed.size());

@@ -801,7 +801,7 @@ JsonValue paper_algorithm_to_json(
     tolerances["epsilon_x"] = kHeld2PaperStep6CompositionDistinct.atol;
     tolerances["epsilon_g"] = kHeld2PaperFreeEnergyGap.atol;
     tolerances["epsilon_mu"] = kHeld2PaperPotentialRatio.atol;
-    result["paper_default_tolerances"] = std::move(tolerances);
+    result["effective_tolerances"] = std::move(tolerances);
 
     JsonValue phases = JsonValue::array();
     for (const Held2Phase& phase : solve.phases) {
