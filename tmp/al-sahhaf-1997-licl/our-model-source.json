@@ -1,0 +1,21 @@
+{
+  "accepted_split_count": 10,
+  "conditions": {
+    "pressure_Pa": 101300.0,
+    "temperature_K": 298.15
+  },
+  "effective_tolerances": {
+    "epsilon_b": 0.01,
+    "epsilon_eta": 0.001,
+    "epsilon_g": 0.0001,
+    "epsilon_lambda": 0.5,
+    "epsilon_lambda_floor": 1e-08,
+    "epsilon_mu": 0.001,
+    "epsilon_x": 0.001
+  },
+  "globality_certificate": "not_guaranteed",
+  "model_endpoint_count": 20,
+  "note": "Only accepted ePC-SAFT phase outputs are retained; literature reference columns and unresolved feed locations are excluded.",
+  "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+  "source_campaign_sha256": "56890de154e25a13c8d6e7da7796eb5799ae6624db498126e80aae07a9805490"
+}

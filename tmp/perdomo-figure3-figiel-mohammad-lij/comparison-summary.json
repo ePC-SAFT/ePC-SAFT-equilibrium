@@ -1,0 +1,47 @@
+{
+  "parameter_fingerprint": "sha256:7a7c8b2d1ffe452d69affb1eed92303acafc52d1652f732da340d73fb0f4a718",
+  "native_case_count": 33,
+  "accepted_split_count": 9,
+  "one_phase_count": 3,
+  "indeterminate_count": 21,
+  "native_wall_seconds": {
+    "campaign": 300.51142891400013,
+    "minimum": 2.816120668001531,
+    "median": 10.003426939001656,
+    "mean": 9.100944799575894,
+    "maximum": 18.12674614599746
+  },
+  "python_native_parity": true,
+  "python_wall_seconds": {
+    "campaign": 333.4620534150017,
+    "minimum": 2.9022840859979624,
+    "median": 11.571581281001272,
+    "mean": 10.101927798000057,
+    "maximum": 17.39211479000005
+  },
+  "model_organic_licl_mass_fraction_range": [
+    0.0007210908048319604,
+    0.0014879628752659639
+  ],
+  "al_sahhaf_organic_licl_mass_fraction_range": [
+    0.0,
+    0.1176
+  ],
+  "literature_source_sha256": "7b72172943805e3f8eb7f13f1a162d643158bb591f4d366b54e93be16cbd86d9",
+  "comparison_basis": "Al-Sahhaf et al. (1997) Table 3 experimental tie lines only",
+  "model_basis": "Figiel et al. (2025) corrected-Born/dielectric model with published Mohammad et al. (2016) 1-butanol-ion k_ij and l_ij",
+  "plots": {
+    "svg": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-figiel-mohammad-lij/al-sahhaf-1997-current-model-overlay.svg",
+      "sha256": "a4c3b3866f6671c251cf8453c50f9011b6c6039f4d437a8f8581bc9ea5f0689c"
+    },
+    "png": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-figiel-mohammad-lij/al-sahhaf-1997-current-model-overlay.png",
+      "sha256": "f0e662a171d8efab19160935db67f81a1851fa940151db2e3c44fb03f93a51b2"
+    },
+    "pdf": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-figiel-mohammad-lij/al-sahhaf-1997-current-model-overlay.pdf",
+      "sha256": "72fec61412d1e9590f7c616a52dfd7f34244b63d6bfddfc84f0ad9e07afa8932"
+    }
+  }
+}

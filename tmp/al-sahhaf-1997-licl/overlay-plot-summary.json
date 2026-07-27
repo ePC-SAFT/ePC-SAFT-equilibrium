@@ -1,0 +1,24 @@
+{
+  "accepted_model_split_count": 10,
+  "excluded_model_outcomes": {
+    "indeterminate": 20,
+    "one_phase": 3
+  },
+  "experimental_tie_line_count": 17,
+  "literature_reference": "Al-Sahhaf and Kapetanovic (1997), Table 3",
+  "model_globality_certificate": "not_guaranteed",
+  "outputs": {
+    "pdf": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/al-sahhaf-1997-licl/al-sahhaf-1997-with-our-model-ternary.pdf",
+      "sha256": "aa24bf5c4eab92b2456e690ee0121e9160f0cd2c76e0a9d6ca8efdf7bb02ecc8"
+    },
+    "png": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/al-sahhaf-1997-licl/al-sahhaf-1997-with-our-model-ternary.png",
+      "sha256": "0eeb2b39dbf77211ebc8bb43ff41c999901988d93fb6956db894d76d393ba06b"
+    },
+    "svg": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/al-sahhaf-1997-licl/al-sahhaf-1997-with-our-model-ternary.svg",
+      "sha256": "3fc57c08c71a5033657458d6f8c8bdbb96c112c62228e6e335f67d4d42d4c4d9"
+    }
+  }
+}

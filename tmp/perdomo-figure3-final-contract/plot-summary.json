@@ -1,0 +1,22 @@
+{
+  "accepted_endpoint_component_mae_mass_fraction": 0.07008463400056439,
+  "accepted_endpoint_component_max_abs_mass_fraction": 0.3241496062084661,
+  "accepted_split_count": 10,
+  "comparison_basis": "published Perdomo SAFT-gamma Mie model curve; not experimental data",
+  "indeterminate_count": 20,
+  "one_phase_count": 3,
+  "plots": {
+    "pdf": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/perdomo-figure3-ternary.pdf",
+      "sha256": "14acd4b8a50c3668ea0decd9438e11238ec5efcb74674e7ed5d0e53ab26e2a16"
+    },
+    "png": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/perdomo-figure3-ternary.png",
+      "sha256": "f3d1fa6c52778f3a16455d22237c85aa7a0507c2b8cebbaece53e0689a593fff"
+    },
+    "svg": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/perdomo-figure3-ternary.svg",
+      "sha256": "917698c21c1c7ad859f0d28669388e20ad160a488dc66bd7727db012c5332a83"
+    }
+  }
+}

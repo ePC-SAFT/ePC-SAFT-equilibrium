@@ -1,0 +1,21 @@
+{
+  "data_csv": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/al-sahhaf-1997-licl/al-sahhaf-1997-table3.csv",
+  "data_csv_sha256": "7b72172943805e3f8eb7f13f1a162d643158bb591f4d366b54e93be16cbd86d9",
+  "maximum_reported_phase_closure_error": 0.00019999999999997797,
+  "normalization": "each reported phase normalized by its reported component sum for ternary coordinates",
+  "outputs": {
+    "pdf": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/al-sahhaf-1997-licl/al-sahhaf-1997-licl-ternary.pdf",
+      "sha256": "fa4c6ef6559b50fc07f1d73df25fa0c8dbc724f5769eabb18b10c8e61953fd4c"
+    },
+    "png": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/al-sahhaf-1997-licl/al-sahhaf-1997-licl-ternary.png",
+      "sha256": "c69d99136cc3367c84b75cf03267641b563dafd4b3657222fb405b5ed4aca2ad"
+    },
+    "svg": {
+      "path": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/al-sahhaf-1997-licl/al-sahhaf-1997-licl-ternary.svg",
+      "sha256": "5b33a78aeec114570c275d40554864fd70fb2a1a742d5828503024e0ac91e87c"
+    }
+  },
+  "tie_line_count": 17
+}

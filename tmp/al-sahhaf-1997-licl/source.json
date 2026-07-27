@@ -1,0 +1,13 @@
+{
+  "citation": "Al-Sahhaf, T. A.; Kapetanovic, E. J. Chem. Eng. Data 1997, 42, 74-77.",
+  "conditions": {
+    "pressure": "ambient",
+    "temperature_C": 25.0
+  },
+  "data_basis": "reported 100w mass percentages",
+  "pdf_page": 2,
+  "printed_page": 75,
+  "source_pdf_sha256": "558c4b511d98a809ebc9a751ffc48776b0ea99786f2a69334fad820ed89be030",
+  "table": "Table 3: Water (1) + 1-Butanol (2) + LiCl (3)",
+  "tie_line_count": 17
+}

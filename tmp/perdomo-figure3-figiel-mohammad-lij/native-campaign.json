@@ -1,0 +1,544 @@
+{
+  "campaign_wall_seconds": 300.51142891400013,
+  "cases": [
+    {
+      "case_id": "figure3-01",
+      "feed": [
+        0.0013916483930478964,
+        0.0013916483930478964,
+        0.8340787270322444,
+        0.1631379761816597
+      ],
+      "return_code": 0,
+      "wall_seconds": 10.121249890999025,
+      "outcome": "one_phase_no_negative_witness_detected",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 1,
+      "upper_solve_count": 0
+    },
+    {
+      "case_id": "figure3-02",
+      "feed": [
+        0.004770008776823598,
+        0.004770008776823598,
+        0.8281696969333187,
+        0.16229028551303404
+      ],
+      "return_code": 0,
+      "wall_seconds": 10.003426939001656,
+      "outcome": "one_phase_no_negative_witness_detected",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 1,
+      "upper_solve_count": 0
+    },
+    {
+      "case_id": "figure3-03",
+      "feed": [
+        0.008026216694119303,
+        0.008026216694119303,
+        0.8222383385320243,
+        0.161709228079737
+      ],
+      "return_code": 0,
+      "wall_seconds": 10.203077269998175,
+      "outcome": "one_phase_no_negative_witness_detected",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 1,
+      "upper_solve_count": 0
+    },
+    {
+      "case_id": "figure3-04",
+      "feed": [
+        0.011164746896276504,
+        0.011164746896276504,
+        0.8163487421619737,
+        0.1613217640454732
+      ],
+      "return_code": 0,
+      "wall_seconds": 7.785984784997709,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "stage_iii_phase_fraction_recovery_failed",
+      "phase_count": 0,
+      "upper_solve_count": 3
+    },
+    {
+      "case_id": "figure3-05",
+      "feed": [
+        0.014171853078914061,
+        0.014171853078914061,
+        0.8105676333488029,
+        0.16108866049336898
+      ],
+      "return_code": 0,
+      "wall_seconds": 5.368795542999578,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "problem_67_not_converged",
+      "phase_count": 0,
+      "upper_solve_count": 8
+    },
+    {
+      "case_id": "figure3-06",
+      "feed": [
+        0.018784742528114153,
+        0.018784742528114153,
+        0.8014904838826825,
+        0.16094003106108912
+      ],
+      "return_code": 0,
+      "wall_seconds": 3.5659675240021897,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "stage_iii_phase_fraction_recovery_failed",
+      "phase_count": 0,
+      "upper_solve_count": 3
+    },
+    {
+      "case_id": "figure3-07",
+      "feed": [
+        0.025278015655628473,
+        0.025278015655628473,
+        0.7883536966017279,
+        0.161090272087015
+      ],
+      "return_code": 0,
+      "wall_seconds": 3.51204230300209,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "stage_iii_phase_fraction_recovery_failed",
+      "phase_count": 0,
+      "upper_solve_count": 3
+    },
+    {
+      "case_id": "figure3-08",
+      "feed": [
+        0.035035936574565205,
+        0.035035936574565205,
+        0.7680040306573258,
+        0.1619240961935438
+      ],
+      "return_code": 0,
+      "wall_seconds": 3.595036564998736,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "stage_iii_phase_fraction_recovery_failed",
+      "phase_count": 0,
+      "upper_solve_count": 3
+    },
+    {
+      "case_id": "figure3-09",
+      "feed": [
+        0.03601406484765458,
+        0.03601406484765458,
+        0.7658785724354679,
+        0.162093297869223
+      ],
+      "return_code": 0,
+      "wall_seconds": 3.4557605980007793,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "active_set_incomplete",
+      "phase_count": 0,
+      "upper_solve_count": 2
+    },
+    {
+      "case_id": "figure3-10",
+      "feed": [
+        0.04391808484870394,
+        0.04391808484870394,
+        0.7489454601127282,
+        0.1632183701898638
+      ],
+      "return_code": 0,
+      "wall_seconds": 11.71950274199844,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "problem_67_not_converged",
+      "phase_count": 0,
+      "upper_solve_count": 50
+    },
+    {
+      "case_id": "figure3-11",
+      "feed": [
+        0.05188359855240144,
+        0.05188359855240144,
+        0.7316427045197827,
+        0.16459009837541436
+      ],
+      "return_code": 0,
+      "wall_seconds": 6.073277434003103,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "active_set_incomplete",
+      "phase_count": 0,
+      "upper_solve_count": 22
+    },
+    {
+      "case_id": "figure3-12",
+      "feed": [
+        0.05935542932381481,
+        0.05935542932381481,
+        0.7151679589241923,
+        0.16612118242817822
+      ],
+      "return_code": 0,
+      "wall_seconds": 5.430214996998984,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "active_set_incomplete",
+      "phase_count": 0,
+      "upper_solve_count": 22
+    },
+    {
+      "case_id": "figure3-13",
+      "feed": [
+        0.06622008476627468,
+        0.06622008476627468,
+        0.6998403645240564,
+        0.1677194659433942
+      ],
+      "return_code": 0,
+      "wall_seconds": 6.098385609999241,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "problem_67_not_converged",
+      "phase_count": 0,
+      "upper_solve_count": 28
+    },
+    {
+      "case_id": "figure3-14",
+      "feed": [
+        0.07883222469760741,
+        0.07883222469760741,
+        0.6712519458509989,
+        0.17108360475378634
+      ],
+      "return_code": 0,
+      "wall_seconds": 8.500975007002125,
+      "outcome": "physical_equilibrium_accepted",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 2,
+      "upper_solve_count": 51
+    },
+    {
+      "case_id": "figure3-15",
+      "feed": [
+        0.08999368785010747,
+        0.08999368785010747,
+        0.6457464517007616,
+        0.17426617259902347
+      ],
+      "return_code": 0,
+      "wall_seconds": 10.371141495001211,
+      "outcome": "physical_equilibrium_accepted",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 2,
+      "upper_solve_count": 53
+    },
+    {
+      "case_id": "figure3-16",
+      "feed": [
+        0.10002987675094009,
+        0.10002987675094009,
+        0.62244859892148,
+        0.17749164757663988
+      ],
+      "return_code": 0,
+      "wall_seconds": 11.402641200998914,
+      "outcome": "physical_equilibrium_accepted",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 2,
+      "upper_solve_count": 71
+    },
+    {
+      "case_id": "figure3-17",
+      "feed": [
+        0.10937740944778979,
+        0.10937740944778979,
+        0.6004598743186162,
+        0.18078530678580418
+      ],
+      "return_code": 0,
+      "wall_seconds": 11.945647708998877,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "problem_67_not_converged",
+      "phase_count": 0,
+      "upper_solve_count": 54
+    },
+    {
+      "case_id": "figure3-18",
+      "feed": [
+        0.11784356864745188,
+        0.11784356864745188,
+        0.5802500248708271,
+        0.18406283783426905
+      ],
+      "return_code": 0,
+      "wall_seconds": 10.753789209000388,
+      "outcome": "physical_equilibrium_accepted",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 2,
+      "upper_solve_count": 59
+    },
+    {
+      "case_id": "figure3-19",
+      "feed": [
+        0.12587046039011884,
+        0.12587046039011884,
+        0.5607938785315034,
+        0.18746520068825895
+      ],
+      "return_code": 0,
+      "wall_seconds": 11.380694962001144,
+      "outcome": "physical_equilibrium_accepted",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 2,
+      "upper_solve_count": 59
+    },
+    {
+      "case_id": "figure3-20",
+      "feed": [
+        0.12838900142112294,
+        0.12838900142112294,
+        0.5546185301268961,
+        0.18860346703085804
+      ],
+      "return_code": 0,
+      "wall_seconds": 8.655509654003254,
+      "outcome": "physical_equilibrium_accepted",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 2,
+      "upper_solve_count": 56
+    },
+    {
+      "case_id": "figure3-21",
+      "feed": [
+        0.13325798516414805,
+        0.13325798516414805,
+        0.5425680120818422,
+        0.1909160175898616
+      ],
+      "return_code": 0,
+      "wall_seconds": 6.909709045001364,
+      "outcome": "physical_equilibrium_accepted",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 2,
+      "upper_solve_count": 52
+    },
+    {
+      "case_id": "figure3-22",
+      "feed": [
+        0.13318436390340624,
+        0.13318436390340624,
+        0.5427490453886425,
+        0.19088222680454495
+      ],
+      "return_code": 0,
+      "wall_seconds": 7.592499558999407,
+      "outcome": "physical_equilibrium_accepted",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 2,
+      "upper_solve_count": 52
+    },
+    {
+      "case_id": "figure3-23",
+      "feed": [
+        0.14374483683083733,
+        0.14374483683083733,
+        0.5160568471704403,
+        0.19645347916788497
+      ],
+      "return_code": 0,
+      "wall_seconds": 6.598506324000482,
+      "outcome": "physical_equilibrium_accepted",
+      "failure_stage": null,
+      "failure_reason": null,
+      "phase_count": 2,
+      "upper_solve_count": 49
+    },
+    {
+      "case_id": "figure3-24",
+      "feed": [
+        0.14576775945659765,
+        0.14576775945659765,
+        0.5108452689323629,
+        0.1976192121544417
+      ],
+      "return_code": 0,
+      "wall_seconds": 12.333682387998124,
+      "outcome": "indeterminate",
+      "failure_stage": "step7",
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "phase_count": 0,
+      "upper_solve_count": 80
+    },
+    {
+      "case_id": "figure3-25",
+      "feed": [
+        0.14956087382045785,
+        0.14956087382045785,
+        0.5010554291506217,
+        0.19982282320846256
+      ],
+      "return_code": 0,
+      "wall_seconds": 15.420234020999487,
+      "outcome": "indeterminate",
+      "failure_stage": "step7",
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "phase_count": 0,
+      "upper_solve_count": 80
+    },
+    {
+      "case_id": "figure3-26",
+      "feed": [
+        0.15312109342974933,
+        0.15312109342974933,
+        0.49189482844106097,
+        0.2018629846994403
+      ],
+      "return_code": 0,
+      "wall_seconds": 18.12674614599746,
+      "outcome": "indeterminate",
+      "failure_stage": "step7",
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "phase_count": 0,
+      "upper_solve_count": 80
+    },
+    {
+      "case_id": "figure3-27",
+      "feed": [
+        0.1568221556373781,
+        0.1568221556373781,
+        0.4823224945972032,
+        0.20403319412804052
+      ],
+      "return_code": 0,
+      "wall_seconds": 2.816120668001531,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "problem_67_not_converged",
+      "phase_count": 0,
+      "upper_solve_count": 11
+    },
+    {
+      "case_id": "figure3-28",
+      "feed": [
+        0.16042068249132715,
+        0.16042068249132715,
+        0.473231482953786,
+        0.20592715206355966
+      ],
+      "return_code": 0,
+      "wall_seconds": 13.832272634997935,
+      "outcome": "indeterminate",
+      "failure_stage": "step7",
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "phase_count": 0,
+      "upper_solve_count": 80
+    },
+    {
+      "case_id": "figure3-29",
+      "feed": [
+        0.1647022133111612,
+        0.1647022133111612,
+        0.46403915012566327,
+        0.2065564232520144
+      ],
+      "return_code": 0,
+      "wall_seconds": 2.923204185000941,
+      "outcome": "indeterminate",
+      "failure_stage": "step8",
+      "failure_reason": "stage_iii_active_set_balance_failed",
+      "phase_count": 0,
+      "upper_solve_count": 10
+    },
+    {
+      "case_id": "figure3-30",
+      "feed": [
+        0.16815362206540052,
+        0.16815362206540052,
+        0.45576410542028556,
+        0.2079286504489134
+      ],
+      "return_code": 0,
+      "wall_seconds": 14.973776122002164,
+      "outcome": "indeterminate",
+      "failure_stage": "step7",
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "phase_count": 0,
+      "upper_solve_count": 80
+    },
+    {
+      "case_id": "figure3-31",
+      "feed": [
+        0.17240513236381635,
+        0.17240513236381635,
+        0.4474720268012679,
+        0.2077177084710995
+      ],
+      "return_code": 0,
+      "wall_seconds": 11.394059509999352,
+      "outcome": "indeterminate",
+      "failure_stage": "step7",
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "phase_count": 0,
+      "upper_solve_count": 80
+    },
+    {
+      "case_id": "figure3-32",
+      "feed": [
+        0.1779164886086336,
+        0.1779164886086336,
+        0.43953197594846405,
+        0.20463504683426867
+      ],
+      "return_code": 0,
+      "wall_seconds": 13.462141043000884,
+      "outcome": "indeterminate",
+      "failure_stage": "step7",
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "phase_count": 0,
+      "upper_solve_count": 80
+    },
+    {
+      "case_id": "figure3-33",
+      "feed": [
+        0.1794743209933883,
+        0.1794743209933883,
+        0.4368626089856785,
+        0.2041887490275449
+      ],
+      "return_code": 0,
+      "wall_seconds": 14.00510530199972,
+      "outcome": "indeterminate",
+      "failure_stage": "step7",
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "phase_count": 0,
+      "upper_solve_count": 80
+    }
+  ],
+  "conditions": {
+    "temperature_K": 298.15,
+    "pressure_Pa": 101300.0
+  },
+  "diagnostic_executable": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/build/epcsaft-equilibrium-diagnostic",
+  "provider_model": "/tmp/perdomo-figure3-figiel-mohammad-lij-provider-model.json",
+  "provider_model_sha256": "9d5f6d57e70389282dd47c4313a7b8a4617e7b67f4ee15f1a946027ee03223c5",
+  "wheel": "/tmp/epcsaft-provider-figiel-lij.wDwZH8/epcsaft-0.1.0.dev0-cp313-cp313-linux_x86_64.whl",
+  "wheel_sha256": "bcd887ee1b6bc5b38c2267f9c1bf69b310bde5a8d3588d8c43a42296694c2f65",
+  "feed_source": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native",
+  "execution": "serial standalone C++ diagnostic with --trace and 60-second per-case timeout"
+}

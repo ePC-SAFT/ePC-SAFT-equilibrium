@@ -1,0 +1,1345 @@
+{
+  "campaign_wall_seconds": 321.4180327699996,
+  "cases": [
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.0013916483930478964,
+        0.0013916483930478964,
+        0.8340787270322444,
+        0.1631379761816597
+      ],
+      "outcome": "one_phase_no_negative_witness_detected",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 1,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-01.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.11586288315381033,
+          "LiCl": 0.004281355882281561,
+          "water": 0.8798557609639079
+        },
+        "organic": {
+          "1-butanol": 0.774003963068393,
+          "LiCl": 6.033689083268756e-05,
+          "water": 0.2259357000407743
+        }
+      },
+      "source_row": 5,
+      "tie_line_id": "figure3-01",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-01.log",
+      "upper_solve_count": 0,
+      "wall_seconds": 10.174380111000573
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.004770008776823598,
+        0.004770008776823598,
+        0.8281696969333187,
+        0.16229028551303404
+      ],
+      "outcome": "one_phase_no_negative_witness_detected",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 1,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-02.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.10844570436633487,
+          "LiCl": 0.014707826327064173,
+          "water": 0.876846469306601
+        },
+        "organic": {
+          "1-butanol": 0.7776470119273677,
+          "LiCl": 0.00018802847958427385,
+          "water": 0.22216495959304808
+        }
+      },
+      "source_row": 6,
+      "tie_line_id": "figure3-02",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-02.log",
+      "upper_solve_count": 0,
+      "wall_seconds": 10.437419780999335
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.008026216694119303,
+        0.008026216694119303,
+        0.8222383385320243,
+        0.161709228079737
+      ],
+      "outcome": "one_phase_no_negative_witness_detected",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 1,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-03.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.10231244487280063,
+          "LiCl": 0.024773760480484276,
+          "water": 0.8729137946467151
+        },
+        "organic": {
+          "1-butanol": 0.7809942431596361,
+          "LiCl": 0.0003016011766577837,
+          "water": 0.2187041556637061
+        }
+      },
+      "source_row": 7,
+      "tie_line_id": "figure3-03",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-03.log",
+      "upper_solve_count": 0,
+      "wall_seconds": 10.23373282600005
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.011164746896276504,
+        0.011164746896276504,
+        0.8163487421619737,
+        0.1613217640454732
+      ],
+      "outcome": "physical_equilibrium_accepted",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 2,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-04.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.09711409615229415,
+          "LiCl": 0.03447609947976243,
+          "water": 0.8684098043679435
+        },
+        "organic": {
+          "1-butanol": 0.7841335290149284,
+          "LiCl": 0.0004068733248345462,
+          "water": 0.21545959766023706
+        }
+      },
+      "source_row": 8,
+      "tie_line_id": "figure3-04",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-04.log",
+      "upper_solve_count": 17,
+      "wall_seconds": 9.799027971999749
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.014171853078914061,
+        0.014171853078914061,
+        0.8105676333488029,
+        0.16108866049336898
+      ],
+      "outcome": "physical_equilibrium_accepted",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 2,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-05.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.09266950075556644,
+          "LiCl": 0.04376200351144657,
+          "water": 0.8635684957329871
+        },
+        "organic": {
+          "1-butanol": 0.7871083943904018,
+          "LiCl": 0.0005064476069854755,
+          "water": 0.21238515800261262
+        }
+      },
+      "source_row": 9,
+      "tie_line_id": "figure3-05",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-05.log",
+      "upper_solve_count": 17,
+      "wall_seconds": 8.953997163000167
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "stage_iii_active_set_balance_failed",
+      "failure_stage": "step8",
+      "feed": [
+        0.018784742528114153,
+        0.018784742528114153,
+        0.8014904838826825,
+        0.16094003106108912
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-06.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.08669015028250875,
+          "LiCl": 0.0579745914057832,
+          "water": 0.855335258311708
+        },
+        "organic": {
+          "1-butanol": 0.7915960350063029,
+          "LiCl": 0.0006576946728853648,
+          "water": 0.2077462703208116
+        }
+      },
+      "source_row": 10,
+      "tie_line_id": "figure3-06",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-06.log",
+      "upper_solve_count": 11,
+      "wall_seconds": 8.22876461099986
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "problem_67_not_converged",
+      "failure_stage": "step8",
+      "feed": [
+        0.025278015655628473,
+        0.025278015655628473,
+        0.7883536966017279,
+        0.161090272087015
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-07.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.07966053492856588,
+          "LiCl": 0.07788226881621546,
+          "water": 0.8424571962552186
+        },
+        "organic": {
+          "1-butanol": 0.7978385032650882,
+          "LiCl": 0.0008730551838839564,
+          "water": 0.20128844155102796
+        }
+      },
+      "source_row": 11,
+      "tie_line_id": "figure3-07",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-07.log",
+      "upper_solve_count": 8,
+      "wall_seconds": 5.2094993289993
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "stage_iii_phase_fraction_recovery_failed",
+      "failure_stage": "step8",
+      "feed": [
+        0.035035936574565205,
+        0.035035936574565205,
+        0.7680040306573258,
+        0.1619240961935438
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-08.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.07143092945341299,
+          "LiCl": 0.10751051134572097,
+          "water": 0.8210585592008661
+        },
+        "organic": {
+          "1-butanol": 0.807095423235954,
+          "LiCl": 0.0012112934520323833,
+          "water": 0.19169328331201368
+        }
+      },
+      "source_row": 12,
+      "tie_line_id": "figure3-08",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-08.log",
+      "upper_solve_count": 1,
+      "wall_seconds": 3.337305255001411
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.03601406484765458,
+        0.03601406484765458,
+        0.7658785724354679,
+        0.162093297869223
+      ],
+      "outcome": "physical_equilibrium_accepted",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 2,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-09.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.07073772156241359,
+          "LiCl": 0.11043894015348434,
+          "water": 0.8188233382841019
+        },
+        "organic": {
+          "1-butanol": 0.8082010367628851,
+          "LiCl": 0.0012538936642107852,
+          "water": 0.19054506957290426
+        }
+      },
+      "source_row": 13,
+      "tie_line_id": "figure3-09",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-09.log",
+      "upper_solve_count": 37,
+      "wall_seconds": 8.654639436001162
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.04391808484870394,
+        0.04391808484870394,
+        0.7489454601127282,
+        0.1632183701898638
+      ],
+      "outcome": "physical_equilibrium_accepted",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 2,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-10.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.06580733830397052,
+          "LiCl": 0.1340913116161433,
+          "water": 0.8001013500798864
+        },
+        "organic": {
+          "1-butanol": 0.8155754642396236,
+          "LiCl": 0.0015520483091101974,
+          "water": 0.1828724874512663
+        }
+      },
+      "source_row": 14,
+      "tie_line_id": "figure3-10",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-10.log",
+      "upper_solve_count": 61,
+      "wall_seconds": 13.296775599999819
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.05188359855240144,
+        0.05188359855240144,
+        0.7316427045197827,
+        0.16459009837541436
+      ],
+      "outcome": "physical_equilibrium_accepted",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 2,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-11.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.06195269644101629,
+          "LiCl": 0.1576314366303387,
+          "water": 0.780415866928645
+        },
+        "organic": {
+          "1-butanol": 0.8227238084242214,
+          "LiCl": 0.0018721631675276235,
+          "water": 0.1754040284082511
+        }
+      },
+      "source_row": 15,
+      "tie_line_id": "figure3-11",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-11.log",
+      "upper_solve_count": 60,
+      "wall_seconds": 10.987843530001555
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "failure_stage": "step7",
+      "feed": [
+        0.05935542932381481,
+        0.05935542932381481,
+        0.7151679589241923,
+        0.16612118242817822
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-12.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.05921054236965171,
+          "LiCl": 0.17938668037078706,
+          "water": 0.7614027772595612
+        },
+        "organic": {
+          "1-butanol": 0.8293959225974833,
+          "LiCl": 0.002208582606031676,
+          "water": 0.16839549479648497
+        }
+      },
+      "source_row": 16,
+      "tie_line_id": "figure3-12",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-12.log",
+      "upper_solve_count": 80,
+      "wall_seconds": 12.416260264000812
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "problem_67_not_converged",
+      "failure_stage": "step8",
+      "feed": [
+        0.06622008476627468,
+        0.06622008476627468,
+        0.6998403645240564,
+        0.1677194659433942
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-13.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.05735811419076853,
+          "LiCl": 0.19906837821627124,
+          "water": 0.7435735075929601
+        },
+        "organic": {
+          "1-butanol": 0.8355013760495087,
+          "LiCl": 0.0025587621235548213,
+          "water": 0.16193986182693654
+        }
+      },
+      "source_row": 17,
+      "tie_line_id": "figure3-13",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-13.log",
+      "upper_solve_count": 14,
+      "wall_seconds": 4.73067174300013
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.07883222469760741,
+        0.07883222469760741,
+        0.6712519458509989,
+        0.17108360475378634
+      ],
+      "outcome": "physical_equilibrium_accepted",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 2,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-14.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.05548906760272828,
+          "LiCl": 0.2343881391133273,
+          "water": 0.7101227932839446
+        },
+        "organic": {
+          "1-butanol": 0.8465654710894949,
+          "LiCl": 0.0033439443421664234,
+          "water": 0.15009058456833874
+        }
+      },
+      "source_row": 18,
+      "tie_line_id": "figure3-14",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-14.log",
+      "upper_solve_count": 55,
+      "wall_seconds": 9.70262295000066
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "problem_67_not_converged",
+      "failure_stage": "step8",
+      "feed": [
+        0.08999368785010747,
+        0.08999368785010747,
+        0.6457464517007616,
+        0.17426617259902347
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-15.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.05547058862768372,
+          "LiCl": 0.26482472011053226,
+          "water": 0.6797046912617839
+        },
+        "organic": {
+          "1-butanol": 0.8552794973756217,
+          "LiCl": 0.004178690999582583,
+          "water": 0.1405418116247956
+        }
+      },
+      "source_row": 19,
+      "tie_line_id": "figure3-15",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-15.log",
+      "upper_solve_count": 57,
+      "wall_seconds": 9.303549595000732
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "failure_stage": "step7",
+      "feed": [
+        0.10002987675094009,
+        0.10002987675094009,
+        0.62244859892148,
+        0.17749164757663988
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-16.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.05688526953956298,
+          "LiCl": 0.29127623455635265,
+          "water": 0.6518384959040843
+        },
+        "organic": {
+          "1-butanol": 0.8627837262800351,
+          "LiCl": 0.005167972855846669,
+          "water": 0.13204830086411834
+        }
+      },
+      "source_row": 20,
+      "tie_line_id": "figure3-16",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-16.log",
+      "upper_solve_count": 80,
+      "wall_seconds": 12.357146094998825
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.10937740944778979,
+        0.10937740944778979,
+        0.6004598743186162,
+        0.18078530678580418
+      ],
+      "outcome": "physical_equilibrium_accepted",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 2,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-17.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.05964453277781786,
+          "LiCl": 0.31503013007997205,
+          "water": 0.6253253371422102
+        },
+        "organic": {
+          "1-butanol": 0.8691602348839428,
+          "LiCl": 0.006371850390562799,
+          "water": 0.12446791472549457
+        }
+      },
+      "source_row": 21,
+      "tie_line_id": "figure3-17",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-17.log",
+      "upper_solve_count": 61,
+      "wall_seconds": 9.619821084999785
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.11784356864745188,
+        0.11784356864745188,
+        0.5802500248708271,
+        0.18406283783426905
+      ],
+      "outcome": "physical_equilibrium_accepted",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 2,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-18.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.06364275182920956,
+          "LiCl": 0.3356235930207768,
+          "water": 0.6007336551500136
+        },
+        "organic": {
+          "1-butanol": 0.8742721801436193,
+          "LiCl": 0.007825862481001707,
+          "water": 0.11790195737537902
+        }
+      },
+      "source_row": 22,
+      "tie_line_id": "figure3-18",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-18.log",
+      "upper_solve_count": 72,
+      "wall_seconds": 13.098527677000675
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.12587046039011884,
+        0.12587046039011884,
+        0.5607938785315034,
+        0.18746520068825895
+      ],
+      "outcome": "physical_equilibrium_accepted",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 2,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-19.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.06915101684122943,
+          "LiCl": 0.35414986521562697,
+          "water": 0.5766991179431437
+        },
+        "organic": {
+          "1-butanol": 0.8782213759213281,
+          "LiCl": 0.00966755870189385,
+          "water": 0.11211106537677808
+        }
+      },
+      "source_row": 23,
+      "tie_line_id": "figure3-19",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-19.log",
+      "upper_solve_count": 71,
+      "wall_seconds": 10.007279894000021
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "problem_67_not_converged",
+      "failure_stage": "step8",
+      "feed": [
+        0.12838900142112294,
+        0.12838900142112294,
+        0.5546185301268961,
+        0.18860346703085804
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-20.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.07130887252189617,
+          "LiCl": 0.3597173795420785,
+          "water": 0.5689737479360252
+        },
+        "organic": {
+          "1-butanol": 0.8792271085005149,
+          "LiCl": 0.010371742455374719,
+          "water": 0.11040114904411047
+        }
+      },
+      "source_row": 24,
+      "tie_line_id": "figure3-20",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-20.log",
+      "upper_solve_count": 60,
+      "wall_seconds": 8.49019321599917
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "failure_stage": "step7",
+      "feed": [
+        0.13325798516414805,
+        0.13325798516414805,
+        0.5425680120818422,
+        0.1909160175898616
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-21.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.07617473473052574,
+          "LiCl": 0.3700515973478636,
+          "water": 0.5537736679216108
+        },
+        "organic": {
+          "1-butanol": 0.8807869133482441,
+          "LiCl": 0.01198504449234822,
+          "water": 0.1072280421594076
+        }
+      },
+      "source_row": 25,
+      "tie_line_id": "figure3-21",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-21.log",
+      "upper_solve_count": 80,
+      "wall_seconds": 12.339119724001648
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "problem_67_not_converged",
+      "failure_stage": "step8",
+      "feed": [
+        0.13318436390340624,
+        0.13318436390340624,
+        0.5427490453886425,
+        0.19088222680454495
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-22.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.07605207137303754,
+          "LiCl": 0.36982104914019115,
+          "water": 0.5541268794867713
+        },
+        "organic": {
+          "1-butanol": 0.8808166981128148,
+          "LiCl": 0.012035055758978504,
+          "water": 0.10714824612820666
+        }
+      },
+      "source_row": 26,
+      "tie_line_id": "figure3-22",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-22.log",
+      "upper_solve_count": 70,
+      "wall_seconds": 10.680977173000429
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": null,
+      "failure_stage": null,
+      "feed": [
+        0.14374483683083733,
+        0.14374483683083733,
+        0.5160568471704403,
+        0.19645347916788497
+      ],
+      "outcome": "physical_equilibrium_accepted",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 2,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-23.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.09074564675444291,
+          "LiCl": 0.38999284349915386,
+          "water": 0.5192615097464033
+        },
+        "organic": {
+          "1-butanol": 0.8815642678418075,
+          "LiCl": 0.016915742625590282,
+          "water": 0.10151998953260213
+        }
+      },
+      "source_row": 27,
+      "tie_line_id": "figure3-23",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-23.log",
+      "upper_solve_count": 50,
+      "wall_seconds": 6.160993993000375
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "failure_stage": "step7",
+      "feed": [
+        0.14576775945659765,
+        0.14576775945659765,
+        0.5108452689323629,
+        0.1976192121544417
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-24.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.0943701797344422,
+          "LiCl": 0.3933533507061125,
+          "water": 0.5122764695594453
+        },
+        "organic": {
+          "1-butanol": 0.881159847946942,
+          "LiCl": 0.018206088496441588,
+          "water": 0.10063406355661646
+        }
+      },
+      "source_row": 28,
+      "tie_line_id": "figure3-24",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-24.log",
+      "upper_solve_count": 80,
+      "wall_seconds": 10.779015819000051
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "problem_67_not_converged",
+      "failure_stage": "step8",
+      "feed": [
+        0.14956087382045785,
+        0.14956087382045785,
+        0.5010554291506217,
+        0.19982282320846256
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-25.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.10192938113790743,
+          "LiCl": 0.39902916042275943,
+          "water": 0.4990414584393331
+        },
+        "organic": {
+          "1-butanol": 0.8796484511189016,
+          "LiCl": 0.02117200739115454,
+          "water": 0.09917954148994387
+        }
+      },
+      "source_row": 29,
+      "tie_line_id": "figure3-25",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-25.log",
+      "upper_solve_count": 12,
+      "wall_seconds": 2.686996955999348
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "failure_stage": "step7",
+      "feed": [
+        0.15312109342974933,
+        0.15312109342974933,
+        0.49189482844106097,
+        0.2018629846994403
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-26.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.11002157791675042,
+          "LiCl": 0.4035515508546092,
+          "water": 0.48642687122864037
+        },
+        "organic": {
+          "1-butanol": 0.8770928688999506,
+          "LiCl": 0.024706414544355234,
+          "water": 0.09820071655569416
+        }
+      },
+      "source_row": 30,
+      "tie_line_id": "figure3-26",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-26.log",
+      "upper_solve_count": 80,
+      "wall_seconds": 15.104272325001148
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "failure_stage": "step7",
+      "feed": [
+        0.1568221556373781,
+        0.1568221556373781,
+        0.4823224945972032,
+        0.20403319412804052
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-27.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.11979975686477747,
+          "LiCl": 0.4074177262189223,
+          "water": 0.47278251691630024
+        },
+        "organic": {
+          "1-butanol": 0.8731673767764663,
+          "LiCl": 0.029099186250509473,
+          "water": 0.09773343697302438
+        }
+      },
+      "source_row": 31,
+      "tie_line_id": "figure3-27",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-27.log",
+      "upper_solve_count": 80,
+      "wall_seconds": 11.967475486000694
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "problem_67_not_converged",
+      "failure_stage": "step8",
+      "feed": [
+        0.16042068249132715,
+        0.16042068249132715,
+        0.473231482953786,
+        0.20592715206355966
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-28.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.13037624004017365,
+          "LiCl": 0.4101160461414839,
+          "water": 0.4595077138183425
+        },
+        "organic": {
+          "1-butanol": 0.867576612235466,
+          "LiCl": 0.03453199161164429,
+          "water": 0.09789139615288955
+        }
+      },
+      "source_row": 32,
+      "tie_line_id": "figure3-28",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-28.log",
+      "upper_solve_count": 11,
+      "wall_seconds": 3.4429973659989628
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "problem_67_not_converged",
+      "failure_stage": "step8",
+      "feed": [
+        0.1647022133111612,
+        0.1647022133111612,
+        0.46403915012566327,
+        0.2065564232520144
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-29.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.14208054289162492,
+          "LiCl": 0.4117490482172344,
+          "water": 0.4461704088911407
+        },
+        "organic": {
+          "1-butanol": 0.8568791407390582,
+          "LiCl": 0.04383478232132112,
+          "water": 0.09928607693962067
+        }
+      },
+      "source_row": 33,
+      "tie_line_id": "figure3-29",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-29.log",
+      "upper_solve_count": 62,
+      "wall_seconds": 15.897603080999033
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "problem_67_not_converged",
+      "failure_stage": "step8",
+      "feed": [
+        0.16815362206540052,
+        0.16815362206540052,
+        0.45576410542028556,
+        0.2079286504489134
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-30.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.1547131532878062,
+          "LiCl": 0.41229061042278525,
+          "water": 0.43299623628940853
+        },
+        "organic": {
+          "1-butanol": 0.8476471154064336,
+          "LiCl": 0.051343462930598015,
+          "water": 0.1010094216629684
+        }
+      },
+      "source_row": 34,
+      "tie_line_id": "figure3-30",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-30.log",
+      "upper_solve_count": 9,
+      "wall_seconds": 3.0904973249998875
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "failure_stage": "step7",
+      "feed": [
+        0.17240513236381635,
+        0.17240513236381635,
+        0.4474720268012679,
+        0.2077177084710995
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-31.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.16864905951431508,
+          "LiCl": 0.4117568612636211,
+          "water": 0.4195940792220638
+        },
+        "organic": {
+          "1-butanol": 0.8321989973015369,
+          "LiCl": 0.06336435906598895,
+          "water": 0.10443664363247408
+        }
+      },
+      "source_row": 35,
+      "tie_line_id": "figure3-31",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-31.log",
+      "upper_solve_count": 80,
+      "wall_seconds": 15.176126371001374
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "failure_stage": "step7",
+      "feed": [
+        0.1779164886086336,
+        0.1779164886086336,
+        0.43953197594846405,
+        0.20463504683426867
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-32.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.18358991581564865,
+          "LiCl": 0.41016668547954244,
+          "water": 0.40624339870480874
+        },
+        "organic": {
+          "1-butanol": 0.8068437111664459,
+          "LiCl": 0.0823502521296546,
+          "water": 0.11080603670389955
+        }
+      },
+      "source_row": 36,
+      "tie_line_id": "figure3-32",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-32.log",
+      "upper_solve_count": 80,
+      "wall_seconds": 12.500343657000485
+    },
+    {
+      "effective_tolerances": {
+        "epsilon_b": 0.01,
+        "epsilon_eta": 0.001,
+        "epsilon_g": 0.0001,
+        "epsilon_lambda": 0.5,
+        "epsilon_lambda_floor": 1e-08,
+        "epsilon_mu": 0.001,
+        "epsilon_x": 0.001
+      },
+      "failure_reason": "stage_ii_major_iteration_limit",
+      "failure_stage": "step7",
+      "feed": [
+        0.1794743209933883,
+        0.1794743209933883,
+        0.4368626089856785,
+        0.2041887490275449
+      ],
+      "outcome": "indeterminate",
+      "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+      "phase_count": 0,
+      "result": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-33.json",
+      "source": {
+        "aqueous": {
+          "1-butanol": 0.1892512937653827,
+          "LiCl": 0.4093388741633024,
+          "water": 0.401409832071315
+        },
+        "organic": {
+          "1-butanol": 0.7995105822732393,
+          "LiCl": 0.08773602531690221,
+          "water": 0.11275339240985859
+        }
+      },
+      "source_row": 37,
+      "tie_line_id": "figure3-33",
+      "trace": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/tmp/perdomo-figure3-final-contract/native/figure3-33.log",
+      "upper_solve_count": 80,
+      "wall_seconds": 12.45329471399964
+    }
+  ],
+  "conditions": {
+    "pressure_Pa": 101300.0,
+    "temperature_K": 298.15
+  },
+  "diagnostic_executable": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/ePC-SAFT-equilibrium/build/epcsaft-equilibrium-diagnostic",
+  "effective_tolerances": {
+    "epsilon_b": 0.01,
+    "epsilon_eta": 0.001,
+    "epsilon_g": 0.0001,
+    "epsilon_lambda": 0.5,
+    "epsilon_lambda_floor": 1e-08,
+    "epsilon_mu": 0.001,
+    "epsilon_x": 0.001
+  },
+  "feed_construction": "equal-mass blend of each published aqueous/organic endpoint pair; formula masses converted to explicit Li+, Cl-, water, 1-butanol mole fractions",
+  "globality_certificate": "not_guaranteed",
+  "parameter_fingerprint": "sha256:b2a776669248d2706cf776d4aa5e0f68f474495e4795885b39c58ce870e5ad5a",
+  "provider_model": "/tmp/perdomo-table5-lever/provider-model.json",
+  "source_csv": "/home/tnnrpolley21/Workspaces/Engineering/ePC-SAFT-project/worktrees/perdomo-figure3-validation/data/perdomo-2025-figure3-model-curve.csv",
+  "source_csv_sha256": "8154e9c78d64b4c73302ceb65f2999cdf465e4c7ef413486014979cc18f4d646"
+}

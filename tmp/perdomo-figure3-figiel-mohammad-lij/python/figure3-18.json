@@ -1,0 +1,90 @@
+{
+  "case_id": "figure3-18",
+  "wall_seconds": 13.262902940001368,
+  "outcome": "physical_equilibrium_accepted",
+  "failure_reason": null,
+  "native_outcome": "physical_equilibrium_accepted",
+  "native_failure_reason": null,
+  "phase_mole_fraction_max_abs_delta": 0.0,
+  "phase_fraction_max_abs_delta": 0.0,
+  "free_energy_abs_delta": 0.0,
+  "parity": true,
+  "record": {
+    "temperature_k": 298.15,
+    "pressure_pa": 101300.0,
+    "overall_mole_fractions": [
+      0.11784356864745188,
+      0.11784356864745188,
+      0.5802500248708271,
+      0.18406283783426905
+    ],
+    "phases": [
+      {
+        "amount_mol": 0.27106043205725927,
+        "mole_fractions": [
+          0.0010096856213041535,
+          0.0010096856213041535,
+          0.31915481805224516,
+          0.6788258107051466
+        ],
+        "volume_m3": 1.8617392037246868e-05,
+        "molar_density_mol_m3": 14559.527538280468,
+        "pressure_pa": 101299.99999981205,
+        "chemical_potential_over_rt": [
+          -191.74074539931155,
+          -123.21355841619987,
+          -0.7896662385571176,
+          -1.3152881906249192
+        ]
+      },
+      {
+        "amount_mol": 0.7289395679427407,
+        "mole_fractions": [
+          0.16128892977330378,
+          0.16128892977330378,
+          0.6773398012643124,
+          8.233918908007176e-05
+        ],
+        "volume_m3": 1.141387802400253e-05,
+        "molar_density_mol_m3": 63864.320821532834,
+        "pressure_pa": 101300.00000226506,
+        "chemical_potential_over_rt": [
+          -190.77225747756333,
+          -124.18204610091546,
+          -0.7896665941582643,
+          -1.3152878576489915
+        ]
+      }
+    ],
+    "phase_fractions": [
+      0.27106043205725927,
+      0.7289395679427407
+    ],
+    "total_free_energy_over_rt": -37.8156387879531,
+    "parameter_fingerprint": "sha256:7a7c8b2d1ffe452d69affb1eed92303acafc52d1652f732da340d73fb0f4a718",
+    "diagnostics": {
+      "outcome": "physical_equilibrium_accepted",
+      "search_status": "physical_equilibrium_accepted",
+      "solver_status": "passed",
+      "numerical_status": "passed",
+      "physical_status": "passed",
+      "attempts": 59,
+      "major_iterations": 59,
+      "best_tpd": -0.126198860309008,
+      "lower_bound": null,
+      "upper_bound": null,
+      "held_gap": 6.569583909055154e-05,
+      "material_balance_max_abs": 8.760014935660365e-11,
+      "pressure_stationarity_max_relative": 2.2359958666892535e-11,
+      "kkt_stationarity_max_abs": 1.0045851121252401e-10,
+      "chemical_potential_max_relative": null,
+      "confirmation_succeeded": true,
+      "confirmation_max_difference": null,
+      "search_profiles": [
+        "HELD2.0 paper Steps 1-10"
+      ],
+      "globality_certificate": "not_guaranteed",
+      "failure_reason": ""
+    }
+  }
+}

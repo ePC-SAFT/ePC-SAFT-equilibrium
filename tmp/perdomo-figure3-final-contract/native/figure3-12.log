@@ -1,0 +1,1946 @@
+HELD2.0  case=installed-held2-paper-rewrite  T=2.981500e+02 K  P=1.013000e+05 Pa
+
+STEP 1
+  certificate  stage=STEP 1  complete  reason=step1_complete  wall=1.857000e-05s  cpu=1.800000e-05s  provider=1  solves=0  iterations=0
+
+STEP 2
+
+REFERENCE PRESSURE ROOTS
+  root   0  V= 2.920021e-05  P rel.=-3.281773e-09  G/RT=-1.919900e+01  strict_stable
+  root   1  V= 5.667834e-04  P rel.= 3.213334e-09  G/RT=-1.463000e+01  unstable
+  root   2  V= 2.265233e-02  P rel.=-2.729576e-10  G/RT=-1.601979e+01  strict_stable
+  selected root 0  status=selected
+  eval     1  TPD= 2.886464e-01  P rel.= 2.232178e-09  V= 4.684854e-05  certified
+  eval     2  TPD=-6.051555e-02  P rel.=-9.329527e-09  V= 5.717807e-05  certified
+  certificate  stage=STEP 2  complete  reason=negative_tpd_witness  wall=6.151116e-01s  cpu=6.150260e-01s  provider=822  solves=1  iterations=2
+
+STEP 3
+  certificate  stage=STEP 3  complete  reason=step3_complete  wall=8.532938e-01s  cpu=8.532210e-01s  provider=4  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=0  upper=-1.921987e+01  LP_primal= 0.000000e+00  LP_dual= 0.000000e+00  active_cuts=5  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.349280e-04s  cpu=4.350000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=0  attempt=0  accepted  reason=success  P rel.=-2.138101e-03  objective=-1.928466e+01  upper=-1.921987e+01  gap= 6.479103e-02  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.930025e-02s  cpu=2.930200e-02s  provider=153  solves=1  iterations=22
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=3.290000e-06s  cpu=3.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=problem_67_infeasible  wall=3.043580e-04s  cpu=3.050000e-04s  provider=2  solves=1  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.020000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=1  upper=-1.923284e+01  LP_primal= 1.421085e-14  LP_dual= 5.551115e-17  active_cuts=6  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.120390e-04s  cpu=2.120000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=1  attempt=1  accepted  reason=success  P rel.=-8.067668e-08  objective=-1.940112e+01  upper=-1.923284e+01  gap= 1.682799e-01  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.447038e-02s  cpu=2.447100e-02s  provider=22  solves=1  iterations=21
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=3.690000e-06s  cpu=3.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=problem_67_infeasible  wall=1.581990e-04s  cpu=1.590000e-04s  provider=2  solves=1  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.060000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=2  upper=-1.926905e+01  LP_primal= 3.552714e-15  LP_dual= 5.551115e-17  active_cuts=7  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.091080e-04s  cpu=3.090000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=2  attempt=2  accepted  reason=success  P rel.= 9.739584e-14  objective=-1.624250e+01  upper=-1.926905e+01  gap=-3.026551e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=2  attempt=3  accepted  reason=success  P rel.= 6.133927e-14  objective=-1.624250e+01  upper=-1.926905e+01  gap=-3.026551e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=2  attempt=4  accepted  reason=success  P rel.=-3.381750e-09  objective=-1.931201e+01  upper=-1.926905e+01  gap= 4.295623e-02  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=7.054541e-02s  cpu=7.054700e-02s  provider=65  solves=3  iterations=60
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=5.820000e-06s  cpu=6.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=6.904158e-02s  cpu=6.904300e-02s  provider=166  solves=2  iterations=14
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.927040e+01  upper=-1.926905e+01  gap= 1.345604e-03  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.280618e-03s  cpu=2.281000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.100000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=3  upper=-1.928777e+01  LP_primal= 7.105427e-15  LP_dual= 1.110223e-16  active_cuts=8  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.034190e-04s  cpu=3.040000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=3  attempt=5  accepted  reason=success  P rel.= 7.053298e-14  objective=-1.626324e+01  upper=-1.928777e+01  gap=-3.024535e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=3  attempt=6  accepted  reason=success  P rel.=-5.516518e-09  objective=-1.930626e+01  upper=-1.928777e+01  gap= 1.848839e-02  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=4.258401e-02s  cpu=4.258500e-02s  provider=40  solves=2  iterations=35
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=4.070000e-06s  cpu=4.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=problem_67_infeasible  wall=2.654490e-04s  cpu=2.660000e-04s  provider=2  solves=1  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.040000e-06s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=4  upper=-1.929058e+01  LP_primal= 3.552714e-15  LP_dual= 6.591949e-17  active_cuts=9  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.489490e-04s  cpu=2.500000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=4  attempt=7  accepted  reason=success  P rel.=-2.558026e-08  objective=-1.934106e+01  upper=-1.929058e+01  gap= 5.047753e-02  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=3.602281e-02s  cpu=3.602400e-02s  provider=29  solves=1  iterations=24
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=6.770000e-06s  cpu=6.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=6.296369e-02s  cpu=6.296500e-02s  provider=114  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.929129e+01  upper=-1.929058e+01  gap= 7.036236e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.203868e-03s  cpu=2.204000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.040000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=5  upper=-1.930443e+01  LP_primal= 3.552714e-15  LP_dual= 1.110223e-16  active_cuts=10  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.266380e-04s  cpu=3.270000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=5  attempt=8  accepted  reason=success  P rel.= 5.904084e-14  objective=-1.626654e+01  upper=-1.930443e+01  gap=-3.037893e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=5  attempt=9  accepted  reason=success  P rel.= 3.059781e-13  objective=-1.626654e+01  upper=-1.930443e+01  gap=-3.037893e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=5  attempt=10  accepted  reason=success  P rel.= 5.487494e-14  objective=-1.626654e+01  upper=-1.930443e+01  gap=-3.037893e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=5  attempt=11  accepted  reason=success  P rel.= 6.816272e-13  objective=-1.626654e+01  upper=-1.930443e+01  gap=-3.037893e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=5  attempt=12  accepted  reason=success  P rel.= 4.381376e-14  objective=-1.626654e+01  upper=-1.930443e+01  gap=-3.037893e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=5  attempt=13  accepted  reason=success  P rel.=-2.594131e-09  objective=-1.931517e+01  upper=-1.930443e+01  gap= 1.073639e-02  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.220402e-01s  cpu=1.220350e-01s  provider=119  solves=6  iterations=109
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=4.320000e-06s  cpu=4.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=problem_67_infeasible  wall=2.657290e-04s  cpu=2.670000e-04s  provider=2  solves=1  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.000000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=6  upper=-1.930748e+01  LP_primal= 3.552714e-15  LP_dual= 6.938894e-18  active_cuts=11  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.356190e-04s  cpu=2.360000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=6  attempt=14  accepted  reason=success  P rel.= 6.162657e-14  objective=-1.629261e+01  upper=-1.930748e+01  gap=-3.014861e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=6  attempt=15  accepted  reason=success  P rel.= 2.772477e-14  objective=-1.629261e+01  upper=-1.930748e+01  gap=-3.014861e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=6  attempt=16  accepted  reason=success  P rel.=-2.475815e-09  objective=-1.930825e+01  upper=-1.930748e+01  gap= 7.769390e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=5.856344e-02s  cpu=5.855800e-02s  provider=58  solves=3  iterations=50
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=3.800000e-06s  cpu=4.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=1.001388e-01s  cpu=1.001410e-01s  provider=228  solves=2  iterations=19
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930748e+01  gap= 7.030667e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=3.385951e-03s  cpu=3.386000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.480000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=7  upper=-1.930777e+01  LP_primal= 0.000000e+00  LP_dual= 6.938894e-18  active_cuts=12  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.567170e-04s  cpu=4.570000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=7  attempt=17  accepted  reason=success  P rel.= 3.979152e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=7  attempt=18  accepted  reason=success  P rel.= 4.826696e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=7  attempt=19  accepted  reason=success  P rel.=-2.474213e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap= 6.506498e-07  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=8.153662e-02s  cpu=8.148900e-02s  provider=59  solves=3  iterations=54
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=4.999000e-06s  cpu=5.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=2.310000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.115049e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.317338e-03s  cpu=2.318000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.230000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=8  upper=-1.930777e+01  LP_primal= 3.552714e-15  LP_dual= 6.938894e-18  active_cuts=13  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.580780e-04s  cpu=3.590000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=8  attempt=20  accepted  reason=success  P rel.= 6.708533e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=8  attempt=23  accepted  reason=success  P rel.= 5.056539e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=8  attempt=24  accepted  reason=success  P rel.=-2.455873e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap= 4.654055e-13  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=6.223909e-02s  cpu=6.222900e-02s  provider=57  solves=5  iterations=50
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=5.060000e-06s  cpu=5.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=2.050000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.712096e-03s  cpu=2.712000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.150000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=9  upper=-1.930777e+01  LP_primal= 4.654055e-13  LP_dual= 6.938894e-18  active_cuts=14  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.397580e-04s  cpu=3.400000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=9  attempt=25  accepted  reason=success  P rel.= 4.180264e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=9  attempt=26  accepted  reason=success  P rel.=-2.467536e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap= 4.583001e-13  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=5.031795e-02s  cpu=5.031100e-02s  provider=47  solves=2  iterations=43
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=5.560000e-06s  cpu=5.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=2.210000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.304778e-03s  cpu=2.305000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=9.200000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=10  upper=-1.930777e+01  LP_primal= 7.105427e-15  LP_dual= 0.000000e+00  active_cuts=15  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.435580e-04s  cpu=3.440000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=10  attempt=27  accepted  reason=success  P rel.= 8.145050e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=10  attempt=28  accepted  reason=success  P rel.= 5.286382e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=10  attempt=29  accepted  reason=success  P rel.= 6.033371e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=10  attempt=30  accepted  reason=success  P rel.= 5.659876e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=10  attempt=31  accepted  reason=success  P rel.= 6.493056e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=10  attempt=32  accepted  reason=success  P rel.= 5.056539e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=10  attempt=33  accepted  reason=success  P rel.= 8.130685e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=10  attempt=34  accepted  reason=success  P rel.= 6.852185e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=10  attempt=35  accepted  reason=success  P rel.= 6.536151e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=10  attempt=36  accepted  reason=success  P rel.=-2.479821e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap= 3.552714e-15  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.267800e-01s  cpu=2.267100e-01s  provider=206  solves=10  iterations=195
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=5.559000e-06s  cpu=5.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=2.150000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.303958e-03s  cpu=2.305000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.230000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=11  upper=-1.930777e+01  LP_primal= 0.000000e+00  LP_dual= 1.387779e-17  active_cuts=16  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.623680e-04s  cpu=3.620000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=11  attempt=37  accepted  reason=success  P rel.=-2.472966e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap=-3.552714e-15  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.479487e-02s  cpu=2.479600e-02s  provider=24  solves=1  iterations=19
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=7.130000e-06s  cpu=7.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.470000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.273407e-03s  cpu=2.273000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.800000e-07s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=12  upper=-1.930777e+01  LP_primal= 1.065814e-14  LP_dual= 6.938894e-18  active_cuts=17  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.786280e-04s  cpu=2.790000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=12  attempt=38  accepted  reason=success  P rel.= 8.288702e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=12  attempt=39  accepted  reason=success  P rel.= 5.142730e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=12  attempt=40  accepted  reason=success  P rel.= 5.573685e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=12  attempt=41  accepted  reason=success  P rel.= 7.383696e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=12  attempt=42  accepted  reason=success  P rel.= 6.909646e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=12  attempt=43  accepted  reason=success  P rel.=-2.437534e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap= 3.552714e-15  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.355643e-01s  cpu=1.355560e-01s  provider=128  solves=6  iterations=118
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=9.430000e-06s  cpu=9.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=2.170000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.335897e-03s  cpu=2.337000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=9.700000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=13  upper=-1.930777e+01  LP_primal= 1.065814e-14  LP_dual= 6.938894e-18  active_cuts=18  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.354180e-04s  cpu=3.360000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=13  attempt=44  accepted  reason=success  P rel.= 4.252090e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=13  attempt=45  accepted  reason=success  P rel.= 9.035691e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=13  attempt=47  accepted  reason=success  P rel.=-2.457832e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap= 7.105427e-15  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=7.105646e-02s  cpu=7.105800e-02s  provider=68  solves=4  iterations=57
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=9.020000e-06s  cpu=9.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=2.020000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.319287e-03s  cpu=2.319000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=9.000000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=14  upper=-1.930777e+01  LP_primal= 1.065814e-14  LP_dual= 6.938894e-18  active_cuts=19  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.318780e-04s  cpu=3.320000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=48  accepted  reason=success  P rel.= 5.060849e-13  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=49  accepted  reason=success  P rel.= 5.789163e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=50  accepted  reason=success  P rel.= 7.900842e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=51  accepted  reason=success  P rel.= 6.809090e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=52  accepted  reason=success  P rel.= 7.383696e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=53  accepted  reason=success  P rel.= 4.797966e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=54  accepted  reason=success  P rel.= 4.180264e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=55  accepted  reason=success  P rel.= 6.569191e-13  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=56  accepted  reason=success  P rel.= 3.821135e-13  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=57  accepted  reason=success  P rel.= 9.222438e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=59  accepted  reason=success  P rel.= 7.554642e-13  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=60  accepted  reason=success  P rel.= 7.211314e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=61  accepted  reason=success  P rel.= 5.358208e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=14  attempt=62  accepted  reason=success  P rel.=-2.444211e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap=-3.552714e-15  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=3.130829e-01s  cpu=3.129010e-01s  provider=297  solves=15  iterations=267
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=8.610000e-06s  cpu=8.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=2.010000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.187638e-03s  cpu=2.187000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.010000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=15  upper=-1.930777e+01  LP_primal= 1.065814e-14  LP_dual= 6.938894e-18  active_cuts=20  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.248480e-04s  cpu=3.260000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=15  attempt=63  accepted  reason=success  P rel.=-2.434507e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap= 7.105427e-15  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.187265e-02s  cpu=2.187300e-02s  provider=22  solves=1  iterations=18
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=7.310000e-06s  cpu=7.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.450000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.173468e-03s  cpu=2.174000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.700000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=16  upper=-1.930777e+01  LP_primal= 1.065814e-14  LP_dual= 6.938894e-18  active_cuts=21  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.649590e-04s  cpu=2.660000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=16  attempt=64  accepted  reason=success  P rel.=-4.192337e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap= 1.065814e-14  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.061055e-02s  cpu=2.060200e-02s  provider=20  solves=1  iterations=19
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=6.650000e-06s  cpu=6.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.530000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.214258e-03s  cpu=2.215000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.900000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=17  upper=-1.930777e+01  LP_primal= 7.105427e-15  LP_dual= 5.551115e-17  active_cuts=22  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.933780e-04s  cpu=2.940000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=17  attempt=65  accepted  reason=success  P rel.= 8.044494e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=17  attempt=66  accepted  reason=success  P rel.= 6.162657e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=17  attempt=67  accepted  reason=success  P rel.= 5.027809e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=17  attempt=68  accepted  reason=success  P rel.= 5.473129e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=17  attempt=69  accepted  reason=success  P rel.= 5.444399e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=17  attempt=70  accepted  reason=success  P rel.=-2.462194e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap=-3.552714e-15  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.262569e-01s  cpu=1.262350e-01s  provider=123  solves=6  iterations=117
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=8.820000e-06s  cpu=9.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.870000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.190678e-03s  cpu=2.191000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.800000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=18  upper=-1.930777e+01  LP_primal= 7.105427e-15  LP_dual= 5.551115e-17  active_cuts=23  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.295380e-04s  cpu=3.290000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=71  accepted  reason=success  P rel.= 7.699730e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=72  accepted  reason=success  P rel.= 6.392500e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=73  accepted  reason=success  P rel.= 2.644627e-13  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=74  accepted  reason=success  P rel.= 2.829938e-13  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=75  accepted  reason=success  P rel.= 4.410107e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=76  accepted  reason=success  P rel.= 8.055986e-13  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=77  accepted  reason=success  P rel.= 2.594349e-13  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=78  accepted  reason=success  P rel.= 7.182584e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=79  accepted  reason=success  P rel.= 3.576927e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=80  accepted  reason=success  P rel.= 4.783601e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=81  accepted  reason=success  P rel.= 1.847361e-13  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=82  accepted  reason=success  P rel.= 4.266455e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=83  accepted  reason=success  P rel.= 5.401303e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=84  accepted  reason=success  P rel.= 9.351724e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=85  accepted  reason=success  P rel.= 5.904084e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=87  accepted  reason=success  P rel.= 7.771556e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=88  accepted  reason=success  P rel.= 3.936056e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=18  attempt=89  accepted  reason=success  P rel.=-2.463975e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap= 0.000000e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=3.782115e-01s  cpu=3.781990e-01s  provider=377  solves=19  iterations=350
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=9.780000e-06s  cpu=1.000000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=2.060000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.182888e-03s  cpu=2.183000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.900000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=19  upper=-1.930777e+01  LP_primal= 7.105427e-15  LP_dual= 5.551115e-17  active_cuts=24  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.320480e-04s  cpu=3.330000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=19  attempt=90  accepted  reason=success  P rel.= 6.579247e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=19  attempt=91  accepted  reason=success  P rel.= 5.329477e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=19  attempt=92  accepted  reason=success  P rel.= 5.056539e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=19  attempt=93  accepted  reason=success  P rel.= 8.073224e-13  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=19  attempt=94  accepted  reason=success  P rel.= 5.386938e-14  objective=-1.629290e+01  upper=-1.930777e+01  gap=-3.014863e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=19  attempt=95  accepted  reason=success  P rel.=-2.446703e-09  objective=-1.930777e+01  upper=-1.930777e+01  gap= 0.000000e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.360080e-01s  cpu=1.359860e-01s  provider=136  solves=6  iterations=120
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=9.000000e-06s  cpu=9.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.410000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.186728e-03s  cpu=2.187000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.600000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=20  upper=-1.930777e+01  LP_primal= 7.105427e-15  LP_dual= 5.551115e-17  active_cuts=25  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.790680e-04s  cpu=2.800000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=20  attempt=96  accepted  reason=success  P rel.=-7.370839e-08  objective=-1.932058e+01  upper=-1.930777e+01  gap= 1.281719e-02  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.156832e-02s  cpu=2.156900e-02s  provider=21  solves=1  iterations=20
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=8.650000e-06s  cpu=8.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.400000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.930818e+01  upper=-1.930777e+01  gap= 4.112603e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.197638e-03s  cpu=2.198000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.500000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=21  upper=-1.930936e+01  LP_primal= 0.000000e+00  LP_dual= 3.122502e-17  active_cuts=26  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.718690e-04s  cpu=2.720000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=21  attempt=97  accepted  reason=success  P rel.=-2.801029e-09  objective=-1.931044e+01  upper=-1.930936e+01  gap= 1.086967e-03  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.614342e-02s  cpu=1.614000e-02s  provider=16  solves=1  iterations=15
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.872000e-05s  cpu=1.800000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=problem_67_infeasible  wall=2.308490e-04s  cpu=2.320000e-04s  provider=3  solves=1  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=9.800000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=22  upper=-1.930982e+01  LP_primal= 0.000000e+00  LP_dual= 5.551115e-17  active_cuts=27  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.590290e-04s  cpu=2.590000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=22  attempt=98  accepted  reason=success  P rel.= 4.165899e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=22  attempt=99  accepted  reason=success  P rel.= 6.607977e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=22  attempt=100  accepted  reason=success  P rel.= 3.059781e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=22  attempt=102  accepted  reason=success  P rel.= 6.564882e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=22  attempt=103  accepted  reason=success  P rel.= 4.639949e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=22  attempt=104  accepted  reason=success  P rel.=-2.831031e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 1.633879e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.326595e-01s  cpu=1.326610e-01s  provider=134  solves=7  iterations=115
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=9.870000e-06s  cpu=1.000000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=1.189237e-01s  cpu=1.189250e-01s  provider=288  solves=2  iterations=16
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.865618e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.204898e-03s  cpu=2.198000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.340000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=23  upper=-1.930982e+01  LP_primal= 7.105427e-15  LP_dual= 5.551115e-17  active_cuts=28  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.891380e-04s  cpu=2.900000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=23  attempt=105  accepted  reason=success  P rel.= 9.179342e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=23  attempt=106  accepted  reason=success  P rel.= 5.401303e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=23  attempt=107  accepted  reason=success  P rel.= 5.565066e-13  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=23  attempt=108  accepted  reason=success  P rel.= 5.481748e-13  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=23  attempt=109  accepted  reason=success  P rel.=-2.811178e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.712586e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.069208e-01s  cpu=1.069220e-01s  provider=106  solves=5  iterations=96
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.120000e-05s  cpu=1.100000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.930000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.190288e-03s  cpu=2.191000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=9.400000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=24  upper=-1.930982e+01  LP_primal= 3.712586e-12  LP_dual= 5.551115e-17  active_cuts=29  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.559080e-04s  cpu=3.560000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=24  attempt=110  accepted  reason=success  P rel.= 6.995837e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=24  attempt=111  accepted  reason=success  P rel.= 7.656635e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=24  attempt=112  accepted  reason=success  P rel.= 4.553758e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=24  attempt=113  accepted  reason=success  P rel.= 5.961545e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=24  attempt=114  accepted  reason=success  P rel.= 4.367011e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=24  attempt=115  accepted  reason=success  P rel.= 5.228921e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=24  attempt=116  accepted  reason=success  P rel.=-2.805659e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.716139e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.376334e-01s  cpu=1.375960e-01s  provider=137  solves=7  iterations=121
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.002000e-05s  cpu=1.000000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=2.100000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.159529e-03s  cpu=2.160000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.700000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=25  upper=-1.930982e+01  LP_primal= 3.716139e-12  LP_dual= 5.551115e-17  active_cuts=30  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.099690e-04s  cpu=3.100000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=25  attempt=117  accepted  reason=success  P rel.= 5.774798e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=25  attempt=118  accepted  reason=success  P rel.= 4.996205e-13  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=25  attempt=119  accepted  reason=success  P rel.= 7.240045e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=25  attempt=120  accepted  reason=success  P rel.= 8.251353e-13  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=25  attempt=121  accepted  reason=success  P rel.= 6.148292e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=25  attempt=122  accepted  reason=success  P rel.=-2.808775e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.716139e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.221739e-01s  cpu=1.221530e-01s  provider=121  solves=6  iterations=114
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.037000e-05s  cpu=1.000000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.470000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.179039e-03s  cpu=2.179000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.400000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=26  upper=-1.930982e+01  LP_primal= 3.716139e-12  LP_dual= 5.551115e-17  active_cuts=31  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.928290e-04s  cpu=2.930000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=26  attempt=123  accepted  reason=success  P rel.= 3.418910e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=26  attempt=124  accepted  reason=success  P rel.= 7.383696e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=26  attempt=125  accepted  reason=success  P rel.=-2.840290e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.716139e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=7.258062e-02s  cpu=7.256600e-02s  provider=72  solves=3  iterations=63
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.059000e-05s  cpu=1.100000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.380000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.192548e-03s  cpu=2.193000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.500000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=27  upper=-1.930982e+01  LP_primal= 3.716139e-12  LP_dual= 5.551115e-17  active_cuts=32  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.928880e-04s  cpu=2.930000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=27  attempt=126  accepted  reason=success  P rel.= 5.056539e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=27  attempt=127  accepted  reason=success  P rel.= 6.220118e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=27  attempt=128  accepted  reason=success  P rel.= 5.731702e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=27  attempt=129  accepted  reason=success  P rel.=-2.804501e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.716139e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=7.825764e-02s  cpu=7.825900e-02s  provider=78  solves=4  iterations=70
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.087000e-05s  cpu=1.100000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.410000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.193128e-03s  cpu=2.193000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.500000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=28  upper=-1.930982e+01  LP_primal= 3.716139e-12  LP_dual= 5.551115e-17  active_cuts=33  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.055980e-04s  cpu=3.060000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=28  attempt=130  accepted  reason=success  P rel.= 7.383696e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=28  attempt=131  accepted  reason=success  P rel.=-2.849104e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.719691e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=4.405839e-02s  cpu=4.404400e-02s  provider=45  solves=2  iterations=39
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.151000e-05s  cpu=1.200000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.390000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.181358e-03s  cpu=2.173000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.500000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=29  upper=-1.930982e+01  LP_primal= 3.719691e-12  LP_dual= 5.551115e-17  active_cuts=34  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.928580e-04s  cpu=2.930000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=29  attempt=132  accepted  reason=success  P rel.= 8.547275e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=29  attempt=133  accepted  reason=success  P rel.=-2.804056e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.712586e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=3.690308e-02s  cpu=3.690400e-02s  provider=37  solves=2  iterations=33
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.159000e-05s  cpu=1.100000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.430000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.148239e-03s  cpu=2.149000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.500000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=30  upper=-1.930982e+01  LP_primal= 3.719691e-12  LP_dual= 5.551115e-17  active_cuts=35  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=2.983290e-04s  cpu=2.990000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=30  attempt=134  accepted  reason=success  P rel.= 7.139489e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=30  attempt=135  accepted  reason=success  P rel.=-2.799338e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.712586e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=4.291561e-02s  cpu=4.291700e-02s  provider=44  solves=2  iterations=36
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.270000e-05s  cpu=1.200000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.910000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.151158e-03s  cpu=2.151000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.400000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=31  upper=-1.930982e+01  LP_primal= 3.719691e-12  LP_dual= 5.551115e-17  active_cuts=36  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.541580e-04s  cpu=3.540000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=31  attempt=137  accepted  reason=success  P rel.= 6.780359e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=31  attempt=138  accepted  reason=success  P rel.= 7.663817e-13  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=31  attempt=139  accepted  reason=success  P rel.= 6.205753e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=31  attempt=141  accepted  reason=success  P rel.= 7.800286e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=31  attempt=142  accepted  reason=success  P rel.= 4.697410e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=31  attempt=143  accepted  reason=success  P rel.= 7.311871e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=31  attempt=144  accepted  reason=success  P rel.=-2.838420e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.712586e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.385643e-01s  cpu=1.385490e-01s  provider=143  solves=9  iterations=129
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.250000e-05s  cpu=1.300000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.610000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.150688e-03s  cpu=2.151000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.700000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=32  upper=-1.930982e+01  LP_primal= 3.719691e-12  LP_dual= 5.551115e-17  active_cuts=37  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.439180e-04s  cpu=3.440000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=32  attempt=145  accepted  reason=success  P rel.= 7.843382e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=32  attempt=146  accepted  reason=success  P rel.=-2.829696e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.719691e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=3.867214e-02s  cpu=3.867300e-02s  provider=38  solves=2  iterations=36
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=9.910000e-06s  cpu=1.000000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.400000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.158059e-03s  cpu=2.159000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.500000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=33  upper=-1.930982e+01  LP_primal= 3.719691e-12  LP_dual= 5.551115e-17  active_cuts=38  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.129390e-04s  cpu=3.130000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=33  attempt=147  accepted  reason=success  P rel.= 5.329477e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=33  attempt=148  accepted  reason=success  P rel.= 6.289071e-13  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=33  attempt=149  accepted  reason=success  P rel.=-2.825423e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.712586e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=6.245378e-02s  cpu=6.244700e-02s  provider=62  solves=3  iterations=57
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.220000e-05s  cpu=1.200000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.410000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.159398e-03s  cpu=2.160000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.600000e-07s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=34  upper=-1.930982e+01  LP_primal= 3.719691e-12  LP_dual= 5.551115e-17  active_cuts=39  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.169580e-04s  cpu=3.180000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=34  attempt=151  accepted  reason=success  P rel.= 5.300747e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=34  attempt=152  accepted  reason=success  P rel.=-2.802008e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.709033e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=4.747581e-02s  cpu=4.747700e-02s  provider=49  solves=3  iterations=41
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.279000e-05s  cpu=1.300000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.500000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.187799e-03s  cpu=2.182000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.600000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=35  upper=-1.930982e+01  LP_primal= 3.719691e-12  LP_dual= 5.551115e-17  active_cuts=40  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.310880e-04s  cpu=3.310000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=35  attempt=153  accepted  reason=success  P rel.= 2.930494e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=35  attempt=154  accepted  reason=success  P rel.=-2.802276e-09  objective=-1.930982e+01  upper=-1.930982e+01  gap= 3.716139e-12  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=3.986930e-02s  cpu=3.987000e-02s  provider=40  solves=2  iterations=35
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.197000e-05s  cpu=1.200000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=unchanged_problem_67  wall=1.640000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931001e+01  upper=-1.930982e+01  gap= 1.858632e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=2.165159e-03s  cpu=2.166000e-03s  provider=3  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.900000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=36  upper=-1.930982e+01  LP_primal= 3.719691e-12  LP_dual= 5.551115e-17  active_cuts=41  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.267690e-04s  cpu=3.280000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=36  attempt=155  accepted  reason=success  P rel.= 8.130685e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=36  attempt=156  accepted  reason=success  P rel.= 6.967107e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=36  attempt=157  accepted  reason=success  P rel.= 7.800286e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=36  attempt=158  accepted  reason=success  P rel.= 5.300747e-14  objective=-1.626028e+01  upper=-1.930982e+01  gap=-3.049537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=36  attempt=159  accepted  reason=success  P rel.=-6.163906e-08  objective=-1.931300e+01  upper=-1.930982e+01  gap= 3.181112e-03  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.024637e-01s  cpu=1.024650e-01s  provider=102  solves=5  iterations=93
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.543000e-05s  cpu=1.500000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=4.460194e-01s  cpu=4.459850e-01s  provider=1428  solves=2  iterations=110
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.930982e+01  gap= 1.822820e-03  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_free_energy_convergence_failed  wall=1.541622e-03s  cpu=1.542000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.100000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=37  upper=-1.931162e+01  LP_primal= 3.552714e-15  LP_dual= 1.110223e-16  active_cuts=42  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.299180e-04s  cpu=3.310000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=37  attempt=160  accepted  reason=success  P rel.= 6.478691e-14  objective=-1.624749e+01  upper=-1.931162e+01  gap=-3.064132e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=37  attempt=161  accepted  reason=success  P rel.=-3.058939e-09  objective=-1.931263e+01  upper=-1.931162e+01  gap= 1.011040e-03  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=3.665331e-02s  cpu=3.665300e-02s  provider=36  solves=2  iterations=34
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.458000e-05s  cpu=1.400000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=6.475703e-02s  cpu=6.475800e-02s  provider=219  solves=2  iterations=18
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931162e+01  gap= 2.493214e-05  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.486652e-03s  cpu=1.487000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.090000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=38  upper=-1.931163e+01  LP_primal= 3.552714e-15  LP_dual= 1.019150e-17  active_cuts=43  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.115580e-04s  cpu=3.120000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=38  attempt=162  accepted  reason=success  P rel.= 6.694168e-14  objective=-1.625244e+01  upper=-1.931163e+01  gap=-3.059188e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=38  attempt=163  accepted  reason=success  P rel.= 1.729566e-13  objective=-1.625244e+01  upper=-1.931163e+01  gap=-3.059188e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=38  attempt=164  accepted  reason=success  P rel.= 8.303067e-14  objective=-1.625244e+01  upper=-1.931163e+01  gap=-3.059188e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=38  attempt=165  accepted  reason=success  P rel.= 4.180264e-14  objective=-1.625244e+01  upper=-1.931163e+01  gap=-3.059188e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=38  attempt=166  accepted  reason=success  P rel.= 5.529153e-13  objective=-1.625244e+01  upper=-1.931163e+01  gap=-3.059188e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=38  attempt=167  accepted  reason=success  P rel.=-2.939644e-09  objective=-1.931188e+01  upper=-1.931163e+01  gap= 2.517913e-04  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.311471e-01s  cpu=1.311490e-01s  provider=128  solves=6  iterations=120
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.489000e-05s  cpu=2.400000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.287320e-02s  cpu=5.287300e-02s  provider=132  solves=2  iterations=14
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931163e+01  gap= 1.441306e-05  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.478562e-03s  cpu=1.479000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.080000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=39  upper=-1.931163e+01  LP_primal= 7.105427e-15  LP_dual= 4.510281e-17  active_cuts=44  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.189180e-04s  cpu=3.190000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=39  attempt=169  accepted  reason=success  P rel.= 8.647831e-14  objective=-1.625504e+01  upper=-1.931163e+01  gap=-3.056598e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=39  attempt=170  accepted  reason=success  P rel.=-2.881064e-09  objective=-1.931170e+01  upper=-1.931163e+01  gap= 6.304986e-05  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=4.162669e-02s  cpu=4.162700e-02s  provider=43  solves=3  iterations=36
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.448000e-05s  cpu=1.500000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.573852e-02s  cpu=5.574000e-02s  provider=117  solves=2  iterations=13
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931163e+01  gap= 9.203386e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.556061e-03s  cpu=1.556000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.200000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=40  upper=-1.931164e+01  LP_primal= 3.552714e-15  LP_dual= 1.214306e-17  active_cuts=45  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.454580e-04s  cpu=3.460000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=40  attempt=171  accepted  reason=success  P rel.= 4.338281e-14  objective=-1.625637e+01  upper=-1.931164e+01  gap=-3.055265e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=40  attempt=172  accepted  reason=success  P rel.= 7.886477e-14  objective=-1.625637e+01  upper=-1.931164e+01  gap=-3.055265e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=40  attempt=173  accepted  reason=success  P rel.= 5.473129e-14  objective=-1.625637e+01  upper=-1.931164e+01  gap=-3.055265e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=40  attempt=174  accepted  reason=success  P rel.=-2.852131e-09  objective=-1.931165e+01  upper=-1.931164e+01  gap= 1.598481e-05  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=7.741604e-02s  cpu=7.740900e-02s  provider=76  solves=4  iterations=67
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.614000e-05s  cpu=1.600000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.838986e-02s  cpu=5.839100e-02s  provider=153  solves=2  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 6.622707e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.487852e-03s  cpu=1.488000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.100000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=41  upper=-1.931164e+01  LP_primal= 7.105427e-15  LP_dual= 4.163336e-17  active_cuts=46  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.510180e-04s  cpu=3.520000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=41  attempt=175  accepted  reason=success  P rel.=-2.848926e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 4.243356e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.619907e-02s  cpu=2.620000e-02s  provider=26  solves=1  iterations=19
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.729000e-05s  cpu=1.700000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.699026e-02s  cpu=5.699200e-02s  provider=129  solves=2  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 5.349818e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.530712e-03s  cpu=1.531000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.160000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=42  upper=-1.931164e+01  LP_primal= 7.105427e-15  LP_dual= 5.551115e-17  active_cuts=47  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.582480e-04s  cpu=3.580000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=42  attempt=176  accepted  reason=success  P rel.= 7.484253e-14  objective=-1.625746e+01  upper=-1.931164e+01  gap=-3.054175e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=42  attempt=177  accepted  reason=success  P rel.=-2.820437e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.361549e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=4.927544e-02s  cpu=4.926700e-02s  provider=48  solves=2  iterations=42
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.685000e-05s  cpu=1.700000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.321850e-02s  cpu=5.320900e-02s  provider=126  solves=2  iterations=14
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 4.583097e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.491072e-03s  cpu=1.491000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.070000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=43  upper=-1.931164e+01  LP_primal= 0.000000e+00  LP_dual= 5.551115e-17  active_cuts=48  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.393080e-04s  cpu=3.390000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=43  attempt=178  accepted  reason=success  P rel.=-2.834859e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 3.404350e-07  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.221228e-02s  cpu=2.221300e-02s  provider=22  solves=1  iterations=19
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.756000e-05s  cpu=1.800000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.432837e-02s  cpu=5.433000e-02s  provider=126  solves=2  iterations=14
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 4.058507e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.509092e-03s  cpu=1.509000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.080000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=44  upper=-1.931164e+01  LP_primal= 0.000000e+00  LP_dual= 1.040834e-17  active_cuts=49  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.513180e-04s  cpu=3.520000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=44  attempt=179  accepted  reason=success  P rel.= 6.694168e-14  objective=-1.625737e+01  upper=-1.931164e+01  gap=-3.054273e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=44  attempt=180  accepted  reason=success  P rel.= 5.200191e-14  objective=-1.625737e+01  upper=-1.931164e+01  gap=-3.054273e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=44  attempt=182  accepted  reason=success  P rel.= 4.165899e-14  objective=-1.625737e+01  upper=-1.931164e+01  gap=-3.054273e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=44  attempt=183  accepted  reason=success  P rel.= 4.783601e-14  objective=-1.625737e+01  upper=-1.931164e+01  gap=-3.054273e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=44  attempt=184  accepted  reason=success  P rel.= 6.780359e-14  objective=-1.625737e+01  upper=-1.931164e+01  gap=-3.054273e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=44  attempt=185  accepted  reason=success  P rel.=-2.650934e-08  objective=-1.931165e+01  upper=-1.931164e+01  gap= 1.329111e-05  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.345202e-01s  cpu=1.345150e-01s  provider=134  solves=7  iterations=118
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.874000e-05s  cpu=1.900000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=7.900660e-02s  cpu=7.898900e-02s  provider=211  solves=1  iterations=22
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 3.826102e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.517012e-03s  cpu=1.518000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.080000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=45  upper=-1.931164e+01  LP_primal= 0.000000e+00  LP_dual= 1.387779e-17  active_cuts=50  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.221570e-04s  cpu=4.230000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=45  attempt=186  accepted  reason=success  P rel.= 7.728460e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=45  attempt=187  accepted  reason=success  P rel.= 6.191387e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=45  attempt=188  accepted  reason=success  P rel.=-2.822752e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 4.170851e-07  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=6.524446e-02s  cpu=6.524600e-02s  provider=64  solves=3  iterations=59
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.873000e-05s  cpu=1.900000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.708174e-02s  cpu=5.708300e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 2.049362e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.537921e-03s  cpu=1.525000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.140000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=46  upper=-1.931164e+01  LP_primal= 3.552714e-15  LP_dual= 6.938894e-18  active_cuts=51  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.151480e-04s  cpu=4.160000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=46  attempt=189  accepted  reason=success  P rel.= 6.205753e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=46  attempt=190  accepted  reason=success  P rel.= 4.955983e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=46  attempt=191  accepted  reason=success  P rel.= 3.316917e-13  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=46  attempt=192  accepted  reason=success  P rel.= 7.771556e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=46  attempt=193  accepted  reason=success  P rel.= 6.435595e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=46  attempt=194  accepted  reason=success  P rel.=-2.814650e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 2.415845e-13  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.214680e-01s  cpu=1.214640e-01s  provider=121  solves=6  iterations=110
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.815000e-05s  cpu=1.800000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.705200e-02s  cpu=5.704600e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.871726e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.517232e-03s  cpu=1.518000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=9.800000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=47  upper=-1.931164e+01  LP_primal= 2.415845e-13  LP_dual= 6.938894e-18  active_cuts=52  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.718080e-04s  cpu=3.720000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=47  attempt=195  accepted  reason=success  P rel.= 6.464326e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=47  attempt=196  accepted  reason=success  P rel.= 1.106118e-13  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=47  attempt=197  accepted  reason=success  P rel.=-1.838406e-08  objective=-1.931164e+01  upper=-1.931164e+01  gap= 2.415845e-13  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=6.095961e-02s  cpu=6.095400e-02s  provider=61  solves=3  iterations=55
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.793000e-05s  cpu=1.800000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.666518e-02s  cpu=5.666600e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.871732e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.486152e-03s  cpu=1.486000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.050000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=48  upper=-1.931164e+01  LP_primal= 3.552714e-15  LP_dual= 6.938894e-18  active_cuts=53  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.078470e-04s  cpu=4.080000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=48  attempt=198  accepted  reason=success  P rel.=-2.799694e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.552714e-15  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.294690e-02s  cpu=2.294700e-02s  provider=24  solves=1  iterations=19
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.439000e-05s  cpu=2.400000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.665899e-02s  cpu=5.666000e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.871725e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.495592e-03s  cpu=1.496000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.030000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=49  upper=-1.931164e+01  LP_primal= 3.552714e-15  LP_dual= 6.938894e-18  active_cuts=54  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.783480e-04s  cpu=3.790000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=49  attempt=199  accepted  reason=success  P rel.=-2.801474e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 7.105427e-15  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.970850e-02s  cpu=1.970900e-02s  provider=20  solves=1  iterations=17
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.015000e-05s  cpu=2.000000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.694393e-02s  cpu=5.694400e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.871725e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.491502e-03s  cpu=1.492000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.020000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=50  upper=-1.931164e+01  LP_primal= 7.105427e-15  LP_dual= 6.938894e-18  active_cuts=55  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.933880e-04s  cpu=3.930000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=50  attempt=200  accepted  reason=success  P rel.= 6.794724e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=50  attempt=201  accepted  reason=success  P rel.=-2.815630e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 0.000000e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=4.665494e-02s  cpu=4.665600e-02s  provider=46  solves=2  iterations=41
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.929900e-05s  cpu=1.900000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.708018e-02s  cpu=5.704900e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.871725e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.501682e-03s  cpu=1.501000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.010000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=51  upper=-1.931164e+01  LP_primal= 7.105427e-15  LP_dual= 6.938894e-18  active_cuts=56  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.915070e-04s  cpu=3.920000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=51  attempt=202  accepted  reason=success  P rel.= 6.105196e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=51  attempt=203  accepted  reason=success  P rel.= 8.001399e-13  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=51  attempt=204  accepted  reason=success  P rel.= 9.524106e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=51  attempt=206  accepted  reason=success  P rel.= 5.904084e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=51  attempt=207  accepted  reason=success  P rel.= 4.237725e-14  objective=-1.625815e+01  upper=-1.931164e+01  gap=-3.053489e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=51  attempt=208  accepted  reason=success  P rel.=-5.541076e-08  objective=-1.931165e+01  upper=-1.931164e+01  gap= 3.340500e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.220974e-01s  cpu=1.220650e-01s  provider=122  solves=7  iterations=111
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.905000e-05s  cpu=1.900000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.751000e-02s  cpu=5.751000e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.871725e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.526272e-03s  cpu=1.527000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.090000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=52  upper=-1.931164e+01  LP_primal= 0.000000e+00  LP_dual= 6.938894e-18  active_cuts=57  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.953880e-04s  cpu=3.960000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=52  attempt=209  accepted  reason=success  P rel.= 1.871781e-13  objective=-1.625780e+01  upper=-1.931164e+01  gap=-3.053841e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=52  attempt=210  accepted  reason=success  P rel.=-2.843940e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.008128e-06  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=4.355557e-02s  cpu=4.355600e-02s  provider=44  solves=2  iterations=38
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.825900e-05s  cpu=1.800000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.802453e-02s  cpu=5.802600e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.194395e-07  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.550492e-03s  cpu=1.551000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=9.600000e-07s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=53  upper=-1.931164e+01  LP_primal= 0.000000e+00  LP_dual= 4.163336e-17  active_cuts=58  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.958370e-04s  cpu=3.960000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=211  accepted  reason=success  P rel.= 5.659876e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=212  accepted  reason=success  P rel.= 8.101955e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=213  accepted  reason=success  P rel.= 6.521786e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=214  accepted  reason=success  P rel.= 6.320674e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=215  accepted  reason=success  P rel.= 5.947180e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=216  accepted  reason=success  P rel.= 6.651073e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=217  accepted  reason=success  P rel.= 2.940550e-13  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=218  accepted  reason=success  P rel.= 4.754871e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=219  accepted  reason=success  P rel.= 7.297505e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=220  accepted  reason=success  P rel.= 6.435595e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=221  accepted  reason=success  P rel.= 1.499724e-13  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=222  accepted  reason=success  P rel.= 5.783417e-13  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=223  accepted  reason=success  P rel.= 4.481932e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=224  accepted  reason=success  P rel.= 2.348705e-13  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=225  accepted  reason=success  P rel.= 5.975910e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=226  accepted  reason=success  P rel.= 4.884157e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=228  accepted  reason=success  P rel.= 6.277578e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=229  accepted  reason=success  P rel.= 6.133927e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=230  accepted  reason=success  P rel.= 6.967107e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=231  accepted  reason=success  P rel.= 7.886477e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=232  accepted  reason=success  P rel.= 7.139489e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=233  accepted  reason=success  P rel.= 6.220118e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=235  accepted  reason=success  P rel.= 1.011308e-13  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=236  accepted  reason=success  P rel.= 6.062101e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=237  accepted  reason=success  P rel.= 7.613539e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=238  accepted  reason=success  P rel.= 6.001767e-13  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=239  accepted  reason=success  P rel.= 5.588050e-14  objective=-1.625798e+01  upper=-1.931164e+01  gap=-3.053668e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=53  attempt=240  accepted  reason=success  P rel.=-2.771650e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 2.520025e-07  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=5.672905e-01s  cpu=5.672870e-01s  provider=556  solves=30  iterations=512
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.061000e-05s  cpu=2.100000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.837160e-02s  cpu=5.835700e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap= 3.696266e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.527802e-03s  cpu=1.528000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.090000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=54  upper=-1.931164e+01  LP_primal= 3.552714e-15  LP_dual= 6.938894e-18  active_cuts=59  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.949680e-04s  cpu=3.960000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=54  attempt=241  accepted  reason=success  P rel.= 7.886477e-14  objective=-1.625806e+01  upper=-1.931164e+01  gap=-3.053580e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=54  attempt=242  accepted  reason=success  P rel.= 2.842867e-13  objective=-1.625806e+01  upper=-1.931164e+01  gap=-3.053580e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=54  attempt=243  accepted  reason=success  P rel.=-2.839667e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 6.299721e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=6.600729e-02s  cpu=6.600900e-02s  provider=66  solves=3  iterations=58
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.934000e-05s  cpu=1.900000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.834991e-02s  cpu=5.833800e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-4.272614e-09  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.550282e-03s  cpu=1.550000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=9.500000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=55  upper=-1.931164e+01  LP_primal= 3.552714e-15  LP_dual= 1.387779e-17  active_cuts=60  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=3.896280e-04s  cpu=3.900000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=55  attempt=244  accepted  reason=success  P rel.= 3.673173e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=55  attempt=245  accepted  reason=success  P rel.= 6.162657e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=55  attempt=246  accepted  reason=success  P rel.= 3.706213e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=55  attempt=247  accepted  reason=success  P rel.= 6.320674e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053537e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=55  attempt=248  accepted  reason=success  P rel.=-2.811979e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.574909e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.079358e-01s  cpu=1.079300e-01s  provider=107  solves=5  iterations=94
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.970000e-05s  cpu=2.000000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.807002e-02s  cpu=5.807200e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-2.489166e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.552262e-03s  cpu=1.552000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.090000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=56  upper=-1.931164e+01  LP_primal= 3.552714e-15  LP_dual= 8.326673e-17  active_cuts=61  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.304470e-04s  cpu=4.310000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=56  attempt=249  accepted  reason=success  P rel.= 7.484253e-14  objective=-1.625809e+01  upper=-1.931164e+01  gap=-3.053559e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=56  attempt=250  accepted  reason=success  P rel.= 6.335039e-14  objective=-1.625809e+01  upper=-1.931164e+01  gap=-3.053559e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=56  attempt=251  accepted  reason=success  P rel.= 4.323916e-14  objective=-1.625809e+01  upper=-1.931164e+01  gap=-3.053559e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=56  attempt=253  accepted  reason=success  P rel.= 7.843382e-13  objective=-1.625809e+01  upper=-1.931164e+01  gap=-3.053559e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=56  attempt=254  accepted  reason=success  P rel.=-2.820971e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 3.937330e-09  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=9.898955e-02s  cpu=9.897300e-02s  provider=99  solves=6  iterations=91
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.024000e-05s  cpu=2.100000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.753043e-02s  cpu=5.753200e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-2.800169e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.487112e-03s  cpu=1.488000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.120000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=57  upper=-1.931164e+01  LP_primal= 3.552714e-15  LP_dual= 6.938894e-18  active_cuts=62  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.018570e-04s  cpu=4.030000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=57  attempt=255  accepted  reason=success  P rel.=-2.802365e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 9.843397e-10  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.259516e-02s  cpu=2.259600e-02s  provider=22  solves=1  iterations=19
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.138000e-05s  cpu=2.200000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.753647e-02s  cpu=5.752900e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-2.955610e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.483781e-03s  cpu=1.484000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.070000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=58  upper=-1.931164e+01  LP_primal= 3.552714e-15  LP_dual= 5.551115e-17  active_cuts=63  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.196580e-04s  cpu=4.200000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=58  attempt=258  accepted  reason=success  P rel.= 6.622342e-14  objective=-1.625808e+01  upper=-1.931164e+01  gap=-3.053564e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=58  attempt=259  accepted  reason=success  P rel.= 5.300747e-14  objective=-1.625808e+01  upper=-1.931164e+01  gap=-3.053564e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=58  attempt=260  accepted  reason=success  P rel.=-3.512085e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 2.460894e-10  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=6.647759e-02s  cpu=6.647100e-02s  provider=67  solves=5  iterations=56
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.021000e-05s  cpu=2.000000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.763112e-02s  cpu=5.763200e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-2.961464e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.542892e-03s  cpu=1.543000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.090000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=59  upper=-1.931164e+01  LP_primal= 0.000000e+00  LP_dual= 5.551115e-17  active_cuts=64  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.538170e-04s  cpu=4.540000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=59  attempt=261  accepted  reason=success  P rel.=-1.077032e-07  objective=-1.931164e+01  upper=-1.931164e+01  gap= 2.548762e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.160301e-02s  cpu=2.160300e-02s  provider=21  solves=1  iterations=20
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.983000e-05s  cpu=1.900000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.732033e-02s  cpu=5.731500e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-2.964785e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.512472e-03s  cpu=1.513000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.110000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=60  upper=-1.931164e+01  LP_primal= 4.263256e-14  LP_dual= 3.885781e-15  active_cuts=65  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.686380e-04s  cpu=4.690000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=60  attempt=262  accepted  reason=success  P rel.= 4.263582e-13  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=60  attempt=263  accepted  reason=success  P rel.= 4.869792e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=60  attempt=264  accepted  reason=success  P rel.= 8.173781e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=60  attempt=265  accepted  reason=success  P rel.= 6.392500e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=60  attempt=266  accepted  reason=success  P rel.= 5.746067e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=60  attempt=267  accepted  reason=success  P rel.= 8.805848e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=60  attempt=268  accepted  reason=success  P rel.= 4.568123e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=60  attempt=269  accepted  reason=success  P rel.= 7.354966e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=60  attempt=270  accepted  reason=success  P rel.=-2.787497e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 8.621868e-10  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.846652e-01s  cpu=1.846390e-01s  provider=175  solves=9  iterations=160
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.222000e-05s  cpu=2.200000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.909929e-02s  cpu=5.909000e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.328113e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.831950e-03s  cpu=1.833000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.140000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=61  upper=-1.931164e+01  LP_primal= 1.776357e-14  LP_dual= 2.647882e-14  active_cuts=66  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.689980e-04s  cpu=4.690000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=61  attempt=271  accepted  reason=success  P rel.= 6.248848e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=61  attempt=272  accepted  reason=success  P rel.= 5.085269e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=61  attempt=273  accepted  reason=success  P rel.=-2.000883e-07  objective=-1.931164e+01  upper=-1.931164e+01  gap=-1.101341e-13  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=6.958957e-02s  cpu=6.954500e-02s  provider=65  solves=3  iterations=59
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.048000e-05s  cpu=2.100000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.739848e-02s  cpu=5.737800e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.365139e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.486432e-03s  cpu=1.487000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.070000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=62  upper=-1.931164e+01  LP_primal= 1.776357e-14  LP_dual= 2.647882e-14  active_cuts=67  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.190780e-04s  cpu=4.200000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=62  attempt=274  accepted  reason=success  P rel.= 4.208994e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=62  attempt=275  accepted  reason=success  P rel.= 5.142730e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=62  attempt=276  accepted  reason=success  P rel.= 5.372573e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=62  attempt=277  accepted  reason=success  P rel.= 1.519835e-13  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=62  attempt=278  accepted  reason=success  P rel.= 7.024567e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=62  attempt=279  accepted  reason=success  P rel.= 1.590224e-13  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=62  attempt=280  accepted  reason=success  P rel.= 5.975910e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=62  attempt=281  accepted  reason=success  P rel.=-2.780998e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap=-1.065814e-13  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.646095e-01s  cpu=1.646020e-01s  provider=164  solves=8  iterations=151
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.029000e-05s  cpu=2.000000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.704317e-02s  cpu=5.704400e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.365333e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.500682e-03s  cpu=1.501000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=9.400000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=63  upper=-1.931164e+01  LP_primal= 5.897505e-13  LP_dual= 9.048318e-14  active_cuts=68  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.271880e-04s  cpu=4.280000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=63  attempt=282  accepted  reason=success  P rel.=-2.823464e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 0.000000e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.120295e-02s  cpu=2.120300e-02s  provider=21  solves=1  iterations=18
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.060000e-05s  cpu=2.100000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.720836e-02s  cpu=5.718700e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.365115e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.489062e-03s  cpu=1.489000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=8.700000e-07s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=64  upper=-1.931164e+01  LP_primal= 5.897505e-13  LP_dual= 9.048318e-14  active_cuts=69  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.419880e-04s  cpu=4.430000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=64  attempt=283  accepted  reason=success  P rel.= 8.288702e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=64  attempt=284  accepted  reason=success  P rel.=-2.831031e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.552714e-15  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=3.822372e-02s  cpu=3.822400e-02s  provider=38  solves=2  iterations=34
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=1.864000e-05s  cpu=1.900000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.834293e-02s  cpu=5.834400e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.365021e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=2.384657e-03s  cpu=2.385000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.840000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=65  upper=-1.931164e+01  LP_primal= 5.897505e-13  LP_dual= 9.048318e-14  active_cuts=70  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=7.661060e-04s  cpu=7.660000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=65  attempt=285  accepted  reason=success  P rel.=-2.785539e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap=-1.065814e-14  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.707252e-02s  cpu=2.707400e-02s  provider=22  solves=1  iterations=20
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.495000e-05s  cpu=2.500000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.914541e-02s  cpu=5.914100e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.365121e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.533392e-03s  cpu=1.533000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.190000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=66  upper=-1.931164e+01  LP_primal= 5.897505e-13  LP_dual= 9.048318e-14  active_cuts=71  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=5.386470e-04s  cpu=5.390000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=66  attempt=287  accepted  reason=success  P rel.= 3.668864e-13  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=66  attempt=288  accepted  reason=success  P rel.=-2.837174e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 0.000000e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=6.296559e-02s  cpu=6.296700e-02s  provider=47  solves=3  iterations=38
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=4.770000e-05s  cpu=4.700000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=6.206408e-02s  cpu=6.206600e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.365216e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.569681e-03s  cpu=1.570000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.390000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=67  upper=-1.931164e+01  LP_primal= 5.897505e-13  LP_dual= 9.048318e-14  active_cuts=72  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=5.592470e-04s  cpu=5.600000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=67  attempt=289  accepted  reason=success  P rel.= 6.277578e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=67  attempt=290  accepted  reason=success  P rel.= 5.918449e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=67  attempt=291  accepted  reason=success  P rel.=-2.802187e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap=-1.065814e-14  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=6.653797e-02s  cpu=6.654000e-02s  provider=63  solves=3  iterations=56
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.715000e-05s  cpu=2.700000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=6.033490e-02s  cpu=6.033600e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.364821e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.543102e-03s  cpu=1.544000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.090000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=68  upper=-1.931164e+01  LP_primal= 5.897505e-13  LP_dual= 9.048318e-14  active_cuts=73  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=5.556070e-04s  cpu=5.560000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=68  attempt=292  accepted  reason=success  P rel.= 6.033371e-14  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=68  attempt=293  accepted  reason=success  P rel.=-2.842516e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 0.000000e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=4.228988e-02s  cpu=4.229100e-02s  provider=40  solves=2  iterations=36
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.418000e-05s  cpu=2.400000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=6.319991e-02s  cpu=6.320200e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.364921e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.726221e-03s  cpu=1.726000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.410000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=69  upper=-1.931164e+01  LP_primal= 5.897505e-13  LP_dual= 9.048318e-14  active_cuts=74  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=5.638970e-04s  cpu=5.640000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=69  attempt=294  accepted  reason=success  P rel.= 1.537073e-13  objective=-1.625812e+01  upper=-1.931164e+01  gap=-3.053527e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=69  attempt=295  accepted  reason=success  P rel.=-2.649011e-08  objective=-1.931164e+01  upper=-1.931164e+01  gap= 6.372318e-09  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=3.812225e-02s  cpu=3.812400e-02s  provider=35  solves=2  iterations=33
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.798000e-05s  cpu=2.800000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.942286e-02s  cpu=5.940100e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.364827e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.536382e-03s  cpu=1.536000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.170000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=70  upper=-1.931164e+01  LP_primal= 2.856382e-12  LP_dual= 3.864686e-13  active_cuts=75  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=5.315180e-04s  cpu=5.320000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=70  attempt=297  accepted  reason=success  P rel.= 6.044863e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053532e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=70  attempt=298  accepted  reason=success  P rel.= 6.665438e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053532e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=70  attempt=299  accepted  reason=success  P rel.=-2.798982e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 2.169571e-10  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=5.966701e-02s  cpu=5.966900e-02s  provider=59  solves=4  iterations=51
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.469000e-05s  cpu=2.500000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=6.013714e-02s  cpu=6.012500e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.716855e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.621241e-03s  cpu=1.621000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.180000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=71  upper=-1.931164e+01  LP_primal= 1.069367e-12  LP_dual= 4.989897e-13  active_cuts=76  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=6.506860e-04s  cpu=6.510000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=71  attempt=300  accepted  reason=success  P rel.= 3.246528e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=71  attempt=301  accepted  reason=success  P rel.= 4.668680e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=71  attempt=302  accepted  reason=success  P rel.= 5.832258e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=71  attempt=304  accepted  reason=success  P rel.= 6.636708e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=71  attempt=305  accepted  reason=success  P rel.= 6.809090e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=71  attempt=307  accepted  reason=success  P rel.=-2.827203e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 5.456613e-11  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.316483e-01s  cpu=1.316500e-01s  provider=121  solves=8  iterations=108
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.742000e-05s  cpu=2.800000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=6.063507e-02s  cpu=6.063700e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.723872e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.606492e-03s  cpu=1.606000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.180000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=72  upper=-1.931164e+01  LP_primal= 5.456613e-11  LP_dual= 4.989897e-13  active_cuts=77  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=5.473870e-04s  cpu=5.480000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=72  attempt=308  accepted  reason=success  P rel.= 7.642269e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=72  attempt=309  accepted  reason=success  P rel.= 5.142730e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=72  attempt=310  accepted  reason=success  P rel.= 4.884157e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=72  attempt=311  accepted  reason=success  P rel.= 8.030129e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=72  attempt=312  accepted  reason=success  P rel.= 6.737264e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=72  attempt=313  accepted  reason=success  P rel.=-2.796934e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 5.456968e-11  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.319860e-01s  cpu=1.319660e-01s  provider=120  solves=6  iterations=114
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=3.846000e-05s  cpu=3.800000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.873546e-02s  cpu=5.872600e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.723877e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.499492e-03s  cpu=1.500000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.170000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=73  upper=-1.931164e+01  LP_primal= 5.456968e-11  LP_dual= 4.989897e-13  active_cuts=78  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=5.392770e-04s  cpu=5.400000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=73  attempt=314  accepted  reason=success  P rel.= 5.616781e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=73  attempt=315  accepted  reason=success  P rel.= 7.613539e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=73  attempt=316  accepted  reason=success  P rel.= 6.521786e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=73  attempt=317  accepted  reason=success  P rel.= 6.995837e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=73  attempt=318  accepted  reason=success  P rel.= 6.895281e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=73  attempt=319  accepted  reason=success  P rel.= 5.243286e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=73  attempt=320  accepted  reason=success  P rel.= 6.694168e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=73  attempt=321  accepted  reason=success  P rel.= 6.866550e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=73  attempt=322  accepted  reason=success  P rel.= 5.631146e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=73  attempt=323  accepted  reason=success  P rel.= 5.947180e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=73  attempt=324  accepted  reason=success  P rel.=-2.785093e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 5.456968e-11  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.279380e-01s  cpu=2.278820e-01s  provider=212  solves=11  iterations=189
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.579000e-05s  cpu=2.600000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.770522e-02s  cpu=5.770700e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.723486e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.516412e-03s  cpu=1.492000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.090000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=74  upper=-1.931164e+01  LP_primal= 5.456968e-11  LP_dual= 4.989897e-13  active_cuts=79  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.937380e-04s  cpu=4.940000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=74  attempt=325  accepted  reason=success  P rel.= 8.518545e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=74  attempt=326  accepted  reason=success  P rel.= 7.469887e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053529e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=74  attempt=327  accepted  reason=success  P rel.=-2.808686e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 5.456258e-11  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=5.796827e-02s  cpu=5.796900e-02s  provider=57  solves=3  iterations=52
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.482000e-05s  cpu=2.500000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.804352e-02s  cpu=5.802700e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.723374e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=2.050189e-03s  cpu=2.009000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.590000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=75  upper=-1.931164e+01  LP_primal= 5.456968e-11  LP_dual= 4.989897e-13  active_cuts=80  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=6.136560e-04s  cpu=6.140000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=75  attempt=328  accepted  reason=success  P rel.=-2.243664e-08  objective=-1.931164e+01  upper=-1.931164e+01  gap= 5.456968e-11  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.280111e-02s  cpu=2.280200e-02s  provider=22  solves=1  iterations=19
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.202000e-05s  cpu=2.200000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.810759e-02s  cpu=5.809700e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.723872e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.751520e-03s  cpu=1.752000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.230000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=76  upper=-1.931164e+01  LP_primal= 0.000000e+00  LP_dual= 6.938894e-16  active_cuts=81  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.970570e-04s  cpu=4.980000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=329  accepted  reason=success  P rel.= 6.449960e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=330  accepted  reason=success  P rel.= 7.182584e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=331  accepted  reason=success  P rel.= 5.702972e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=332  accepted  reason=success  P rel.= 2.457880e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=333  accepted  reason=success  P rel.= 5.257652e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=334  accepted  reason=success  P rel.= 2.768168e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=335  accepted  reason=success  P rel.= 5.386938e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=336  accepted  reason=success  P rel.= 5.659876e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=337  accepted  reason=success  P rel.= 5.860989e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=338  accepted  reason=success  P rel.= 5.937124e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=339  accepted  reason=success  P rel.= 4.999078e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=340  accepted  reason=success  P rel.= 4.927253e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=341  accepted  reason=success  P rel.= 5.315112e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=342  accepted  reason=success  P rel.= 8.461084e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=343  accepted  reason=success  P rel.= 1.346016e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=344  accepted  reason=success  P rel.= 7.038932e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=76  attempt=345  accepted  reason=success  P rel.=-2.809131e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.347189e-11  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=3.510189e-01s  cpu=3.509950e-01s  provider=341  solves=17  iterations=323
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.398000e-05s  cpu=2.400000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.857623e-02s  cpu=5.857800e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.725212e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.500232e-03s  cpu=1.500000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.090000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=77  upper=-1.931164e+01  LP_primal= 1.347189e-11  LP_dual= 6.938894e-16  active_cuts=82  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.919480e-04s  cpu=4.920000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=77  attempt=346  accepted  reason=success  P rel.= 5.817893e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=77  attempt=347  accepted  reason=success  P rel.= 5.616781e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=77  attempt=348  accepted  reason=success  P rel.= 6.478691e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=77  attempt=349  accepted  reason=success  P rel.= 6.895281e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=77  attempt=350  accepted  reason=success  P rel.=-2.803433e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.346834e-11  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.002108e-01s  cpu=1.002050e-01s  provider=97  solves=5  iterations=90
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.533000e-05s  cpu=2.500000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.828349e-02s  cpu=5.828500e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.724914e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.497882e-03s  cpu=1.498000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.090000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=78  upper=-1.931164e+01  LP_primal= 1.347189e-11  LP_dual= 6.938894e-16  active_cuts=83  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=4.966870e-04s  cpu=4.970000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=351  accepted  reason=success  P rel.= 4.410107e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=352  accepted  reason=success  P rel.= 1.864599e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=353  accepted  reason=success  P rel.= 7.038932e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=354  accepted  reason=success  P rel.= 6.304872e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=355  accepted  reason=success  P rel.= 1.390548e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=356  accepted  reason=success  P rel.= 6.794724e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=357  accepted  reason=success  P rel.= 1.070205e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=358  accepted  reason=success  P rel.= 7.125123e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=359  accepted  reason=success  P rel.= 2.885962e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=360  accepted  reason=success  P rel.= 5.616781e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=361  accepted  reason=success  P rel.= 6.082212e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=362  accepted  reason=success  P rel.= 2.604405e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=78  attempt=363  accepted  reason=success  P rel.=-2.826669e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.346834e-11  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=2.831433e-01s  cpu=2.831380e-01s  provider=264  solves=13  iterations=247
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=3.004000e-05s  cpu=3.000000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=6.014783e-02s  cpu=6.014400e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.725300e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.646471e-03s  cpu=1.647000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  complete  reason=continue_stage_ii  wall=1.270000e-06s  cpu=2.000000e-06s  provider=0  solves=0  iterations=0
+
+STEP 4
+  STAGE II STEP 4  major=79  upper=-1.931164e+01  LP_primal= 1.347189e-11  LP_dual= 6.938894e-16  active_cuts=84  certified
+  certificate  stage=STEP 4  complete  reason=step4_complete  wall=5.776270e-04s  cpu=5.790000e-04s  provider=0  solves=1  iterations=1
+
+STEP 5
+  certificate  stage=STEP 5 LOCAL  major=79  attempt=364  accepted  reason=success  P rel.= 6.995837e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=79  attempt=365  accepted  reason=success  P rel.= 5.912703e-13  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=79  attempt=366  accepted  reason=success  P rel.= 5.947180e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=79  attempt=367  accepted  reason=success  P rel.= 6.880915e-14  objective=-1.625811e+01  upper=-1.931164e+01  gap=-3.053531e+00  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5 LOCAL  major=79  attempt=368  accepted  reason=success  P rel.=-2.803611e-09  objective=-1.931164e+01  upper=-1.931164e+01  gap= 1.346478e-11  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 5  complete  reason=step5_complete  wall=1.046091e-01s  cpu=1.045700e-01s  provider=99  solves=5  iterations=88
+
+STEP 6
+  certificate  stage=STEP 6  complete  reason=candidate_set  wall=2.611000e-05s  cpu=2.600000e-05s  provider=0  solves=0  iterations=0
+
+STEP 8
+  certificate  stage=STEP 8  complete  reason=step8_complete  wall=5.823723e-02s  cpu=5.822400e-02s  provider=124  solves=1  iterations=15
+
+STEP 9
+  certificate  stage=STEP 9  failed  objective=-1.931164e+01  upper=-1.931164e+01  gap=-3.724917e-08  wall=0.000000e+00s  cpu=0.000000e+00s  provider=0  solves=0  iterations=0
+  certificate  stage=STEP 9  complete  reason=paper_potential_convergence_failed  wall=1.516671e-03s  cpu=1.516000e-03s  provider=2  solves=0  iterations=0
+
+STEP 7
+  certificate  stage=STEP 7  indeterminate  reason=stage_ii_major_iteration_limit  wall=1.110000e-06s  cpu=1.000000e-06s  provider=0  solves=0  iterations=0

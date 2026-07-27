@@ -1,0 +1,158 @@
+{
+  "native_outcome": "physical_equilibrium_accepted",
+  "outcome": "physical_equilibrium_accepted",
+  "outcome_parity": true,
+  "record": {
+    "diagnostics": {
+      "attempts": 17,
+      "best_tpd": -0.0037764763963644143,
+      "chemical_potential_max_relative": null,
+      "confirmation_max_difference": null,
+      "confirmation_succeeded": true,
+      "failure_reason": "",
+      "globality_certificate": "not_guaranteed",
+      "held_gap": 1.9288138691564427e-05,
+      "kkt_stationarity_max_abs": 1.2527510005468604e-10,
+      "lower_bound": null,
+      "major_iterations": 17,
+      "material_balance_max_abs": 4.1316498139432056e-10,
+      "numerical_status": "passed",
+      "outcome": "physical_equilibrium_accepted",
+      "physical_status": "passed",
+      "pressure_stationarity_max_relative": 2.894782473177806e-11,
+      "search_profiles": [
+        "HELD2.0 paper Steps 1-10"
+      ],
+      "search_status": "physical_equilibrium_accepted",
+      "solver_status": "passed",
+      "upper_bound": null
+    },
+    "phases": [
+      {
+        "formula_mass_fractions": {
+          "1-butanol": 0.029860801005668115,
+          "LiCl": 0.14649430899796334,
+          "water": 0.8236448899963686
+        },
+        "label": "aqueous",
+        "phase_fraction": 0.12256690550004071,
+        "state": {
+          "amount_mol": 0.12256690550004071,
+          "chemical_potential_over_rt": [
+            -194.13637950032387,
+            -125.98650301359646,
+            -0.0043565975021628844,
+            -2.1554879216659746
+          ],
+          "molar_density_mol_m3": 56960.288129003224,
+          "mole_fractions": [
+            0.06515813156958353,
+            0.06515813156958353,
+            0.8620873174990441,
+            0.0075964193617887865
+          ],
+          "pressure_pa": 101300.00000293241,
+          "volume_m3": 2.15179574271907e-06
+        }
+      },
+      {
+        "formula_mass_fractions": {
+          "1-butanol": 0.4780499830143934,
+          "LiCl": 0.010560118433730644,
+          "water": 0.511389898551876
+        },
+        "label": "organic",
+        "phase_fraction": 0.8774330944999593,
+        "state": {
+          "amount_mol": 0.8774330944999593,
+          "chemical_potential_over_rt": [
+            -193.13433958771628,
+            -126.9885427899018,
+            -0.00435660276221661,
+            -2.155487945695775
+          ],
+          "molar_density_mol_m3": 32136.92018906018,
+          "mole_fractions": [
+            0.007049679749324171,
+            0.007049679749324171,
+            0.8033709503366716,
+            0.18252969016468001
+          ],
+          "pressure_pa": 101300.00000113776,
+          "volume_m3": 2.7302961495316183e-05
+        }
+      }
+    ],
+    "row": {
+      "attempts": 17,
+      "best_tpd": -0.0037764763963644143,
+      "chemical_potential_max_relative": null,
+      "failure_reason": "",
+      "feed_cl_mole_fraction": 0.014171853078914061,
+      "feed_li_mole_fraction": 0.014171853078914061,
+      "feed_one_butanol_mole_fraction": 0.16108866049336898,
+      "feed_water_mole_fraction": 0.8105676333488029,
+      "globality_certificate": "not_guaranteed",
+      "held_gap": 1.9288138691564427e-05,
+      "kkt_stationarity_max_abs": 1.2527510005468604e-10,
+      "major_iterations": 17,
+      "material_balance_max_abs": 4.1316498139432056e-10,
+      "outcome": "physical_equilibrium_accepted",
+      "phase_count": 2,
+      "predicted_aqueous_licl_mass_fraction": 0.14649430899796334,
+      "predicted_aqueous_one_butanol_mass_fraction": 0.029860801005668115,
+      "predicted_aqueous_phase_fraction": 0.12256690550004071,
+      "predicted_aqueous_water_mass_fraction": 0.8236448899963686,
+      "predicted_organic_licl_mass_fraction": 0.010560118433730644,
+      "predicted_organic_one_butanol_mass_fraction": 0.4780499830143934,
+      "predicted_organic_phase_fraction": 0.8774330944999593,
+      "predicted_organic_water_mass_fraction": 0.511389898551876,
+      "pressure_stationarity_max_relative": 2.894782473177806e-11,
+      "source_aqueous_licl_mass_fraction": 0.04376200351144657,
+      "source_aqueous_one_butanol_mass_fraction": 0.09266950075556644,
+      "source_aqueous_water_mass_fraction": 0.8635684957329871,
+      "source_organic_licl_mass_fraction": 0.0005064476069854755,
+      "source_organic_one_butanol_mass_fraction": 0.7871083943904018,
+      "source_organic_water_mass_fraction": 0.21238515800261262,
+      "source_row": 9,
+      "tie_line_id": "figure3-05"
+    },
+    "total_free_energy_over_rt": -4.8874903777066425
+  },
+  "row": {
+    "attempts": 17,
+    "best_tpd": -0.0037764763963644143,
+    "chemical_potential_max_relative": null,
+    "failure_reason": "",
+    "feed_cl_mole_fraction": 0.014171853078914061,
+    "feed_li_mole_fraction": 0.014171853078914061,
+    "feed_one_butanol_mole_fraction": 0.16108866049336898,
+    "feed_water_mole_fraction": 0.8105676333488029,
+    "globality_certificate": "not_guaranteed",
+    "held_gap": 1.9288138691564427e-05,
+    "kkt_stationarity_max_abs": 1.2527510005468604e-10,
+    "major_iterations": 17,
+    "material_balance_max_abs": 4.1316498139432056e-10,
+    "outcome": "physical_equilibrium_accepted",
+    "phase_count": 2,
+    "predicted_aqueous_licl_mass_fraction": 0.14649430899796334,
+    "predicted_aqueous_one_butanol_mass_fraction": 0.029860801005668115,
+    "predicted_aqueous_phase_fraction": 0.12256690550004071,
+    "predicted_aqueous_water_mass_fraction": 0.8236448899963686,
+    "predicted_organic_licl_mass_fraction": 0.010560118433730644,
+    "predicted_organic_one_butanol_mass_fraction": 0.4780499830143934,
+    "predicted_organic_phase_fraction": 0.8774330944999593,
+    "predicted_organic_water_mass_fraction": 0.511389898551876,
+    "pressure_stationarity_max_relative": 2.894782473177806e-11,
+    "source_aqueous_licl_mass_fraction": 0.04376200351144657,
+    "source_aqueous_one_butanol_mass_fraction": 0.09266950075556644,
+    "source_aqueous_water_mass_fraction": 0.8635684957329871,
+    "source_organic_licl_mass_fraction": 0.0005064476069854755,
+    "source_organic_one_butanol_mass_fraction": 0.7871083943904018,
+    "source_organic_water_mass_fraction": 0.21238515800261262,
+    "source_row": 9,
+    "tie_line_id": "figure3-05"
+  },
+  "tie_line_id": "figure3-05",
+  "wall_seconds": 9.346852214999672
+}

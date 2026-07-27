@@ -1,0 +1,39 @@
+{
+  "case_id": "figure3-29",
+  "wall_seconds": 3.032726575002016,
+  "outcome": "indeterminate",
+  "failure_reason": "stage_iii_active_set_balance_failed",
+  "native_outcome": "indeterminate",
+  "native_failure_reason": "stage_iii_active_set_balance_failed",
+  "phase_mole_fraction_max_abs_delta": null,
+  "phase_fraction_max_abs_delta": null,
+  "free_energy_abs_delta": null,
+  "parity": true,
+  "record": {
+    "error": "stage_iii_active_set_balance_failed",
+    "diagnostics": {
+      "outcome": "indeterminate",
+      "search_status": "step8",
+      "solver_status": "failed",
+      "numerical_status": "failed",
+      "physical_status": "failed",
+      "attempts": 10,
+      "major_iterations": 10,
+      "best_tpd": -0.21142635449506617,
+      "lower_bound": null,
+      "upper_bound": null,
+      "held_gap": 0.00030404766981462217,
+      "material_balance_max_abs": null,
+      "pressure_stationarity_max_relative": null,
+      "kkt_stationarity_max_abs": null,
+      "chemical_potential_max_relative": null,
+      "confirmation_succeeded": false,
+      "confirmation_max_difference": null,
+      "search_profiles": [
+        "HELD2.0 paper Steps 1-10"
+      ],
+      "globality_certificate": "not_guaranteed",
+      "failure_reason": "stage_iii_active_set_balance_failed"
+    }
+  }
+}
