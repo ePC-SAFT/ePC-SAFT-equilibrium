@@ -127,6 +127,13 @@ struct ProviderPhaseBlockEvidence {
 };
 
 class ProviderContext;
+struct NeutralReferenceEvaluation;
+
+struct SourceStandardStateResult {
+    std::vector<double> standard_offsets;
+    std::vector<double> ln_k_provider_basis;
+    double representation_residual_inf_norm = 0.0;
+};
 
 [[nodiscard]] CompiledReactionSystem compile_reaction_system(
     const ReactionSystemInput& input
@@ -181,6 +188,17 @@ class ProviderContext;
     double temperature_k,
     const std::vector<double>& amounts,
     double volume_m3
+);
+
+[[nodiscard]] SourceStandardStateResult transform_source_standard_state(
+    const DenseMatrix& reaction_matrix,
+    const std::vector<double>& source_ln_k,
+    const std::vector<double>& log_activity_scale_factors,
+    const std::vector<int>& charges,
+    const std::string& provider_fingerprint,
+    double temperature_k,
+    double pressure_pa,
+    const NeutralReferenceEvaluation& reference
 );
 
 [[nodiscard]] ChemicalSolveResult solve_provider_reaction(

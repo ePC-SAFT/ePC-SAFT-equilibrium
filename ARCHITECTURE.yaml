@@ -344,7 +344,7 @@ public_surface:
 
 private_reacting_phase_foundation:
   binding_decision: D-028
-  status: private-non-production-manufactured-evidence
+  status: private-non-production-source-complete-value-evidence
   authority_effect: none
   public_exports_added: []
   scope: one homogeneous fixed-temperature fixed-pressure reacting phase
@@ -358,12 +358,13 @@ private_reacting_phase_foundation:
     - molar-volume domain bounds
     - packing-fraction value, gradient, and Hessian
     - source temperature and total-ion composition bounds
-    - dimensionless lnK already transformed into the declared Provider Helmholtz basis
+    - Provider-basis lnK or explicit source activity-scale shifts plus the neutral-reference callback
   evidence_profiles:
     - installed_provider_manufactured_nonpredictive
+    - installed_provider_source_bound_water_self_ionization
   globality_certificate: not_guaranteed
   downstream_blockers:
-    - source-complete MEA species, equilibrium constants, and exact standard-state transformation
+    - public typed homogeneous chemical-equilibrium operation
     - typed Provider parameter derivatives for implicit sensitivities
     - coupled phase incidence and HELD-owned phase discovery
 

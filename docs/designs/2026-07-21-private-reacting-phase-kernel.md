@@ -11,8 +11,8 @@ Migration binding: D-028 at `807976e4f6f4b4f5a2c1ff4b1f0c699b5d22ea97`
 
 This design owns the first private fixed-temperature, fixed-pressure,
 homogeneous reacting-phase foundation in Equilibrium. It adds no public Python
-export, selector, result family, receipt, promotion, predictive claim, or
-source-backed nonideal chemistry. The accepted public capability remains
+export, selector, result family, receipt, promotion, or predictive claim. The
+accepted public capability remains
 `pure-component-saturation-v1`; D-026 remains the public HELD2 admission gate.
 
 The first implementation slice contains only:
@@ -22,7 +22,8 @@ The first implementation slice contains only:
 - a direct-potential phase-block boundary over installed Provider tensors;
 - one native Ipopt problem with max-min initialization;
 - exact postsolve and sensitivity-ready KKT evidence; and
-- analytic, manufactured, and one installed-Provider manufactured test case.
+- analytic and manufactured tests, one installed-Provider manufactured case,
+  and one source-complete installed-Provider value case.
 
 Historical chemical-equilibrium code is mathematical evidence only. The
 retired public route, selectors, workflows, internal Provider runtime,
@@ -113,10 +114,18 @@ constants, or EOS derivatives.
 Manufactured tests may use the analytic ideal block
 `sum_i n_i (log(n_i/V) - 1)`. Installed-Provider tests supply synthetic
 `g_ref`/`lnK` and are labeled manufactured and nonpredictive. Provider's current
-Helmholtz ideal reference is not relabeled as a reactive standard state. This
-slice accepts only `lnK` already transformed into the declared Provider basis;
-source-standard-state transformation remains deferred until a source-complete
-application owns its inputs and acceptance evidence.
+Helmholtz ideal reference is not relabeled as a reactive standard state.
+
+The source path accepts explicit, state-bound source activity-scale shifts and
+uses only charge-neutral contractions from the installed Provider SDK. It
+solves each reaction row in the Provider neutral basis, applies the resulting
+standard-state offset, rewrites the provenance to the Provider Helmholtz
+coordinate basis, and enters the same compiler and solver. The retained
+source-complete sentinel is Held-2008/IAPWS R11-07(2019) water
+self-ionization at 298.15 K and 1 bar. No absolute single-ion standard is
+constructed. SDK v1 reports no neutral-reference derivatives, so this path
+supports fixed-state values but no caloric, implicit, or parameter
+sensitivities.
 
 ## Initialization and solve
 

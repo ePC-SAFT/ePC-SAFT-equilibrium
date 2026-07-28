@@ -14,10 +14,10 @@ independent workflows. They produce compatible initialization and evidence
 packets for one future simultaneous reactive multiphase Ipopt solve. Neither
 preparatory workflow is an accepted coupled equilibrium result.
 
-The current work first makes the private homogeneous-speciation kernel
-trace-ready against the source-derived Belov-Aristova ideal-gas benchmark. A
-separate source-bound ePC-SAFT integration slice remains deferred until a real,
-source-complete, non-MEA installed Provider consumer exists. Neither slice
+The private homogeneous-speciation kernel is trace-ready against the
+source-derived Belov-Aristova ideal-gas benchmark. A separate source-bound
+ePC-SAFT integration slice is now exercised by the Held-2008/IAPWS
+R11-07(2019) water self-ionization sentinel. Neither slice
 modifies HELD2, adds reactive phase equilibrium, exposes a public reaction API,
 or claims a predictive weak-electrolyte capability.
 
@@ -100,7 +100,7 @@ The private homogeneous workflow supplies:
 - supplied and independent reaction matrices, basis maps, and cycle evidence;
 - source equilibrium-constant records and declared standard states;
 - constants already converted to the installed Provider Helmholtz reference
-  basis; source-standard-state transport remains deferred;
+  basis or explicit source constants with state-bound activity-scale shifts;
 - exact homogeneous support classifications and accessible-species maps;
 - a positive, exactly electroneutral, reaction-feasible accessible state;
 - a positive volume on a valid Provider pressure branch;
@@ -399,11 +399,10 @@ Belov is an ideal-gas algorithm and trace benchmark, not an installed-Provider
 or ePC-SAFT validation case. Reaktoro may be used as a disposable independent
 cross-check only; it is not a production dependency or oracle of record.
 
-After #69, source-reference transport returns only through a newly shaped leaf
-whose exact non-MEA installed Provider artifact and complete source record
-exercise the transformation through the existing homogeneous solve. Restoring
-that path before a real consumer exists would recreate the dormant surface that
-was deliberately removed. MEA qualification remains application and Provider
+After #69, source-reference transport returned only through the active
+Held-2008/IAPWS R11-07(2019) water self-ionization path. The transform feeds
+the existing homogeneous solve directly; the former standalone diagnostic
+surface did not return. MEA qualification remains application and Provider
 work and does not define the generic Equilibrium baseline.
 
 ## Issue boundary and readiness
@@ -413,7 +412,7 @@ GitHub issue #35 owns private homogeneous chemical-equilibrium readiness. Issue
 source-reference work. Historical MEA-specific leaves #46, #47, and #68 do not
 define the package baseline; #68 is retired as not planned.
 
-A future source-reference leaf is Ready only when its body names:
+The source-reference leaf is complete because it names:
 
 - the exact non-editable non-MEA Provider artifact and native SDK contract;
 - one complete source record and its standard-state conversion;
@@ -422,15 +421,12 @@ A future source-reference leaf is Ready only when its body names:
 - the two compact persistent test families;
 - the explicit interior-equilibrium and no-sensitivity limits.
 
-Without that real consumer, no executable restoration leaf should be opened and
-implementation must not restore unused contracts or tests.
-
-The worktree currently binds the immutable Provider wheel with SHA-256
-`a8b6376193301673429a8d8b648896b6881c6f693ca4d8fc3f6a9d2d16f3b39c`.
-That artifact exposes the neutral-reference callback but does not contain the
-historical `held-2008-water-self-ionization` catalog bundle. The earlier IAPWS
-water self-ionization solve remains useful provenance, but it is not a current
-installed-artifact consumer and cannot make the new leaf Ready.
+The immutable Provider wheel has SHA-256
+`9b05f4d202424f3db570dfaa80210e5aa54c9ee3586a4cbef4309f5881648d08`.
+It contains `held-2008-water-self-ionization` version 1 and the native
+neutral-reference callback. The frozen IAPWS R11-07(2019) source record,
+species order, charge, state, standard-state shift, Provider basis, and
+fingerprint are checked before the existing solver runs.
 
 ## Deferred work
 

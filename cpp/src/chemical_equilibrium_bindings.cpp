@@ -239,20 +239,27 @@ py::dict provider_block_evidence(
     return result;
 }
 
-py::dict solve_provider_manufactured(
-    const py::capsule& capsule,
-    const py::dict& spec,
-    const py::dict& options
+void validate_provider_identity(
+    const ChemicalProviderMetadata& metadata,
+    const ReactionSystemInput& input
 ) {
-    const epcsaft_native_sdk_v1& sdk = checked_chemical_sdk(capsule);
-    const ChemicalProviderMetadata metadata = chemical_provider_metadata(sdk);
-    const ReactionSystemInput input = reaction_system_input(spec);
     if (input.species_ids != metadata.component_ids) {
         throw py::value_error("Provider capsule component order does not match the reaction system");
     }
     if (input.charges != metadata.charges) {
         throw py::value_error("Provider capsule charges do not match the reaction system");
     }
+}
+
+py::dict solve_provider_input(
+    const epcsaft_native_sdk_v1& sdk,
+    const ChemicalProviderMetadata& metadata,
+    const ReactionSystemInput& input,
+    const ProviderContext& provider,
+    const char* profile,
+    const py::dict& options
+) {
+    validate_provider_identity(metadata, input);
     if (input.temperature_k < sdk.source_temperature_min_k
         || input.temperature_k > sdk.source_temperature_max_k) {
         throw py::value_error("temperature is outside the Provider source domain");
@@ -286,9 +293,8 @@ py::dict solve_provider_manufactured(
     const int max_iterations = options.contains("test_max_iterations")
         ? py::cast<int>(options["test_max_iterations"])
         : 500;
-    const ProviderContext provider(sdk, input.provider_fingerprint);
     py::dict result = chemical_result(
-        "installed_provider_manufactured_nonpredictive",
+        profile,
         solve_provider_reaction(
             compiled,
             provider,
@@ -303,6 +309,107 @@ py::dict solve_provider_manufactured(
     );
     result["parameter_fingerprint"] = input.provider_fingerprint;
     result["packing_fraction_bounds"] = packing_bounds;
+    return result;
+}
+
+py::dict solve_provider_manufactured(
+    const py::capsule& capsule,
+    const py::dict& spec,
+    const py::dict& options
+) {
+    const epcsaft_native_sdk_v1& sdk = checked_chemical_sdk(capsule);
+    const ChemicalProviderMetadata metadata = chemical_provider_metadata(sdk);
+    const ReactionSystemInput input = reaction_system_input(spec);
+    const ProviderContext provider(sdk, input.provider_fingerprint);
+    return solve_provider_input(
+        sdk,
+        metadata,
+        input,
+        provider,
+        "installed_provider_manufactured_nonpredictive",
+        options
+    );
+}
+
+py::dict solve_provider_source(
+    const py::capsule& capsule,
+    const py::dict& spec,
+    const py::dict& source_standard_state,
+    const py::dict& options
+) {
+    const epcsaft_native_sdk_v1& sdk = checked_chemical_sdk(capsule);
+    const ChemicalProviderMetadata metadata = chemical_provider_metadata(sdk);
+    ReactionSystemInput input = reaction_system_input(spec);
+    validate_provider_identity(metadata, input);
+    const std::string source_standard_state_id = py::cast<std::string>(
+        source_standard_state["id"]
+    );
+    const std::string source_activity_scale_id = py::cast<std::string>(
+        source_standard_state["activity_scale_id"]
+    );
+    const std::vector<double> log_activity_scale_factors =
+        py::cast<std::vector<double>>(
+            source_standard_state["log_activity_scale_factors"]
+        );
+    if (source_standard_state_id.empty() || source_activity_scale_id.empty()) {
+        throw py::value_error("source standard-state identity is incomplete");
+    }
+    for (const EquilibriumConstantRecord& record : input.equilibrium_constant_records) {
+        if (record.conversion_id
+                != "source-standard-state-to-provider-neutral-reference"
+            || record.reaction_orientation != "products_positive"
+            || !record.dimensionless
+            || record.reference_id.empty()
+            || record.temperature_k != input.temperature_k
+            || record.pressure_pa != input.pressure_pa) {
+            throw py::value_error(
+                "source equilibrium-constant provenance is incompatible"
+            );
+        }
+        if (source_standard_state_id != record.reference_id) {
+            throw py::value_error(
+                "source standard-state identity is inconsistent"
+            );
+        }
+    }
+    const ProviderContext provider(sdk, input.provider_fingerprint);
+    const NeutralReferenceEvaluation reference = provider.evaluate_neutral_reference(
+        input.temperature_k, input.pressure_pa
+    );
+    const SourceStandardStateResult transformed = transform_source_standard_state(
+        input.reaction_matrix,
+        input.ln_k,
+        log_activity_scale_factors,
+        input.charges,
+        input.provider_fingerprint,
+        input.temperature_k,
+        input.pressure_pa,
+        reference
+    );
+    input.ln_k = transformed.ln_k_provider_basis;
+    for (EquilibriumConstantRecord& record : input.equilibrium_constant_records) {
+        record.reference_id = "provider-helmholtz-coordinate-basis";
+        record.conversion_id = "already-provider-basis";
+    }
+    py::dict result = solve_provider_input(
+        sdk,
+        metadata,
+        input,
+        provider,
+        "installed_provider_source_bound",
+        options
+    );
+    result["standard_offsets"] = transformed.standard_offsets;
+    result["ln_k_provider_basis"] = transformed.ln_k_provider_basis;
+    result["reference_representation_residual_inf_norm"] =
+        transformed.representation_residual_inf_norm;
+    result["source_standard_state_id"] = source_standard_state_id;
+    result["source_activity_scale_id"] = source_activity_scale_id;
+    result["provider_reference_id"] = reference.basis_id;
+    result["reference_derivative_availability"] =
+        reference.derivative_availability;
+    result["reference_convergence_error"] =
+        reference.reference_convergence_error;
     return result;
 }
 
@@ -363,6 +470,14 @@ void bind_chemical_equilibrium(py::module_& module) {
         &solve_provider_manufactured,
         py::arg("capsule"),
         py::arg("spec"),
+        py::arg("options")
+    );
+    module.def(
+        "_chemical_solve_provider_source",
+        &solve_provider_source,
+        py::arg("capsule"),
+        py::arg("spec"),
+        py::arg("source_standard_state"),
         py::arg("options")
     );
     module.def(
