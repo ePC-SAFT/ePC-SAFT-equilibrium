@@ -67,11 +67,6 @@ struct Held2StateEvaluation;
     const std::vector<double>& physical_fractions
 );
 
-[[nodiscard]] std::vector<double> held2_lift_modified_fractions(
-    const Held2Coordinates& coordinates,
-    const std::vector<double>& modified_fractions
-);
-
 [[nodiscard]] std::vector<double> held2_lift_independent_fractions(
     const Held2Coordinates& coordinates,
     const std::vector<double>& independent_modified_fractions,
@@ -207,7 +202,7 @@ struct Held2StageIICandidate {
     double lower_gap = 0.0;
 };
 
-struct Held2StageIIINlpEvaluation {
+struct Held2Problem67Evaluation {
     double objective = 0.0;
     std::vector<double> objective_gradient;
     std::vector<double> constraints;
@@ -216,14 +211,14 @@ struct Held2StageIIINlpEvaluation {
     std::vector<double> lagrangian_hessian;
 };
 
-struct Held2StageIIIPhase {
+struct Held2Problem67Phase {
     double phase_fraction = 0.0;
     std::vector<double> modified_fractions;
     std::vector<double> physical_fractions;
     double volume = 0.0;
 };
 
-struct Held2StageIIIResult {
+struct Held2Problem67Result {
     std::string solver_status = "not_run";
     std::string numerical_status = "not_adjudicated";
     std::string physical_status = "not_adjudicated";
@@ -263,7 +258,7 @@ struct Held2StageIIIResult {
     bool physical_evidence_available = false;
     bool phase_identity_evidence_available = false;
     bool free_energy_gap_available = false;
-    std::vector<Held2StageIIIPhase> phases;
+    std::vector<Held2Problem67Phase> phases;
     std::vector<double> solution_variables;
 };
 
@@ -277,7 +272,7 @@ struct Held2StageIIIResult {
     Held2CompositionDomain domain = Held2CompositionDomain::FiniteSearch
 );
 
-[[nodiscard]] Held2StageIIIResult solve_held2_stage_iii(
+[[nodiscard]] Held2Problem67Result solve_held2_problem67(
     const Held2Coordinates& coordinates,
     const std::vector<double>& physical_feed,
     const std::vector<Held2StageIICandidate>& candidates,

@@ -473,7 +473,7 @@ std::vector<double> held2_transform_physical_fractions(
     return modified;
 }
 
-std::vector<double> held2_lift_modified_fractions(
+static std::vector<double> held2_lift_modified_fractions(
     const Held2Coordinates& coordinates,
     const std::vector<double>& modified_fractions
 ) {

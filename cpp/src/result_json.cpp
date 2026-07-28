@@ -520,12 +520,24 @@ JsonValue neutral_flash_to_json(const FlashResult& flash) {
     return result;
 }
 
+const char* tolerance_relation_name(Held2ToleranceRelation relation) {
+    switch (relation) {
+        case Held2ToleranceRelation::AbsAtMost: return "abs_at_most";
+        case Held2ToleranceRelation::AtLeast: return "at_least";
+        case Held2ToleranceRelation::GreaterThan: return "greater_than";
+        case Held2ToleranceRelation::LessThanNegative:
+            return "less_than_negative";
+        case Held2ToleranceRelation::SolverTarget: return "solver_target";
+    }
+    return "unknown";
+}
+
 JsonValue held2_tolerance_audit_to_json(const Held2ToleranceAudit& audit) {
     JsonValue result = JsonValue::object();
     result["name"] = audit.tolerance->name;
     result["category"] = audit.tolerance->category;
     result["failure_meaning"] = audit.tolerance->failure_meaning;
-    result["relation"] = held2_tolerance_relation_name(
+    result["relation"] = tolerance_relation_name(
         audit.tolerance->relation
     );
     result["residual"] = audit.residual;

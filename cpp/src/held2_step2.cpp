@@ -7,19 +7,40 @@
 #include <chrono>
 #include <cmath>
 #include <ctime>
+#include <functional>
+#include <limits>
 #include <stdexcept>
 
 namespace epcsaft_equilibrium {
 namespace {
 
-std::string nlopt_version_string() {
-    int major = 0;
-    int minor = 0;
-    int bugfix = 0;
-    nlopt_version(&major, &minor, &bugfix);
-    return std::to_string(major) + "." + std::to_string(minor) + "."
-        + std::to_string(bugfix);
-}
+struct Held2StageIReducedEvaluation {
+    std::vector<double> chart_coordinates;
+    std::vector<double> independent_modified_fractions;
+    Held2PressureEnvelopeResult pressure_envelope;
+    double trial_volume = 0.0;
+    double trial_pressure_residual = 0.0;
+    double physical_total_ion_mole_fraction =
+        std::numeric_limits<double>::quiet_NaN();
+    double total_ion_mole_fraction_max =
+        std::numeric_limits<double>::quiet_NaN();
+    double tpd = std::numeric_limits<double>::infinity();
+    bool certified = false;
+    std::string failure_reason;
+};
+
+using Held2StageIReducedEvaluator = std::function<Held2StageIReducedEvaluation(
+    const std::vector<double>&
+)>;
+
+struct Held2StageIDirectResult {
+    std::string outcome = "indeterminate";
+    std::string termination_reason;
+    int failed_evaluation_count = 0;
+    int negative_witness_index = -1;
+    double minimum_tpd = std::numeric_limits<double>::infinity();
+    std::vector<Held2StageIReducedEvaluation> evaluations;
+};
 
 struct DirectContext {
     const Held2StageIReducedEvaluator* evaluator = nullptr;
@@ -88,7 +109,6 @@ double direct_objective(
         context.optimizer->force_stop();
         return 0.0;
     }
-    ++context.result->completed_evaluation_count;
     context.result->minimum_tpd = std::min(
         context.result->minimum_tpd,
         retained.tpd
@@ -101,6 +121,40 @@ double direct_objective(
         return retained.tpd;
     }
     return retained.tpd;
+}
+
+Held2StageIDirectResult run_direct_search(
+    std::size_t composition_dimension,
+    int evaluation_budget,
+    const Held2StageIReducedEvaluator& evaluator,
+    Held2ProgressObserver* observer
+) {
+    Held2StageIDirectResult result;
+    nlopt::opt optimizer(nlopt::GN_DIRECT_L, composition_dimension);
+    DirectContext context{&evaluator, &result, &optimizer, observer, false};
+    optimizer.set_lower_bounds(std::vector<double>(composition_dimension, 0.0));
+    optimizer.set_upper_bounds(std::vector<double>(composition_dimension, 1.0));
+    optimizer.set_maxeval(evaluation_budget);
+    optimizer.set_min_objective(direct_objective, &context);
+    std::vector<double> initial(composition_dimension, 0.5);
+    double minimum = std::numeric_limits<double>::infinity();
+    try {
+        const nlopt::result status = optimizer.optimize(initial, minimum);
+        if (status == nlopt::MAXEVAL_REACHED
+            && result.failed_evaluation_count == 0) {
+            result.outcome = "no_negative_witness_detected";
+            result.termination_reason = "declared_budget_exhausted";
+        } else {
+            result.termination_reason = "unexpected_solver_termination";
+        }
+    } catch (const nlopt::forced_stop&) {
+        if (result.negative_witness_index >= 0) {
+            result.outcome = "negative_witness_found";
+        }
+    } catch (const std::exception& error) {
+        result.termination_reason = std::string("solver_failure: ") + error.what();
+    }
+    return result;
 }
 
 }  // namespace
@@ -377,10 +431,9 @@ Held2Step2Result run_held2_step2(
         );
     };
     ++result.timing.optimizer_solves;
-    const Held2StageIDirectResult search = solve_held2_stage_i_direct(
+    const Held2StageIDirectResult search = run_direct_search(
         dimension,
         search_budget,
-        -kHeld2TpdNegativeMargin.atol,
         reduced,
         observer
     );
@@ -424,48 +477,6 @@ Held2Step2Result run_held2_step2(
         ? "step2_search_failed"
         : search.termination_reason
     );
-}
-
-Held2StageIDirectResult solve_held2_stage_i_direct(
-    std::size_t composition_dimension,
-    int evaluation_budget,
-    double negative_tpd_threshold,
-    const Held2StageIReducedEvaluator& evaluator,
-    Held2ProgressObserver* observer
-) {
-    if (composition_dimension == 0 || evaluation_budget < 1
-        || !std::isfinite(negative_tpd_threshold)
-        || negative_tpd_threshold != -kHeld2TpdNegativeMargin.atol) {
-        throw std::invalid_argument("HELD2 DIRECT-L search policy is invalid");
-    }
-    Held2StageIDirectResult result;
-    result.declared_evaluation_budget = evaluation_budget;
-    result.solver_version = nlopt_version_string();
-    nlopt::opt optimizer(nlopt::GN_DIRECT_L, composition_dimension);
-    DirectContext context{&evaluator, &result, &optimizer, observer, false};
-    optimizer.set_lower_bounds(std::vector<double>(composition_dimension, 0.0));
-    optimizer.set_upper_bounds(std::vector<double>(composition_dimension, 1.0));
-    optimizer.set_maxeval(evaluation_budget);
-    optimizer.set_min_objective(direct_objective, &context);
-    std::vector<double> initial(composition_dimension, 0.5);
-    double minimum = std::numeric_limits<double>::infinity();
-    try {
-        const nlopt::result status = optimizer.optimize(initial, minimum);
-        if (status == nlopt::MAXEVAL_REACHED
-            && result.failed_evaluation_count == 0) {
-            result.outcome = "no_negative_witness_detected";
-            result.termination_reason = "declared_budget_exhausted";
-        } else {
-            result.termination_reason = "unexpected_solver_termination";
-        }
-    } catch (const nlopt::forced_stop&) {
-        if (result.negative_witness_index >= 0) {
-            result.outcome = "negative_witness_found";
-        }
-    } catch (const std::exception& error) {
-        result.termination_reason = std::string("solver_failure: ") + error.what();
-    }
-    return result;
 }
 
 }  // namespace epcsaft_equilibrium

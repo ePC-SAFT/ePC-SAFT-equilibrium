@@ -94,7 +94,7 @@ add_library(
   cpp/src/held2_step8.cpp
   cpp/src/held2_step9.cpp
   cpp/src/held2_step10.cpp
-  cpp/src/held2_stage_iii_generic.cpp
+  cpp/src/held2_step8_nlp.cpp
   cpp/src/saturation.cpp
 )
 set_target_properties(epcsaft_equilibrium_core PROPERTIES POSITION_INDEPENDENT_CODE ON)

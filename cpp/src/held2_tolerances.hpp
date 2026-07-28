@@ -1,9 +1,7 @@
 #pragma once
 
-#include <array>
 #include <cmath>
 #include <stdexcept>
-#include <string_view>
 
 namespace epcsaft_equilibrium {
 
@@ -34,10 +32,6 @@ struct Held2ToleranceAudit {
     bool passed = false;
 };
 
-inline constexpr Held2Tolerance kHeld2ChartContact{
-    "chart_contact", "representation", "chart contact exceeds numerical allowance",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-9, 0.0,
-};
 inline constexpr Held2Tolerance kHeld2PolytopeFeasibility{
     "polytope_feasibility", "representation",
     "modified composition is outside the complete Step-1 polytope",
@@ -111,33 +105,9 @@ inline constexpr Held2Tolerance kHeld2LpActiveCut{
     "lp_active_cut", "stage_ii_lp_diagnostic", "cut is not diagnostically active",
     Held2ToleranceRelation::AbsAtMost, 1.0e-7, 0.0,
 };
-inline constexpr Held2Tolerance kHeld2Stage2Primal{
-    "stage2_primal", "stage_ii_kkt", "physical primal feasibility failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
-};
-inline constexpr Held2Tolerance kHeld2Stage2DualSign{
-    "stage2_dual_sign", "stage_ii_kkt", "physical multiplier sign failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-9, 0.0,
-};
-inline constexpr Held2Tolerance kHeld2Stage2DualPullback{
-    "stage2_dual_pullback", "stage_ii_kkt", "physical dual reconstruction unresolved",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-9, 1.0e-9,
-};
-inline constexpr Held2Tolerance kHeld2Stage2Stationarity{
-    "stage2_stationarity", "stage_ii_kkt", "original-coordinate stationarity failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-7, 0.0,
-};
-inline constexpr Held2Tolerance kHeld2Stage2Complementarity{
-    "stage2_complementarity", "stage_ii_kkt", "physical complementarity failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
-};
 inline constexpr Held2Tolerance kHeld2Step6Gap{
     "step6_gap", "stage_ii_step6", "same-major upper/lower gap failed",
     Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
-};
-inline constexpr Held2Tolerance kHeld2Step6Gradient{
-    "step6_gradient", "stage_ii_step6", "fixed-volume gradient agreement failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-8, 1.0e-7,
 };
 inline constexpr Held2Tolerance kHeld2PaperStep6Gap{
     "paper_step6_gap", "stage_ii_paper",
@@ -159,22 +129,6 @@ inline constexpr Held2Tolerance kHeld2PaperStep6CompositionDistinct{
     "Perdomo Eq. (66) modified compositions are not distinct",
     Held2ToleranceRelation::AtLeast, 1.0e-3, 0.0,
 };
-inline constexpr Held2Tolerance kHeld2BasinDuplicateComposition{
-    "basin_duplicate_composition", "numerical_identity", "composition is not a numerical duplicate",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-7, 0.0,
-};
-inline constexpr Held2Tolerance kHeld2BasinDuplicateLogVolume{
-    "basin_duplicate_log_volume", "numerical_identity", "density branch is not a numerical duplicate",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-7, 0.0,
-};
-inline constexpr Held2Tolerance kHeld2CandidateDistinctComposition{
-    "candidate_distinct_composition", "phase_identity", "candidate composition is not confidently distinct",
-    Held2ToleranceRelation::GreaterThan, 1.0e-5, 0.0,
-};
-inline constexpr Held2Tolerance kHeld2CandidateDistinctLogVolume{
-    "candidate_distinct_log_volume", "phase_identity", "candidate density is not confidently distinct",
-    Held2ToleranceRelation::GreaterThan, 1.0e-5, 0.0,
-};
 inline constexpr Held2Tolerance kHeld2Stage3ModifiedBalance{
     "stage3_modified_balance", "stage_iii_physical", "modified material balance failed",
     Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
@@ -191,10 +145,6 @@ inline constexpr Held2Tolerance kHeld2Stage3Pressure{
     "stage3_pressure", "stage_iii_physical", "relative phase pressure closure failed",
     Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
 };
-inline constexpr Held2Tolerance kHeld2Stage3Potential{
-    "stage3_potential", "stage_iii_physical", "modified-potential equality failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-8, 1.0e-7,
-};
 inline constexpr Held2Tolerance kHeld2Stage3Stationarity{
     "stage3_stationarity", "stage_iii_kkt", "Stage-III stationarity failed",
     Held2ToleranceRelation::AbsAtMost, 1.0e-7, 0.0,
@@ -207,10 +157,6 @@ inline constexpr Held2Tolerance kHeld2Stage3Complementarity{
     "stage3_complementarity", "stage_iii_kkt", "Stage-III complementarity failed",
     Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
 };
-inline constexpr Held2Tolerance kHeld2Stage3FreeEnergyGap{
-    "stage3_free_energy_gap", "stage_iii_physical", "reduced free-energy gap failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
-};
 inline constexpr Held2Tolerance kHeld2PaperFreeEnergyGap{
     "paper_free_energy_gap", "stage_iii_paper",
     "Perdomo Eq. (68) free-energy convergence failed",
@@ -221,10 +167,6 @@ inline constexpr Held2Tolerance kHeld2PaperPotentialRatio{
     "Perdomo Eq. (69) modified-potential convergence failed",
     Held2ToleranceRelation::AbsAtMost, 1.0e-3, 0.0,
 };
-inline constexpr Held2Tolerance kHeld2PhaseActivity{
-    "phase_activity", "phase_identity", "phase amount is not confidently active",
-    Held2ToleranceRelation::GreaterThan, 1.0e-8, 0.0,
-};
 inline constexpr Held2Tolerance kHeld2PhaseRetirementMargin{
     "phase_retirement_margin", "stage_iii_kkt", "phase retirement evidence is marginal",
     Held2ToleranceRelation::GreaterThan, 1.0e-8, 0.0,
@@ -233,109 +175,26 @@ inline constexpr Held2Tolerance kHeld2PhaseMerge{
     "phase_merge", "phase_identity", "phases are not numerical duplicates",
     Held2ToleranceRelation::AbsAtMost, 1.0e-6, 0.0,
 };
-inline constexpr Held2Tolerance kHeld2PhaseDistinct{
-    "phase_distinct", "phase_identity", "phase identity is not confidently distinct",
-    Held2ToleranceRelation::GreaterThan, 1.0e-4, 0.0,
-};
 inline constexpr Held2Tolerance kHeld2IpoptTarget{
     "ipopt_target", "solver", "Ipopt target tolerance was not met",
     Held2ToleranceRelation::SolverTarget, 1.0e-10, 0.0,
-};
-inline constexpr Held2Tolerance kHeld2IpoptAcceptable{
-    "ipopt_acceptable", "solver", "Ipopt acceptable tolerance was not met",
-    Held2ToleranceRelation::SolverTarget, 1.0e-9, 0.0,
 };
 inline constexpr Held2Tolerance kHeld2IpoptConstraint{
     "ipopt_constraint", "solver", "Ipopt constraint target was not met",
     Held2ToleranceRelation::SolverTarget, 1.0e-10, 0.0,
 };
-inline constexpr std::array<const Held2Tolerance*, 52> kHeld2ToleranceContract{{
-    &kHeld2ChartContact,
-    &kHeld2PolytopeFeasibility,
-    &kHeld2CompositionSum,
-    &kHeld2ChargeBalance,
-    &kHeld2ReconstructedIon,
-    &kHeld2BoundActivity,
-    &kHeld2RootPressure,
-    &kHeld2RootLogVolumeWidth,
-    &kHeld2RootStationary,
-    &kHeld2RootBoundary,
-    &kHeld2RootDuplicate,
-    &kHeld2MechanicalMargin,
-    &kHeld2StableObjectiveTie,
-    &kHeld2TpdNegativeMargin,
-    &kHeld2TpdReferenceZero,
-    &kHeld2LpPrimal,
-    &kHeld2LpDual,
-    &kHeld2LpComplementarity,
-    &kHeld2LpActiveCut,
-    &kHeld2Stage2Primal,
-    &kHeld2Stage2DualSign,
-    &kHeld2Stage2DualPullback,
-    &kHeld2Stage2Stationarity,
-    &kHeld2Stage2Complementarity,
-    &kHeld2Step6Gap,
-    &kHeld2Step6Gradient,
-    &kHeld2PaperStep6Gap,
-    &kHeld2PaperStep6Derivative,
-    &kHeld2PaperStep6PackingDistinct,
-    &kHeld2PaperStep6CompositionDistinct,
-    &kHeld2BasinDuplicateComposition,
-    &kHeld2BasinDuplicateLogVolume,
-    &kHeld2CandidateDistinctComposition,
-    &kHeld2CandidateDistinctLogVolume,
-    &kHeld2Stage3ModifiedBalance,
-    &kHeld2Stage3ExplicitBalance,
-    &kHeld2Stage3Charge,
-    &kHeld2Stage3Pressure,
-    &kHeld2Stage3Potential,
-    &kHeld2Stage3Stationarity,
-    &kHeld2Stage3DualSign,
-    &kHeld2Stage3Complementarity,
-    &kHeld2Stage3FreeEnergyGap,
-    &kHeld2PaperFreeEnergyGap,
-    &kHeld2PaperPotentialRatio,
-    &kHeld2PhaseActivity,
-    &kHeld2PhaseRetirementMargin,
-    &kHeld2PhaseMerge,
-    &kHeld2PhaseDistinct,
-    &kHeld2IpoptTarget,
-    &kHeld2IpoptAcceptable,
-    &kHeld2IpoptConstraint,
-}};
-
-[[nodiscard]] inline const char* held2_tolerance_relation_name(
-    Held2ToleranceRelation relation
-) {
-    switch (relation) {
-        case Held2ToleranceRelation::AbsAtMost: return "abs_at_most";
-        case Held2ToleranceRelation::AtLeast: return "at_least";
-        case Held2ToleranceRelation::GreaterThan: return "greater_than";
-        case Held2ToleranceRelation::LessThanNegative: return "less_than_negative";
-        case Held2ToleranceRelation::SolverTarget: return "solver_target";
-    }
-    throw std::logic_error("unknown HELD2 tolerance relation");
-}
-
-[[nodiscard]] inline double held2_tolerance_threshold(
-    const Held2Tolerance& tolerance,
-    double scale
-) {
-    if (!std::isfinite(scale) || scale < 0.0) {
-        throw std::invalid_argument("HELD2 tolerance scale must be finite and nonnegative");
-    }
-    return tolerance.atol + tolerance.rtol * scale;
-}
-
 [[nodiscard]] inline Held2ToleranceAudit audit_held2_tolerance(
     const Held2Tolerance& tolerance,
     double residual,
     double scale = 0.0
 ) {
-    if (!std::isfinite(residual)) {
-        throw std::invalid_argument("HELD2 tolerance residual must be finite");
+    if (!std::isfinite(residual) || !std::isfinite(scale) || scale < 0.0) {
+        throw std::invalid_argument(
+            "HELD2 tolerance residual must be finite and scale must be "
+            "finite and nonnegative"
+        );
     }
-    const double threshold = held2_tolerance_threshold(tolerance, scale);
+    const double threshold = tolerance.atol + tolerance.rtol * scale;
     bool passed = false;
     switch (tolerance.relation) {
         case Held2ToleranceRelation::AbsAtMost:
@@ -353,17 +212,6 @@ inline constexpr std::array<const Held2Tolerance*, 52> kHeld2ToleranceContract{{
             break;
     }
     return {&tolerance, residual, scale, threshold, passed};
-}
-
-[[nodiscard]] inline const Held2Tolerance& held2_tolerance_by_name(
-    std::string_view name
-) {
-    for (const Held2Tolerance* tolerance : kHeld2ToleranceContract) {
-        if (name == tolerance->name) {
-            return *tolerance;
-        }
-    }
-    throw std::invalid_argument("unknown HELD2 tolerance name");
 }
 
 }  // namespace epcsaft_equilibrium

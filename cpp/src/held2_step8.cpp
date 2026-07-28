@@ -208,7 +208,7 @@ Held2Step8Result run_held2_step8(
             );
         }
     }
-    const Held2StageIIIResult solved = solve_held2_stage_iii(
+    const Held2Problem67Result solved = solve_held2_problem67(
         *step1.coordinates,
         held2_lift_independent_fractions(
             *step1.coordinates, *step1.independent_feed
@@ -276,7 +276,7 @@ Held2Step8Result run_held2_step8(
         return result;
     }
 
-    for (const Held2StageIIIPhase& phase : solved.phases) {
+    for (const Held2Problem67Phase& phase : solved.phases) {
         const std::vector<double> composition =
             independent(*step1.coordinates, phase.modified_fractions);
         const Held2StateEvaluation state =

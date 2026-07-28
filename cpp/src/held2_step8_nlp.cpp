@@ -219,7 +219,7 @@ double problem67_constraint(
     return value;
 }
 
-Held2StageIIINlpEvaluation evaluate_problem67(
+Held2Problem67Evaluation evaluate_problem67(
     const Held2Coordinates& coordinates,
     const std::vector<double>& feed,
     const Held2StateEvaluator& evaluator,
@@ -452,7 +452,7 @@ public:
         }
         try {
             evaluate(n, x);
-            Held2StageIIINlpEvaluation evaluation = cached_evaluation_;
+            Held2Problem67Evaluation evaluation = cached_evaluation_;
             for (double& value : evaluation.lagrangian_hessian) {
                 value *= objective_factor;
             }
@@ -588,7 +588,7 @@ private:
     std::vector<double> initial_;
     std::vector<Problem67Constraint> constraints_;
     std::vector<double> cached_variables_;
-    Held2StageIIINlpEvaluation cached_evaluation_;
+    Held2Problem67Evaluation cached_evaluation_;
     bool converged_ = false;
     int iterations_ = 0;
     double objective_ = 0.0;
@@ -754,7 +754,7 @@ double charge_residual(
 
 bool recover_phase_fractions(
     const std::vector<double>& feed,
-    std::vector<Held2StageIIIPhase>& phases
+    std::vector<Held2Problem67Phase>& phases
 ) {
     const HighsInt count = static_cast<HighsInt>(phases.size());
     HighsModel model;
@@ -812,7 +812,7 @@ bool recover_phase_fractions(
     return true;
 }
 
-Held2StageIIINlpEvaluation evaluate_problem67(
+Held2Problem67Evaluation evaluate_problem67(
     const Held2Coordinates& coordinates,
     const std::vector<double>& feed,
     const Held2StateEvaluator& evaluator,
@@ -830,7 +830,7 @@ Held2StageIIINlpEvaluation evaluate_problem67(
             "HELD2 Problem (67) dimensions changed"
         );
     }
-    Held2StageIIINlpEvaluation result;
+    Held2Problem67Evaluation result;
     result.objective_gradient.assign(variable_count, 0.0);
     result.constraints.assign(constraint_count, 0.0);
     result.constraint_jacobian.assign(
@@ -924,7 +924,7 @@ Held2StageIIINlpEvaluation evaluate_problem67(
 
 }  // namespace
 
-Held2StageIIIResult solve_held2_stage_iii(
+Held2Problem67Result solve_held2_problem67(
     const Held2Coordinates& coordinates,
     const std::vector<double>& physical_feed,
     const std::vector<Held2StageIICandidate>& candidates,
@@ -935,7 +935,7 @@ Held2StageIIIResult solve_held2_stage_iii(
     std::vector<double> variables,
     const Held2StateValueEvaluator& value_evaluator
 ) {
-    Held2StageIIIResult result;
+    Held2Problem67Result result;
     result.input_candidate_count = static_cast<int>(candidates.size());
     result.stage_iii_solve_count = 1;
     const std::size_t dimension = coordinates.independent_indices.size();
@@ -1238,7 +1238,7 @@ Held2StageIIIResult solve_held2_stage_iii(
         const Held2StateEvaluation state = evaluator(
             independent, variables[offset + 1 + dimension]
         );
-        Held2StageIIIPhase current{
+        Held2Problem67Phase current{
             fraction,
             state.modified_fractions,
             state.physical_amounts,
@@ -1247,7 +1247,7 @@ Held2StageIIIResult solve_held2_stage_iii(
         auto duplicate = std::find_if(
             result.phases.begin(),
             result.phases.end(),
-            [&](const Held2StageIIIPhase& known) {
+            [&](const Held2Problem67Phase& known) {
                 return std::max(
                     maximum_difference(
                         known.physical_fractions,
@@ -1307,7 +1307,7 @@ Held2StageIIIResult solve_held2_stage_iii(
             std::remove_if(
                 result.phases.begin(),
                 result.phases.end(),
-            [](const Held2StageIIIPhase& phase) {
+            [](const Held2Problem67Phase& phase) {
                 return phase.phase_fraction <= 0.0;
             }),
             result.phases.end()
@@ -1324,7 +1324,7 @@ Held2StageIIIResult solve_held2_stage_iii(
     result.pressure_stationarity_inf_norm = 0.0;
     result.minimum_phase_distance =
         std::numeric_limits<double>::infinity();
-    for (const Held2StageIIIPhase& phase : result.phases) {
+    for (const Held2Problem67Phase& phase : result.phases) {
         result.minimum_phase_fraction = std::min(
             result.minimum_phase_fraction, phase.phase_fraction
         );

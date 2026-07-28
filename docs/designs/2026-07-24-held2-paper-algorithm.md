@@ -1042,6 +1042,7 @@ held2_step5.{hpp,cpp}   lower-level multistart NLP
 held2_step6.{hpp,cpp}   all-M Eq. (66) search
 held2_step7.{hpp,cpp}   iteration/resource transition
 held2_step8.{hpp,cpp}   total-Gibbs NLP and duplicate removal
+held2_step8_nlp.cpp     Problem (67) Ipopt implementation
 held2_step9.{hpp,cpp}   Eqs. (68)–(69) and physical certificates
 held2_step10.{hpp,cpp}  trace-component refinement
 held2_algorithm.{hpp,cpp}  thin state machine only
@@ -1055,15 +1056,14 @@ Shared low-level primitives may remain in focused modules:
 - pressure-root enumeration;
 - HiGHS and Ipopt adapters;
 - progress events and result serialization; and
-- named tolerance registry.
+- named tolerance contracts.
 
 No step file may call a later step directly. It returns a typed result to the
 thin state machine. No pybind file owns scientific control flow.
 
-During development, the current controller remains available only as a
-temporary native diagnostic comparison engine. The public Python API remains
-on the current engine until the cutover criteria pass. After cutover, the
-legacy controller is deleted; two permanent scientific engines are forbidden.
+The development-only native diagnostic and public Python API call the same
+native Steps 1--10 implementation. The replaced controller is deleted; two
+permanent scientific engines are forbidden.
 
 ## Diagnostics and timing
 

@@ -18,7 +18,7 @@ replace a formulation owner.
 | --- | --- | --- |
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
-| Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Private native development controller with fail-closed installed evidence; no admitted electrolyte LLE capability |
+| Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Public development dispatch over one native core with fail-closed installed evidence; no admitted electrolyte LLE capability |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Reactive or coupled phase-chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
@@ -33,11 +33,10 @@ The package exports two equilibrium operations:
 
 - `saturation` owns the accepted, bounded, pure-component local saturation
   boundary.
-- `tp_flash` is the sole mixture flash surface. Current `main` dispatches the
-  reviewed neutral binary fingerprint to the neutral HELD controller. The
-  archived non-production HELD2 subject also dispatched qualifying installed
-  strong-electrolyte Provider capability tables, but that experimental runtime
-  is not part of current `main`.
+- `tp_flash` is the sole mixture flash surface. It dispatches the reviewed
+  neutral binary fingerprint to neutral HELD and qualifying installed strong-
+  electrolyte Provider capability tables to the non-admitted HELD2
+  development route.
 
 `tp_flash` does not accept a phase count, caller seeds, solver settings,
 backend selection, or a case-specific mode. Its public result owners are
@@ -85,18 +84,16 @@ Malformed or infeasible ceilings fail before global exploration; `NaN` retains
 the ordinary modified-simplex domain declared by a Provider with no ion cap.
 The linked implementation plan assigns deterministic pressure-root
 enumeration to density topology, DIRECT-L to the reduced Stage-I search, HiGHS
-to the Stage-II upper LP, basin exploration plus exact-Hessian Ipopt to the
-Stage-II lower problem, and exact-Hessian Ipopt to Stage III. One typed
-`Held2WorkflowController` owns the closed Steps 1--10 transition vocabulary for
+to the Stage-II upper LP, deterministic capped-multistart exact-Hessian Ipopt
+to Step 5, and exact-Hessian Ipopt to Problem (67) in Step 8. One typed
+`run_held2_algorithm` state machine owns the closed Steps 1--10 transitions for
 both installed and manufactured problems. Stage II has one major loop and one
-Eq. (66) decision owner. Each major retains its own upper-solve identity,
-`UBD`, multipliers, active cuts, lower attempts, current basins, pressure
-branches, and certificate partitions. Ordinary later majors carry current
-basins, active cuts, and named witness/reference safeguards; fixed exploration
-returns only for one bounded escalation. Replaced HELD2 runtime routes and
-baseline fixtures are deleted; focused manufactured numerical oracles call the
-same transition and stage owners. None of these internal owners is a
-caller-selectable backend or current public electrolyte behavior.
+Eq. (66) decision owner. Each major retains its upper-solve identity, `UBD`,
+multipliers, active cuts, local attempts, pressure branches, and certificate
+partitions. Replaced HELD2 runtime routes and baseline fixtures are deleted;
+focused manufactured numerical oracles call the same transition and step
+owners. None of these internal owners is a caller-selectable backend; public
+electrolyte dispatch remains non-admitted development behavior.
 
 The remaining installed-completion contract is specified in
 [HELD2 Installed Completion](designs/2026-07-22-held2-installed-completion.md)
@@ -131,11 +128,11 @@ globality proof.
 
 ### HELD2 live progress diagnostic
 
-The private installed controller accepts an internal, nullable progress
+The installed development controller accepts an internal, nullable progress
 observer. It receives already-computed reference roots, DIRECT-L evaluations,
-HiGHS bounds, Ipopt iteration metrics, certificate results, stage skips, and
-the Step-9 total-free-energy upper bound/objective/gap, and the final controller
-status. The default path supplies no observer and remains
+HiGHS bounds, Ipopt iteration metrics, certificate results, and the Step-9
+total-free-energy upper bound/objective/gap. The default path supplies no
+observer and remains
 silent. Observer failures are swallowed and cannot change solver decisions,
 structured results, tolerances, budgets, or the
 `globality_certificate="not_guaranteed"` label.

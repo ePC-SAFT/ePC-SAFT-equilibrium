@@ -9,14 +9,9 @@ namespace {
 
 void write_stage_heading(
     std::ostream& output,
-    const Held2ProgressEvent& event,
-    const char* suffix = nullptr
+    const Held2ProgressEvent& event
 ) {
-    output << '\n' << event.stage;
-    if (suffix != nullptr) {
-        output << " - " << suffix;
-    }
-    output << '\n';
+    output << '\n' << event.stage << '\n';
 }
 
 }  // namespace
@@ -73,44 +68,15 @@ void Held2TerminalProgress::observe(const Held2ProgressEvent& event) {
             }
             break;
         case Held2ProgressKind::StageIIUpper:
-            if (!std::isfinite(event.lower_bound)) {
-                output_ << "  STAGE II STEP 4"
-                        << "  major=" << event.major_iteration
-                        << "  upper=" << std::setw(13) << event.upper_bound
-                        << "  LP_primal=" << std::setw(13)
-                        << event.primal_residual
-                        << "  LP_dual=" << std::setw(13)
-                        << event.dual_residual
-                        << "  active_cuts=" << event.count
-                        << "  " << event.status << '\n';
-                break;
-            }
-            output_ << "  STAGE II STEP 5"
+            output_ << "  STAGE II STEP 4"
                     << "  major=" << event.major_iteration
                     << "  upper=" << std::setw(13) << event.upper_bound
-                    << "  lower=" << std::setw(13) << event.lower_bound;
-            if (std::isfinite(event.gap)) {
-                output_ << "  gap=" << std::setw(13) << event.gap;
-            }
-            output_ << "  " << event.status << '\n';
-            break;
-        case Held2ProgressKind::LocalIteration:
-            output_ << "  " << event.stage;
-            if (event.major_iteration >= 0) {
-                output_ << "  major=" << event.major_iteration;
-            }
-            if (event.attempt >= 0) {
-                output_ << "  attempt=" << event.attempt;
-            }
-            output_ << "  iter=" << std::setw(5) << event.iteration
-                    << "  objective=" << std::setw(13) << event.objective
-                    << "  primal=" << std::setw(13) << event.primal_residual
-                    << "  dual=" << std::setw(13) << event.dual_residual
-                    << "  comp=" << std::setw(13) << event.complementarity
-                    << "  step=" << std::setw(13) << event.step_norm
-                    << "  alpha=" << std::setw(13) << event.primal_step
-                    << "  ls=" << event.line_search_steps
-                    << '\n';
+                    << "  LP_primal=" << std::setw(13)
+                    << event.primal_residual
+                    << "  LP_dual=" << std::setw(13)
+                    << event.dual_residual
+                    << "  active_cuts=" << event.count
+                    << "  " << event.status << '\n';
             break;
         case Held2ProgressKind::Certificate:
             output_ << "  certificate";
@@ -135,10 +101,6 @@ void Held2TerminalProgress::observe(const Held2ProgressEvent& event) {
                 output_ << "  dual=" << std::setw(13)
                         << event.dual_residual;
             }
-            if (std::isfinite(event.complementarity)) {
-                output_ << "  comp=" << std::setw(13)
-                        << event.complementarity;
-            }
             if (event.stage == "STEP 5 LOCAL") {
                 output_ << "  P rel.=" << std::setw(13)
                         << event.pressure_residual;
@@ -160,20 +122,9 @@ void Held2TerminalProgress::observe(const Held2ProgressEvent& event) {
             }
             output_ << '\n';
             break;
-        case Held2ProgressKind::StageSkipped:
-            write_stage_heading(output_, event, "SKIPPED");
-            output_ << "  reason=" << event.reason << '\n';
-            break;
         case Held2ProgressKind::Failure:
             output_ << "  FAILURE  stage=" << event.stage
                     << "  reason=" << event.reason << '\n';
-            break;
-        case Held2ProgressKind::Final:
-            output_ << "\nFINAL  status=" << event.status;
-            if (!event.reason.empty()) {
-                output_ << "  reason=" << event.reason;
-            }
-            output_ << '\n';
             break;
         }
         output_.flush();
@@ -183,10 +134,6 @@ void Held2TerminalProgress::observe(const Held2ProgressEvent& event) {
     } catch (...) {
         healthy_ = false;
     }
-}
-
-bool Held2TerminalProgress::healthy() const noexcept {
-    return healthy_;
 }
 
 }  // namespace epcsaft_equilibrium
