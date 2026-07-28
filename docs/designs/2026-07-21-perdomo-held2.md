@@ -1,28 +1,25 @@
 # Perdomo HELD2 Strong-Electrolyte Phase Equilibrium
 
-Status: canonical design with private integrated Stage-I/II/III implementation
+Status: superseded design provenance
 
 Authority effect: none
 
 ## Status and authority
 
-This document is the package-local scientific and numerical owner for the
-Perdomo HELD2 strong-electrolyte formulation. Current `main` contains one
-private callback-driven Stage-I/II/III controller. The later
-installed public-dispatch and reference-hardening runtime is archived at
-`archive/held2-pre-strategy-2026-07-21` as non-production evidence.
-Organization doctrine revision 3 and
-[the package authority map](../phase-equilibrium.md) govern ownership and the
-claim boundary. The canonical numerical decomposition, landed task state, and
-guarded execution order are in the
-[HELD2 solver-strategy implementation plan](../plans/2026-07-21-perdomo-held2-solver-strategy.md).
+This document preserves the pre-rewrite HELD2 design and solver-strategy
+provenance. It is not the current formulation or runtime owner. The normative
+scientific and numerical contract is the
+[paper-faithful Steps 1--10 specification](2026-07-24-held2-paper-algorithm.md);
+the [package authority map](../phase-equilibrium.md) and organization doctrine
+revision 4 govern ownership and claim boundaries.
 
-The archived subject exposed the controller through the existing public
-`tp_flash` operation for qualifying installed Provider capability tables.
-Current `main` does not expose that electrolyte dispatch. Neither the archived
-public exposure nor this canonical design is capability admission. The only
-accepted Equilibrium capability remains the receipt-bound pure-component
-saturation slice.
+The archived public-dispatch and reference-hardening subject remains at
+`archive/held2-pre-strategy-2026-07-21` as non-production evidence. Current
+`tp_flash` dispatches qualifying installed strong-electrolyte Provider models
+to the shared native HELD2 development route. Neither that public development
+route nor this historical design is capability admission. The only accepted
+Equilibrium capability remains the receipt-bound pure-component saturation
+slice.
 
 ## Scope and nonclaims
 
@@ -425,12 +422,13 @@ KKT-inactive retirement. Retirement requires a phase-amount bound, correct multi
 complementarity, a non-descending reduced derivative, remaining-balance
 feasibility, one-at-a-time retirement, and an active-set re-solve.
 
-The source requires bound complementarity and logarithmic refinement for
-trace-bound components. The controller detects that condition and fails closed
-with `complementarity_refinement_required`; it does not yet
-implement the final logarithmic trace refinement. Trace components are not
-passed to Ipopt near `1e-300` and must not be accepted through an unconditional
-interior modified-potential equality.
+This earlier design is superseded for Steps 1--10 by
+[the paper-faithful algorithm](2026-07-24-held2-paper-algorithm.md). The
+implemented coordinate contract keeps Steps 1--9 in linear modified
+composition coordinates and performs only the final charged trace refinement
+in bounded logarithmic coordinates. The finite Step-1 floor remains a search
+regularization; Step 10 may cross only that charged lower-bound constraint and
+must recertify the reconstructed linear balances and modified potentials.
 
 Step 9 applies Perdomo Eq. (68) to independent controller quantities:
 

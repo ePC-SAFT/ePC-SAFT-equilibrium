@@ -110,11 +110,11 @@ class HeldDiagnostics:
 
 @dataclass(frozen=True)
 class TpFlashResult:
-    """One- or two-phase result from the bounded neutral HELD controller."""
+    """Certified phase result from the bounded HELD or HELD2 controller."""
 
     temperature_k: float
     pressure_pa: float
-    overall_mole_fractions: tuple[float, float]
+    overall_mole_fractions: tuple[float, ...]
     phases: tuple[PhaseState, ...]
     phase_fractions: tuple[float, ...]
     total_free_energy_over_rt: float
@@ -273,20 +273,23 @@ def _tp_flash_quantity(quantity: object, units: str, name: str) -> float:
     return value
 
 
-def _tp_flash_feed(overall_mole_fractions: Sequence[float]) -> tuple[float, float]:
+def _tp_flash_feed(
+    overall_mole_fractions: Sequence[float],
+    component_count: int,
+) -> tuple[float, ...]:
     if isinstance(overall_mole_fractions, (str, bytes)):
         raise TypeError("overall mole fractions must be a numeric sequence")
     try:
         values = tuple(float(value) for value in overall_mole_fractions)
     except (TypeError, ValueError) as error:
         raise TypeError("overall mole fractions must be a numeric sequence") from error
-    if len(values) != 2:
-        raise ValueError("tp_flash requires exactly two components")
+    if len(values) != component_count:
+        raise ValueError(f"tp_flash requires exactly {component_count} components")
     if not all(math.isfinite(value) and value > 0.0 for value in values):
         raise ValueError("overall mole fractions must be positive and finite")
     if not math.isclose(sum(values), 1.0, rel_tol=0.0, abs_tol=1.0e-12):
         raise ValueError("overall mole fractions must sum to one within 1e-12")
-    return (values[0], values[1])
+    return values
 
 
 def _optional_float(payload: Mapping[str, object], name: str) -> float | None:
@@ -356,41 +359,208 @@ def _failed_held_diagnostics(outcome: str, search_status: str, reason: str) -> H
     )
 
 
+def _held2_diagnostics(payload: Mapping[str, object]) -> HeldDiagnostics:
+    outcome = str(payload["outcome"])
+    accepted = outcome == "physical_equilibrium_accepted"
+    one_phase = outcome == "one_phase_no_negative_witness_detected"
+    step2 = cast(Mapping[str, object], payload["step2"])
+    step9_history = cast(Sequence[Mapping[str, object]], payload["step9_history"])
+    step10_value = payload.get("step10")
+    step10 = (
+        cast(Mapping[str, object], step10_value)
+        if isinstance(step10_value, Mapping)
+        else None
+    )
+    certificate_value = step10.get("final_certificate") if step10 else None
+    certificate = (
+        cast(Mapping[str, object], certificate_value)
+        if isinstance(certificate_value, Mapping)
+        else None
+    )
+    failure = payload.get("failure_reason")
+    gap = step9_history[-1].get("free_energy_gap") if step9_history else None
+    status = "passed" if accepted or one_phase else "failed"
+    return HeldDiagnostics(
+        outcome=outcome,
+        search_status=str(payload.get("failure_stage") or outcome),
+        solver_status=status,
+        numerical_status=status,
+        physical_status=status,
+        attempts=int(cast(int, payload["upper_solve_count"])),
+        major_iterations=int(cast(int, payload["upper_solve_count"])),
+        best_tpd=float(cast(float, step2["minimum_tpd"])),
+        lower_bound=None,
+        upper_bound=None,
+        held_gap=None if gap is None else float(cast(float, gap)),
+        material_balance_max_abs=(
+            None
+            if certificate is None
+            else max(
+                float(cast(float, certificate["modified_balance_inf"])),
+                float(cast(float, certificate["ordinary_balance_inf"])),
+            )
+        ),
+        pressure_stationarity_max_relative=(
+            None
+            if certificate is None
+            else float(cast(float, certificate["pressure_residual_inf"]))
+        ),
+        kkt_stationarity_max_abs=(
+            None
+            if certificate is None
+            else float(cast(float, certificate["kkt_residual_inf"]))
+        ),
+        chemical_potential_max_relative=None,
+        confirmation_succeeded=bool(step10 and step10["status"] == "complete"),
+        confirmation_max_difference=None,
+        search_profiles=("HELD2.0 paper Steps 1-10",),
+        globality_certificate=str(payload["globality_certificate"]),
+        failure_reason="" if failure is None else str(failure),
+    )
+
+
+def _held2_phase_state(
+    component_count: int,
+    payload: Mapping[str, object],
+) -> PhaseState:
+    fractions = _vector(payload["mole_fractions"], component_count, "HELD2 phase composition")
+    phase_fraction = float(cast(float, payload["phase_fraction"]))
+    molar_volume = float(cast(float, payload["molar_volume_m3_mol"]))
+    if not math.isfinite(phase_fraction) or phase_fraction <= 0.0:
+        raise ValueError("native HELD2 phase fraction must be positive and finite")
+    if not math.isfinite(molar_volume) or molar_volume <= 0.0:
+        raise ValueError("native HELD2 phase volume must be positive and finite")
+    pressure_pa = float(cast(float, payload["pressure_pa"]))
+    if not math.isfinite(pressure_pa):
+        raise ValueError("native HELD2 phase pressure must be finite")
+    return PhaseState(
+        amount_mol=phase_fraction,
+        mole_fractions=fractions,
+        volume_m3=phase_fraction * molar_volume,
+        molar_density_mol_m3=1.0 / molar_volume,
+        pressure_pa=pressure_pa,
+        chemical_potential_over_rt=_vector(
+            payload["chemical_potential_over_rt"],
+            component_count,
+            "HELD2 chemical-potential vector",
+        ),
+    )
+
+
+def _held2_result(
+    temperature_k: float,
+    pressure_pa: float,
+    feed: tuple[float, ...],
+    fingerprint: str,
+    native: Mapping[str, object],
+) -> TpFlashResult:
+    diagnostics = _held2_diagnostics(native)
+    if diagnostics.globality_certificate != "not_guaranteed":
+        raise ValueError("native HELD2 result has an invalid globality certificate")
+    if diagnostics.outcome not in {
+        "one_phase_no_negative_witness_detected",
+        "physical_equilibrium_accepted",
+    }:
+        reason = diagnostics.failure_reason or "HELD2 did not return a certified equilibrium"
+        raise FlashError(reason, diagnostics)
+    if str(native["parameter_fingerprint"]) != fingerprint:
+        raise ValueError("native HELD2 result has the wrong Provider fingerprint")
+
+    phase_payloads = cast(Sequence[Mapping[str, object]], native["phases"])
+    phases = tuple(
+        _held2_phase_state(
+            len(feed),
+            payload,
+        )
+        for payload in phase_payloads
+    )
+    phase_fractions = tuple(phase.amount_mol for phase in phases)
+    expected_phase_count = 1 if diagnostics.outcome.startswith("one_phase") else 2
+    if len(phases) != expected_phase_count or not math.isclose(
+        math.fsum(phase_fractions), 1.0, rel_tol=0.0, abs_tol=1.0e-10
+    ):
+        raise ValueError("native HELD2 phase result is incomplete")
+    total_gibbs = float(cast(float, native["total_free_energy_over_rt"]))
+    if not math.isfinite(total_gibbs):
+        raise ValueError("native HELD2 objective must be finite")
+    return TpFlashResult(
+        temperature_k=temperature_k,
+        pressure_pa=pressure_pa,
+        overall_mole_fractions=feed,
+        phases=tuple(phases),
+        phase_fractions=phase_fractions,
+        total_free_energy_over_rt=total_gibbs,
+        parameter_fingerprint=fingerprint,
+        diagnostics=diagnostics,
+    )
+
+
 def tp_flash(
     model: epcsaft.EPCSAFT,
     temperature: Quantity[Any],
     pressure: Quantity[Any],
     overall_mole_fractions: Sequence[float],
+    *,
+    trace: bool = False,
 ) -> TpFlashResult:
-    """Run the bounded neutral methane/ethane HELD controller."""
+    """Run the bounded HELD or strong-electrolyte HELD2 controller."""
 
     try:
         if not isinstance(model, epcsaft.EPCSAFT):
             raise TypeError("tp_flash requires an epcsaft.EPCSAFT model")
         temperature_k = _tp_flash_quantity(temperature, "kelvin", "temperature")
         pressure_pa = _tp_flash_quantity(pressure, "pascal", "pressure")
-        feed = _tp_flash_feed(overall_mole_fractions)
-        if model.parameter_fingerprint != _FLASH_FINGERPRINT:
-            raise ValueError("tp_flash requires the approved methane/ethane fingerprint")
-        if not _FLASH_TEMPERATURE_DOMAIN_K[0] <= temperature_k <= _FLASH_TEMPERATURE_DOMAIN_K[1]:
+        component_count = len(model.component_ids)
+        feed = _tp_flash_feed(overall_mole_fractions, component_count)
+        if model.parameter_fingerprint == _FLASH_FINGERPRINT and not (
+            _FLASH_TEMPERATURE_DOMAIN_K[0] <= temperature_k <= _FLASH_TEMPERATURE_DOMAIN_K[1]
+        ):
             raise ValueError("temperature is outside the audited May 2015 source domain")
-        if not _FLASH_PRESSURE_DOMAIN_PA[0] <= pressure_pa <= _FLASH_PRESSURE_DOMAIN_PA[1]:
+        if model.parameter_fingerprint == _FLASH_FINGERPRINT and not (
+            _FLASH_PRESSURE_DOMAIN_PA[0] <= pressure_pa <= _FLASH_PRESSURE_DOMAIN_PA[1]
+        ):
             raise ValueError("pressure is outside the audited May 2015 source domain")
-        if not _FLASH_METHANE_FEED_DOMAIN[0] <= feed[0] <= _FLASH_METHANE_FEED_DOMAIN[1]:
+        if model.parameter_fingerprint == _FLASH_FINGERPRINT and not (
+            _FLASH_METHANE_FEED_DOMAIN[0] <= feed[0] <= _FLASH_METHANE_FEED_DOMAIN[1]
+        ):
             raise ValueError("composition is outside the audited May 2015 source domain")
+        capsule = epcsaft.native_sdk(model)
     except (TypeError, ValueError) as error:
         diagnostics = _failed_held_diagnostics("invalid_input", "input_rejected", str(error))
         raise FlashError(str(error), diagnostics) from error
 
     try:
-        capsule = epcsaft.native_sdk(model)
         native = cast(
             Mapping[str, object],
-            _equilibrium._solve_tp_flash(capsule, temperature_k, pressure_pa, feed),
+            _equilibrium._solve_tp_flash(
+                capsule,
+                temperature_k,
+                pressure_pa,
+                feed,
+                model.parameter_fingerprint,
+                trace=trace,
+            ),
         )
     except (RuntimeError, TypeError, ValueError) as error:
         diagnostics = _failed_held_diagnostics("error", "native_exception", str(error))
         raise FlashError(str(error), diagnostics) from error
+
+    if native.get("controller") == "perdomo_held2_paper_steps_1_to_10_v1":
+        try:
+            return _held2_result(
+                temperature_k,
+                pressure_pa,
+                feed,
+                model.parameter_fingerprint,
+                native,
+            )
+        except FlashError:
+            raise
+        except (KeyError, TypeError, ValueError) as error:
+            diagnostics = _failed_held_diagnostics("error", "payload_error", str(error))
+            raise FlashError(
+                "native HELD2 payload does not match the typed contract", diagnostics
+            ) from error
 
     try:
         diagnostics = _held_diagnostics(native)
@@ -399,19 +569,15 @@ def tp_flash(
         if diagnostics.outcome not in {"one_phase", "accepted"}:
             reason = diagnostics.failure_reason or "HELD search did not return an accepted result"
             raise FlashError(reason, diagnostics)
-        overall = cast(
-            tuple[float, float],
-            _vector(native["overall_mole_fractions"], 2, "overall composition"),
-        )
+        overall = _vector(native["overall_mole_fractions"], len(feed), "overall composition")
         phase_payloads = cast(Sequence[Mapping[str, object]], native["phases"])
         phases = tuple(_phase(payload) for payload in phase_payloads)
         phase_fractions = _float_tuple(native["phase_fractions"])
-        expected_phase_count = 1 if diagnostics.outcome == "one_phase" else 2
-        if len(phases) != expected_phase_count or len(phase_fractions) != expected_phase_count:
+        if len(phases) != len(phase_fractions):
             raise ValueError("native HELD phase count does not match its outcome")
         if not math.isclose(sum(phase_fractions), 1.0, rel_tol=0.0, abs_tol=1.0e-10):
             raise ValueError("native HELD phase fractions do not sum to one")
-        if str(native["parameter_fingerprint"]) != _FLASH_FINGERPRINT:
+        if str(native["parameter_fingerprint"]) != model.parameter_fingerprint:
             raise ValueError("native HELD result has the wrong provider fingerprint")
         return TpFlashResult(
             temperature_k=float(cast(float, native["temperature_k"])),

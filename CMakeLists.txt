@@ -1,6 +1,17 @@
 cmake_minimum_required(VERSION 3.20)
 project(epcsaft_equilibrium LANGUAGES CXX)
 
+option(
+  EPCSAFT_EQUILIBRIUM_BUILD_DIAGNOSTIC
+  "Build the development-only native equilibrium diagnostic executable"
+  OFF
+)
+option(
+  EPCSAFT_EQUILIBRIUM_ENABLE_SANITIZERS
+  "Enable AddressSanitizer and UndefinedBehaviorSanitizer"
+  OFF
+)
+
 find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
 find_package(pybind11 CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -50,41 +61,107 @@ endif()
 execute_process(
   COMMAND
     "${Python_EXECUTABLE}" -c
-    "import importlib.metadata as m, json, sys; d=m.distribution('epcsaft'); u=json.loads(d.read_text('direct_url.json') or '{}'); sys.exit('epcsaft version mismatch') if d.version != '0.1.0.dev0' else None; sys.exit('editable epcsaft provider is forbidden') if u.get('dir_info', {}).get('editable', False) else None; print(d.locate_file('epcsaft/include'))"
+    "import importlib.metadata as m, json, sys; d=m.distribution('epcsaft'); u=json.loads(d.read_text('direct_url.json') or '{}'); sys.exit('epcsaft version mismatch') if d.version != '0.1.0.dev0' else None; sys.exit('editable epcsaft provider is forbidden') if u.get('dir_info', {}).get('editable', False) else None; print(d.locate_file('epcsaft/cmake'))"
   RESULT_VARIABLE epcsaft_header_status
-  OUTPUT_VARIABLE epcsaft_include_dir
+  OUTPUT_VARIABLE epcsaft_cmake_dir
   OUTPUT_STRIP_TRAILING_WHITESPACE
   ERROR_QUIET
 )
 if(NOT epcsaft_header_status EQUAL 0)
   message(FATAL_ERROR "Build requires the non-editable epcsaft 0.1.0.dev0 provider distribution")
 endif()
-if(NOT EXISTS "${epcsaft_include_dir}/epcsaft/native_sdk_v1.h")
-  message(FATAL_ERROR "Installed epcsaft wheel does not contain native_sdk_v1.h")
-endif()
+find_package(epcsaft CONFIG REQUIRED PATHS "${epcsaft_cmake_dir}" NO_DEFAULT_PATH)
 
-pybind11_add_module(
-  _equilibrium MODULE
-  cpp/src/module.cpp
+add_library(
+  epcsaft_equilibrium_core STATIC
   cpp/src/provider.cpp
+  cpp/src/flash.cpp
+  cpp/src/result_json.cpp
   cpp/src/held.cpp
   cpp/src/held_stage_i.cpp
   cpp/src/held_stage_ii.cpp
   cpp/src/held_stage_iii.cpp
   cpp/src/held2.cpp
+  cpp/src/held2_algorithm.cpp
   cpp/src/held2_progress.cpp
-  cpp/src/held2_stage_i_direct.cpp
-  cpp/src/held2_stage_ii_basin.cpp
-  cpp/src/held2_stage_ii_upper.cpp
-  cpp/src/held2_stage_iii.cpp
-  cpp/src/held2_stage_iii_generic.cpp
+  cpp/src/held2_step1.cpp
+  cpp/src/held2_step2.cpp
+  cpp/src/held2_step3.cpp
+  cpp/src/held2_step4.cpp
+  cpp/src/held2_step5.cpp
+  cpp/src/held2_step6.cpp
+  cpp/src/held2_step7.cpp
+  cpp/src/held2_step8.cpp
+  cpp/src/held2_step9.cpp
+  cpp/src/held2_step10.cpp
+  cpp/src/held2_step8_nlp.cpp
   cpp/src/saturation.cpp
 )
-target_compile_features(_equilibrium PRIVATE cxx_std_17)
-target_include_directories(_equilibrium PRIVATE "${epcsaft_include_dir}")
-target_link_libraries(_equilibrium PRIVATE PkgConfig::Ipopt highs nlopt)
+set_target_properties(epcsaft_equilibrium_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(epcsaft_equilibrium_core PUBLIC cxx_std_17)
+target_include_directories(
+  epcsaft_equilibrium_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src"
+)
+target_link_libraries(
+  epcsaft_equilibrium_core
+  PUBLIC epcsaft::native_sdk
+  PRIVATE PkgConfig::Ipopt highs nlopt
+)
+
+pybind11_add_module(_equilibrium MODULE cpp/src/module.cpp)
+target_link_libraries(_equilibrium PRIVATE epcsaft_equilibrium_core)
+set(epcsaft_equilibrium_native_targets epcsaft_equilibrium_core _equilibrium)
+set(epcsaft_equilibrium_link_targets _equilibrium)
+if(EPCSAFT_EQUILIBRIUM_BUILD_DIAGNOSTIC)
+  add_executable(
+    epcsaft-equilibrium-diagnostic cpp/src/diagnostic_main.cpp
+  )
+  target_link_libraries(
+    epcsaft-equilibrium-diagnostic PRIVATE epcsaft_equilibrium_core
+  )
+  add_executable(
+    epcsaft-equilibrium-manufactured-check
+    cpp/tests/held2_step_checks.cpp
+  )
+  target_link_libraries(
+    epcsaft-equilibrium-manufactured-check
+    PRIVATE epcsaft_equilibrium_core
+  )
+  enable_testing()
+  add_test(
+    NAME held2-manufactured
+    COMMAND epcsaft-equilibrium-manufactured-check
+  )
+  list(
+    APPEND epcsaft_equilibrium_native_targets
+    epcsaft-equilibrium-diagnostic
+    epcsaft-equilibrium-manufactured-check
+  )
+  list(
+    APPEND epcsaft_equilibrium_link_targets
+    epcsaft-equilibrium-diagnostic
+    epcsaft-equilibrium-manufactured-check
+  )
+endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  target_compile_options(_equilibrium PRIVATE -Wall -Wextra -Wpedantic)
+  foreach(target IN LISTS epcsaft_equilibrium_native_targets)
+    target_compile_options(
+      ${target} PRIVATE -Wall -Wextra -Wpedantic
+    )
+    if(EPCSAFT_EQUILIBRIUM_ENABLE_SANITIZERS)
+      target_compile_options(
+        ${target}
+        PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer
+      )
+    endif()
+  endforeach()
+  if(EPCSAFT_EQUILIBRIUM_ENABLE_SANITIZERS)
+    foreach(target IN LISTS epcsaft_equilibrium_link_targets)
+      target_link_options(
+        ${target} PRIVATE -fsanitize=address,undefined
+      )
+    endforeach()
+  endif()
 endif()
 
 install(TARGETS _equilibrium LIBRARY DESTINATION epcsaft_equilibrium)

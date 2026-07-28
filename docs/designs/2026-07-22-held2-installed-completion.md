@@ -246,10 +246,13 @@ independently computed Eq. (68) gap. This is numerical controller evidence for
 the exact private ePC-SAFT hypothesis, not a source-equivalent SAFT-gamma-Mie
 reproduction or a globality proof.
 
-If the exact installed case reaches the declared trace threshold, logarithmic
-or complementarity-safe trace refinement requires its own derivative and KKT
-evidence. Until that evidence passes, `trace_component_requires_log_refinement`
-remains a fail-closed result.
+The later Steps 1--10 rewrite now owns this case. It keeps all coupled
+conservation solves in linear coordinates and uses the source-bounded
+logarithmic coordinate only for a strictly positive charged trace component in
+Step 10. That scalar refinement preserves every non-lower-bound Step-1
+constraint and is accepted only after the reconstructed phases pass the full
+linear-balance, pressure, charge, KKT, free-energy, and modified-potential
+certificate.
 
 ## End-to-end private evidence contract
 

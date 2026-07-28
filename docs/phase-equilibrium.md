@@ -7,7 +7,7 @@ it does not admit, promote, or publish a capability.
 
 ## Authority and capability status
 
-Organization doctrine revision 3 defines the ecosystem authority hierarchy.
+Organization doctrine revision 4 defines the ecosystem authority hierarchy.
 Within this repository, `AGENTS.md` and `CONTEXT.md` govern package scope,
 `ARCHITECTURE.yaml` records the machine-readable architecture, and the design
 documents named below own the scientific and numerical contracts of individual
@@ -18,7 +18,7 @@ replace a formulation owner.
 | --- | --- | --- |
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
-| Strong-electrolyte Perdomo HELD2 | [Perdomo HELD2](designs/2026-07-21-perdomo-held2.md) and [solver-strategy plan](plans/2026-07-21-perdomo-held2-solver-strategy.md) | Private integrated Stage-I/II/III development controller with fail-closed installed evidence; no public electrolyte dispatch or admitted electrolyte LLE capability |
+| Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Public development dispatch over one native core with fail-closed installed evidence; no admitted electrolyte LLE capability |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Reactive or coupled phase-chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
@@ -33,11 +33,10 @@ The package exports two equilibrium operations:
 
 - `saturation` owns the accepted, bounded, pure-component local saturation
   boundary.
-- `tp_flash` is the sole mixture flash surface. Current `main` dispatches the
-  reviewed neutral binary fingerprint to the neutral HELD controller. The
-  archived non-production HELD2 subject also dispatched qualifying installed
-  strong-electrolyte Provider capability tables, but that experimental runtime
-  is not part of current `main`.
+- `tp_flash` is the sole mixture flash surface. It dispatches the reviewed
+  neutral binary fingerprint to neutral HELD and qualifying installed strong-
+  electrolyte Provider capability tables to the non-admitted HELD2
+  development route.
 
 `tp_flash` does not accept a phase count, caller seeds, solver settings,
 backend selection, or a case-specific mode. Its public result owners are
@@ -67,6 +66,15 @@ Provider domain and derivative contracts, homogeneous reference selection,
 modified-coordinate stability search, complete-cut Stage II, general candidate
 set Stage III, and formulation-specific certificates. Perdomo modified moles
 must not be replaced by or conflated with Ascani counterion-pair coordinates.
+The finite \(10^{-10}\) modified-composition floor is a search regularization,
+not a physical equilibrium minimum. Steps 1--9 retain linear modified
+composition and material-balance coordinates. Step 10 alone may refine a
+strictly positive charged trace component below that floor in
+\(\log_{10}x_i\); every upper, closure, eliminated-ion, and Provider-domain
+constraint remains active, and molecular lower bounds cannot be bypassed.
+The refined phases are reconstructed and recertified in ordinary and modified
+linear balances. Provider evaluation and result serialization preserve the
+resulting positive trace values rather than clipping them to the search floor.
 For finite Provider `total_ion_mole_fraction_max`, the Stage-I cube-to-modified
 composition map enforces that immutable source ceiling before requesting a
 pressure envelope. In Perdomo coordinates the total physical ion fraction is
@@ -76,13 +84,16 @@ Malformed or infeasible ceilings fail before global exploration; `NaN` retains
 the ordinary modified-simplex domain declared by a Provider with no ion cap.
 The linked implementation plan assigns deterministic pressure-root
 enumeration to density topology, DIRECT-L to the reduced Stage-I search, HiGHS
-to the Stage-II upper LP, basin exploration plus exact-Hessian Ipopt to the
-Stage-II lower problem, and exact-Hessian Ipopt to Stage III. The private
-integrated controller executes that stage order and retains every bounded
-failure as evidence. Replaced HELD2 runtime routes and baseline fixtures are
-removed; only focused manufactured formulation oracles remain. None of these
-internal owners is a caller-selectable backend or current public electrolyte
-behavior.
+to the Stage-II upper LP, deterministic capped-multistart exact-Hessian Ipopt
+to Step 5, and exact-Hessian Ipopt to Problem (67) in Step 8. One typed
+`run_held2_algorithm` state machine owns the closed Steps 1--10 transitions for
+both installed and manufactured problems. Stage II has one major loop and one
+Eq. (66) decision owner. Each major retains its upper-solve identity, `UBD`,
+multipliers, active cuts, local attempts, pressure branches, and certificate
+partitions. Replaced HELD2 runtime routes and baseline fixtures are deleted;
+focused manufactured numerical oracles call the same transition and step
+owners. None of these internal owners is a caller-selectable backend; public
+electrolyte dispatch remains non-admitted development behavior.
 
 The remaining installed-completion contract is specified in
 [HELD2 Installed Completion](designs/2026-07-22-held2-installed-completion.md)
@@ -117,11 +128,11 @@ globality proof.
 
 ### HELD2 live progress diagnostic
 
-The private installed controller accepts an internal, nullable progress
+The installed development controller accepts an internal, nullable progress
 observer. It receives already-computed reference roots, DIRECT-L evaluations,
-HiGHS bounds, Ipopt iteration metrics, certificate results, stage skips, and
-the Step-9 total-free-energy upper bound/objective/gap, and the final controller
-status. The default path supplies no observer and remains
+HiGHS bounds, Ipopt iteration metrics, certificate results, and the Step-9
+total-free-energy upper bound/objective/gap. The default path supplies no
+observer and remains
 silent. Observer failures are swallowed and cannot change solver decisions,
 structured results, tolerances, budgets, or the
 `globality_certificate="not_guaranteed"` label.
@@ -135,13 +146,17 @@ normalized feed is:
 (0.8321050353538131, 0.08394748232309347, 0.08394748232309347)
 ```
 
-Run its real controller with live, flushing terminal output using:
+Export the installed Provider model configuration, then run its real controller
+with live, flushing terminal output using:
 
 ```bash
-pytest -s tests/test_perdomo_held2_trace.py::test_perdomo_table3_nacl_workflow --held2-live
+build/epcsaft-equilibrium-diagnostic \
+  --model-config MODEL.json --temperature 298.15 --pressure 2508 \
+  --feed 0.8321050353538131,0.08394748232309347,0.08394748232309347 \
+  --trace
 ```
 
-Without `--held2-live`, the same test is quiet and asserts the same structured
+Without `--trace`, the executable is quiet and returns the same structured
 result. Current ePC-SAFT/Provider evidence selects the lowest of two stable
 reference roots. The Figiel Provider caps total ion mole fraction at `0.38`;
 the domain-aware Stage-I map therefore changes the first DIRECT-L midpoint from
@@ -237,6 +252,7 @@ to the solver and never substitute for scientific acceptance.
 | Stage III | modified/explicit balances, scaled charge, pressure | `1e-8`, `1e-8`, `1e-9`, `1e-8` |
 | Stage III | modified potentials; KKT, dual sign, complementarity, free-energy gap | `1e-8 + 1e-7*scale`, `1e-7`, `1e-9`, `1e-8`, `1e-8` |
 | Phase identity | active, retirement evidence, merge, confidently distinct | `>1e-8`, `>1e-8`, `<=1e-6`, `>1e-4` |
+| Step 10 trace | charged physical mole-fraction interval; potential residual | `[1e-300, 5e-10]`; `1e-8` absolute |
 | Ipopt | target, disabled acceptable target, constraint target | `1e-10`, `1e-9`, `1e-10`; zero bound relaxation |
 
 Candidate distances between `1e-7` and `1e-5`, and phase distances between
@@ -244,7 +260,9 @@ Candidate distances between `1e-7` and `1e-5`, and phase distances between
 roots, unresolved stable-root ordering, and unavailable evidence likewise do
 not become acceptance. Direct invalid user input remains invalid; the
 representation allowances apply only to validated transformations and solver
-iterates. Finite search always retains
+iterates. The Step-10 trace domain relaxes only a charged independent
+coordinate's finite-search lower bound; it does not relax any other polytope
+constraint. Finite search always retains
 `globality_certificate="not_guaranteed"`.
 
 ## Closed future formulations

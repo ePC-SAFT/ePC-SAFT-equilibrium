@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <iosfwd>
 #include <limits>
 #include <string>
@@ -14,11 +15,8 @@ enum class Held2ProgressKind {
     StageStart,
     StageIEvaluation,
     StageIIUpper,
-    LocalIteration,
     Certificate,
-    StageSkipped,
     Failure,
-    Final,
 };
 
 struct Held2ProgressEvent {
@@ -35,7 +33,6 @@ struct Held2ProgressEvent {
     double temperature_k = 0.0;
     double pressure_pa = 0.0;
     double objective = 0.0;
-    double lower_bound = std::numeric_limits<double>::quiet_NaN();
     double upper_bound = std::numeric_limits<double>::quiet_NaN();
     double gap = std::numeric_limits<double>::quiet_NaN();
     double volume = 0.0;
@@ -46,11 +43,11 @@ struct Held2ProgressEvent {
         std::numeric_limits<double>::quiet_NaN();
     double primal_residual = std::numeric_limits<double>::quiet_NaN();
     double dual_residual = std::numeric_limits<double>::quiet_NaN();
-    double complementarity = std::numeric_limits<double>::quiet_NaN();
-    double step_norm = std::numeric_limits<double>::quiet_NaN();
-    double dual_step = std::numeric_limits<double>::quiet_NaN();
-    double primal_step = std::numeric_limits<double>::quiet_NaN();
-    int line_search_steps = -1;
+    double wall_seconds = 0.0;
+    double cpu_seconds = 0.0;
+    std::uint64_t provider_evaluations = 0;
+    std::uint64_t optimizer_solves = 0;
+    std::uint64_t optimizer_iterations = 0;
 };
 
 class Held2ProgressObserver {
@@ -77,7 +74,6 @@ public:
     explicit Held2TerminalProgress(std::ostream& output) noexcept;
 
     void observe(const Held2ProgressEvent& event) override;
-    [[nodiscard]] bool healthy() const noexcept;
 
 private:
     std::ostream& output_;
