@@ -984,6 +984,13 @@ git commit -m "feat: implement HELD2 paper step 9"
 
 ### Task 9: Implement Step 10 logarithmic trace refinement
 
+**Implemented clarification:** the finite Step-1 floor is a multidimensional
+search regularization. Steps 1--9 remain in linear modified-composition and
+balance coordinates. Step 10 alone may evaluate a strictly positive charged
+trace coordinate below that floor in \(\log_{10}x_i\), while retaining every
+other Step-1 polytope constraint. Controller transitions use typed actions;
+diagnostic reason strings do not own routing.
+
 **Files:**
 
 - Create: `cpp/src/held2_step10.hpp`

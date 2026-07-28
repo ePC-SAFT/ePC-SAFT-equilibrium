@@ -10,6 +10,12 @@ enum class Held2Step9Outcome {
     Indeterminate,
 };
 
+enum class Held2Step9Action {
+    TerminateIndeterminate,
+    ReturnStageII,
+    RunStep10,
+};
+
 struct Held2PotentialComparison {
     std::size_t component_index = 0;
     std::uint64_t left_phase_id = 0;
@@ -31,6 +37,8 @@ struct Held2PhysicalCertificate {
 
 struct Held2Step9Result {
     Held2Step9Outcome outcome = Held2Step9Outcome::Indeterminate;
+    Held2Step9Action next_action =
+        Held2Step9Action::TerminateIndeterminate;
     std::string reason = "not_run";
     std::optional<double> free_energy_gap;
     std::vector<Held2PotentialComparison> potential_comparisons;

@@ -7,7 +7,7 @@ it does not admit, promote, or publish a capability.
 
 ## Authority and capability status
 
-Organization doctrine revision 3 defines the ecosystem authority hierarchy.
+Organization doctrine revision 4 defines the ecosystem authority hierarchy.
 Within this repository, `AGENTS.md` and `CONTEXT.md` govern package scope,
 `ARCHITECTURE.yaml` records the machine-readable architecture, and the design
 documents named below own the scientific and numerical contracts of individual
@@ -18,7 +18,7 @@ replace a formulation owner.
 | --- | --- | --- |
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
-| Strong-electrolyte Perdomo HELD2 | [Perdomo HELD2](designs/2026-07-21-perdomo-held2.md) and [solver-strategy plan](plans/2026-07-21-perdomo-held2-solver-strategy.md) | Private integrated Stage-I/II/III development controller with fail-closed installed evidence; no public electrolyte dispatch or admitted electrolyte LLE capability |
+| Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Private native development controller with fail-closed installed evidence; no admitted electrolyte LLE capability |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Reactive or coupled phase-chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
@@ -67,6 +67,15 @@ Provider domain and derivative contracts, homogeneous reference selection,
 modified-coordinate stability search, complete-cut Stage II, general candidate
 set Stage III, and formulation-specific certificates. Perdomo modified moles
 must not be replaced by or conflated with Ascani counterion-pair coordinates.
+The finite \(10^{-10}\) modified-composition floor is a search regularization,
+not a physical equilibrium minimum. Steps 1--9 retain linear modified
+composition and material-balance coordinates. Step 10 alone may refine a
+strictly positive charged trace component below that floor in
+\(\log_{10}x_i\); every upper, closure, eliminated-ion, and Provider-domain
+constraint remains active, and molecular lower bounds cannot be bypassed.
+The refined phases are reconstructed and recertified in ordinary and modified
+linear balances. Provider evaluation and result serialization preserve the
+resulting positive trace values rather than clipping them to the search floor.
 For finite Provider `total_ion_mole_fraction_max`, the Stage-I cube-to-modified
 composition map enforces that immutable source ceiling before requesting a
 pressure envelope. In Perdomo coordinates the total physical ion fraction is
@@ -242,6 +251,7 @@ to the solver and never substitute for scientific acceptance.
 | Stage III | modified/explicit balances, scaled charge, pressure | `1e-8`, `1e-8`, `1e-9`, `1e-8` |
 | Stage III | modified potentials; KKT, dual sign, complementarity, free-energy gap | `1e-8 + 1e-7*scale`, `1e-7`, `1e-9`, `1e-8`, `1e-8` |
 | Phase identity | active, retirement evidence, merge, confidently distinct | `>1e-8`, `>1e-8`, `<=1e-6`, `>1e-4` |
+| Step 10 trace | charged physical mole-fraction interval; potential residual | `[1e-300, 5e-10]`; `1e-8` absolute |
 | Ipopt | target, disabled acceptable target, constraint target | `1e-10`, `1e-9`, `1e-10`; zero bound relaxation |
 
 Candidate distances between `1e-7` and `1e-5`, and phase distances between
@@ -249,7 +259,9 @@ Candidate distances between `1e-7` and `1e-5`, and phase distances between
 roots, unresolved stable-root ordering, and unavailable evidence likewise do
 not become acceptance. Direct invalid user input remains invalid; the
 representation allowances apply only to validated transformations and solver
-iterates. Finite search always retains
+iterates. The Step-10 trace domain relaxes only a charged independent
+coordinate's finite-search lower bound; it does not relax any other polytope
+constraint. Finite search always retains
 `globality_certificate="not_guaranteed"`.
 
 ## Closed future formulations

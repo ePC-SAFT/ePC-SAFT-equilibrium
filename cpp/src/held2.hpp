@@ -16,6 +16,11 @@ inline constexpr double kHeld2PackingFractionMinimum = 1.0e-6;
 inline constexpr double kHeld2PackingFractionMaximum = 0.74;
 inline constexpr double kHeld2ModifiedLowerScale = 1.0e-10;
 
+enum class Held2CompositionDomain {
+    FiniteSearch,
+    TraceRefinement,
+};
+
 struct Held2PolytopeConstraint {
     std::string name;
     std::vector<double> coefficients;
@@ -70,7 +75,7 @@ struct Held2StateEvaluation;
 [[nodiscard]] std::vector<double> held2_lift_independent_fractions(
     const Held2Coordinates& coordinates,
     const std::vector<double>& independent_modified_fractions,
-    bool permit_trace = false
+    Held2CompositionDomain domain = Held2CompositionDomain::FiniteSearch
 );
 
 [[nodiscard]] std::vector<double> held2_map_unit_cube_to_independent_fractions(
@@ -540,7 +545,7 @@ struct Held2StageIIIResult {
     double pressure_over_rt,
     double target_pressure_pa,
     const Held2PhysicalPhaseBlock& block,
-    bool permit_trace = false
+    Held2CompositionDomain domain = Held2CompositionDomain::FiniteSearch
 );
 
 [[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii(

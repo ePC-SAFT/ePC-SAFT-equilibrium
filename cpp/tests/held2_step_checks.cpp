@@ -170,10 +170,11 @@ void check_coordinates() {
 }
 
 void check_polytope() {
-    const Held2Coordinates mixed = *step1(
+    const Held2Step1Result prepared = step1(
         {0.0, 1.0, -1.0, 2.0, 0.0},
         {0.55, 0.05, 0.20, 0.075, 0.125}
-    ).coordinates;
+    );
+    const Held2Coordinates& mixed = *prepared.coordinates;
     bool rejected = false;
     try {
         static_cast<void>(held2_lift_independent_fractions(
@@ -183,6 +184,57 @@ void check_polytope() {
         rejected = true;
     }
     require(rejected, "polytope admitted a negative eliminated ion");
+    std::vector<double> charged_trace = *prepared.independent_feed;
+    charged_trace.front() = 1.0e-40;
+    static_cast<void>(held2_lift_independent_fractions(
+        mixed,
+        charged_trace,
+        Held2CompositionDomain::TraceRefinement
+    ));
+    charged_trace.front() = 0.0;
+    rejected = false;
+    try {
+        static_cast<void>(held2_lift_independent_fractions(
+            mixed,
+            charged_trace,
+            Held2CompositionDomain::TraceRefinement
+        ));
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    require(rejected, "trace domain admitted a zero charged fraction");
+    std::vector<double> neutral_trace = *prepared.independent_feed;
+    neutral_trace.back() = 1.0e-40;
+    rejected = false;
+    try {
+        static_cast<void>(held2_lift_independent_fractions(
+            mixed,
+            neutral_trace,
+            Held2CompositionDomain::TraceRefinement
+        ));
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    require(
+        rejected,
+        "trace domain bypassed a neutral finite-search lower bound"
+    );
+    std::vector<double> invalid_trace = *prepared.independent_feed;
+    invalid_trace.front() = 2.0;
+    rejected = false;
+    try {
+        static_cast<void>(held2_lift_independent_fractions(
+            mixed,
+            invalid_trace,
+            Held2CompositionDomain::TraceRefinement
+        ));
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    require(
+        rejected,
+        "trace domain bypassed a non-lower-bound polytope constraint"
+    );
     for (const std::vector<double>& cube :
          std::vector<std::vector<double>>{
              {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0},
@@ -791,6 +843,7 @@ void run_held2_step9_checks() {
         run_held2_step9(step4, step8, evaluator);
     require(
         converged.outcome == Held2Step9Outcome::Converged
+            && converged.next_action == Held2Step9Action::RunStep10
             && converged.physical->accepted
             && !converged.potential_comparisons.empty(),
         "Step-9 Eqs. (68)-(69) convergence changed"
@@ -808,9 +861,13 @@ void run_held2_step9_checks() {
         "Step-9 rejected an Eq. (68) gap within the paper tolerance"
     );
     *step4.upper_bound = *step8.total_reduced_gibbs + 2.0e-4;
+    const Held2Step9Result free_energy_failure =
+        run_held2_step9(step4, step8, evaluator);
     require(
-        run_held2_step9(step4, step8, evaluator).outcome
-            == Held2Step9Outcome::PaperConvergenceFailed,
+        free_energy_failure.outcome
+                == Held2Step9Outcome::PaperConvergenceFailed
+            && free_energy_failure.next_action
+                == Held2Step9Action::ReturnStageII,
         "Step-9 Eq. (68) failure did not return to Step 4"
     );
     *step4.upper_bound = *step8.total_reduced_gibbs;
@@ -830,6 +887,8 @@ void run_held2_step9_checks() {
     require(
         zero_denominator.outcome
                 == Held2Step9Outcome::PaperConvergenceFailed
+            && zero_denominator.next_action
+                == Held2Step9Action::RunStep10
             && !zero_denominator.potential_comparisons.back().passed
             && std::isinf(
                 zero_denominator.potential_comparisons.back().ratio
@@ -897,6 +956,7 @@ void run_held2_step10_checks() {
     ) - prepared.coordinates->retained_indices.begin());
     Held2Step9Result trace_failure = step9;
     trace_failure.outcome = Held2Step9Outcome::PaperConvergenceFailed;
+    trace_failure.next_action = Held2Step9Action::RunStep10;
     trace_failure.reason = "paper_potential_convergence_failed";
     const Held2Step10Result refined = run_held2_step10(
         prepared,
@@ -908,7 +968,9 @@ void run_held2_step10_checks() {
         ) {
             const std::vector<double> physical =
                 held2_lift_independent_fractions(
-                    coordinates, composition, true
+                    coordinates,
+                    composition,
+                    Held2CompositionDomain::TraceRefinement
                 );
             std::vector<double> bounded = composition;
             for (std::size_t index = 0; index < bounded.size(); ++index) {
@@ -936,6 +998,7 @@ void run_held2_step10_checks() {
     );
     require(
         refined.status == "complete"
+            && refined.next_action == Held2Step10Action::Accept
             && refined.reason == "trace_refinement_complete"
             && refined.refinements.size() == 1
             && std::abs(
@@ -944,11 +1007,14 @@ void run_held2_step10_checks() {
             && refined.final_certificate->accepted,
         "Step-10 bounded trace root changed"
     );
-    require(
-        run_held2_step10(
+    const Held2Step10Result non_trace = run_held2_step10(
             prepared, manufactured_step8(prepared, candidates),
             trace_failure, evaluator
-        ).reason == "trace_refinement_not_applicable",
+        );
+    require(
+        non_trace.reason == "trace_refinement_not_applicable"
+            && non_trace.next_action
+                == Held2Step10Action::ReturnStageII,
         "Step-10 accepted a non-trace Step-9 potential failure"
     );
     for (Held2Phase& phase : step8.active_phases) {

@@ -108,6 +108,9 @@ Held2Step9Result run_held2_step9(
     observe_held2(observer, progress);
     if (!gap_passed || !potentials_passed) {
         result.outcome = Held2Step9Outcome::PaperConvergenceFailed;
+        result.next_action = !gap_passed
+            ? Held2Step9Action::ReturnStageII
+            : Held2Step9Action::RunStep10;
         result.reason = !gap_passed
             ? "paper_free_energy_convergence_failed"
             : "paper_potential_convergence_failed";
@@ -117,6 +120,7 @@ Held2Step9Result run_held2_step9(
         return result;
     }
     result.outcome = Held2Step9Outcome::Converged;
+    result.next_action = Held2Step9Action::RunStep10;
     result.reason = "step9_complete";
     result.timing.terminal_status = "complete";
     result.timing.terminal_reason = result.reason;

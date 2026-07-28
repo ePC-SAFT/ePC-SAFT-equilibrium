@@ -4,6 +4,12 @@
 
 namespace epcsaft_equilibrium {
 
+enum class Held2Step10Action {
+    TerminateIndeterminate,
+    ReturnStageII,
+    Accept,
+};
+
 struct Held2TraceRefinement {
     std::uint64_t phase_id = 0;
     std::size_t component_index = 0;
@@ -16,6 +22,8 @@ struct Held2TraceRefinement {
 };
 
 struct Held2Step10Result {
+    Held2Step10Action next_action =
+        Held2Step10Action::TerminateIndeterminate;
     std::string status = "indeterminate";
     std::string reason = "not_run";
     std::vector<Held2Phase> phases;

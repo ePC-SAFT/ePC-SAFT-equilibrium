@@ -134,7 +134,7 @@ public:
             independent,
             held2_lift_independent_fractions(coordinates_, independent),
             log_volume,
-            false
+            Held2CompositionDomain::FiniteSearch
         );
     }
 
@@ -145,10 +145,12 @@ public:
         return evaluate_physical(
             independent,
             held2_lift_independent_fractions(
-                coordinates_, independent, true
+                coordinates_,
+                independent,
+                Held2CompositionDomain::TraceRefinement
             ),
             log_volume,
-            true
+            Held2CompositionDomain::TraceRefinement
         );
     }
 
@@ -169,7 +171,7 @@ private:
         const std::vector<double>& independent,
         const std::vector<double>& amounts,
         double log_volume,
-        bool permit_trace
+        Held2CompositionDomain domain
     ) const {
         MixturePhaseEvaluation provider_phase =
             provider_.evaluate_electrolyte(
@@ -187,7 +189,7 @@ private:
             pressure_over_rt_,
             input_.pressure_pa,
             block,
-            permit_trace
+            domain
         );
     }
 

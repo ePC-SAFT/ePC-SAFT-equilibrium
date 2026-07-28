@@ -86,6 +86,14 @@ deleted rather than retained as compatibility paths. The experimental public
 runtime is preserved by tag
 `archive/held2-pre-strategy-2026-07-21` for strategy review.
 
+The HELD2 coordinate contract is hybrid only where the source requires it:
+Steps 1--9 use linear modified compositions and linear material balances.
+The finite \(10^{-10}\) Step-1 floor regularizes those searches; it is not a
+physical minimum. Step 10 alone refines a strictly positive charged trace
+fraction in bounded \(\log_{10}\) coordinates, preserves every other Step-1
+constraint, and then recertifies the reconstructed linear balances and
+chemical potentials.
+
 The archived homogeneous reference search reports detected pressure-root
 accounting separately as `root_completeness`. Its installed evidence reports
 `root_completeness="not_proven"`: detecting and refining the retained roots is

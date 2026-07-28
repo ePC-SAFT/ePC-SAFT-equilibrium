@@ -321,6 +321,11 @@ the entire set under the current \(UBD^V\) and \(\bar{\lambda}^k\).
    10^{-10}\left(1-\frac{z_i}{z_E}\right).
    \]
 
+   This is a finite-search regularization, not a physical lower bound on an
+   equilibrium mole fraction. It keeps the multidimensional searches away
+   from singular logarithms. A charged component may cross it only in the
+   Step-10 logarithmic trace solve.
+
 7. Reject any nonfinite, nonpositive, reversed, or feed-excluding coordinate
    interval after transformation.
 8. Obtain the molar-volume domain corresponding to
@@ -331,6 +336,26 @@ bounds, and volume-domain evaluator.
 
 **Failure:** invalid input or an empty transformed domain terminates
 indeterminate at Step 1.
+
+### Hybrid coordinate contract
+
+HELD2 uses one coordinate policy throughout the ten steps:
+
+| Owner | Coordinates | Domain |
+| --- | --- | --- |
+| Steps 1--2 | linear independent modified fractions | complete Step-1 polytope, including the finite search floor |
+| Steps 3--7 | linear independent modified fractions | complete Step-1 polytope |
+| Step 8 | linear phase amounts and independent modified fractions | complete Step-1 polytope and exact linear balances |
+| Step 9 | physical and modified residuals evaluated from the linear Step-8 state | no coordinate change |
+| Step 10 | one charged trace fraction at a time in \(\log_{10}x_i\) | \(x_i\in[10^{-300},5\times10^{-10}]\), with every non-lower-bound Step-1 constraint still enforced |
+
+The algorithm does not logarithmically transform material-balance variables.
+At trace scale, differences decisive for chemical-potential equality are below
+the useful resolution of a linear balance NLP. Step 10 therefore solves only
+the scalar trace chemical-potential residual in logarithmic coordinates,
+reconstructs the physical phase, and then re-evaluates the ordinary and
+modified linear balances. Zero is never passed to a logarithmic Provider
+state.
 
 ### Step 2 — tangent-plane stability test
 
@@ -846,17 +871,21 @@ not be substituted silently for Eq. (69).
 
 **Transition:**
 
-- either test violated: increment \(k\) and return to Step 4 without
-  discarding \(\mathcal M\);
-- both tests pass: proceed to Step 10.
+- Eq. (68), or Eq. (69) for a non-trace component, violated: increment \(k\)
+  and return to Step 4 without discarding \(\mathcal M\);
+- both tests pass: proceed to Step 10;
+- Eq. (69) fails only for charged components pinned to the finite Step-1
+  search floor: proceed to Step 10 for bounded logarithmic refinement and
+  require complete Step-9 recertification afterward.
 
 **Implementation policy:** material balance, electroneutrality, pressure,
 finite-state, solver KKT, and active-phase checks remain mandatory
 fail-closed result certificates. They must be reported separately from the
 paper’s Eqs. (68)–(69), so a stricter project certificate is never mislabeled
-as a Perdomo transition criterion. Failure of Eq. (68) or (69) returns to
-Step 4. Unavailable Provider evidence, solver failure, or failure of an
-auxiliary project certificate terminates indeterminate instead.
+as a Perdomo transition criterion. Unavailable Provider evidence, solver
+failure, or failure of an auxiliary project certificate terminates
+indeterminate. These transitions are typed controller actions; reason strings
+are diagnostic evidence and do not control the state machine.
 
 ### Step 10 — refine trace components
 
@@ -907,6 +936,12 @@ by solving the paper’s one-dimensional problem
 so its modified chemical potential matches the value
 \(\bar\mu_i^{el,*}\) in a phase where the component is not at the lower
 bound.
+
+Only the charged coordinate being refined may fall below its Step-1 finite
+search floor. Upper bounds, closure-species positivity, eliminated-ion
+nonnegativity, the Provider ion-domain ceiling, and every other Step-1
+polytope constraint remain active. Molecular coordinates never receive this
+exception.
 
 After every refinement, reconstruct the full species vector and recheck
 normalization, electroneutrality, material balance, pressure, and the Step-9

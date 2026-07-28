@@ -425,12 +425,13 @@ KKT-inactive retirement. Retirement requires a phase-amount bound, correct multi
 complementarity, a non-descending reduced derivative, remaining-balance
 feasibility, one-at-a-time retirement, and an active-set re-solve.
 
-The source requires bound complementarity and logarithmic refinement for
-trace-bound components. The controller detects that condition and fails closed
-with `complementarity_refinement_required`; it does not yet
-implement the final logarithmic trace refinement. Trace components are not
-passed to Ipopt near `1e-300` and must not be accepted through an unconditional
-interior modified-potential equality.
+This earlier design is superseded for Steps 1--10 by
+[the paper-faithful algorithm](2026-07-24-held2-paper-algorithm.md). The
+implemented coordinate contract keeps Steps 1--9 in linear modified
+composition coordinates and performs only the final charged trace refinement
+in bounded logarithmic coordinates. The finite Step-1 floor remains a search
+regularization; Step 10 may cross only that charged lower-bound constraint and
+must recertify the reconstructed linear balances and modified potentials.
 
 Step 9 applies Perdomo Eq. (68) to independent controller quantities:
 

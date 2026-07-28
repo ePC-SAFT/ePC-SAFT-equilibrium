@@ -241,12 +241,12 @@ Held2AlgorithmResult run_held2_algorithm(
         }, observer));
         result.step_timings.push_back(result.step9_history.back().timing);
         const Held2Step9Result& step9 = result.step9_history.back();
-        if (step9.outcome == Held2Step9Outcome::Indeterminate) {
+        if (step9.next_action
+            == Held2Step9Action::TerminateIndeterminate) {
             result.final_state = state;
             return fail("step9", step9.reason);
         }
-        if (step9.outcome == Held2Step9Outcome::PaperConvergenceFailed
-            && step9.reason != "paper_potential_convergence_failed") {
+        if (step9.next_action == Held2Step9Action::ReturnStageII) {
             if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail(
@@ -267,7 +267,8 @@ Held2AlgorithmResult run_held2_algorithm(
             );
         }, observer);
         result.step_timings.push_back(result.step10->timing);
-        if (result.step10->reason == "trace_refinement_not_applicable") {
+        if (result.step10->next_action
+            == Held2Step10Action::ReturnStageII) {
             if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail(

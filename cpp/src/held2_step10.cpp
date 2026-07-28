@@ -57,12 +57,10 @@ Held2Step10Result run_held2_step10(
     Held2Step10Result result;
     result.timing.invocation_count = 1;
     const bool trace_potential_failure =
-        step9.outcome == Held2Step9Outcome::PaperConvergenceFailed
-        && step9.reason == "paper_potential_convergence_failed";
+        step9.outcome == Held2Step9Outcome::PaperConvergenceFailed;
     if (!step1.coordinates || !step1.independent_feed
         || step8.outcome != Held2Step8Outcome::CertifiedFeasible
-        || (step9.outcome != Held2Step9Outcome::Converged
-            && !trace_potential_failure)
+        || step9.next_action != Held2Step9Action::RunStep10
         || !step9.physical || !evaluator) {
         result.reason = "invalid_step10_input";
         return result;
@@ -84,6 +82,7 @@ Held2Step10Result run_held2_step10(
                         ] == 0.0);
             }
         )) {
+        result.next_action = Held2Step10Action::ReturnStageII;
         result.reason = "trace_refinement_not_applicable";
         return result;
     }
@@ -205,7 +204,7 @@ Held2Step10Result run_held2_step10(
                     held2_lift_independent_fractions(
                         coordinates,
                         phase.independent_modified_fractions,
-                        true
+                        Held2CompositionDomain::TraceRefinement
                     );
             } catch (const std::invalid_argument&) {
                 result.reason = "trace_reconstruction_failed";
@@ -223,6 +222,7 @@ Held2Step10Result run_held2_step10(
         }
     }
     if (!trace_found && trace_potential_failure) {
+        result.next_action = Held2Step10Action::ReturnStageII;
         result.reason = "trace_refinement_not_applicable";
         return result;
     }
@@ -325,6 +325,7 @@ Held2Step10Result run_held2_step10(
         return result;
     }
     result.status = "complete";
+    result.next_action = Held2Step10Action::Accept;
     result.reason = trace_found ? "trace_refinement_complete"
                                 : "trace_refinement_not_required";
     result.timing.terminal_status = result.status;

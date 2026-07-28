@@ -62,10 +62,14 @@ std::size_t retained_position(
 
 void require_complete_polytope(
     const Held2Coordinates& coordinates,
-    const std::vector<double>& independent
+    const std::vector<double>& independent,
+    Held2CompositionDomain domain = Held2CompositionDomain::FiniteSearch
 ) {
-    for (const Held2PolytopeConstraint& constraint :
-         coordinates.polytope_constraints) {
+    for (std::size_t constraint_index = 0;
+         constraint_index < coordinates.polytope_constraints.size();
+         ++constraint_index) {
+        const Held2PolytopeConstraint& constraint =
+            coordinates.polytope_constraints[constraint_index];
         if (constraint.coefficients.size() != independent.size()) {
             throw std::invalid_argument(
                 "HELD2 Step-1 polytope dimensions are invalid"
@@ -80,9 +84,27 @@ void require_complete_polytope(
         const double violation = std::max(
             0.0, value - constraint.upper_bound
         );
-        if (!std::isfinite(value) || !audit_held2_tolerance(
+        const std::size_t compact = constraint_index / 2;
+        const bool charged_coordinate = constraint_index < 2 * independent.size()
+            && coordinates.charges[
+                coordinates.independent_indices[compact]
+            ] != 0.0;
+        if (domain == Held2CompositionDomain::TraceRefinement
+            && constraint_index % 2 == 0 && charged_coordinate
+            && independent[compact] <= 0.0) {
+            throw std::invalid_argument(
+                "charged trace composition must be positive"
+            );
+        }
+        const bool charged_trace_lower_bound =
+            domain == Held2CompositionDomain::TraceRefinement
+            && constraint_index % 2 == 0 && charged_coordinate
+            && independent[compact] > 0.0;
+        if (!std::isfinite(value) || (
+            !audit_held2_tolerance(
                 kHeld2PolytopeFeasibility, violation
-            ).passed) {
+            ).passed && !charged_trace_lower_bound
+        )) {
             throw std::invalid_argument(
                 "independent modified composition violates "
                 + constraint.name
@@ -508,7 +530,7 @@ std::vector<double> held2_lift_modified_fractions(
 std::vector<double> held2_lift_independent_fractions(
     const Held2Coordinates& coordinates,
     const std::vector<double>& independent_modified_fractions,
-    bool permit_trace
+    Held2CompositionDomain domain
 ) {
     const std::size_t independent_count =
         coordinates.independent_indices.size();
@@ -521,11 +543,9 @@ std::vector<double> held2_lift_independent_fractions(
         independent_modified_fractions,
         "independent modified fractions"
     );
-    if (!permit_trace) {
-        require_complete_polytope(
-            coordinates, independent_modified_fractions
-        );
-    }
+    require_complete_polytope(
+        coordinates, independent_modified_fractions, domain
+    );
     std::vector<double> modified_fractions(
         coordinates.retained_indices.size(), 0.0
     );
@@ -803,7 +823,7 @@ Held2StateEvaluation evaluate_held2_phase_block(
     double pressure_over_rt,
     double target_pressure_pa,
     const Held2PhysicalPhaseBlock& block,
-    bool permit_trace
+    Held2CompositionDomain domain
 ) {
     const std::size_t component_count = coordinates.charges.size();
     const std::size_t independent_count =
@@ -861,7 +881,7 @@ Held2StateEvaluation evaluate_held2_phase_block(
         result.modified_fractions[retained] = value;
     }
     result.physical_amounts = held2_lift_independent_fractions(
-        coordinates, independent_modified_fractions, permit_trace
+        coordinates, independent_modified_fractions, domain
     );
     const std::size_t dependent_retained = retained_position(
         coordinates, coordinates.dependent_index
