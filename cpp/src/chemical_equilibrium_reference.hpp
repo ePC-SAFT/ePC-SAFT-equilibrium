@@ -9,8 +9,6 @@ namespace epcsaft_equilibrium {
 
 struct ReactionReferenceReconstruction {
     std::vector<double> reference;
-    std::size_t rank = 0;
-    double qr_diagonal_ratio = 0.0;
     double residual_inf_norm = 0.0;
 };
 

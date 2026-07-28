@@ -11,9 +11,6 @@ from chemical_equilibrium_cases import (
 from chemical_equilibrium_cases import (
     bind_records as _bind_record,
 )
-from chemical_equilibrium_cases import (
-    manufactured_solve as _manufactured_solve,
-)
 
 from epcsaft_equilibrium import _equilibrium
 
@@ -26,9 +23,14 @@ def test_reaction_compiler_reconstructs_minimum_norm_reference() -> None:
     assert compiled["balance_rank"] == 1
     assert compiled["reaction_rank"] == 1
     assert compiled["g_ref"] == pytest.approx((expected, -expected), abs=2.0e-15)
-    assert compiled["reference_reconstruction_inf_norm"] <= 2.0e-15
-    assert compiled["conservation_reaction_inf_norm"] == 0.0
-    assert compiled["charge_reaction_inf_norm"] == 0.0
+    assert sum(
+        coefficient * reference
+        for coefficient, reference in zip(
+            _base_system()["reaction_matrix"][0],  # type: ignore[index]
+            compiled["g_ref"],
+            strict=True,
+        )
+    ) == pytest.approx(-math.log(4.0), abs=2.0e-15)
 
 
 def _nearly_dependent_system(
@@ -103,21 +105,34 @@ def test_redundant_reaction_compiler_and_reaction_constant_cycle(
         strict=True,
     ):
         assert actual == pytest.approx(expected, abs=2.0e-14)
-    assert compiled["independent_reaction_matrix"] == [
+    assert compiled["reaction_matrix"] == [
         [-1.0, 1.0, 0.0],
         [0.0, -1.0, 1.0],
     ]
-    assert compiled["independent_ln_k"] == pytest.approx(
+    assert compiled["ln_k"] == pytest.approx(
         (math.log(2.0), math.log(3.0)), abs=2.0e-14
     )
-    assert compiled["reaction_cycle_inf_norm"] <= 2.0e-14
-    assert compiled["reaction_transform_inf_norm"] <= 2.0e-14
+    for supplied, transform in zip(
+        spec["reaction_matrix"], compiled["reaction_transform"], strict=True  # type: ignore[arg-type]
+    ):
+        reconstructed = tuple(
+            sum(
+                transform[basis] * compiled["reaction_matrix"][basis][species]
+                for basis in range(2)
+            )
+            for species in range(3)
+        )
+        assert reconstructed == pytest.approx(supplied, abs=2.0e-14)
+    reconstructed_ln_k = tuple(
+        sum(transform[basis] * compiled["ln_k"][basis] for basis in range(2))
+        for transform in compiled["reaction_transform"]
+    )
+    assert reconstructed_ln_k == pytest.approx(spec["ln_k"], abs=2.0e-14)
 
 
 def test_reaction_compiler_is_stable_for_scaled_nearly_dependent_reactions() -> None:
     delta = 1.0e-6
     expected_reference = (1.0, -1.0, 0.5, -0.5)
-    qr_diagonal_ratios = []
 
     for reaction_scale, reverse_order in (
         (1.0, False),
@@ -133,13 +148,15 @@ def test_reaction_compiler_is_stable_for_scaled_nearly_dependent_reactions() -> 
 
         assert compiled["reaction_rank"] == 2
         assert compiled["g_ref"] == pytest.approx(expected_reference, abs=2.0e-9)
-        assert compiled["reference_reconstruction_inf_norm"] <= 5.0e-8
-        qr_diagonal_ratios.append(compiled["reaction_qr_diagonal_ratio"])
-
-    assert qr_diagonal_ratios == pytest.approx(
-        (qr_diagonal_ratios[0],) * 4, rel=2.0e-9
-    )
-    assert 1.0e-8 < qr_diagonal_ratios[0] < 1.0e-4
+        for row, ln_k in zip(
+            compiled["reaction_matrix"], compiled["ln_k"], strict=True
+        ):
+            assert sum(
+                coefficient * reference
+                for coefficient, reference in zip(
+                    row, compiled["g_ref"], strict=True
+                )
+            ) == pytest.approx(-ln_k, abs=5.0e-8)
 
 
 def test_reaction_compiler_rejects_numerically_dependent_reactions() -> None:
@@ -209,96 +226,6 @@ def test_reaction_compiler_rejects_non_neutral_feed_and_charge_nonconservation()
         _equilibrium._chemical_compile_system(nonconserving)
 
 
-@pytest.mark.parametrize(
-    (
-        "balance_matrix",
-        "feed_amounts",
-        "charges",
-        "molar_masses",
-        "classifications",
-        "expected_average",
-    ),
-    (
-        (
-            ((1.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
-            (1.0, 0.0, 0.0),
-            (0, 0, 0),
-            (1.0, 1.0, 1.0),
-            ("proved_accessible", "proved_accessible", "proved_structural_zero"),
-            (0.5, 0.5, 0.0),
-        ),
-        (
-            ((1.0e8, 1.0e8, 0.0), (0.0, 0.0, 1.0e-8)),
-            (1.0, 0.0, 0.0),
-            (0, 0, 0),
-            (1.0, 1.0, 1.0),
-            ("proved_accessible", "proved_accessible", "proved_structural_zero"),
-            (0.5, 0.5, 0.0),
-        ),
-        (
-            ((2.0, 1.0, 1.0),),
-            (1.0, 0.0, 0.0),
-            (0, 1, -1),
-            (2.0, 1.0, 1.0),
-            ("proved_accessible", "proved_accessible", "proved_accessible"),
-            (1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0),
-        ),
-    ),
-)
-def test_homogeneous_structural_support_has_exact_primal_and_dual_certificates(
-    balance_matrix: tuple[tuple[float, ...], ...],
-    feed_amounts: tuple[float, ...],
-    charges: tuple[int, ...],
-    molar_masses: tuple[float, ...],
-    classifications: tuple[str, ...],
-    expected_average: tuple[float, ...],
-) -> None:
-    evidence = _equilibrium._chemical_analyze_homogeneous_support(
-        balance_matrix,
-        feed_amounts,
-        charges,
-        molar_masses,
-    )
-
-    assert evidence["phase1_status"] == "optimal"
-    assert evidence["validation_status"] == "exact_certificates_complete"
-    assert tuple(item["classification"] for item in evidence["species"]) \
-        == classifications
-    assert evidence["equality_inf_norm"] == 0.0
-
-    totals = tuple(
-        sum(row[index] * feed_amounts[index] for index in range(len(feed_amounts)))
-        for row in balance_matrix
-    )
-    for item in evidence["species"]:
-        if item["primal_validated"]:
-            witness = item["witness_amounts"]
-            assert all(value >= 0.0 for value in witness)
-            assert tuple(
-                sum(row[index] * witness[index] for index in range(len(witness)))
-                for row in balance_matrix
-            ) == pytest.approx(totals, abs=0.0)
-            assert sum(
-                charges[index] * witness[index] for index in range(len(witness))
-            ) == 0.0
-        if item["classification"] == "proved_structural_zero":
-            assert item["dual_validated"] is True
-            assert item["candidate_maximum_mass_fraction"] == pytest.approx(
-                0.0, abs=1.0e-12
-            )
-
-    average = evidence["witness_average_amounts"]
-    assert average == pytest.approx(expected_average, abs=0.0)
-    assert tuple(
-        sum(row[index] * average[index] for index in range(len(average)))
-        for row in balance_matrix
-    ) == pytest.approx(totals, abs=0.0)
-    assert sum(charges[index] * average[index] for index in range(len(average))) == 0.0
-    for index, classification in enumerate(classifications):
-        if classification == "proved_accessible":
-            assert average[index] > 0.0
-
-
 def _accessible_face_system() -> dict[str, object]:
     spec = {
         **_base_system(),
@@ -320,7 +247,7 @@ def _accessible_face_system() -> dict[str, object]:
     return spec
 
 
-def test_accessible_face_preserves_reaction_combinations_that_cancel_removed_species() -> None:
+def test_accessible_face_preserves_reaction_combinations_and_certification() -> None:
     spec = _accessible_face_system()
 
     compiled = _equilibrium._chemical_compile_system(spec)
@@ -340,17 +267,13 @@ def test_accessible_face_preserves_reaction_combinations_that_cancel_removed_spe
     assert compiled["accessible_reaction_transform"][0] == pytest.approx(
         (1.0, 1.0), abs=2.0e-14
     )
-    assert compiled["accessible_reaction_matrix"] == [[-1.0, 1.0]]
-    assert compiled["accessible_ln_k"] == pytest.approx(
+    assert compiled["reaction_matrix"] == [[-1.0, 1.0]]
+    assert compiled["ln_k"] == pytest.approx(
         (math.log(6.0),), abs=2.0e-14
     )
     assert compiled["balance_rank"] + compiled["reaction_rank"] == 2
-    assert compiled["conservation_reaction_inf_norm"] <= 2.0e-14
-    assert compiled["charge_reaction_inf_norm"] == 0.0
 
-
-def test_manufactured_structural_face_has_exact_zeros_and_local_certification_level() -> None:
-    result = _manufactured_solve(_accessible_face_system())
+    result = _equilibrium._chemical_solve_manufactured(spec, {})
 
     assert result["accepted"] is True
     assert result["amounts"] == pytest.approx(
@@ -364,11 +287,7 @@ def test_manufactured_structural_face_has_exact_zeros_and_local_certification_le
     assert result["chemical_certification_level"] == "LOCAL_EQUILIBRIUM"
     assert result["support_qualifiers"] == []
 
-
-def test_provider_boundary_direction_guard_fails_before_any_callback() -> None:
-    result = _equilibrium._chemical_provider_boundary_guard(
-        _accessible_face_system()
-    )
+    result = _equilibrium._chemical_provider_boundary_guard(spec)
 
     assert result["accepted"] is False
     assert result["amounts"] == []

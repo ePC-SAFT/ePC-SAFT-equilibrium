@@ -2046,7 +2046,7 @@ void attach_support_evidence(
 ) {
     result.retained_species_indices = system.retained_species_indices;
     result.structural_zero_species_indices = system.removed_species_indices;
-    if (system.support.validation_status != "exact_certificates_complete") {
+    if (!system.support.exact_certificates_complete) {
         result.support_qualifiers.push_back("SEARCH_ONLY_LP_SUPPORT");
     }
 }
@@ -2131,8 +2131,7 @@ ChemicalSolveResult finalize_chemical_result(
         result.numerical_status = "failed";
         result.physical_status = "failed";
     }
-    if (result.accepted
-        && system.support.validation_status == "exact_certificates_complete") {
+    if (result.accepted && system.support.exact_certificates_complete) {
         result.chemical_certification_level = "LOCAL_EQUILIBRIUM";
         result.boundary_status = system.removed_species_indices.empty()
             ? "strict_interior"

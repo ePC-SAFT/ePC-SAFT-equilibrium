@@ -11,9 +11,6 @@ from chemical_equilibrium_cases import (
 from chemical_equilibrium_cases import (
     bind_records as _bind_record,
 )
-from chemical_equilibrium_cases import (
-    manufactured_solve as _manufactured_solve,
-)
 
 from epcsaft_equilibrium import _equilibrium
 
@@ -180,6 +177,12 @@ def test_amount_chart_classifies_trace_floor_without_zeroing_species() -> None:
 def test_amount_chart_rejects_one_sided_ionic_topology() -> None:
     with pytest.raises(ValueError, match="both cations and anions"):
         _amount_chart((1, 0), (0.0,))
+
+
+def _manufactured_solve(
+    spec: dict[str, object], options: dict[str, object] | None = None
+) -> dict[str, object]:
+    return _equilibrium._chemical_solve_manufactured(spec, options or {})
 
 
 @pytest.mark.parametrize(

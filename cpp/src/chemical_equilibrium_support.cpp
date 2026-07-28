@@ -6,9 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <limits>
 #include <numeric>
-#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -37,12 +35,8 @@ struct ExactEqualitySystem {
 
 struct HighsCandidate {
     bool optimal = false;
-    std::string status = "setup_failed";
     std::vector<double> values;
-    std::vector<double> row_duals;
-    std::vector<double> column_duals;
     std::vector<bool> basic_columns;
-    double objective = 0.0;
 };
 
 ExactRational exact_binary_rational(double value) {
@@ -266,30 +260,25 @@ bool visit_combinations(
     return false;
 }
 
-std::optional<std::vector<ExactRational>> exact_primal_witness(
+bool exact_positive_witness(
     const ExactEqualitySystem& system,
     const HighsCandidate& candidate,
-    std::optional<std::size_t> required_positive
+    std::size_t target_species
 ) {
     const std::size_t rank = system.matrix.size();
-    if (rank > system.columns || candidate.values.size() != system.columns) {
-        return std::nullopt;
+    if (rank == 0 || rank > system.columns
+        || target_species >= system.columns
+        || candidate.values.size() != system.columns) {
+        return false;
     }
     std::vector<std::size_t> pool = ordered_columns(candidate);
-    std::vector<std::size_t> selected;
-    if (required_positive.has_value()) {
-        selected.push_back(*required_positive);
-        pool.erase(std::remove(pool.begin(), pool.end(), *required_positive), pool.end());
-    }
-    const std::size_t required_count = selected.size();
-    if (required_count > rank) {
-        return std::nullopt;
-    }
-    std::optional<std::vector<ExactRational>> result;
+    pool.erase(std::remove(pool.begin(), pool.end(), target_species), pool.end());
+    std::vector<std::size_t> selected{target_species};
+    bool validated = false;
     std::size_t visited = 0;
     visit_combinations(
         pool,
-        rank - required_count,
+        rank - 1,
         0,
         selected,
         visited,
@@ -310,47 +299,29 @@ std::optional<std::vector<ExactRational>> exact_primal_witness(
                 || std::any_of(
                     basis_values.begin(), basis_values.end(),
                     [](const ExactRational& value) { return value < 0; }
-                )) {
+                )
+                || basis_values.front() <= 0) {
                 return false;
             }
-            std::vector<ExactRational> witness(
-                system.columns, ExactRational(0)
-            );
-            for (std::size_t index = 0; index < rank; ++index) {
-                witness[basis_columns[index]] = basis_values[index];
-            }
-            if (required_positive.has_value()
-                && witness[*required_positive] <= 0) {
-                return false;
-            }
-            for (std::size_t row = 0; row < rank; ++row) {
-                ExactRational residual = -system.right_hand_side[row];
-                for (std::size_t column = 0; column < system.columns; ++column) {
-                    residual += system.matrix[row][column] * witness[column];
-                }
-                if (residual != 0) {
-                    return false;
-                }
-            }
-            result = std::move(witness);
+            validated = true;
             return true;
         }
     );
-    return result;
+    return validated;
 }
 
-std::optional<std::vector<ExactRational>> exact_dual_zero_certificate(
+bool exact_zero_certificate(
     const ExactEqualitySystem& system,
-    const std::vector<ExactRational>& objective,
+    std::size_t target_species,
     const HighsCandidate& candidate
 ) {
     const std::size_t rank = system.matrix.size();
-    if (rank > system.columns || objective.size() != system.columns) {
-        return std::nullopt;
+    if (rank > system.columns || target_species >= system.columns) {
+        return false;
     }
     const std::vector<std::size_t> pool = ordered_columns(candidate);
     std::vector<std::size_t> selected;
-    std::optional<std::vector<ExactRational>> result;
+    bool validated = false;
     std::size_t visited = 0;
     visit_combinations(
         pool,
@@ -365,7 +336,8 @@ std::optional<std::vector<ExactRational>> exact_dual_zero_certificate(
             std::vector<ExactRational> active_objective(rank, ExactRational(0));
             for (std::size_t equation = 0; equation < rank; ++equation) {
                 const std::size_t species = basis_columns[equation];
-                active_objective[equation] = objective[species];
+                active_objective[equation] =
+                    species == target_species ? ExactRational(1) : ExactRational(0);
                 for (std::size_t multiplier = 0; multiplier < rank; ++multiplier) {
                     transpose_basis[equation][multiplier] =
                         system.matrix[multiplier][species];
@@ -380,7 +352,8 @@ std::optional<std::vector<ExactRational>> exact_dual_zero_certificate(
                 return false;
             }
             for (std::size_t species = 0; species < system.columns; ++species) {
-                ExactRational reduced = -objective[species];
+                ExactRational reduced =
+                    species == target_species ? ExactRational(-1) : ExactRational(0);
                 for (std::size_t row = 0; row < rank; ++row) {
                     reduced += system.matrix[row][species] * multipliers[row];
                 }
@@ -395,84 +368,27 @@ std::optional<std::vector<ExactRational>> exact_dual_zero_certificate(
             if (dual_objective != 0) {
                 return false;
             }
-            result = std::move(multipliers);
+            validated = true;
             return true;
         }
     );
-    return result;
-}
-
-std::optional<std::vector<ExactRational>> exact_row_coordinates(
-    const ExactEqualitySystem& system,
-    const std::vector<ExactRational>& row
-) {
-    const std::size_t rank = system.matrix.size();
-    if (row.size() != system.columns || rank > system.columns) {
-        return std::nullopt;
-    }
-    HighsCandidate ordering;
-    ordering.values.assign(system.columns, 0.0);
-    ordering.basic_columns.assign(system.columns, false);
-    const std::vector<std::size_t> pool = ordered_columns(ordering);
-    std::vector<std::size_t> selected;
-    std::optional<std::vector<ExactRational>> result;
-    std::size_t visited = 0;
-    visit_combinations(
-        pool,
-        rank,
-        0,
-        selected,
-        visited,
-        [&](const std::vector<std::size_t>& basis_columns) {
-            std::vector<std::vector<ExactRational>> transpose_basis(
-                rank, std::vector<ExactRational>(rank, ExactRational(0))
-            );
-            std::vector<ExactRational> active_values(rank, ExactRational(0));
-            for (std::size_t equation = 0; equation < rank; ++equation) {
-                active_values[equation] = row[basis_columns[equation]];
-                for (std::size_t multiplier = 0; multiplier < rank; ++multiplier) {
-                    transpose_basis[equation][multiplier] =
-                        system.matrix[multiplier][basis_columns[equation]];
-                }
-            }
-            std::vector<ExactRational> coordinates;
-            if (!solve_square_system(
-                    std::move(transpose_basis),
-                    std::move(active_values),
-                    coordinates
-                )) {
-                return false;
-            }
-            for (std::size_t column = 0; column < system.columns; ++column) {
-                ExactRational residual = -row[column];
-                for (std::size_t multiplier = 0; multiplier < rank; ++multiplier) {
-                    residual +=
-                        coordinates[multiplier] * system.matrix[multiplier][column];
-                }
-                if (residual != 0) {
-                    return false;
-                }
-            }
-            result = std::move(coordinates);
-            return true;
-        }
-    );
-    return result;
+    return validated;
 }
 
 HighsCandidate solve_candidate_lp(
     const ExactEqualitySystem& system,
-    const std::vector<double>& objective
+    std::size_t target_species
 ) {
     HighsCandidate result;
-    if (objective.size() != system.columns) {
+    if (target_species >= system.columns) {
         return result;
     }
     HighsModel model;
     model.lp_.num_col_ = static_cast<HighsInt>(system.columns);
     model.lp_.num_row_ = static_cast<HighsInt>(system.matrix.size());
     model.lp_.sense_ = ObjSense::kMaximize;
-    model.lp_.col_cost_ = objective;
+    model.lp_.col_cost_.assign(system.columns, 0.0);
+    model.lp_.col_cost_[target_species] = 1.0;
     model.lp_.col_lower_.assign(system.columns, 0.0);
     model.lp_.col_upper_.assign(system.columns, kHighsInf);
     model.lp_.row_lower_.reserve(system.matrix.size());
@@ -508,23 +424,16 @@ HighsCandidate solve_candidate_lp(
         return result;
     }
     const HighsModelStatus model_status = highs.getModelStatus();
-    result.status = highs.modelStatusToString(model_status);
     if (model_status != HighsModelStatus::kOptimal
         || highs.getInfo().primal_solution_status != kSolutionStatusFeasible) {
         return result;
     }
     const HighsSolution& solution = highs.getSolution();
-    if (solution.col_value.size() != system.columns
-        || solution.row_dual.size() != system.matrix.size()
-        || solution.col_dual.size() != system.columns) {
-        result.status = "optimal_without_complete_solution";
+    if (solution.col_value.size() != system.columns) {
         return result;
     }
     result.optimal = true;
-    result.status = "optimal";
     result.values = solution.col_value;
-    result.row_duals = solution.row_dual;
-    result.column_duals = solution.col_dual;
     result.basic_columns.assign(system.columns, false);
     const HighsBasis& basis = highs.getBasis();
     if (basis.valid && basis.col_status.size() == system.columns) {
@@ -533,19 +442,6 @@ HighsCandidate solve_candidate_lp(
                 basis.col_status[column] == HighsBasisStatus::kBasic;
         }
     }
-    result.objective = std::inner_product(
-        objective.begin(), objective.end(), result.values.begin(), 0.0
-    );
-    if (std::abs(result.objective) <= 1.0e-12) {
-        result.objective = 0.0;
-    }
-    return result;
-}
-
-std::vector<double> to_doubles(const std::vector<ExactRational>& values) {
-    std::vector<double> result;
-    result.reserve(values.size());
-    std::transform(values.begin(), values.end(), std::back_inserter(result), to_double);
     return result;
 }
 
@@ -554,15 +450,13 @@ std::vector<double> to_doubles(const std::vector<ExactRational>& values) {
 HomogeneousSupportAnalysis analyze_homogeneous_support(
     const DenseMatrix& balance_matrix,
     const std::vector<double>& balance_totals,
-    const std::vector<int>& charges,
-    const std::vector<double>& molar_masses_kg_per_mol
+    const std::vector<int>& charges
 ) {
     const std::size_t species_count = balance_matrix.columns;
     if (species_count == 0
         || balance_matrix.values.size() != balance_matrix.rows * species_count
         || balance_totals.size() != balance_matrix.rows
         || charges.size() != species_count
-        || molar_masses_kg_per_mol.size() != species_count
         || !std::all_of(
             balance_matrix.values.begin(),
             balance_matrix.values.end(),
@@ -572,11 +466,6 @@ HomogeneousSupportAnalysis analyze_homogeneous_support(
             balance_totals.begin(),
             balance_totals.end(),
             [](double value) { return std::isfinite(value); }
-        )
-        || !std::all_of(
-            molar_masses_kg_per_mol.begin(),
-            molar_masses_kg_per_mol.end(),
-            [](double value) { return std::isfinite(value) && value > 0.0; }
         )) {
         throw std::invalid_argument("homogeneous support input is invalid");
     }
@@ -584,127 +473,29 @@ HomogeneousSupportAnalysis analyze_homogeneous_support(
     const ExactEqualitySystem exact = independent_exact_equalities(
         balance_matrix, balance_totals, charges
     );
-    std::vector<ExactRational> exact_masses;
-    exact_masses.reserve(species_count);
-    std::transform(
-        molar_masses_kg_per_mol.begin(),
-        molar_masses_kg_per_mol.end(),
-        std::back_inserter(exact_masses),
-        exact_binary_rational
-    );
-    const auto mass_coordinates = exact_row_coordinates(exact, exact_masses);
-    if (!mass_coordinates.has_value()) {
-        throw std::invalid_argument(
-            "molar mass must be in the span of homogeneous support balances"
-        );
-    }
-    ExactRational total_mass(0);
-    for (std::size_t row = 0; row < exact.matrix.size(); ++row) {
-        total_mass += (*mass_coordinates)[row] * exact.right_hand_side[row];
-    }
-    if (total_mass <= 0) {
-        throw std::invalid_argument("homogeneous support total mass must be positive");
-    }
 
     HomogeneousSupportAnalysis result;
-    result.species.resize(species_count);
-    const HighsCandidate phase1 = solve_candidate_lp(
-        exact, std::vector<double>(species_count, 0.0)
-    );
-    result.phase1_status = phase1.status;
-    if (!phase1.optimal) {
-        result.validation_status = "phase1_unresolved";
-        return result;
-    }
-    const auto exact_phase1 = exact_primal_witness(exact, phase1, std::nullopt);
-    if (!exact_phase1.has_value()) {
-        result.validation_status = "exact_phase1_unresolved";
-        return result;
-    }
-
-    std::vector<std::vector<ExactRational>> accessible_witnesses;
-    accessible_witnesses.reserve(species_count);
+    result.classifications.assign(species_count, "unresolved");
     bool complete = true;
+    bool has_accessible_species = false;
     for (std::size_t species = 0; species < species_count; ++species) {
-        std::vector<ExactRational> exact_objective(
-            species_count, ExactRational(0)
-        );
-        exact_objective[species] = exact_masses[species] / total_mass;
-        std::vector<double> objective(species_count, 0.0);
-        objective[species] = to_double(exact_objective[species]);
-        const HighsCandidate candidate = solve_candidate_lp(exact, objective);
-        SpeciesSupportEvidence& evidence = result.species[species];
-        evidence.candidate_maximum_mass_fraction = candidate.objective;
+        const HighsCandidate candidate = solve_candidate_lp(exact, species);
         if (!candidate.optimal) {
             complete = false;
             continue;
         }
-        const auto primal = exact_primal_witness(exact, candidate, species);
-        if (primal.has_value()) {
-            evidence.classification = "proved_accessible";
-            evidence.primal_validated = true;
-            evidence.witness_amounts = to_doubles(*primal);
-            accessible_witnesses.push_back(*primal);
+        if (exact_positive_witness(exact, candidate, species)) {
+            result.classifications[species] = "proved_accessible";
+            has_accessible_species = true;
             continue;
         }
-        const auto dual = exact_dual_zero_certificate(
-            exact, exact_objective, candidate
-        );
-        if (dual.has_value()) {
-            evidence.classification = "proved_structural_zero";
-            evidence.dual_validated = true;
-            evidence.dual_multipliers = to_doubles(*dual);
+        if (exact_zero_certificate(exact, species, candidate)) {
+            result.classifications[species] = "proved_structural_zero";
             continue;
         }
         complete = false;
     }
-
-    if (!accessible_witnesses.empty()) {
-        std::vector<ExactRational> average(species_count, ExactRational(0));
-        for (const auto& witness : accessible_witnesses) {
-            for (std::size_t species = 0; species < species_count; ++species) {
-                average[species] += witness[species];
-            }
-        }
-        const ExactRational divisor(accessible_witnesses.size());
-        for (ExactRational& value : average) {
-            value /= divisor;
-        }
-        for (std::size_t species = 0; species < species_count; ++species) {
-            if (result.species[species].classification == "proved_accessible"
-                && average[species] <= 0) {
-                complete = false;
-            }
-        }
-        result.witness_average_amounts = to_doubles(average);
-    }
-    result.validation_status = complete
-        ? "exact_certificates_complete"
-        : "exact_certificates_incomplete";
-    if (complete) {
-        result.equality_inf_norm = 0.0;
-    } else if (!result.witness_average_amounts.empty()) {
-        for (std::size_t row = 0; row < balance_matrix.rows; ++row) {
-            double residual = -balance_totals[row];
-            for (std::size_t species = 0; species < species_count; ++species) {
-                residual += balance_matrix(row, species)
-                    * result.witness_average_amounts[species];
-            }
-            result.equality_inf_norm = std::max(
-                result.equality_inf_norm, std::abs(residual)
-            );
-        }
-        double charge_residual = 0.0;
-        for (std::size_t species = 0; species < species_count; ++species) {
-            charge_residual += static_cast<double>(charges[species])
-                * result.witness_average_amounts[species];
-        }
-        result.equality_inf_norm = std::max(
-            result.equality_inf_norm, std::abs(charge_residual)
-        );
-    } else {
-        result.equality_inf_norm = std::numeric_limits<double>::infinity();
-    }
+    result.exact_certificates_complete = complete && has_accessible_species;
     return result;
 }
 

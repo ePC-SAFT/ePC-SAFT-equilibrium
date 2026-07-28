@@ -153,68 +153,20 @@ py::dict compile_system(const py::dict& spec) {
     py::dict result;
     result["original_species_ids"] = compiled.original_species_ids;
     result["species_ids"] = compiled.species_ids;
-    result["retained_species_ids"] = compiled.species_ids;
     result["retained_species_indices"] = compiled.retained_species_indices;
     result["removed_species_indices"] = compiled.removed_species_indices;
-    std::vector<std::string> removed_species_ids;
-    removed_species_ids.reserve(compiled.removed_species_indices.size());
-    for (std::size_t index : compiled.removed_species_indices) {
-        removed_species_ids.push_back(compiled.original_species_ids[index]);
-    }
-    result["removed_species_ids"] = std::move(removed_species_ids);
-    result["charges"] = compiled.charges;
     result["balance_rank"] = compiled.balance_rank;
     result["reaction_rank"] = compiled.reaction_rank;
     result["supplied_reaction_rank"] = compiled.reaction_basis_rows.size();
     result["reaction_basis_rows"] = compiled.reaction_basis_rows;
     result["reaction_transform"] = matrix_rows(compiled.reaction_transform);
-    std::vector<std::vector<double>> full_independent_reaction_matrix;
-    std::vector<double> full_independent_ln_k;
-    full_independent_reaction_matrix.reserve(compiled.reaction_basis_rows.size());
-    full_independent_ln_k.reserve(compiled.reaction_basis_rows.size());
-    for (std::size_t row : compiled.reaction_basis_rows) {
-        std::vector<double> values(compiled.supplied_reaction_matrix.columns, 0.0);
-        for (std::size_t species = 0;
-             species < compiled.supplied_reaction_matrix.columns;
-             ++species) {
-            values[species] = compiled.supplied_reaction_matrix(row, species);
-        }
-        full_independent_reaction_matrix.push_back(std::move(values));
-        full_independent_ln_k.push_back(compiled.supplied_ln_k[row]);
-    }
-    result["full_independent_reaction_matrix"] =
-        std::move(full_independent_reaction_matrix);
-    result["full_independent_ln_k"] = std::move(full_independent_ln_k);
-    result["independent_reaction_matrix"] = matrix_rows(compiled.reaction_matrix);
-    result["independent_ln_k"] = compiled.ln_k;
-    result["reaction_cycle_inf_norm"] = compiled.reaction_cycle_inf_norm;
-    result["reaction_transform_inf_norm"] = compiled.reaction_transform_inf_norm;
+    result["reaction_matrix"] = matrix_rows(compiled.reaction_matrix);
+    result["ln_k"] = compiled.ln_k;
     result["accessible_reaction_transform"] = matrix_rows(
         compiled.accessible_reaction_transform
     );
-    result["accessible_reaction_transform_inf_norm"] =
-        compiled.accessible_reaction_transform_inf_norm;
-    result["accessible_reaction_matrix"] = matrix_rows(compiled.reaction_matrix);
-    result["accessible_ln_k"] = compiled.ln_k;
-    std::vector<std::string> support_classifications;
-    support_classifications.reserve(compiled.support.species.size());
-    for (const SpeciesSupportEvidence& item : compiled.support.species) {
-        support_classifications.push_back(item.classification);
-    }
-    result["support_classifications"] = std::move(support_classifications);
-    result["support_phase1_status"] = compiled.support.phase1_status;
-    result["support_validation_status"] = compiled.support.validation_status;
-    result["balance_matrix"] = matrix_rows(compiled.balance_matrix);
-    result["molar_masses_kg_per_mol"] = compiled.molar_masses_kg_per_mol;
-    result["reaction_qr_diagonal_ratio"] = compiled.reaction_qr_diagonal_ratio;
-    result["balance_totals"] = compiled.balance_totals;
+    result["support_classifications"] = compiled.support.classifications;
     result["g_ref"] = compiled.g_ref;
-    result["reference_reconstruction_inf_norm"] =
-        compiled.reference_reconstruction_inf_norm;
-    result["conservation_reaction_inf_norm"] =
-        compiled.conservation_reaction_inf_norm;
-    result["charge_reaction_inf_norm"] = compiled.charge_reaction_inf_norm;
-    result["provider_fingerprint"] = compiled.provider_fingerprint;
     return result;
 }
 
@@ -268,52 +220,6 @@ py::dict max_min_evidence(
     result["max_min_amount"] = initialization.max_min_amount;
     result["equality_inf_norm"] = initialization.equality_inf_norm;
     result["strict_positive_feasible"] = initialization.strict_positive_feasible;
-    return result;
-}
-
-py::dict homogeneous_support_evidence(
-    const py::handle& balance_matrix_value,
-    const std::vector<double>& feed_amounts,
-    const std::vector<int>& charges,
-    const std::vector<double>& molar_masses_kg_per_mol
-) {
-    const DenseMatrix balance_matrix = dense_matrix(
-        balance_matrix_value, "balance matrix"
-    );
-    if (balance_matrix.columns != feed_amounts.size()) {
-        throw py::value_error("balance matrix does not match feed amounts");
-    }
-    std::vector<double> balance_totals(balance_matrix.rows, 0.0);
-    for (std::size_t row = 0; row < balance_matrix.rows; ++row) {
-        for (std::size_t species = 0; species < balance_matrix.columns; ++species) {
-            balance_totals[row] +=
-                balance_matrix(row, species) * feed_amounts[species];
-        }
-    }
-    const HomogeneousSupportAnalysis analysis = analyze_homogeneous_support(
-        balance_matrix,
-        balance_totals,
-        charges,
-        molar_masses_kg_per_mol
-    );
-    py::list species;
-    for (const SpeciesSupportEvidence& item : analysis.species) {
-        py::dict evidence;
-        evidence["classification"] = item.classification;
-        evidence["candidate_maximum_mass_fraction"] =
-            item.candidate_maximum_mass_fraction;
-        evidence["primal_validated"] = item.primal_validated;
-        evidence["dual_validated"] = item.dual_validated;
-        evidence["witness_amounts"] = item.witness_amounts;
-        evidence["dual_multipliers"] = item.dual_multipliers;
-        species.append(std::move(evidence));
-    }
-    py::dict result;
-    result["phase1_status"] = analysis.phase1_status;
-    result["validation_status"] = analysis.validation_status;
-    result["species"] = std::move(species);
-    result["witness_average_amounts"] = analysis.witness_average_amounts;
-    result["equality_inf_norm"] = analysis.equality_inf_norm;
     return result;
 }
 
@@ -549,14 +455,6 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("feed_amounts"),
         py::arg("charges"),
         py::arg("trace_floor")
-    );
-    module.def(
-        "_chemical_analyze_homogeneous_support",
-        &homogeneous_support_evidence,
-        py::arg("balance_matrix"),
-        py::arg("feed_amounts"),
-        py::arg("charges"),
-        py::arg("molar_masses_kg_per_mol")
     );
     module.def(
         "_chemical_solve_manufactured",

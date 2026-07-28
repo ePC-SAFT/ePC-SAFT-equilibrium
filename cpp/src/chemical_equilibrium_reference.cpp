@@ -70,7 +70,6 @@ ReactionReferenceReconstruction reconstruct_reaction_reference(
     std::vector<std::size_t> permutation(reaction_count, 0);
     std::iota(permutation.begin(), permutation.end(), 0);
     std::vector<double> reflector_scales(reaction_count, 0.0);
-    std::vector<double> diagonal_magnitudes(reaction_count, 0.0);
     const double rank_tolerance = numerical_tolerance(1.0, species_count);
 
     for (std::size_t column = 0; column < reaction_count; ++column) {
@@ -122,7 +121,6 @@ ReactionReferenceReconstruction reconstruct_reaction_reference(
                 factor(row, other) -= factor(row, column) * projection;
             }
         }
-        diagonal_magnitudes[column] = std::abs(diagonal);
     }
 
     std::vector<double> projected_reference(reaction_count, 0.0);
@@ -149,16 +147,11 @@ ReactionReferenceReconstruction reconstruct_reaction_reference(
         }
     }
 
-    const auto [minimum_diagonal, maximum_diagonal] = std::minmax_element(
-        diagonal_magnitudes.begin(), diagonal_magnitudes.end()
-    );
     const double residual = reference_residual_inf_norm(
         reaction_matrix, reference, ln_k
     );
     return {
         std::move(reference),
-        reaction_count,
-        *minimum_diagonal / *maximum_diagonal,
         residual,
     };
 }

@@ -557,15 +557,13 @@ CompiledReactionSystem compile_accessible_face(CompiledReactionSystem system) {
     system.support = analyze_homogeneous_support(
         system.balance_matrix,
         system.balance_totals,
-        system.charges,
-        system.molar_masses_kg_per_mol
+        system.charges
     );
-    if (system.support.species.size() != system.species_ids.size()) {
+    if (system.support.classifications.size() != system.species_ids.size()) {
         throw std::runtime_error("homogeneous support evidence is incomplete");
     }
     for (std::size_t species = 0; species < system.species_ids.size(); ++species) {
-        if (system.support.species[species].classification
-            == "proved_structural_zero") {
+        if (system.support.classifications[species] == "proved_structural_zero") {
             system.removed_species_indices.push_back(species);
         } else {
             system.retained_species_indices.push_back(species);
@@ -714,13 +712,8 @@ CompiledReactionSystem compile_accessible_face(CompiledReactionSystem system) {
     system.ln_k = std::move(accessible_ln_k);
     system.g_ref = std::move(reconstruction.reference);
     system.accessible_reaction_transform = std::move(accessible_transform);
-    system.accessible_reaction_transform_inf_norm = removed_residual;
     system.balance_rank = system.balance_matrix.rows;
     system.reaction_rank = system.reaction_matrix.rows;
-    system.reaction_qr_diagonal_ratio = reconstruction.qr_diagonal_ratio;
-    system.reference_reconstruction_inf_norm = reference_residual;
-    system.conservation_reaction_inf_norm = conservation_norm;
-    system.charge_reaction_inf_norm = charge_norm;
     return system;
 }
 
@@ -910,25 +903,16 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     result.charges = input.charges;
     result.molar_masses_kg_per_mol = input.molar_masses_kg_per_mol;
     result.supplied_balance_matrix = input.balance_matrix;
-    result.supplied_reaction_matrix = input.reaction_matrix;
-    result.supplied_ln_k = input.ln_k;
     result.reaction_transform = std::move(reaction_transform);
     result.reaction_basis_rows = reaction_basis_rows;
-    result.reaction_cycle_inf_norm = reaction_cycle_norm;
-    result.reaction_transform_inf_norm = reaction_transform_norm;
     result.balance_matrix = balance_matrix;
     result.reaction_matrix = reaction_matrix;
     result.balance_totals = std::move(balance_totals);
     result.feed_amounts = input.feed_amounts;
     result.ln_k = std::move(independent_ln_k);
     result.g_ref = std::move(reconstruction.reference);
-    result.provider_fingerprint = input.provider_fingerprint;
     result.balance_rank = balance_rank;
     result.reaction_rank = reaction_rank;
-    result.reaction_qr_diagonal_ratio = reconstruction.qr_diagonal_ratio;
-    result.reference_reconstruction_inf_norm = reference_residual;
-    result.conservation_reaction_inf_norm = conservation_norm;
-    result.charge_reaction_inf_norm = reaction_charge_norm;
     return compile_accessible_face(std::move(result));
 }
 

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import math
 
-from epcsaft_equilibrium import _equilibrium
-
 
 def base_system() -> dict[str, object]:
     temperature_k = 350.0
@@ -46,9 +44,3 @@ def bind_records(spec: dict[str, object]) -> None:
         }
         for index in range(len(spec["ln_k"]))  # type: ignore[arg-type]
     )
-
-
-def manufactured_solve(
-    spec: dict[str, object], options: dict[str, object] | None = None
-) -> dict[str, object]:
-    return _equilibrium._chemical_solve_manufactured(spec, options or {})
