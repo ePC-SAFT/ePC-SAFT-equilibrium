@@ -148,8 +148,8 @@ import private provider modules.
 
 Source builds require Python 3.13, CMake, a C++17 compiler, pkg-config, Ipopt,
 network or populated FetchContent caches for the pinned NLopt 2.11.0 and
-HiGHS 1.15.1 archives, and the non-editable provider wheel installed in the
-build environment. The
+HiGHS 1.15.1 archives and the header-only Boost 1.88.0 archive, and the
+non-editable provider wheel installed in the build environment. The
 local candidate gate hashes the exact provider wheel before creating an
 isolated build environment. Candidate wheels are retained as read-only files
 under a commit-bound `artifacts/equilibrium-neutral-held-v1/<commit>/`

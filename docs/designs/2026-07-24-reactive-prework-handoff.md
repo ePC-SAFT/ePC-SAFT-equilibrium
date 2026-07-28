@@ -96,11 +96,13 @@ evidence, not a certificate for the final chemically minimized Gibbs surface.
 The private homogeneous workflow supplies:
 
 - exact ordered true species and charges;
-- the independent conservation matrix and feed totals;
-- the independent reaction matrix;
+- mass-first independent conservation rows and feed totals;
+- supplied and independent reaction matrices, basis maps, and cycle evidence;
 - source equilibrium-constant records and declared standard states;
-- an exact transformation to the installed Provider Helmholtz reference basis;
-- a positive, exactly electroneutral, reaction-feasible species state;
+- constants already converted to the installed Provider Helmholtz reference
+  basis; source-standard-state transport remains deferred;
+- exact homogeneous support classifications and accessible-species maps;
+- a positive, exactly electroneutral, reaction-feasible accessible state;
 - a positive volume on a valid Provider pressure branch;
 - exact objective, constraint, and KKT derivative blocks;
 - balance, charge, pressure, affinity, packing, trace, local-curvature, and
@@ -297,8 +299,10 @@ fixtures do not return.
 ## Homogeneous formulation
 
 For true species amounts \(n\), positive volume \(V\), conservation matrix
-\(B\), feed totals \(b\), charge vector \(z\), and independent reaction matrix
-\(\nu\), the compiler verifies:
+\(B\), feed totals \(b\), charge vector \(z\), and supplied reaction matrix
+\(\nu^{\mathrm{sup}}\), the compiler first validates mass, balance, charge, and
+converted reaction cycles, then records one independent basis \(\nu\) and
+verifies:
 
 \[
 B\nu^T=0
@@ -316,14 +320,15 @@ For the complete closed homogeneous system it also requires
 \operatorname{rank}(B)+\operatorname{rank}(\nu)=C ,
 \]
 
-where \(C\) is the number of admitted true species. It rejects dependent
-reactions, an incomplete conservation/reaction span, inconsistent equilibrium
-constants, incorrect component identity or ordering, nonneutral feed, invalid
-source state, incomplete reference records, and Provider-domain
-incompatibility before Ipopt. A future phase-incidence topology must repeat the
-rank and span analysis for the species actually admitted in each phase and the
-global conservation system; the homogeneous rank certificate cannot simply be
-reused.
+where \(C\) is the number of admitted true species. Redundant supplied
+reactions are accepted only when their converted constants reconstruct from
+the retained basis. The compiler rejects an incomplete
+conservation/charge/reaction span, inconsistent cycles, incorrect component
+identity or ordering, nonneutral feed, invalid source state, incomplete
+reference records, and Provider-domain incompatibility before Ipopt. A future
+phase-incidence topology must repeat the rank and span analysis for the species
+actually admitted in each phase and the global conservation system; the
+homogeneous rank certificate cannot simply be reused.
 
 Every Provider evaluation uses the existing positive electroneutral chart:
 positive total charge equivalents, cation and anion simplex shares, positive
@@ -340,22 +345,25 @@ pressure, reaction affinities, positivity, Provider domain and packing, KKT,
 trace-boundary status, and reduced curvature. Local KKT or continuation success
 does not prove globality or predictive agreement.
 
-The current logarithmic amount chart and equality-form reaction certificates
-accept only strictly positive interior equilibria above the declared trace
-floor. A state with an active zero-species boundary requires the corresponding
-inequality/complementarity optimality conditions; it must not be accepted by
-forcing every reaction affinity to zero. Until an active-set or
-complementarity formulation is designed, a true boundary result is explicitly
-indeterminate for chemical-equilibrium acceptance.
+The current logarithmic amount chart still solves only the strictly positive
+accessible species. Before solving, a homogeneous support layer uses HiGHS as
+candidate search and exact binary-rational primal or dual validation as the
+deletion authority. Only `proved_structural_zero` species are removed; every
+unresolved species remains retained. Reaction combinations are recomputed in
+the null space of the removed-species columns, so cancellation through absent
+intermediates is preserved.
 
-Belov-Aristova test 1 demonstrates a different failure: its homogeneous
-gas-only equilibrium is mathematically interior, but the smallest amount is
-about `1.84e-47 mol`. In the current log coordinates, Ipopt can report
-stationarity after pinning trace species near `1e-12 mol` because the physical
-chemical-potential error is multiplied by a vanishing amount-coordinate
-Jacobian. Physical reaction affinities remain of order `1e1`, and acceptance
-correctly fails. The generic numerical formulation must resolve this extreme
-positive interior before zero-species active-set work can be judged necessary.
+The manufactured ideal restriction supports this exact structural face and
+restores zero amounts in original species order. Installed Provider
+reduced-component faces remain `BOUNDARY_DIRECTION_UNRESOLVED` because SDK v1
+does not expose reduced-topology or physical boundary-direction oracles.
+Nonstructural trace and Provider-domain boundaries remain unaccepted.
+
+Belov-Aristova test 1 is mathematically interior even though its smallest
+amount is about `1.84e-47 mol`. The implemented generic KKT polish now resolves
+that extreme positive trace range after the exact-Hessian Ipopt solve and
+independently rebuilds physical affinities, multipliers, stationarity, and
+curvature. It does not classify a small positive amount as structurally zero.
 
 ## First implementation slice
 
@@ -463,6 +471,8 @@ The speciation preparer is ready for later coupled assembly when:
 
 - the source-derived Belov homogeneous restriction passes its physical
   affinity, conservation, pressure, trace, KKT, and invariance gates;
+- redundant converted reactions, exact structural support, and accessible-face
+  reaction combinations retain complete compiler evidence;
 - a complete source record is transformed into the exact installed Provider
   basis without a single-ion or epsilon-composition construction;
 - the transformed system reaches the existing homogeneous Ipopt kernel through

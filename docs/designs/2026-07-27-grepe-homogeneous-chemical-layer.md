@@ -1,6 +1,6 @@
 # GREPE Homogeneous Chemical Layer
 
-**Status:** user-approved implementation design
+**Status:** implemented private non-production design
 
 **Date:** 2026-07-27
 
@@ -24,10 +24,32 @@ phase-family pricing and rigorous global lower bounds remain outside the
 homogeneous module.
 
 This design supersedes the compiler-input and exact-zero deferrals in
-`2026-07-21-private-reacting-phase-kernel.md` only after it is approved and
-implemented. It does not supersede the coupled-work deferrals or the installed
+`2026-07-21-private-reacting-phase-kernel.md`. It does not supersede the
+coupled-work deferrals or the installed
 Provider ownership rules in
 `2026-07-24-reactive-prework-handoff.md`.
+
+## Implementation outcome
+
+The private module now implements the selected design through the existing
+compiler and solve owners:
+
+- redundant supplied rows are reduced only after mass, balance, charge,
+  provenance, and converted-cycle validation;
+- deterministic HiGHS reachability candidates are independently reconstructed
+  and checked with exact Boost multiprecision binary rationals;
+- only exact dual zero certificates can delete a species;
+- accessible reaction combinations are rebuilt before reference
+  reconstruction;
+- manufactured ideal structural faces restore exact zeros in original order;
+  and
+- Provider structural faces return `BOUNDARY_DIRECTION_UNRESOLVED` before any
+  Provider callback.
+
+Accepted homogeneous interiors and supported manufactured structural faces
+emit only `LOCAL_EQUILIBRIUM`. The implementation adds no public export,
+source-reference transport, phase-stability level, coupled solve, sensitivity,
+promotion, or authority change.
 
 ## Scientific claim
 

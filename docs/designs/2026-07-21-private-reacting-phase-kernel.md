@@ -1,6 +1,7 @@
 # Private Homogeneous Reacting-Phase Kernel
 
-Status: approved private non-production design
+Status: approved private base design; compiler and structural-boundary sections
+superseded by `2026-07-27-grepe-homogeneous-chemical-layer.md`
 
 Authority effect: none
 
@@ -28,28 +29,42 @@ retired public route, selectors, workflows, internal Provider runtime,
 `eos_x_gamma` solvent-only reference construction, MEA/Lithium fixtures, and
 compatibility surfaces are forbidden inputs to this implementation.
 
+Implementation update (2026-07-27): the private GREPE homogeneous layer now
+accepts redundant supplied reaction rows, validates converted reaction cycles,
+adds explicit molar-mass conservation, certifies structural support with exact
+rational evidence, and recompiles reaction combinations on the accessible
+species face. The original strictly positive amount chart and sole Ipopt solve
+remain unchanged. Exact structural zeros are supported only for the
+manufactured ideal restriction; installed Provider reduced-component faces
+remain fail-closed and unresolved.
+
 ## Compiled reaction system
 
 Inputs are immutable and ordered: true-species identifiers, integer charges,
-a full-row-rank conservation matrix `B`, an independent reaction matrix `nu`,
-feed amounts, dimensionless Provider-basis `lnK`, a Provider fingerprint, and
-complete source/reference records bound to the fixed temperature and pressure.
+positive molar masses, a supplied conservation matrix `B`, a possibly
+redundant supplied reaction matrix `nu`, feed amounts, dimensionless
+Provider-basis `lnK`, a Provider fingerprint, and complete source/reference
+records bound to the fixed temperature and pressure.
 
 Compilation fails before solving unless:
 
 1. installed Provider identifiers, order, charges, and fingerprint agree
    exactly at the Provider solve boundary;
 2. all dimensions and scalars are finite and the feed is nonnegative;
-3. `B` has full row rank;
-4. `B nu^T = 0` and every reaction conserves charge;
-5. `nu` has full row rank;
-6. the closed system satisfies `rank(B) + rank(nu) = species_count`;
+3. balances are rank-reduced while retaining molar mass first and charge
+   separately;
+4. every supplied reaction conserves mass, balances, and charge;
+5. converted constants satisfy every redundant reaction cycle before basis
+   selection;
+6. the independent invariant, charge, and reaction spaces span the declared
+   species;
 7. the feed is electroneutral; and
 8. every equilibrium-constant record is nonempty, dimensionless, finite,
    source-identified, reference-identified, and bound to the fixed `T,P`.
 
-The compiler constructs the minimum-norm Provider-coordinate standard chemical
-reference `g_ref` satisfying
+After exact structural-support classification and accessible-face
+recompilation, the compiler constructs the minimum-norm Provider-coordinate
+standard chemical reference `g_ref` satisfying
 
 ```text
 nu g_ref = -lnK
@@ -155,3 +170,8 @@ bubble plus exact implicit sensitivities for MEA; simultaneous phase-specific
 two-liquid reactions for Lithium; and mixed-observable Regression only after
 typed Provider parameter derivatives. None of those subjects is part of this
 slice.
+
+Structural support and accessible-face compilation do not authorize coupled
+phase equilibrium. The homogeneous result is one local candidate. Phase-family
+generation, master pricing, state-matched repricing, simultaneous multiphase
+constraints, and rigorous global bounds remain separate work.

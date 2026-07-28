@@ -85,19 +85,30 @@ case constants, route, tolerance, resource, or public runtime correction is
 active.
 
 D-028 separately binds a private, non-production homogeneous reacting-phase
-foundation. The implementation is intentionally reachable only through
-underscored native test seams: it compiles ordered balances, reactions, and
-reference records; constructs an exact positive electroneutral chart; owns one
-fixed-`T,P` Ipopt minimization plus a generic strictly-interior KKT feasibility
-polish when vanishing log-amount derivatives mask physical reaction affinity.
+foundation, now deepened by the private GREPE homogeneous chemical layer. The
+implementation is intentionally reachable only through underscored native test
+seams. It compiles redundant supplied reactions only after Provider-basis
+provenance, mass, charge, span, and converted-cycle checks; classifies
+homogeneous species support using HiGHS candidates plus independent exact
+binary-rational primal or dual certificates; and recompiles reaction
+combinations on the accessible species face. The existing positive
+electroneutral chart, fixed-`T,P` exact-Hessian Ipopt minimization, and generic
+strictly-interior KKT polish remain the only optimization path. Manufactured
+ideal structural faces restore certified zeros exactly and can emit
+`LOCAL_EQUILIBRIUM`. Installed Provider structural faces fail before any
+reduced-component callback with `BOUNDARY_DIRECTION_UNRESOLVED`, because SDK
+v1 has no reduced-topology or boundary-direction contract.
+
 Final equality multipliers and certificates are rebuilt from the accepted
-physical state. The private path consumes the installed
+physical state. The private Provider path consumes only the installed
 Provider's Helmholtz, pressure, volume-domain, packing, and derivative
-callbacks. A source-derived Belov-Aristova gas restriction supplies only
-algorithm and trace-range evidence through the seam, which remains explicitly
-`manufactured_nonpredictive`. No application chemistry or source-backed
-nonideal reacting case is retained in this package. Boundary equilibria remain
-indeterminate, and D-026 remains the public HELD2 admission gate.
+callbacks. A source-derived Belov-Aristova gas restriction supplies algorithm
+and trace-range evidence through the seam and remains
+`manufactured_nonpredictive`. No application chemistry, source-standard-state
+transport, or source-backed nonideal reacting case is retained in this
+package. The homogeneous layer emits no phase-stability, coupled-equilibrium,
+sensitivity, or globality claim, and D-026 remains the public HELD2 admission
+gate.
 
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD
@@ -149,6 +160,8 @@ candidate source and a public route do not accept their own promotion.
 `local_candidate: neutral-held-v1`
 
 `private_development_foundation: homogeneous-reacting-phase-d028`
+
+`private_development_layer: grepe-homogeneous-chemical-local`
 
 `private_development_foundation_authority_effect: none`
 

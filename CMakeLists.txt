@@ -79,6 +79,8 @@ pybind11_add_module(
   cpp/src/module.cpp
   cpp/src/chemical_equilibrium.cpp
   cpp/src/chemical_equilibrium_bindings.cpp
+  cpp/src/chemical_equilibrium_compiler.cpp
+  cpp/src/chemical_equilibrium_reference.cpp
   cpp/src/chemical_equilibrium_support.cpp
   cpp/src/chemical_equilibrium_solver.cpp
   cpp/src/provider.cpp
