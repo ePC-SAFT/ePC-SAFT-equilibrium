@@ -92,9 +92,4 @@ struct Held2StageIDirectResult {
     Held2ProgressObserver* observer = nullptr
 );
 
-[[nodiscard]] Held2StageIDirectResult solve_held2_manufactured_stage_i_direct(
-    const std::string& topology,
-    int evaluation_budget
-);
-
 }  // namespace epcsaft_equilibrium

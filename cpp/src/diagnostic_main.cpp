@@ -1,12 +1,9 @@
 #include "flash.hpp"
-#include "held2_algorithm.hpp"
-#include "held2_progress.hpp"
 #include "provider.hpp"
 #include "result_json.hpp"
 
 #include <epcsaft/native_model_v1.h>
 
-#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -167,43 +164,18 @@ int main(int argc, char** argv) {
             *sdk, fingerprint
         );
         epcsaft_equilibrium::Held2TerminalProgress progress(std::cerr);
-        const bool electrolyte = sdk->component_charges != nullptr
-            && std::any_of(
-                sdk->component_charges,
-                sdk->component_charges + sdk->component_count,
-                [](int32_t charge) { return charge != 0; }
+        const epcsaft_equilibrium::FlashResult result =
+            epcsaft_equilibrium::solve_tp_flash(
+                provider,
+                {
+                    options.temperature_k,
+                    options.pressure_pa,
+                    options.feed,
+                },
+                options.trace ? &progress : nullptr
             );
-        std::string json;
-        if (electrolyte) {
-            const epcsaft_equilibrium::Held2Input input{
-                options.temperature_k,
-                options.pressure_pa,
-                options.feed,
-            };
-            const epcsaft_equilibrium::Held2AlgorithmResult result =
-                epcsaft_equilibrium::run_held2_algorithm(
-                    epcsaft_equilibrium::make_installed_held2_access(
-                        provider, input
-                    ),
-                    input,
-                    {},
-                    options.trace ? &progress : nullptr
-                );
-            json = epcsaft_equilibrium::held2_algorithm_result_to_json(
-                result, input, fingerprint
-            );
-        } else {
-            const epcsaft_equilibrium::FlashResult result =
-                epcsaft_equilibrium::solve_tp_flash(
-                    provider,
-                    {
-                        options.temperature_k,
-                        options.pressure_pa,
-                        options.feed,
-                    }
-                );
-            json = epcsaft_equilibrium::flash_result_to_json(result);
-        }
+        const std::string json =
+            epcsaft_equilibrium::flash_result_to_json(result);
         if (options.output_path.empty()) {
             std::cout << json;
         } else {

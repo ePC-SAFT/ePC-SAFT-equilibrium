@@ -321,108 +321,38 @@ Held2ThermodynamicAccess make_installed_held2_access(
     return result;
 }
 
-Held2InstalledPressureEnvelopeDiagnostic
-evaluate_held2_installed_pressure_envelope(
-    const ProviderContext& provider,
-    double temperature_k,
-    double pressure_pa,
-    const std::vector<double>& independent_modified_fractions,
-    int initial_interval_count
-) {
-    require_held2_sdk(provider.sdk());
-    const Held2Coordinates coordinates = make_held2_coordinates(
-        [&provider]() {
-            std::vector<double> charges;
-            charges.reserve(provider.sdk().component_count);
-            for (std::size_t component = 0;
-                 component < provider.sdk().component_count;
-                 ++component) {
-                charges.push_back(static_cast<double>(
-                    provider.sdk().component_charges[component]
-                ));
-            }
-            return charges;
-        }()
-    );
-    FlashInput input{
-        temperature_k,
-        pressure_pa,
-        held2_lift_independent_fractions(
-            coordinates, independent_modified_fractions
-        ),
-    };
-    validate_input(provider, input);
-    const InstalledHeld2Problem problem(provider, input);
-
-    Held2InstalledPressureEnvelopeDiagnostic diagnostic;
-    diagnostic.charges = problem.coordinates().charges;
-    diagnostic.component_ids.reserve(provider.sdk().component_count);
-    for (std::size_t component = 0;
-         component < provider.sdk().component_count;
-         ++component) {
-        const char* component_id = provider.sdk().component_ids[component];
-        if (component_id == nullptr || component_id[0] == '\0') {
-            throw std::invalid_argument(
-                "provider electrolyte component ID must not be empty"
-            );
-        }
-        diagnostic.component_ids.emplace_back(component_id);
-    }
-    diagnostic.molar_volume_bounds = problem.volume_bounds(
-        independent_modified_fractions
-    );
-    const Held2StateEvaluator evaluator = [&problem](
-        const std::vector<double>& independent,
-        double log_volume
-    ) {
-        return problem.evaluate(independent, log_volume);
-    };
-    diagnostic.envelope = evaluate_held2_pressure_envelope(
-        independent_modified_fractions,
-        diagnostic.molar_volume_bounds,
-        evaluator,
-        initial_interval_count,
-        8
-    );
-    diagnostic.parameter_fingerprint = provider.fingerprint();
-    return diagnostic;
-}
-
-Held2StageIIINlpEvaluation evaluate_held2_installed_stage_iii_derivatives(
-    const ProviderContext& provider,
-    const FlashInput& input,
-    std::size_t phase_count,
-    const std::vector<double>& variables,
-    const std::vector<double>& equality_multipliers
-) {
-    require_held2_sdk(provider.sdk());
-    validate_input(provider, input);
-    const InstalledHeld2Problem problem(provider, input);
-    const Held2StateEvaluator evaluator = [&problem](
-        const std::vector<double>& independent,
-        double log_volume
-    ) {
-        return problem.evaluate(independent, log_volume);
-    };
-    return evaluate_held2_stage_iii_nlp(
-        problem.coordinates(),
-        problem.physical_feed(),
-        evaluator,
-        phase_count,
-        variables,
-        equality_multipliers
-    );
-}
-
 FlashResult solve_tp_flash(
     const ProviderContext& provider,
-    const FlashInput& input
+    const FlashInput& input,
+    Held2ProgressObserver* observer
 ) {
     require_mixture_sdk(provider.sdk());
     validate_input(provider, input);
     FlashResult result;
     result.input = input;
     result.parameter_fingerprint = provider.fingerprint();
+    const bool electrolyte = provider.sdk().component_charges != nullptr
+        && std::any_of(
+            provider.sdk().component_charges,
+            provider.sdk().component_charges
+                + provider.sdk().component_count,
+            [](int32_t charge) { return charge != 0; }
+        );
+    if (electrolyte) {
+        require_held2_sdk(provider.sdk());
+        const Held2Input held2_input{
+            input.temperature_k,
+            input.pressure_pa,
+            input.overall_mole_fractions,
+        };
+        result.solve = run_held2_algorithm(
+            make_installed_held2_access(provider, held2_input),
+            held2_input,
+            {},
+            observer
+        );
+        return result;
+    }
     if (input.overall_mole_fractions.size() != 2
         || provider.sdk().component_count != 2
         || provider.fingerprint() != kNeutralFlashFingerprint) {
@@ -430,7 +360,7 @@ FlashResult solve_tp_flash(
             "neutral tp_flash requires the approved two-component fingerprint"
         );
     }
-    result.held = solve_held(
+    result.solve = solve_held(
         provider,
         input.temperature_k,
         input.pressure_pa,

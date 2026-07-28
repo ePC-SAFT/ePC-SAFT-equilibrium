@@ -95,10 +95,6 @@ struct Held2StateEvaluation;
     double log_volume
 );
 
-[[nodiscard]] double held2_manufactured_enumerated_objective(
-    double feed_composition
-);
-
 struct Held2PhysicalPhaseBlock {
     double helmholtz_over_rt = 0.0;
     std::vector<double> gradient;
@@ -133,109 +129,9 @@ using Held2StateValueEvaluator = std::function<double(
     double
 )>;
 
-struct Held2LocalSearchRun {
-    bool solver_converged = false;
-    std::string solver_status = "not_run";
-    std::string callback_error;
-    std::vector<double> variables;
-    std::vector<double> lower_bound_multipliers;
-    std::vector<double> upper_bound_multipliers;
-    std::vector<double> coordinate_jacobian;
-    int optimizer_iterations = 0;
-};
-
-struct Held2PhysicalKkt {
-    double primal_inf_norm = std::numeric_limits<double>::infinity();
-    double dual_sign_violation_inf_norm =
-        std::numeric_limits<double>::infinity();
-    double stationarity_inf_norm = std::numeric_limits<double>::infinity();
-    double complementarity = std::numeric_limits<double>::infinity();
-    double reconstruction_inf_norm = std::numeric_limits<double>::infinity();
-    double reconstruction_scale = std::numeric_limits<double>::infinity();
-    bool dual_signs_valid = false;
-};
-
 using Held2VolumeBoundsEvaluator = std::function<std::array<double, 2>(
     const std::vector<double>&
 )>;
-
-[[nodiscard]] Held2LocalSearchRun run_held2_local_pressure_root_search(
-    const Held2StateEvaluator& evaluator,
-    const Held2VolumeBoundsEvaluator& volume_bounds,
-    const std::vector<double>& feed,
-    const std::vector<double>& multipliers,
-    const std::vector<double>& initial,
-    int stable_branch_index,
-    double branch_log_volume_hint,
-    const std::vector<double>& lower,
-    const std::vector<double>& upper,
-    double composition_sum_upper,
-    Held2ProgressObserver* observer = nullptr,
-    int major_iteration = -1,
-    int attempt_index = -1
-);
-
-[[nodiscard]] Held2PhysicalKkt certify_held2_local_physical_kkt(
-    const std::vector<double>& physical_gradient,
-    const std::vector<double>& multipliers,
-    const std::vector<double>& variables,
-    const std::vector<double>& lower,
-    const std::vector<double>& upper,
-    double composition_sum_upper,
-    const std::vector<double>& coordinate_jacobian,
-    const std::vector<double>& lower_bound_multipliers,
-    const std::vector<double>& upper_bound_multipliers
-);
-
-struct Held2StageIIPressureRootReduction {
-    double objective = 0.0;
-    std::vector<double> gradient;
-    std::vector<double> hessian;
-    double pressure_coordinate_gradient = 0.0;
-    double pressure_coordinate_curvature = 0.0;
-};
-
-[[nodiscard]] Held2StageIIPressureRootReduction
-reduce_held2_stage_ii_pressure_root(
-    const std::vector<double>& independent,
-    const std::vector<double>& feed,
-    const std::vector<double>& multipliers,
-    const Held2StateEvaluation& state
-);
-
-struct Held2StageIIStep5Assessment {
-    bool qualified = false;
-    double gap = 0.0;
-    std::string reason;
-};
-
-[[nodiscard]] Held2StageIIStep5Assessment assess_held2_stage_ii_step5(
-    double upper_bound,
-    double local_value,
-    bool local_state_certified
-);
-
-struct Held2StageIIStep6Assessment {
-    bool eligible = false;
-    bool gap_passed = false;
-    bool gradient_passed = false;
-    bool pressure_passed = false;
-    double gap = 0.0;
-    double fixed_volume_gradient_inf_norm = 0.0;
-    double fixed_volume_gradient_scale = 0.0;
-    std::string reason = "not_evaluated";
-};
-
-[[nodiscard]] Held2StageIIStep6Assessment assess_held2_stage_ii_step6(
-    double upper_bound,
-    double lower_value,
-    bool step5_qualified,
-    double pressure_residual,
-    const std::vector<double>& fixed_volume_gradient,
-    const std::vector<double>& independent,
-    const std::vector<double>& physical_lower,
-    const std::vector<double>& multipliers
-);
 
 struct Held2PressureScanPoint {
     double log_volume = 0.0;
@@ -297,49 +193,11 @@ struct Held2PressureEnvelopeResult {
     int maximum_subdivision_depth = 8
 );
 
-[[nodiscard]] Held2PressureEnvelopeResult
-evaluate_held2_manufactured_pressure_envelope(
-    const std::string& topology,
-    double composition,
-    int initial_interval_count
-);
-
 struct Held2StageICandidate {
     std::vector<double> modified_fractions;
     double volume = 0.0;
     double tpd = 0.0;
 };
-
-struct Held2StageIIBound {
-    double lower_bound = 0.0;
-    bool lower_bound_available = false;
-    double upper_bound = 0.0;
-    std::vector<double> multipliers;
-    int cut_count = 0;
-    std::string upper_solver;
-    std::string upper_solver_version;
-    std::string upper_solver_status;
-    bool upper_primal_feasible = false;
-    bool upper_dual_feasible = false;
-    double upper_primal_residual_inf = 0.0;
-    double upper_primal_scale = 0.0;
-    double upper_dual_residual_inf = 0.0;
-    double upper_dual_scale = 0.0;
-    double upper_complementarity_inf = 0.0;
-    std::vector<double> cut_slacks;
-    std::vector<double> cut_duals;
-    std::vector<int> active_cut_ids;
-};
-
-struct Held2StageIIChartCoordinate {
-    double raw = 0.0;
-    double normalized = 0.0;
-    bool normalized_boundary_contact = false;
-};
-
-[[nodiscard]] Held2StageIIChartCoordinate normalize_held2_stage_ii_chart_coordinate(
-    double coordinate
-);
 
 struct Held2StageIICandidate {
     std::vector<double> modified_fractions;
@@ -347,104 +205,6 @@ struct Held2StageIICandidate {
     double volume = 0.0;
     double phase_coordinate = 0.0;
     double lower_gap = 0.0;
-};
-
-struct Held2StageIIAttempt {
-    int attempt_id = 0;
-    int major_iteration = 0;
-    int start_index = 0;
-    std::string start_source;
-    std::vector<double> internal_start;
-    std::vector<double> physical_start_modified_fractions;
-    double physical_start_volume = 0.0;
-    std::string solver_status = "not_run";
-    bool solver_converged = false;
-    std::string provider_status = "not_evaluated";
-    std::string callback_error;
-    std::vector<double> internal_terminal;
-    std::vector<double> terminal_modified_fractions;
-    double terminal_volume = 0.0;
-    double objective = 0.0;
-    double lower_value = 0.0;
-    double pressure_residual = 0.0;
-    std::vector<double> lower_bound_multipliers;
-    std::vector<double> upper_bound_multipliers;
-    double chart_jacobian_condition = 1.0;
-    double dual_pullback_inf_norm = 0.0;
-    double dual_pullback_scale = 0.0;
-    double chart_kkt_inf_norm = 0.0;
-    double primal_inf_norm = 0.0;
-    double dual_sign_violation_inf_norm = 0.0;
-    double physical_kkt_inf_norm = 0.0;
-    double complementarity_inf_norm = 0.0;
-    bool pressure_passed = false;
-    bool dual_signs_valid = false;
-    bool physical_kkt_passed = false;
-    bool cut_eligible = false;
-    bool step5_qualified = false;
-    std::string step5_reason = "not_evaluated";
-    bool step6_eligible = false;
-    double step6_gap = 0.0;
-    bool step6_gap_passed = false;
-    bool step6_gradient_passed = false;
-    std::string step6_rejection_reason = "not_evaluated";
-    double fixed_volume_gradient_inf_norm = 0.0;
-    double fixed_volume_gradient_scale = 0.0;
-    int basin_id = -1;
-    double same_major_upper_bound = 0.0;
-    std::vector<double> same_major_multipliers;
-};
-
-struct Held2StageIIMajorContext {
-    int major_id = -1;
-    int upper_solve_id = -1;
-    double upper_bound = 0.0;
-    std::vector<double> multipliers;
-    std::vector<int> active_cut_ids;
-    std::vector<int> lower_attempt_ids;
-    std::vector<int> current_basin_ids;
-    std::vector<int> pressure_branch_ids;
-    std::vector<int> step5_qualified_attempt_ids;
-    std::vector<int> step6_eligible_attempt_ids;
-    std::vector<int> certificate_failed_attempt_ids;
-};
-
-enum class Held2NextAction {
-    ContinueStageII,
-    RunGlobalEscalation,
-    EnterStageIII,
-    ReturnStageIIIFeedback,
-    AcceptOnePhase,
-    AcceptMultiphase,
-    TerminateIndeterminate,
-};
-
-[[nodiscard]] std::string held2_next_action_name(Held2NextAction action);
-
-struct Held2StageIIResult {
-    std::string outcome;
-    std::string search_strategy = "continuation_sobol_direct_l_ipopt_v1";
-    std::string global_explorer = "continuation_sobol_direct_l";
-    std::string local_solver = "ipopt_exact_hessian";
-    std::string globality_certificate = "not_guaranteed";
-    int major_iterations = 0;
-    int lower_starts_per_iteration = 0;
-    int cut_count = 0;
-    int exploration_evaluation_count = 0;
-    int exploration_failure_count = 0;
-    int exploration_representative_count = 0;
-    int duplicate_representative_count = 0;
-    int duplicate_terminal_count = 0;
-    int distinct_basin_count = 0;
-    int unresolved_candidate_identity_count = 0;
-    int local_attempt_cap_per_major = 0;
-    bool local_attempts_truncated = false;
-    bool direct_escalation_used = false;
-    Held2NextAction next_action = Held2NextAction::TerminateIndeterminate;
-    std::vector<Held2StageIIBound> bound_history;
-    std::vector<Held2StageIIMajorContext> major_contexts;
-    std::vector<Held2StageIIAttempt> attempt_trace;
-    std::vector<Held2StageIICandidate> candidates;
 };
 
 struct Held2StageIIINlpEvaluation {
@@ -461,28 +221,6 @@ struct Held2StageIIIPhase {
     std::vector<double> modified_fractions;
     std::vector<double> physical_fractions;
     double volume = 0.0;
-};
-
-struct Held2StageIIIRetirementDecision {
-    bool retire = false;
-    std::string reason = "not_adjudicated";
-    double complementarity_inf_norm = 0.0;
-    double stationarity_residual = 0.0;
-};
-
-struct Held2StageIIILifecycleStep {
-    int solve_index = 0;
-    int active_candidate_count = 0;
-    int removed_candidate_index = -1;
-    std::string action;
-    double phase_fraction = 0.0;
-    double lower_bound_multiplier = 0.0;
-    double reduced_derivative = 0.0;
-    double complementarity_inf_norm = 0.0;
-    std::vector<double> candidate_independent_modified_fractions;
-    double candidate_volume = 0.0;
-    std::string solver_status;
-    std::string decision_reason;
 };
 
 struct Held2StageIIIResult {
@@ -527,16 +265,7 @@ struct Held2StageIIIResult {
     bool free_energy_gap_available = false;
     std::vector<Held2StageIIIPhase> phases;
     std::vector<double> solution_variables;
-    std::vector<Held2StageIIILifecycleStep> lifecycle;
 };
-
-[[nodiscard]] Held2StageIIIRetirementDecision held2_stage_iii_retirement_decision(
-    double phase_fraction,
-    double lower_bound_multiplier,
-    double upper_bound_multiplier,
-    double reduced_derivative,
-    bool remaining_balance_feasible
-);
 
 [[nodiscard]] Held2StateEvaluation evaluate_held2_phase_block(
     const Held2Coordinates& coordinates,
@@ -546,41 +275,6 @@ struct Held2StageIIIResult {
     double target_pressure_pa,
     const Held2PhysicalPhaseBlock& block,
     Held2CompositionDomain domain = Held2CompositionDomain::FiniteSearch
-);
-
-[[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii(
-    const std::vector<double>& charges,
-    const std::vector<double>& physical_feed
-);
-
-[[nodiscard]] Held2StageIIResult solve_held2_stage_ii(
-    const Held2Coordinates& coordinates,
-    const std::vector<double>& physical_feed,
-    const Held2StateEvaluator& evaluator,
-    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator,
-    const Held2StateEvaluation& reference,
-    const std::vector<Held2StageICandidate>& stage_i_candidates,
-    double total_ion_mole_fraction_max,
-    int major_iteration_cap,
-    int local_attempt_cap_per_major,
-    Held2ProgressObserver* observer = nullptr,
-    const std::string& evaluation_source = "provider_exact"
-);
-
-[[nodiscard]] Held2StageIIIResult solve_held2_manufactured_stage_iii(
-    const std::vector<double>& charges,
-    const std::vector<double>& physical_feed,
-    const std::vector<std::array<double, 2>>& candidates,
-    double free_energy_upper_bound_offset = 0.0
-);
-
-[[nodiscard]] Held2StageIIINlpEvaluation evaluate_held2_stage_iii_nlp(
-    const Held2Coordinates& coordinates,
-    const std::vector<double>& physical_feed,
-    const Held2StateEvaluator& evaluator,
-    std::size_t phase_count,
-    const std::vector<double>& variables,
-    const std::vector<double>& equality_multipliers
 );
 
 [[nodiscard]] Held2StageIIIResult solve_held2_stage_iii(

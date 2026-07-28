@@ -313,7 +313,7 @@ JsonValue held_stage_iii_to_json(const HeldStageIIIResult& solve) {
 }
 
 JsonValue neutral_flash_to_json(const FlashResult& flash) {
-    const HeldResult& solve = flash.held;
+    const HeldResult& solve = std::get<HeldResult>(flash.solve);
     int attempt_count = static_cast<int>(
         solve.stage_i.reference_attempts.size()
         + solve.stage_i.attempt_log.size()
@@ -877,21 +877,22 @@ JsonValue paper_algorithm_to_json(
 
 std::string flash_result_to_json(const FlashResult& result) {
     std::ostringstream output;
-    write_json(output, neutral_flash_to_json(result));
-    output << '\n';
-    return output.str();
-}
-
-std::string held2_algorithm_result_to_json(
-    const Held2AlgorithmResult& result,
-    const Held2Input& input,
-    const std::string& parameter_fingerprint
-) {
-    std::ostringstream output;
-    write_json(
-        output,
-        paper_algorithm_to_json(result, input, parameter_fingerprint)
-    );
+    if (const auto* held2 = std::get_if<Held2AlgorithmResult>(&result.solve)) {
+        write_json(
+            output,
+            paper_algorithm_to_json(
+                *held2,
+                {
+                    result.input.temperature_k,
+                    result.input.pressure_pa,
+                    result.input.overall_mole_fractions,
+                },
+                result.parameter_fingerprint
+            )
+        );
+    } else {
+        write_json(output, neutral_flash_to_json(result));
+    }
     output << '\n';
     return output.str();
 }

@@ -65,10 +65,6 @@ struct Held2Step4Result {
     const Held2StageIIUpperProblem& problem
 );
 
-[[nodiscard]] Held2StageIIUpperResult solve_held2_stage_ii_upper_analytic_1d(
-    const Held2StageIIUpperProblem& problem
-);
-
 [[nodiscard]] Held2Step4Result run_held2_step4(
     Held2PersistentState& state,
     Held2ProgressObserver* observer = nullptr

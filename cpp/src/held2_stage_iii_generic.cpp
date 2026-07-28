@@ -924,30 +924,6 @@ Held2StageIIINlpEvaluation evaluate_problem67(
 
 }  // namespace
 
-Held2StageIIINlpEvaluation evaluate_held2_stage_iii_nlp(
-    const Held2Coordinates& coordinates,
-    const std::vector<double>& physical_feed,
-    const Held2StateEvaluator& evaluator,
-    std::size_t phase_count,
-    const std::vector<double>& variables,
-    const std::vector<double>& equality_multipliers
-) {
-    const std::vector<double> modified =
-        held2_transform_physical_fractions(coordinates, physical_feed);
-    std::vector<double> feed;
-    for (std::size_t position : independent_positions(coordinates)) {
-        feed.push_back(modified[position]);
-    }
-    return evaluate_problem67(
-        coordinates,
-        feed,
-        evaluator,
-        phase_count,
-        variables,
-        equality_multipliers
-    );
-}
-
 Held2StageIIIResult solve_held2_stage_iii(
     const Held2Coordinates& coordinates,
     const std::vector<double>& physical_feed,
