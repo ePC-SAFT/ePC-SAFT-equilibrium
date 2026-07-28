@@ -229,6 +229,52 @@ py::dict max_min_evidence(
     return result;
 }
 
+py::dict homogeneous_support_evidence(
+    const py::handle& balance_matrix_value,
+    const std::vector<double>& feed_amounts,
+    const std::vector<int>& charges,
+    const std::vector<double>& molar_masses_kg_per_mol
+) {
+    const DenseMatrix balance_matrix = dense_matrix(
+        balance_matrix_value, "balance matrix"
+    );
+    if (balance_matrix.columns != feed_amounts.size()) {
+        throw py::value_error("balance matrix does not match feed amounts");
+    }
+    std::vector<double> balance_totals(balance_matrix.rows, 0.0);
+    for (std::size_t row = 0; row < balance_matrix.rows; ++row) {
+        for (std::size_t species = 0; species < balance_matrix.columns; ++species) {
+            balance_totals[row] +=
+                balance_matrix(row, species) * feed_amounts[species];
+        }
+    }
+    const HomogeneousSupportAnalysis analysis = analyze_homogeneous_support(
+        balance_matrix,
+        balance_totals,
+        charges,
+        molar_masses_kg_per_mol
+    );
+    py::list species;
+    for (const SpeciesSupportEvidence& item : analysis.species) {
+        py::dict evidence;
+        evidence["classification"] = item.classification;
+        evidence["candidate_maximum_mass_fraction"] =
+            item.candidate_maximum_mass_fraction;
+        evidence["primal_validated"] = item.primal_validated;
+        evidence["dual_validated"] = item.dual_validated;
+        evidence["witness_amounts"] = item.witness_amounts;
+        evidence["dual_multipliers"] = item.dual_multipliers;
+        species.append(std::move(evidence));
+    }
+    py::dict result;
+    result["phase1_status"] = analysis.phase1_status;
+    result["validation_status"] = analysis.validation_status;
+    result["species"] = std::move(species);
+    result["witness_average_amounts"] = analysis.witness_average_amounts;
+    result["equality_inf_norm"] = analysis.equality_inf_norm;
+    return result;
+}
+
 py::dict chemical_result(
     const char* profile,
     const ChemicalSolveResult& evaluation
@@ -444,6 +490,14 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("feed_amounts"),
         py::arg("charges"),
         py::arg("trace_floor")
+    );
+    module.def(
+        "_chemical_analyze_homogeneous_support",
+        &homogeneous_support_evidence,
+        py::arg("balance_matrix"),
+        py::arg("feed_amounts"),
+        py::arg("charges"),
+        py::arg("molar_masses_kg_per_mol")
     );
     module.def(
         "_chemical_solve_manufactured",

@@ -326,6 +326,96 @@ def test_reaction_compiler_rejects_non_neutral_feed_and_charge_nonconservation()
         _equilibrium._chemical_compile_system(nonconserving)
 
 
+@pytest.mark.parametrize(
+    (
+        "balance_matrix",
+        "feed_amounts",
+        "charges",
+        "molar_masses",
+        "classifications",
+        "expected_average",
+    ),
+    (
+        (
+            ((1.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+            (1.0, 0.0, 0.0),
+            (0, 0, 0),
+            (1.0, 1.0, 1.0),
+            ("proved_accessible", "proved_accessible", "proved_structural_zero"),
+            (0.5, 0.5, 0.0),
+        ),
+        (
+            ((1.0e8, 1.0e8, 0.0), (0.0, 0.0, 1.0e-8)),
+            (1.0, 0.0, 0.0),
+            (0, 0, 0),
+            (1.0, 1.0, 1.0),
+            ("proved_accessible", "proved_accessible", "proved_structural_zero"),
+            (0.5, 0.5, 0.0),
+        ),
+        (
+            ((2.0, 1.0, 1.0),),
+            (1.0, 0.0, 0.0),
+            (0, 1, -1),
+            (2.0, 1.0, 1.0),
+            ("proved_accessible", "proved_accessible", "proved_accessible"),
+            (1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0),
+        ),
+    ),
+)
+def test_homogeneous_structural_support_has_exact_primal_and_dual_certificates(
+    balance_matrix: tuple[tuple[float, ...], ...],
+    feed_amounts: tuple[float, ...],
+    charges: tuple[int, ...],
+    molar_masses: tuple[float, ...],
+    classifications: tuple[str, ...],
+    expected_average: tuple[float, ...],
+) -> None:
+    evidence = _equilibrium._chemical_analyze_homogeneous_support(
+        balance_matrix,
+        feed_amounts,
+        charges,
+        molar_masses,
+    )
+
+    assert evidence["phase1_status"] == "optimal"
+    assert evidence["validation_status"] == "exact_certificates_complete"
+    assert tuple(item["classification"] for item in evidence["species"]) \
+        == classifications
+    assert evidence["equality_inf_norm"] == 0.0
+
+    totals = tuple(
+        sum(row[index] * feed_amounts[index] for index in range(len(feed_amounts)))
+        for row in balance_matrix
+    )
+    for item in evidence["species"]:
+        if item["primal_validated"]:
+            witness = item["witness_amounts"]
+            assert all(value >= 0.0 for value in witness)
+            assert tuple(
+                sum(row[index] * witness[index] for index in range(len(witness)))
+                for row in balance_matrix
+            ) == pytest.approx(totals, abs=0.0)
+            assert sum(
+                charges[index] * witness[index] for index in range(len(witness))
+            ) == 0.0
+        if item["classification"] == "proved_structural_zero":
+            assert item["dual_validated"] is True
+            assert item["candidate_maximum_mass_fraction"] == pytest.approx(
+                0.0, abs=1.0e-12
+            )
+
+    average = evidence["witness_average_amounts"]
+    assert average == pytest.approx(expected_average, abs=0.0)
+    assert tuple(
+        sum(row[index] * average[index] for index in range(len(average)))
+        for row in balance_matrix
+    ) == pytest.approx(totals, abs=0.0)
+    assert sum(charges[index] * average[index] for index in range(len(average))) == 0.0
+    for index, classification in enumerate(classifications):
+        if classification == "proved_accessible":
+            assert average[index] > 0.0
+
+
 def _amount_chart(
     charges: tuple[int, ...], coordinates: tuple[float, ...], trace_floor: float = 1.0e-12
 ) -> dict[str, object]:

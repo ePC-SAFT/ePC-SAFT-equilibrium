@@ -93,6 +93,23 @@ struct MaxMinInitializationResult {
     bool strict_positive_feasible = false;
 };
 
+struct SpeciesSupportEvidence {
+    std::string classification = "unresolved";
+    double candidate_maximum_mass_fraction = 0.0;
+    bool primal_validated = false;
+    bool dual_validated = false;
+    std::vector<double> witness_amounts;
+    std::vector<double> dual_multipliers;
+};
+
+struct HomogeneousSupportAnalysis {
+    std::string phase1_status = "not_run";
+    std::string validation_status = "not_adjudicated";
+    std::vector<SpeciesSupportEvidence> species;
+    std::vector<double> witness_average_amounts;
+    double equality_inf_norm = 0.0;
+};
+
 struct ChemicalSolveResult {
     bool accepted = false;
     std::string solver_status;
@@ -168,6 +185,13 @@ class ProviderContext;
     const std::vector<int>& charges,
     double trace_floor,
     double total_ion_fraction_max
+);
+
+[[nodiscard]] HomogeneousSupportAnalysis analyze_homogeneous_support(
+    const DenseMatrix& balance_matrix,
+    const std::vector<double>& balance_totals,
+    const std::vector<int>& charges,
+    const std::vector<double>& molar_masses_kg_per_mol
 );
 
 [[nodiscard]] ChemicalSolveResult solve_manufactured_ideal_reaction(
