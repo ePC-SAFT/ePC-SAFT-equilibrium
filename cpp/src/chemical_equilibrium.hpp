@@ -39,7 +39,27 @@ struct ReactionSystemInput {
     double pressure_pa = 0.0;
 };
 
+struct SpeciesSupportEvidence {
+    std::string classification = "unresolved";
+    double candidate_maximum_mass_fraction = 0.0;
+    bool primal_validated = false;
+    bool dual_validated = false;
+    std::vector<double> witness_amounts;
+    std::vector<double> dual_multipliers;
+};
+
+struct HomogeneousSupportAnalysis {
+    std::string phase1_status = "not_run";
+    std::string validation_status = "not_adjudicated";
+    std::vector<SpeciesSupportEvidence> species;
+    std::vector<double> witness_average_amounts;
+    double equality_inf_norm = 0.0;
+};
+
 struct CompiledReactionSystem {
+    std::vector<std::string> original_species_ids;
+    std::vector<int> original_charges;
+    std::vector<double> original_feed_amounts;
     std::vector<std::string> species_ids;
     std::vector<int> charges;
     std::vector<double> molar_masses_kg_per_mol;
@@ -50,6 +70,11 @@ struct CompiledReactionSystem {
     std::vector<std::size_t> reaction_basis_rows;
     double reaction_cycle_inf_norm = 0.0;
     double reaction_transform_inf_norm = 0.0;
+    HomogeneousSupportAnalysis support;
+    std::vector<std::size_t> retained_species_indices;
+    std::vector<std::size_t> removed_species_indices;
+    DenseMatrix accessible_reaction_transform;
+    double accessible_reaction_transform_inf_norm = 0.0;
     DenseMatrix balance_matrix;
     DenseMatrix reaction_matrix;
     std::vector<double> balance_totals;
@@ -91,23 +116,6 @@ struct MaxMinInitializationResult {
     double max_min_amount = 0.0;
     double equality_inf_norm = 0.0;
     bool strict_positive_feasible = false;
-};
-
-struct SpeciesSupportEvidence {
-    std::string classification = "unresolved";
-    double candidate_maximum_mass_fraction = 0.0;
-    bool primal_validated = false;
-    bool dual_validated = false;
-    std::vector<double> witness_amounts;
-    std::vector<double> dual_multipliers;
-};
-
-struct HomogeneousSupportAnalysis {
-    std::string phase1_status = "not_run";
-    std::string validation_status = "not_adjudicated";
-    std::vector<SpeciesSupportEvidence> species;
-    std::vector<double> witness_average_amounts;
-    double equality_inf_norm = 0.0;
 };
 
 struct ChemicalSolveResult {

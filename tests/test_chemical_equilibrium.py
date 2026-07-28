@@ -416,6 +416,51 @@ def test_homogeneous_structural_support_has_exact_primal_and_dual_certificates(
             assert average[index] > 0.0
 
 
+def test_accessible_face_preserves_reaction_combinations_that_cancel_removed_species() -> None:
+    spec = {
+        **_base_system(),
+        "species_ids": ("A", "B", "C", "X"),
+        "charges": (0, 0, 0, 0),
+        "molar_masses_kg_per_mol": (1.0, 2.0, 1.0, 1.0),
+        "balance_matrix": (
+            (1.0, 1.0, 1.0, 0.0),
+            (0.0, 1.0, 0.0, 1.0),
+        ),
+        "reaction_matrix": (
+            (-1.0, 1.0, 0.0, -1.0),
+            (0.0, -1.0, 1.0, 1.0),
+        ),
+        "feed_amounts": (1.0, 0.0, 0.0, 0.0),
+        "ln_k": (math.log(2.0), math.log(3.0)),
+    }
+    _bind_record(spec)
+
+    compiled = _equilibrium._chemical_compile_system(spec)
+
+    assert compiled["original_species_ids"] == ["A", "B", "C", "X"]
+    assert compiled["species_ids"] == ["A", "C"]
+    assert compiled["retained_species_indices"] == [0, 2]
+    assert compiled["removed_species_indices"] == [1, 3]
+    assert compiled["supplied_reaction_rank"] == 2
+    assert compiled["support_classifications"] == [
+        "proved_accessible",
+        "proved_structural_zero",
+        "proved_accessible",
+        "proved_structural_zero",
+    ]
+    assert len(compiled["accessible_reaction_transform"]) == 1
+    assert compiled["accessible_reaction_transform"][0] == pytest.approx(
+        (1.0, 1.0), abs=2.0e-14
+    )
+    assert compiled["accessible_reaction_matrix"] == [[-1.0, 1.0]]
+    assert compiled["accessible_ln_k"] == pytest.approx(
+        (math.log(6.0),), abs=2.0e-14
+    )
+    assert compiled["balance_rank"] + compiled["reaction_rank"] == 2
+    assert compiled["conservation_reaction_inf_norm"] <= 2.0e-14
+    assert compiled["charge_reaction_inf_norm"] == 0.0
+
+
 def _amount_chart(
     charges: tuple[int, ...], coordinates: tuple[float, ...], trace_floor: float = 1.0e-12
 ) -> dict[str, object]:

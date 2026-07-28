@@ -151,17 +151,59 @@ py::dict compile_system(const py::dict& spec) {
         reaction_system_input(spec)
     );
     py::dict result;
+    result["original_species_ids"] = compiled.original_species_ids;
     result["species_ids"] = compiled.species_ids;
+    result["retained_species_ids"] = compiled.species_ids;
+    result["retained_species_indices"] = compiled.retained_species_indices;
+    result["removed_species_indices"] = compiled.removed_species_indices;
+    std::vector<std::string> removed_species_ids;
+    removed_species_ids.reserve(compiled.removed_species_indices.size());
+    for (std::size_t index : compiled.removed_species_indices) {
+        removed_species_ids.push_back(compiled.original_species_ids[index]);
+    }
+    result["removed_species_ids"] = std::move(removed_species_ids);
     result["charges"] = compiled.charges;
     result["balance_rank"] = compiled.balance_rank;
     result["reaction_rank"] = compiled.reaction_rank;
-    result["supplied_reaction_rank"] = compiled.reaction_rank;
+    result["supplied_reaction_rank"] = compiled.reaction_basis_rows.size();
     result["reaction_basis_rows"] = compiled.reaction_basis_rows;
     result["reaction_transform"] = matrix_rows(compiled.reaction_transform);
+    std::vector<std::vector<double>> full_independent_reaction_matrix;
+    std::vector<double> full_independent_ln_k;
+    full_independent_reaction_matrix.reserve(compiled.reaction_basis_rows.size());
+    full_independent_ln_k.reserve(compiled.reaction_basis_rows.size());
+    for (std::size_t row : compiled.reaction_basis_rows) {
+        std::vector<double> values(compiled.supplied_reaction_matrix.columns, 0.0);
+        for (std::size_t species = 0;
+             species < compiled.supplied_reaction_matrix.columns;
+             ++species) {
+            values[species] = compiled.supplied_reaction_matrix(row, species);
+        }
+        full_independent_reaction_matrix.push_back(std::move(values));
+        full_independent_ln_k.push_back(compiled.supplied_ln_k[row]);
+    }
+    result["full_independent_reaction_matrix"] =
+        std::move(full_independent_reaction_matrix);
+    result["full_independent_ln_k"] = std::move(full_independent_ln_k);
     result["independent_reaction_matrix"] = matrix_rows(compiled.reaction_matrix);
     result["independent_ln_k"] = compiled.ln_k;
     result["reaction_cycle_inf_norm"] = compiled.reaction_cycle_inf_norm;
     result["reaction_transform_inf_norm"] = compiled.reaction_transform_inf_norm;
+    result["accessible_reaction_transform"] = matrix_rows(
+        compiled.accessible_reaction_transform
+    );
+    result["accessible_reaction_transform_inf_norm"] =
+        compiled.accessible_reaction_transform_inf_norm;
+    result["accessible_reaction_matrix"] = matrix_rows(compiled.reaction_matrix);
+    result["accessible_ln_k"] = compiled.ln_k;
+    std::vector<std::string> support_classifications;
+    support_classifications.reserve(compiled.support.species.size());
+    for (const SpeciesSupportEvidence& item : compiled.support.species) {
+        support_classifications.push_back(item.classification);
+    }
+    result["support_classifications"] = std::move(support_classifications);
+    result["support_phase1_status"] = compiled.support.phase1_status;
+    result["support_validation_status"] = compiled.support.validation_status;
     result["balance_matrix"] = matrix_rows(compiled.balance_matrix);
     result["molar_masses_kg_per_mol"] = compiled.molar_masses_kg_per_mol;
     result["reaction_qr_diagonal_ratio"] = compiled.reaction_qr_diagonal_ratio;
