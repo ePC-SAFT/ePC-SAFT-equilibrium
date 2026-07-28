@@ -146,13 +146,17 @@ normalized feed is:
 (0.8321050353538131, 0.08394748232309347, 0.08394748232309347)
 ```
 
-Run its real controller with live, flushing terminal output using:
+Export the installed Provider model configuration, then run its real controller
+with live, flushing terminal output using:
 
 ```bash
-pytest -s tests/test_perdomo_held2_trace.py::test_perdomo_table3_nacl_workflow --held2-live
+build/epcsaft-equilibrium-diagnostic \
+  --model-config MODEL.json --temperature 298.15 --pressure 2508 \
+  --feed 0.8321050353538131,0.08394748232309347,0.08394748232309347 \
+  --trace
 ```
 
-Without `--held2-live`, the same test is quiet and asserts the same structured
+Without `--trace`, the executable is quiet and returns the same structured
 result. Current ePC-SAFT/Provider evidence selects the lowest of two stable
 reference roots. The Figiel Provider caps total ion mole fraction at `0.38`;
 the domain-aware Stage-I map therefore changes the first DIRECT-L midpoint from

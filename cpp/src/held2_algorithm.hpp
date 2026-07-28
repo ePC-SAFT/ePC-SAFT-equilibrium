@@ -5,12 +5,10 @@
 
 namespace epcsaft_equilibrium {
 
-class ProviderContext;
-
-struct Held2Input {
+struct FlashInput {
     double temperature_k = 0.0;
     double pressure_pa = 0.0;
-    std::vector<double> overall_mole_fractions_provider_order;
+    std::vector<double> overall_mole_fractions;
 };
 
 struct Held2ThermodynamicAccess {
@@ -51,14 +49,9 @@ struct Held2AlgorithmResult {
 
 [[nodiscard]] Held2AlgorithmResult run_held2_algorithm(
     const Held2ThermodynamicAccess& thermodynamics,
-    const Held2Input& input,
+    const FlashInput& input,
     const Held2ResourceProfile& resources,
     Held2ProgressObserver* observer = nullptr
-);
-
-[[nodiscard]] Held2ThermodynamicAccess make_installed_held2_access(
-    const ProviderContext& provider,
-    const Held2Input& input
 );
 
 }  // namespace epcsaft_equilibrium

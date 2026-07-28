@@ -11,17 +11,10 @@
 
 namespace epcsaft_equilibrium {
 
-struct FlashInput {
-    double temperature_k = 0.0;
-    double pressure_pa = 0.0;
-    std::vector<double> overall_mole_fractions;
-};
-
 struct FlashResult {
     FlashInput input;
     std::string parameter_fingerprint;
     std::variant<HeldResult, Held2AlgorithmResult> solve;
-    std::string globality_certificate = "not_guaranteed";
 };
 
 [[nodiscard]] FlashResult solve_tp_flash(

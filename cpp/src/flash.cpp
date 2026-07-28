@@ -250,21 +250,14 @@ private:
     double pressure_over_rt_;
 };
 
-}  // namespace
-
 Held2ThermodynamicAccess make_installed_held2_access(
     const ProviderContext& provider,
-    const Held2Input& input
+    const FlashInput& input
 ) {
     require_held2_sdk(provider.sdk());
-    const FlashInput flash_input{
-        input.temperature_k,
-        input.pressure_pa,
-        input.overall_mole_fractions_provider_order,
-    };
-    validate_input(provider, flash_input);
+    validate_input(provider, input);
     const auto problem = std::make_shared<InstalledHeld2Problem>(
-        provider, flash_input
+        provider, input
     );
     Held2ThermodynamicAccess result;
     result.component_ids.reserve(provider.sdk().component_count);
@@ -310,6 +303,8 @@ Held2ThermodynamicAccess make_installed_held2_access(
     return result;
 }
 
+}  // namespace
+
 FlashResult solve_tp_flash(
     const ProviderContext& provider,
     const FlashInput& input,
@@ -330,14 +325,9 @@ FlashResult solve_tp_flash(
         );
     if (electrolyte) {
         require_held2_sdk(provider.sdk());
-        const Held2Input held2_input{
-            input.temperature_k,
-            input.pressure_pa,
-            input.overall_mole_fractions,
-        };
         result.solve = run_held2_algorithm(
-            make_installed_held2_access(provider, held2_input),
-            held2_input,
+            make_installed_held2_access(provider, input),
+            input,
             {},
             observer
         );

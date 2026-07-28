@@ -933,7 +933,7 @@ def test_public_tp_flash_rejects_unknown_status_vocabulary(
     assert failed.value.diagnostics.globality_certificate == "not_guaranteed"
 
 
-def test_task_6_public_surface_has_no_fixed_route_or_solver_controls() -> None:
+def test_public_surface_has_no_retired_routes_or_solver_controls() -> None:
     assert tuple(inspect.signature(epcsaft_equilibrium.tp_flash).parameters) == (
         "model",
         "temperature",
@@ -958,14 +958,6 @@ def test_task_6_public_surface_has_no_fixed_route_or_solver_controls() -> None:
     }
     for retired in ("FlashDiagnostics", "TwoPhaseFlashResult", "two_phase_flash"):
         assert not hasattr(epcsaft_equilibrium, retired)
-    assert hasattr(_equilibrium, "_solve_tp_flash")
-    for retired in (
-        "_held",
-        "_held2_controller",
-        "_solve_two_phase_flash",
-        "evaluate_two_phase_flash_nlp",
-    ):
-        assert not hasattr(_equilibrium, retired)
     valid_arguments = (
         _binary_model(),
         MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,

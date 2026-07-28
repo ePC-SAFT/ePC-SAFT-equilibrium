@@ -45,7 +45,7 @@ auto run_step(
 
 Held2AlgorithmResult run_held2_algorithm(
     const Held2ThermodynamicAccess& thermodynamics,
-    const Held2Input& input,
+    const FlashInput& input,
     const Held2ResourceProfile& resources,
     Held2ProgressObserver* observer
 ) {
@@ -63,13 +63,13 @@ Held2AlgorithmResult run_held2_algorithm(
     };
     result.step1 = run_step(1, [&] {
         return run_held2_step1(
-        thermodynamics.component_ids,
-        thermodynamics.charges,
-        input.temperature_k,
-        input.pressure_pa,
-        input.overall_mole_fractions_provider_order,
-        thermodynamics.volume_bounds_physical,
-        thermodynamics.total_ion_mole_fraction_max
+            thermodynamics.component_ids,
+            thermodynamics.charges,
+            input.temperature_k,
+            input.pressure_pa,
+            input.overall_mole_fractions,
+            thermodynamics.volume_bounds_physical,
+            thermodynamics.total_ion_mole_fraction_max
         );
     }, observer);
     result.step_timings.push_back(result.step1.timing);
@@ -95,7 +95,7 @@ Held2AlgorithmResult run_held2_algorithm(
             0,
             1.0,
             *result.step1.independent_feed,
-            input.overall_mole_fractions_provider_order,
+            input.overall_mole_fractions,
             reference.volume,
             thermodynamics.packing_fraction(
                 *result.step1.independent_feed, reference.volume

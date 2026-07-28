@@ -1,3 +1,4 @@
+#include "held2_algorithm.hpp"
 #include "held2_step2.hpp"
 #include "held2_step4.hpp"
 #include "held2_step5.hpp"
@@ -9,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -561,23 +563,13 @@ Held2Step8Result manufactured_step8(
     );
 }
 
-}  // namespace
-
-Held2StateEvaluation evaluate_manufactured_state(
-    const Held2Coordinates& coordinates,
-    const std::vector<double>& independent,
-    double log_volume
-) {
-    return evaluate_manufactured_state_impl(coordinates, independent, log_volume);
-}
-
 void run_held2_step1_checks() {
     check_coordinates();
     check_polytope();
     check_failures();
 }
 
-std::string run_held2_step2_checks(Held2ProgressObserver* observer) {
+void run_held2_step2_checks() {
     const Held2StateEvaluation reference = quadratic_state({0.4}, 0.0);
     const Held2TpdEvaluation tpd = evaluate_held2_tpd(
         reference, {0.4}, quadratic_state({0.6}, 0.1), {0.6}
@@ -646,8 +638,7 @@ std::string run_held2_step2_checks(Held2ProgressObserver* observer) {
         [](const auto& composition, double log_volume) {
             return search_state(composition, log_volume, true);
         },
-        200,
-        observer
+        200
     );
     require(
         negative.outcome == Held2Step2Outcome::NegativeWitness
@@ -689,9 +680,6 @@ std::string run_held2_step2_checks(Held2ProgressObserver* observer) {
             == Held2Step2Outcome::Indeterminate,
         "tied reference roots did not fail closed"
     );
-    const std::string summary = negative.reason + '|'
-        + nonnegative.reason + "|stable_objective_tie";
-    return std::to_string(std::hash<std::string>{}(summary));
 }
 
 void run_held2_step3_checks() {
@@ -889,7 +877,7 @@ void run_held2_step8_checks() {
         [coordinates = *prepared.coordinates](
             const auto& composition, double log_volume
         ) {
-            return evaluate_manufactured_state(
+            return evaluate_manufactured_state_impl(
                 coordinates, composition, log_volume
             );
         },
@@ -942,7 +930,7 @@ void run_held2_step9_checks() {
         const auto& composition, double log_volume
     ) {
         ++provider_evaluations;
-        return evaluate_manufactured_state(
+        return evaluate_manufactured_state_impl(
             coordinates, composition, log_volume
         );
     };
@@ -1017,7 +1005,7 @@ void run_held2_step10_checks() {
     const auto evaluator = [coordinates = *prepared.coordinates](
         const auto& composition, double log_volume
     ) {
-        return evaluate_manufactured_state(
+        return evaluate_manufactured_state_impl(
             coordinates, composition, log_volume
         );
     };
@@ -1143,4 +1131,60 @@ void run_held2_step10_checks() {
     );
 }
 
+void run_workflow_check() {
+    const std::vector<double> charges{0.0, 1.0, -1.0};
+    const Held2Coordinates coordinates = make_held2_coordinates(charges);
+    const Held2AlgorithmResult result = run_held2_algorithm(
+        {
+            {"neutral", "cation", "anion"},
+            charges,
+            [coordinates](const auto& composition, double log_volume) {
+                Held2StateEvaluation state = evaluate_manufactured_state_impl(
+                    coordinates, composition, log_volume
+                );
+                state.pressure_stationarity_relative *= -1.0;
+                state.pressure_stationarity_derivative_log_volume *= -1.0;
+                return state;
+            },
+            [](const auto&) {
+                return std::array<double, 2>{0.5, 1.5};
+            },
+            [](const auto& composition, double) {
+                return composition.front();
+            },
+            std::numeric_limits<double>::quiet_NaN(),
+            {},
+            {},
+        },
+        {298.15, 100000.0, {0.5, 0.25, 0.25}},
+        {200, 20, 10}
+    );
+    require(
+        result.outcome == "physical_equilibrium_accepted"
+            && result.step10
+            && result.step10->status == "complete"
+            && result.phases.size() == 2
+            && result.step10->final_certificate->accepted
+            && result.globality_certificate == "not_guaranteed",
+        "manufactured HELD2 Steps 1-10 failed"
+    );
+}
+
+}  // namespace
 }  // namespace epcsaft_equilibrium::test
+
+int main() {
+    using namespace epcsaft_equilibrium::test;
+    run_held2_step1_checks();
+    run_held2_step2_checks();
+    run_held2_step3_checks();
+    run_held2_step4_checks();
+    run_held2_step5_checks();
+    run_held2_step6_checks();
+    run_held2_step7_checks();
+    run_held2_step8_checks();
+    run_held2_step9_checks();
+    run_held2_step10_checks();
+    run_workflow_check();
+    return 0;
+}

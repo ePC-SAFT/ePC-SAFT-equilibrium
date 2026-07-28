@@ -59,7 +59,7 @@ def test_held2_observer_is_quiet_by_default_and_does_not_change_results(capfd) -
     assert "reason=declared_search_complete" in traced_output.out
 
 
-def test_perdomo_table3_nacl_workflow(held2_live: bool) -> None:
+def test_perdomo_table3_nacl_workflow() -> None:
     model = _perdomo_table3_model()
     result = _equilibrium._solve_tp_flash(
         epcsaft.native_sdk(model),
@@ -67,7 +67,6 @@ def test_perdomo_table3_nacl_workflow(held2_live: bool) -> None:
         2508.0,
         PERDOMO_TABLE3_FEED,
         model.parameter_fingerprint,
-        trace=held2_live,
     )
 
     expected_feed = tuple(value / sum(_source_amounts) for value in _source_amounts)

@@ -92,22 +92,23 @@ fraction in bounded \(\log_{10}\) coordinates, preserves every other Step-1
 constraint, and then recertifies the reconstructed linear balances and
 chemical potentials.
 
-The archived homogeneous reference search reports detected pressure-root
+The homogeneous reference search reports detected pressure-root
 accounting separately as `root_completeness`. Its installed evidence reports
 `root_completeness="not_proven"`: detecting and refining the retained roots is
 not proof that every root exists in the finite domain. Root completeness is
 independent of solver, numerical, physical, search-completeness, predictive,
 and globality status.
 
-The archived installed public Perdomo Table 3 evidence returns one accepted
+The installed public Perdomo Table 3 evidence returns one accepted
 homogeneous phase and a cross-EOS source-topology disagreement. It does not admit
 electrolyte LLE or reproduce Perdomo's SAFT-gamma-Mie numerical endpoints. The
 admission gate remains one source-complete installed ePC-SAFT case that reaches
 and passes Stage II and Stage III with two distinct liquids. It requires an
 exact corrected Provider artifact and independent installed-artifact evidence.
 
-The HELD2 solver strategy is canonized in
-`docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. It assigns
+The HELD2 algorithm is specified in
+`docs/designs/2026-07-24-held2-paper-algorithm.md` and implemented by
+`docs/plans/2026-07-24-held2-paper-rewrite.md`. It assigns
 deterministic pressure-root enumeration to homogeneous and trial-composition
 density topology, NLopt DIRECT-L to the reduced Stage-I TPD search, HiGHS to
 the Stage-II upper LP, deterministic capped-multistart exact-Hessian Ipopt to
@@ -117,16 +118,19 @@ default replacement for Ipopt. The development route implements the Steps
 Installed two-liquid evidence and capability admission remain outside the
 landed scope.
 
-The development controller also has an observational live-progress test for the
-Perdomo (2025) Table 3 NaCl-water workflow. It is silent by default. Run:
+The development-only native diagnostic is the live-progress route. After
+exporting the installed Provider model configuration, run:
 
 ```bash
-pytest -s tests/test_perdomo_held2_trace.py::test_perdomo_table3_nacl_workflow --held2-live
+build/epcsaft-equilibrium-diagnostic \
+  --model-config MODEL.json --temperature 298.15 --pressure 2508 \
+  --feed 0.8321050353538131,0.08394748232309347,0.08394748232309347 \
+  --trace
 ```
 
-to see reference roots, actual Stage-I evaluations, certificates, and exact
-certificate and failure reasons as they occur. The observer does not change
-the returned result, gates, budgets, or finite-search globality label.
+The trace shows reference roots, Stage-I evaluations, certificates, and exact
+failure reasons as they occur. Enabling it does not change results, gates,
+budgets, or the finite-search globality label.
 
 The earlier fixed-two-phase campaign remains `NON_ADMISSION` under the frozen
 May `3*u_c` composition contract: 12 of 17 rows passed, rows 002/009/010/011
@@ -187,9 +191,9 @@ The canonical documentation map is `docs/phase-equilibrium.md`. Detailed
 formulation owners are
 `docs/designs/2026-07-17-pure-saturation-slice.md`,
 `docs/designs/2026-07-17-neutral-held-v1.md`, and
-`docs/designs/2026-07-21-perdomo-held2.md`; the canonical HELD2 execution plan
+`docs/designs/2026-07-24-held2-paper-algorithm.md`; the canonical HELD2 execution plan
 and landed task record is
-`docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. Migration receipt
+`docs/plans/2026-07-24-held2-paper-rewrite.md`. Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
 solve is not a phase-discovery or global-stability proof. The local HELD

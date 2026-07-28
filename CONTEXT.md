@@ -19,9 +19,8 @@ not change scientific admission or runtime authority.
 
 Canonical package-local phase-equilibrium documentation is indexed in
 `docs/phase-equilibrium.md`. The detailed current Perdomo formulation owner is
-`docs/designs/2026-07-21-perdomo-held2.md`; its canonical future numerical
-implementation plan is
-`docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. The accepted
+`docs/designs/2026-07-24-held2-paper-algorithm.md`; its implementation plan is
+`docs/plans/2026-07-24-held2-paper-rewrite.md`. The accepted
 pure-saturation and frozen neutral-HELD designs retain their existing
 ownership.
 

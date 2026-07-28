@@ -365,7 +365,7 @@ JsonValue neutral_flash_to_json(const FlashResult& flash) {
     result["search_profiles"] = std::move(search_profiles);
     result["stage_iii_attempts"] = std::move(attempts);
     result["trace"] = std::move(trace);
-    result["globality_certificate"] = flash.globality_certificate;
+    result["globality_certificate"] = "not_guaranteed";
     result["solver_status"] = "not_adjudicated";
     result["numerical_status"] = "not_adjudicated";
     result["physical_status"] = "not_adjudicated";
@@ -780,7 +780,7 @@ JsonValue paper_step10_to_json(const Held2Step10Result& step) {
 
 JsonValue paper_algorithm_to_json(
     const Held2AlgorithmResult& solve,
-    const Held2Input& input,
+    const FlashInput& input,
     const std::string& fingerprint
 ) {
     JsonValue result = JsonValue::object();
@@ -790,7 +790,7 @@ JsonValue paper_algorithm_to_json(
     result["temperature_k"] = input.temperature_k;
     result["pressure_pa"] = input.pressure_pa;
     result["overall_mole_fractions"] =
-        input.overall_mole_fractions_provider_order;
+        input.overall_mole_fractions;
     result["outcome"] = solve.outcome;
     result["failure_stage"] = solve.failure_stage.empty()
         ? JsonValue(nullptr) : JsonValue(solve.failure_stage);

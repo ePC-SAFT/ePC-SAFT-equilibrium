@@ -121,7 +121,6 @@ if(EPCSAFT_EQUILIBRIUM_BUILD_DIAGNOSTIC)
   )
   add_executable(
     epcsaft-equilibrium-manufactured-check
-    cpp/src/manufactured_check_main.cpp
     cpp/tests/held2_step_checks.cpp
   )
   target_link_libraries(
@@ -129,12 +128,10 @@ if(EPCSAFT_EQUILIBRIUM_BUILD_DIAGNOSTIC)
     PRIVATE epcsaft_equilibrium_core
   )
   enable_testing()
-  foreach(case_name IN ITEMS step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 workflow)
-    add_test(
-      NAME held2-${case_name}
-      COMMAND epcsaft-equilibrium-manufactured-check --case ${case_name}
-    )
-  endforeach()
+  add_test(
+    NAME held2-manufactured
+    COMMAND epcsaft-equilibrium-manufactured-check
+  )
   list(
     APPEND epcsaft_equilibrium_native_targets
     epcsaft-equilibrium-diagnostic
