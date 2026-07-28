@@ -104,11 +104,12 @@ physical state. The private Provider path consumes only the installed
 Provider's Helmholtz, pressure, volume-domain, packing, and derivative
 callbacks. A source-derived Belov-Aristova gas restriction supplies algorithm
 and trace-range evidence through the seam and remains
-`manufactured_nonpredictive`. No application chemistry, source-standard-state
-transport, or source-backed nonideal reacting case is retained in this
-package. The homogeneous layer emits no phase-stability, coupled-equilibrium,
-sensitivity, or globality claim, and D-026 remains the public HELD2 admission
-gate.
+`manufactured_nonpredictive`. A source-complete Held-2008/IAPWS
+R11-07(2019) water self-ionization sentinel exercises the installed Provider
+neutral-reference transport through the same private solver at 298.15 K and
+1 bar. It establishes one local fixed-state value result, not application
+chemistry, sensitivity, predictive, phase-stability, coupled-equilibrium, or
+globality. D-026 remains the public HELD2 admission gate.
 
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD

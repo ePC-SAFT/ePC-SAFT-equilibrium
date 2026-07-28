@@ -196,8 +196,10 @@ and landed task record is
 `docs/plans/2026-07-24-held2-paper-rewrite.md`. The D-028 private, non-production
 reacting-phase foundation is documented separately in
 `docs/designs/2026-07-21-private-reacting-phase-kernel.md`. It currently has
-manufactured and installed-Provider-manufactured evidence only; application
-chemistry and source-backed nonideal reacting cases remain downstream work.
+Belov trace evidence, installed-Provider-manufactured evidence, and one private
+source-complete Held/IAPWS water self-ionization value case. It has no public
+chemical-equilibrium operation, sensitivity contract, predictive admission,
+coupled phase-equilibrium claim, or globality proof.
 Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary

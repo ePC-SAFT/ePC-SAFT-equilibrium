@@ -19,7 +19,7 @@ replace a formulation owner.
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
 | Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Public development dispatch over one native core with fail-closed installed evidence; no admitted electrolyte LLE capability |
-| Private homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) | D-028-bound non-production foundation; underscored test seam only; manufactured evidence with Provider-basis `lnK`; no admitted source-complete chemistry |
+| Private homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) | D-028-bound non-production foundation; underscored test seam only; Belov trace evidence plus one source-complete Held/IAPWS installed-Provider value case |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Coupled multiphase chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
@@ -182,12 +182,15 @@ once, and treats a failed direct solve as failed.
 Its certificate axes keep artifact/input completeness, Ipopt status, numerical
 and physical checks, reduced-Hessian local status, predictive status, finite
 search, and globality separate. The manufactured installed-Provider seam
-remains labeled manufactured/nonpredictive. Inputs must already supply
-dimensionless `lnK` in the declared Provider Helmholtz basis. Source-standard-
-state transformation is deferred until a source-complete application owns the
-necessary chemistry and validation evidence. No application chemistry or
-source-backed nonideal reacting case is retained here. There is no public solve
-route, result type, generalized chemistry registry, or globality claim.
+remains labeled manufactured/nonpredictive. A second private path consumes
+explicit source activity-scale shifts and the installed Provider
+neutral-reference callback, then passes transformed constants directly to the
+same compiler and `solve_provider_reaction` owner. Its source-complete sentinel
+is `2 H2O <=> H3O+ + OH-` at 298.15 K and 1 bar using frozen IAPWS
+R11-07(2019) reaction data and the immutable Held-2008 Provider catalog. This
+establishes one local, strictly interior, fixed-`T,P` value result only. The
+callback supplies no derivatives, and there is still no public solve route,
+chemistry registry, sensitivity, predictive admission, or globality claim.
 
 ## Shared package contract
 

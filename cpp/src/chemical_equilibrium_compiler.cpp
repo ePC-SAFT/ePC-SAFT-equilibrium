@@ -1,4 +1,5 @@
 #include "chemical_equilibrium.hpp"
+#include "provider.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -884,6 +885,136 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     result.feed_amounts = input.feed_amounts;
     result.g_ref = std::move(reconstruction.values);
     return compile_accessible_face(std::move(result), independent_ln_k);
+}
+
+SourceStandardStateResult transform_source_standard_state(
+    const DenseMatrix& reaction_matrix,
+    const std::vector<double>& source_ln_k,
+    const std::vector<double>& log_activity_scale_factors,
+    const std::vector<int>& charges,
+    const std::string& provider_fingerprint,
+    double temperature_k,
+    double pressure_pa,
+    const NeutralReferenceEvaluation& reference
+) {
+    if (reaction_matrix.rows == 0
+        || reaction_matrix.values.size()
+            != reaction_matrix.rows * reaction_matrix.columns
+        || source_ln_k.size() != reaction_matrix.rows
+        || log_activity_scale_factors.size() != reaction_matrix.columns
+        || charges.size() != reaction_matrix.columns
+        || reference.component_count != reaction_matrix.columns
+        || reference.neutral_basis_row_count == 0
+        || reference.neutral_basis.size()
+            != reference.neutral_basis_row_count * reaction_matrix.columns
+        || reference.log_fugacity_contractions.size()
+            != reference.neutral_basis_row_count) {
+        throw std::invalid_argument(
+            "source/reference standard-state dimensions are inconsistent"
+        );
+    }
+    if (provider_fingerprint.empty()
+        || provider_fingerprint != reference.parameter_fingerprint
+        || reference.basis_id != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1) {
+        throw std::invalid_argument("Provider neutral-reference identity is incompatible");
+    }
+    if (reference.derivative_availability
+        != EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_NONE_V1) {
+        throw std::invalid_argument(
+            "Provider neutral-reference derivative availability is unsupported"
+        );
+    }
+    if (temperature_k != reference.temperature_k
+        || pressure_pa != reference.pressure_pa) {
+        throw std::invalid_argument("source/reference temperature and pressure are not bound");
+    }
+    require_finite_vector(reaction_matrix.values, "source reactions");
+    require_finite_vector(source_ln_k, "source lnK");
+    require_finite_vector(
+        log_activity_scale_factors, "source activity-scale factors"
+    );
+
+    const DenseMatrix neutral_basis{
+        reference.neutral_basis_row_count,
+        reference.component_count,
+        reference.neutral_basis,
+    };
+    const RowQr factor = factor_row_basis(neutral_basis);
+    double minimum_diagonal = std::numeric_limits<double>::infinity();
+    double maximum_diagonal = 0.0;
+    for (std::size_t row = 0; row < neutral_basis.rows; ++row) {
+        minimum_diagonal = std::min(minimum_diagonal, factor.upper(row, row));
+        maximum_diagonal = std::max(maximum_diagonal, factor.upper(row, row));
+    }
+    if (minimum_diagonal / maximum_diagonal < 1.0e-10) {
+        throw std::invalid_argument(
+            "Provider neutral-reference basis conditioning is unacceptable"
+        );
+    }
+    SourceStandardStateResult result{
+        std::vector<double>(reaction_matrix.rows, 0.0),
+        std::vector<double>(reaction_matrix.rows, 0.0),
+        0.0,
+    };
+    for (std::size_t reaction = 0; reaction < reaction_matrix.rows; ++reaction) {
+        const std::vector<double> stoichiometry = matrix_row(
+            reaction_matrix, reaction
+        );
+        double charge = 0.0;
+        for (std::size_t species = 0; species < reaction_matrix.columns; ++species) {
+            charge += stoichiometry[species] * static_cast<double>(charges[species]);
+        }
+        if (std::abs(charge) > numerical_tolerance(
+                matrix_scale(reaction_matrix), reaction_matrix.columns
+            )) {
+            throw std::invalid_argument("source reaction is not charge neutral");
+        }
+        const std::vector<double> coordinates = row_coordinates(
+            stoichiometry, factor
+        );
+        double residual = 0.0;
+        for (std::size_t species = 0; species < reaction_matrix.columns; ++species) {
+            double reconstructed = 0.0;
+            for (std::size_t basis = 0; basis < coordinates.size(); ++basis) {
+                reconstructed += coordinates[basis] * neutral_basis(basis, species);
+            }
+            residual = std::max(
+                residual, std::abs(reconstructed - stoichiometry[species])
+            );
+        }
+        if (residual > numerical_tolerance(
+                std::max(matrix_scale(reaction_matrix), matrix_scale(neutral_basis)),
+                reaction_matrix.columns
+            )) {
+            throw std::invalid_argument(
+                "source reaction is outside the Provider neutral-reference span"
+            );
+        }
+        double offset = std::inner_product(
+            stoichiometry.begin(),
+            stoichiometry.end(),
+            log_activity_scale_factors.begin(),
+            0.0
+        );
+        offset += std::inner_product(
+            coordinates.begin(),
+            coordinates.end(),
+            reference.log_fugacity_contractions.begin(),
+            0.0
+        );
+        if (!std::isfinite(offset)
+            || !std::isfinite(source_ln_k[reaction] + offset)) {
+            throw std::invalid_argument(
+                "source standard-state transformation produced a non-finite result"
+            );
+        }
+        result.standard_offsets[reaction] = offset;
+        result.ln_k_provider_basis[reaction] = source_ln_k[reaction] + offset;
+        result.representation_residual_inf_norm = std::max(
+            result.representation_residual_inf_norm, residual
+        );
+    }
+    return result;
 }
 
 }  // namespace epcsaft_equilibrium

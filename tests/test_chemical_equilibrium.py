@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import json
 import math
+from pathlib import Path
 
 import epcsaft
 import pytest
@@ -32,6 +34,53 @@ _BELOV_SOURCE_GIBBS = (
     -55.36542486137457,
     -17.10224518423043,
 )
+_HELD_WATER_IONIZATION_FINGERPRINT = (
+    "sha256:cc40aeb2902bfc9a7be46ceb066cfdb41c5cd5d1024fe119be3d559b75f8a256"
+)
+
+
+def _water_ionization_source() -> dict[str, object]:
+    path = Path(__file__).parents[1] / "data/reference/water_self_ionization_iapws_r11_07_2019.json"
+    return json.loads(path.read_text())
+
+
+def _iapws_p_kw(record: dict[str, object], temperature_k: float, density: float) -> float:
+    correlation = record["correlation"]
+    standard_state = record["standard_state"]
+    assert isinstance(correlation, dict)
+    assert isinstance(standard_state, dict)
+    alpha = correlation["alpha"]
+    beta = correlation["beta"]
+    ideal = correlation["ideal_gas_p_kw_coefficients"]
+    assert isinstance(alpha, list)
+    assert isinstance(beta, list)
+    assert isinstance(ideal, list)
+    q_value = density * math.exp(
+        alpha[0] + alpha[1] / temperature_k + alpha[2] * density ** (2.0 / 3.0) / temperature_k**2
+    )
+    p_kw_ideal = (
+        ideal[0]
+        + ideal[1] / temperature_k
+        + ideal[2] / temperature_k**2
+        + ideal[3] / temperature_k**3
+    )
+    return (
+        -2.0
+        * correlation["ion_coordination_number"]
+        * (
+            math.log10(1.0 + q_value)
+            - q_value
+            / (q_value + 1.0)
+            * density
+            * (beta[0] + beta[1] / temperature_k + beta[2] * density)
+        )
+        + p_kw_ideal
+        + 2.0
+        * math.log10(
+            standard_state["standard_molality_mol_per_kg"]
+            * standard_state["solvent_molar_mass_kg_per_mol"]
+        )
+    )
 
 
 def _belov_aristova_gas_system() -> tuple[dict[str, object], tuple[float, ...]]:
@@ -541,6 +590,213 @@ def _figiel_provider_model(
         "figiel-2025-reference-electrolytes", version=1
     ).select(components)
     return epcsaft.EPCSAFT(parameters)
+
+
+def _held_water_ionization_problem() -> tuple[
+    epcsaft.EPCSAFT, dict[str, object], dict[str, object]
+]:
+    source = _water_ionization_source()
+    state = source["state"]
+    standard_state = source["standard_state"]
+    values = source["values"]
+    assert isinstance(state, dict)
+    assert isinstance(standard_state, dict)
+    assert isinstance(values, dict)
+    components = ("water", "hydronium-cation", "hydroxide-anion")
+    parameters = epcsaft.ParameterBundle.from_catalog(
+        "held-2008-water-self-ionization", version=1
+    ).select(components)
+    model = epcsaft.EPCSAFT(parameters)
+    assert model.parameter_fingerprint == _HELD_WATER_IONIZATION_FINGERPRINT
+    conversion = math.log(
+        standard_state["standard_molality_mol_per_kg"]
+        * standard_state["solvent_molar_mass_kg_per_mol"]
+    )
+    spec: dict[str, object] = {
+        "species_ids": components,
+        "charges": (0, 1, -1),
+        "provider_fingerprint": model.parameter_fingerprint,
+        "molar_masses_kg_per_mol": (0.01801528, 0.01902322, 0.01700734),
+        "balance_matrix": ((2.0, 3.0, 1.0), (1.0, 1.0, 1.0)),
+        "reaction_matrix": ((-2.0, 1.0, 1.0),),
+        "feed_amounts": (1.0, 0.0, 0.0),
+        "ln_k": (values["ln_kw"],),
+        "equilibrium_constant_records": (
+            {
+                "source_id": source["source"]["id"],
+                "reference_id": standard_state["id"],
+                "reaction_orientation": "products_positive",
+                "conversion_id": "source-standard-state-to-provider-neutral-reference",
+                "dimensionless": True,
+                "temperature_k": state["temperature_k"],
+                "pressure_pa": state["pressure_pa"],
+            },
+        ),
+        "temperature_k": state["temperature_k"],
+        "pressure_pa": state["pressure_pa"],
+    }
+    return model, spec, {
+        "id": standard_state["id"],
+        "activity_scale_id": standard_state["activity_scale_id"],
+        "log_activity_scale_factors": (0.0, conversion, conversion),
+    }
+
+
+def test_iapws_2019_source_record_reproduces_release_equations() -> None:
+    source = _water_ionization_source()
+    state = source["state"]
+    values = source["values"]
+    assert isinstance(state, dict)
+    assert isinstance(values, dict)
+    assert _iapws_p_kw(source, 300.0, 1.0) == pytest.approx(13.906565, abs=5.0e-7)
+    p_kw = _iapws_p_kw(
+        source,
+        state["temperature_k"],
+        state["density_kg_per_m3"] / 1000.0,
+    )
+    assert p_kw == pytest.approx(values["p_kw"], abs=5.0e-13)
+    assert -math.log(10.0) * p_kw == pytest.approx(values["ln_kw"], abs=1.0e-13)
+
+
+def test_held_water_self_ionization_consumes_source_reference_and_provider() -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    capsule = epcsaft.native_sdk(model)
+
+    result = _equilibrium._chemical_solve_provider_source(
+        capsule,
+        spec,
+        source_standard_state,
+        {"packing_fraction_bounds": (1.0e-6, 0.74), "trace_floor": 1.0e-12},
+    )
+
+    assert result["profile"] == "installed_provider_source_bound"
+    assert result["accepted"] is True
+    amounts = result["amounts"]
+    assert 2.0 * amounts[0] + 3.0 * amounts[1] + amounts[2] == pytest.approx(2.0, abs=2.0e-9)
+    assert sum(amounts) == pytest.approx(1.0, abs=2.0e-9)
+    assert amounts[1] == pytest.approx(amounts[2], abs=2.0e-12)
+    final = _equilibrium._chemical_evaluate_provider_block(
+        capsule,
+        spec["temperature_k"],
+        amounts,
+        result["volume_m3"],
+        model.parameter_fingerprint,
+    )
+    provider_affinity = -2.0 * final["gradient"][0] + final["gradient"][1] + final["gradient"][2]
+    assert provider_affinity - result["standard_offsets"][0] == pytest.approx(
+        spec["ln_k"][0], abs=2.0e-7
+    )
+    assert result["source_standard_state_id"] == ("iapws-molality-ions-mole-fraction-water")
+    assert result["provider_reference_id"] == (
+        "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3"
+    )
+    assert result["reference_derivative_availability"] == 0
+    assert result["reference_convergence_error"] <= 5.0e-5
+    assert result["reference_representation_residual_inf_norm"] <= 1.0e-12
+    assert result["source_activity_scale_id"] == source_standard_state[
+        "activity_scale_id"
+    ]
+    assert result["standard_offsets"] == pytest.approx(
+        (-21.200377331401143,), abs=2.0e-12
+    )
+    assert result["ln_k_provider_basis"] == pytest.approx(
+        (-53.423919749357395,), abs=2.0e-12
+    )
+    assert result["chemical_certification_level"] == "LOCAL_EQUILIBRIUM"
+    assert result["boundary_status"] == "strict_interior"
+    assert result["trace_status"] == "interior"
+    assert result["provider_domain_status"] == "passed"
+    assert result["local_minimum_status"] == "passed"
+    assert result["reaction_affinity_inf_norm"] <= 1.0e-12
+    assert result["kkt_stationarity_inf_norm"] <= 1.0e-12
+    assert result["globality_certificate"] == "not_guaranteed"
+
+
+@pytest.mark.parametrize("variant", ("species_order", "reaction_orientation"))
+def test_held_source_transform_is_coordinate_invariant(variant: str) -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    if variant == "species_order":
+        permutation = (2, 0, 1)
+        components = tuple(spec["species_ids"][index] for index in permutation)
+        parameters = epcsaft.ParameterBundle.from_catalog(
+            "held-2008-water-self-ionization", version=1
+        ).select(components)
+        model = epcsaft.EPCSAFT(parameters)
+        for field in (
+            "species_ids",
+            "charges",
+            "molar_masses_kg_per_mol",
+            "feed_amounts",
+        ):
+            values = spec[field]
+            spec[field] = tuple(values[index] for index in permutation)
+        spec["balance_matrix"] = tuple(
+            tuple(row[index] for index in permutation) for row in spec["balance_matrix"]
+        )
+        spec["reaction_matrix"] = tuple(
+            tuple(row[index] for index in permutation) for row in spec["reaction_matrix"]
+        )
+        spec["provider_fingerprint"] = model.parameter_fingerprint
+        scales = source_standard_state["log_activity_scale_factors"]
+        source_standard_state["log_activity_scale_factors"] = tuple(
+            scales[index] for index in permutation
+        )
+        water_index, cation_index, anion_index = (1, 2, 0)
+    else:
+        spec["reaction_matrix"] = tuple(
+            tuple(-value for value in row) for row in spec["reaction_matrix"]
+        )
+        spec["ln_k"] = tuple(-value for value in spec["ln_k"])
+        water_index, cation_index, anion_index = (0, 1, 2)
+
+    result = _equilibrium._chemical_solve_provider_source(
+        epcsaft.native_sdk(model),
+        spec,
+        source_standard_state,
+        {"packing_fraction_bounds": (1.0e-6, 0.74), "trace_floor": 1.0e-12},
+    )
+
+    assert result["accepted"] is True
+    assert result["amounts"][water_index] == pytest.approx(0.9999999999956604, rel=2.0e-10)
+    assert result["amounts"][cation_index] == pytest.approx(
+        result["amounts"][anion_index], abs=2.0e-12
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid_field",
+    ("conversion", "fingerprint", "temperature", "standard_state", "activity_scale"),
+)
+def test_held_source_transform_fails_closed_on_identity_mismatch(
+    invalid_field: str,
+) -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    if invalid_field == "conversion":
+        record = spec["equilibrium_constant_records"][0]
+        spec["equilibrium_constant_records"] = (
+            {**record, "conversion_id": "already-provider-basis"},
+        )
+        match = "provenance"
+    elif invalid_field == "fingerprint":
+        spec["provider_fingerprint"] = "sha256:wrong"
+        match = "identity"
+    elif invalid_field == "temperature":
+        spec["temperature_k"] = 300.0
+        match = "provenance"
+    elif invalid_field == "standard_state":
+        source_standard_state["id"] = "wrong-standard-state"
+        match = "inconsistent"
+    else:
+        source_standard_state["activity_scale_id"] = ""
+        match = "incomplete"
+
+    with pytest.raises(ValueError, match=match):
+        _equilibrium._chemical_solve_provider_source(
+            epcsaft.native_sdk(model),
+            spec,
+            source_standard_state,
+            {"packing_fraction_bounds": (1.0e-6, 0.74)},
+        )
 
 
 def test_provider_structural_face_fails_before_reduced_topology_evaluation() -> None:
