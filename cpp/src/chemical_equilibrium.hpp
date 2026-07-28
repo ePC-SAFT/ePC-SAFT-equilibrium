@@ -59,6 +59,7 @@ struct HomogeneousSupportAnalysis {
 struct CompiledReactionSystem {
     std::vector<std::string> original_species_ids;
     std::vector<int> original_charges;
+    std::vector<double> original_molar_masses_kg_per_mol;
     std::vector<double> original_feed_amounts;
     std::vector<std::string> species_ids;
     std::vector<int> charges;
@@ -122,6 +123,11 @@ struct ChemicalSolveResult {
     bool accepted = false;
     std::string solver_status;
     std::string callback_error;
+    std::string chemical_certification_level = "FEASIBLE_ONLY";
+    std::string boundary_status = "not_adjudicated";
+    std::vector<std::string> support_qualifiers;
+    std::vector<std::size_t> retained_species_indices;
+    std::vector<std::size_t> structural_zero_species_indices;
     std::string numerical_status = "not_adjudicated";
     std::string physical_status = "not_adjudicated";
     std::string provider_domain_status = "not_adjudicated";
@@ -237,6 +243,10 @@ class ProviderContext;
     double total_ion_fraction_max,
     double trace_floor,
     int max_iterations = 500
+);
+
+[[nodiscard]] ChemicalSolveResult provider_structural_face_guard(
+    const CompiledReactionSystem& system
 );
 
 }  // namespace epcsaft_equilibrium

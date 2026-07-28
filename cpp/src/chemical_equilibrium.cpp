@@ -696,6 +696,7 @@ double removed_species_residual(
 CompiledReactionSystem compile_accessible_face(CompiledReactionSystem system) {
     system.original_species_ids = system.species_ids;
     system.original_charges = system.charges;
+    system.original_molar_masses_kg_per_mol = system.molar_masses_kg_per_mol;
     system.original_feed_amounts = system.feed_amounts;
     system.support = analyze_homogeneous_support(
         system.balance_matrix,

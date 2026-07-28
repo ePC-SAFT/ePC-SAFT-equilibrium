@@ -2038,6 +2038,117 @@ ChemicalSolveResult solve_reaction(
     return result;
 }
 
+namespace {
+
+void attach_support_evidence(
+    const CompiledReactionSystem& system,
+    ChemicalSolveResult& result
+) {
+    result.retained_species_indices = system.retained_species_indices;
+    result.structural_zero_species_indices = system.removed_species_indices;
+    if (system.support.validation_status != "exact_certificates_complete") {
+        result.support_qualifiers.push_back("SEARCH_ONLY_LP_SUPPORT");
+    }
+}
+
+void expand_original_amounts_and_residuals(
+    const CompiledReactionSystem& system,
+    ChemicalSolveResult& result
+) {
+    if (!system.removed_species_indices.empty()
+        && result.amounts.size() == system.retained_species_indices.size()) {
+        std::vector<double> original_amounts(
+            system.original_species_ids.size(), 0.0
+        );
+        for (std::size_t retained = 0;
+             retained < system.retained_species_indices.size();
+             ++retained) {
+            original_amounts[system.retained_species_indices[retained]] =
+                result.amounts[retained];
+        }
+        result.amounts = std::move(original_amounts);
+    }
+    if (result.amounts.size() != system.original_species_ids.size()) {
+        return;
+    }
+    for (std::size_t row = 0; row < system.supplied_balance_matrix.rows; ++row) {
+        double residual = 0.0;
+        for (std::size_t species = 0;
+             species < system.original_species_ids.size();
+             ++species) {
+            residual += system.supplied_balance_matrix(row, species)
+                * (
+                    result.amounts[species]
+                    - system.original_feed_amounts[species]
+                );
+        }
+        result.balance_inf_norm = std::max(
+            result.balance_inf_norm, std::abs(residual)
+        );
+    }
+    double mass_residual = 0.0;
+    double charge_residual = 0.0;
+    for (std::size_t species = 0;
+         species < system.original_species_ids.size();
+         ++species) {
+        mass_residual += system.original_molar_masses_kg_per_mol[species]
+            * (
+                result.amounts[species]
+                - system.original_feed_amounts[species]
+            );
+        charge_residual += static_cast<double>(system.original_charges[species])
+            * result.amounts[species];
+    }
+    result.balance_inf_norm = std::max(
+        result.balance_inf_norm, std::abs(mass_residual)
+    );
+    result.charge_inf_norm = std::max(
+        result.charge_inf_norm, std::abs(charge_residual)
+    );
+}
+
+ChemicalSolveResult finalize_chemical_result(
+    const CompiledReactionSystem& system,
+    ChemicalSolveResult result,
+    bool structural_face_supported
+) {
+    attach_support_evidence(system, result);
+    if (!system.removed_species_indices.empty() && !structural_face_supported) {
+        result.accepted = false;
+        result.solver_status = "boundary_direction_unresolved";
+        result.chemical_certification_level = "BOUNDARY_DIRECTION_UNRESOLVED";
+        result.boundary_status = "boundary_direction_unresolved";
+        result.amounts.clear();
+        return result;
+    }
+    expand_original_amounts_and_residuals(system, result);
+    if (result.accepted
+        && (
+            result.balance_inf_norm > kBalanceTolerance
+            || result.charge_inf_norm > kBalanceTolerance
+        )) {
+        result.accepted = false;
+        result.numerical_status = "failed";
+        result.physical_status = "failed";
+    }
+    if (result.accepted
+        && system.support.validation_status == "exact_certificates_complete") {
+        result.chemical_certification_level = "LOCAL_EQUILIBRIUM";
+        result.boundary_status = system.removed_species_indices.empty()
+            ? "strict_interior"
+            : "structural_face";
+    } else if (result.accepted) {
+        result.accepted = false;
+        result.chemical_certification_level = "FEASIBLE_ONLY";
+        result.boundary_status = "not_adjudicated";
+    } else if (!system.removed_species_indices.empty()) {
+        result.boundary_status = "structural_face";
+    }
+    return result;
+}
+
+}  // namespace
+
 ChemicalSolveResult solve_manufactured_ideal_reaction(
     const CompiledReactionSystem& system,
     double temperature_k,
@@ -2070,7 +2181,7 @@ ChemicalSolveResult solve_manufactured_ideal_reaction(
         result.final_lambda = 1.0;
         result.has_final_lambda = true;
     }
-    return result;
+    return finalize_chemical_result(system, std::move(result), true);
 }
 
 ProviderPhaseBlockEvidence evaluate_provider_phase_block(
@@ -2097,6 +2208,17 @@ ProviderPhaseBlockEvidence evaluate_provider_phase_block(
     };
 }
 
+ChemicalSolveResult provider_structural_face_guard(
+    const CompiledReactionSystem& system
+) {
+    if (system.removed_species_indices.empty()) {
+        throw std::invalid_argument(
+            "Provider structural-face guard requires a reduced component topology"
+        );
+    }
+    return finalize_chemical_result(system, ChemicalSolveResult{}, false);
+}
+
 ChemicalSolveResult solve_provider_reaction(
     const CompiledReactionSystem& system,
     const ProviderContext& provider,
@@ -2113,6 +2235,9 @@ ChemicalSolveResult solve_provider_reaction(
         || packing_fraction_min <= 0.0
         || packing_fraction_max <= packing_fraction_min) {
         throw std::invalid_argument("packing-fraction bounds must be finite, positive, and ordered");
+    }
+    if (!system.removed_species_indices.empty()) {
+        return provider_structural_face_guard(system);
     }
     double ionic_feed = 0.0;
     double total_feed = 0.0;
@@ -2138,7 +2263,7 @@ ChemicalSolveResult solve_provider_reaction(
         result.solver_status = initialization.solver_status;
         result.numerical_status = "failed";
         result.trace_status = "at_or_below_floor";
-        return result;
+        return finalize_chemical_result(system, std::move(result), false);
     }
     const std::vector<double>& starting_amounts = initialization.amounts;
     if (starting_amounts.size() != system.species_ids.size()
@@ -2256,7 +2381,7 @@ ChemicalSolveResult solve_provider_reaction(
         direct.has_final_lambda = true;
     }
     if (direct.accepted || max_iterations == 0) {
-        return direct;
+        return finalize_chemical_result(system, std::move(direct), false);
     }
     ChemicalSolveResult current = solve_reaction(
         system,
@@ -2272,7 +2397,7 @@ ChemicalSolveResult solve_provider_reaction(
         starting_amounts
     );
     if (!current.accepted) {
-        return direct;
+        return finalize_chemical_result(system, std::move(direct), false);
     }
     current.final_lambda = 0.0;
     current.has_final_lambda = true;
@@ -2296,7 +2421,9 @@ ChemicalSolveResult solve_provider_reaction(
         if (!trial.accepted) {
             step *= 0.5;
             if (step < 1.0e-3) {
-                return direct;
+                return finalize_chemical_result(
+                    system, std::move(direct), false
+                );
             }
             continue;
         }
@@ -2307,7 +2434,7 @@ ChemicalSolveResult solve_provider_reaction(
         step = std::min(0.25, 1.5 * step);
     }
     current.continuation_used = true;
-    return current;
+    return finalize_chemical_result(system, std::move(current), false);
 }
 
 ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(

@@ -416,7 +416,7 @@ def test_homogeneous_structural_support_has_exact_primal_and_dual_certificates(
             assert average[index] > 0.0
 
 
-def test_accessible_face_preserves_reaction_combinations_that_cancel_removed_species() -> None:
+def _accessible_face_system() -> dict[str, object]:
     spec = {
         **_base_system(),
         "species_ids": ("A", "B", "C", "X"),
@@ -434,6 +434,11 @@ def test_accessible_face_preserves_reaction_combinations_that_cancel_removed_spe
         "ln_k": (math.log(2.0), math.log(3.0)),
     }
     _bind_record(spec)
+    return spec
+
+
+def test_accessible_face_preserves_reaction_combinations_that_cancel_removed_species() -> None:
+    spec = _accessible_face_system()
 
     compiled = _equilibrium._chemical_compile_system(spec)
 
@@ -459,6 +464,39 @@ def test_accessible_face_preserves_reaction_combinations_that_cancel_removed_spe
     assert compiled["balance_rank"] + compiled["reaction_rank"] == 2
     assert compiled["conservation_reaction_inf_norm"] <= 2.0e-14
     assert compiled["charge_reaction_inf_norm"] == 0.0
+
+
+def test_manufactured_structural_face_has_exact_zeros_and_local_certification_level() -> None:
+    result = _manufactured_solve(_accessible_face_system())
+
+    assert result["accepted"] is True
+    assert result["amounts"] == pytest.approx(
+        (1.0 / 7.0, 0.0, 6.0 / 7.0, 0.0), rel=3.0e-8, abs=0.0
+    )
+    assert result["amounts"][1] == 0.0
+    assert result["amounts"][3] == 0.0
+    assert result["retained_species_indices"] == [0, 2]
+    assert result["structural_zero_species_indices"] == [1, 3]
+    assert result["boundary_status"] == "structural_face"
+    assert result["chemical_certification_level"] == "LOCAL_EQUILIBRIUM"
+    assert result["support_qualifiers"] == []
+
+
+def test_provider_boundary_direction_guard_fails_before_any_callback() -> None:
+    result = _equilibrium._chemical_provider_boundary_guard(
+        _accessible_face_system()
+    )
+
+    assert result["accepted"] is False
+    assert result["amounts"] == []
+    assert result["solver_status"] == "boundary_direction_unresolved"
+    assert (
+        result["chemical_certification_level"]
+        == "BOUNDARY_DIRECTION_UNRESOLVED"
+    )
+    assert result["boundary_status"] == "boundary_direction_unresolved"
+    assert result["structural_zero_species_indices"] == [1, 3]
+    assert result["support_qualifiers"] == []
 
 
 def _amount_chart(
@@ -589,6 +627,9 @@ def test_manufactured_ideal_reactions_match_independent_analytic_states(
     assert result["physical_status"] == "passed"
     assert result["local_minimum_status"] == "passed"
     assert result["trace_status"] == "interior"
+    assert result["chemical_certification_level"] == "LOCAL_EQUILIBRIUM"
+    assert result["boundary_status"] == "strict_interior"
+    assert result["support_qualifiers"] == []
     assert result["predictive_status"] == "not_adjudicated"
     assert result["globality_certificate"] == "not_guaranteed"
     assert result["final_lambda"] == 1.0
@@ -646,6 +687,9 @@ def test_belov_aristova_gas_restriction_resolves_extreme_positive_traces(
     assert result["reaction_affinity_inf_norm"] <= 1.0e-7
     assert result["kkt_stationarity_inf_norm"] <= 1.0e-7
     assert result["local_minimum_status"] == "passed"
+    assert result["chemical_certification_level"] == "LOCAL_EQUILIBRIUM"
+    assert result["boundary_status"] == "strict_interior"
+    assert result["support_qualifiers"] == []
 
 
 @pytest.mark.parametrize(
@@ -863,6 +907,7 @@ def test_manufactured_solver_rejects_indeterminate_and_false_success_terminals()
     assert indeterminate["solver_status"] == "maximum_iterations_exceeded"
     assert indeterminate["accepted"] is False
     assert indeterminate["numerical_status"] == "failed"
+    assert indeterminate["chemical_certification_level"] == "FEASIBLE_ONLY"
     assert indeterminate["final_lambda"] is None
 
     trace = copy.deepcopy(spec)
@@ -872,6 +917,7 @@ def test_manufactured_solver_rejects_indeterminate_and_false_success_terminals()
     assert false_success["accepted"] is False
     assert false_success["physical_status"] == "failed"
     assert false_success["trace_status"] == "at_or_below_floor"
+    assert false_success["chemical_certification_level"] == "FEASIBLE_ONLY"
     assert false_success["globality_certificate"] == "not_guaranteed"
 
 
@@ -972,6 +1018,9 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
     assert final["pressure_pa"] == pytest.approx(target["pressure_pa"], rel=1.0e-8)
     assert result["parameter_fingerprint"] == model.parameter_fingerprint
     assert result["provider_domain_status"] == "passed"
+    assert result["chemical_certification_level"] == "LOCAL_EQUILIBRIUM"
+    assert result["boundary_status"] == "strict_interior"
+    assert result["support_qualifiers"] == []
     assert result["packing_fraction_bounds"] == pytest.approx((1.0e-6, 0.74))
     assert 1.0e-6 < result["packing_fraction"] < 0.74
     assert result["predictive_status"] == "manufactured_nonpredictive"

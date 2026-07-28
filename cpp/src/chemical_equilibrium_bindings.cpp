@@ -326,6 +326,13 @@ py::dict chemical_result(
     result["accepted"] = evaluation.accepted;
     result["solver_status"] = evaluation.solver_status;
     result["callback_error"] = evaluation.callback_error;
+    result["chemical_certification_level"] =
+        evaluation.chemical_certification_level;
+    result["boundary_status"] = evaluation.boundary_status;
+    result["support_qualifiers"] = evaluation.support_qualifiers;
+    result["retained_species_indices"] = evaluation.retained_species_indices;
+    result["structural_zero_species_indices"] =
+        evaluation.structural_zero_species_indices;
     result["numerical_status"] = evaluation.numerical_status;
     result["physical_status"] = evaluation.physical_status;
     result["provider_domain_status"] = evaluation.provider_domain_status;
@@ -352,6 +359,16 @@ py::dict chemical_result(
     result["kkt_residual"] = evaluation.kkt_residual;
     result["kkt_jacobian"] = evaluation.kkt_jacobian;
     return result;
+}
+
+py::dict provider_boundary_guard(const py::dict& spec) {
+    const CompiledReactionSystem compiled = compile_reaction_system(
+        reaction_system_input(spec)
+    );
+    return chemical_result(
+        "provider_structural_face_guard",
+        provider_structural_face_guard(compiled)
+    );
 }
 
 py::dict solve_manufactured(const py::dict& spec, const py::dict& options) {
@@ -546,6 +563,11 @@ void bind_chemical_equilibrium(py::module_& module) {
         &solve_manufactured,
         py::arg("spec"),
         py::arg("options")
+    );
+    module.def(
+        "_chemical_provider_boundary_guard",
+        &provider_boundary_guard,
+        py::arg("spec")
     );
     module.def(
         "_chemical_evaluate_provider_block",
