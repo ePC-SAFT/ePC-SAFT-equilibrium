@@ -71,54 +71,66 @@ The retained Pereira source is the permanent-lab Markdown at commit
 `dde7f02d4c93cce86804a8e6b62d37602990ac21`; it is provenance, not a build,
 test, validation, or runtime dependency.
 
-An archived non-production WIP subject extended the same public `tp_flash`
+The non-production development route extends the same public `tp_flash`
 operation to qualifying installed Provider electrolyte SDKs and the Perdomo
-HELD2 Stage-I/II/III controller. That dispatch was capability-driven rather
-than case- or component-name-driven, but it is not part of current `main`.
-Current `main` retains a private HELD2 development implementation. It includes
+HELD2 Steps 1--10 controller. Dispatch is capability-driven rather than case-
+or component-name-driven. It includes
 the deterministic pressure-root envelope, DIRECT-L Stage I, HiGHS Stage-II
-Problem (64), and deterministic Stage-II basin discovery followed by
-exact-Hessian Ipopt refinement. The experimental public runtime is preserved
-by tag
+Problem (64), and deterministic capped-multistart Ipopt refinement. One typed
+Steps 1--10 workflow is shared by installed and manufactured problems; Stage
+II has one major loop, one Eq. (66) decision owner, and one deterministic
+bounded Step-5 start set per major. Replaced controllers and duplicate
+manufactured orchestration are deleted rather than retained as compatibility
+paths. The experimental public runtime is preserved by tag
 `archive/held2-pre-strategy-2026-07-21` for strategy review.
 
-The archived homogeneous reference search reports detected pressure-root
+The HELD2 coordinate contract is hybrid only where the source requires it:
+Steps 1--9 use linear modified compositions and linear material balances.
+The finite \(10^{-10}\) Step-1 floor regularizes those searches; it is not a
+physical minimum. Step 10 alone refines a strictly positive charged trace
+fraction in bounded \(\log_{10}\) coordinates, preserves every other Step-1
+constraint, and then recertifies the reconstructed linear balances and
+chemical potentials.
+
+The homogeneous reference search reports detected pressure-root
 accounting separately as `root_completeness`. Its installed evidence reports
 `root_completeness="not_proven"`: detecting and refining the retained roots is
 not proof that every root exists in the finite domain. Root completeness is
 independent of solver, numerical, physical, search-completeness, predictive,
 and globality status.
 
-The archived installed public Perdomo Table 3 evidence returns one accepted
+The installed public Perdomo Table 3 evidence returns one accepted
 homogeneous phase and a cross-EOS source-topology disagreement. It does not admit
 electrolyte LLE or reproduce Perdomo's SAFT-gamma-Mie numerical endpoints. The
-future gate remains one source-complete installed ePC-SAFT case that reaches
-and passes Stage II and Stage III with two distinct liquids. It requires a new
-bounded implementation assignment and exact corrected Provider artifact before
-runtime work resumes.
+admission gate remains one source-complete installed ePC-SAFT case that reaches
+and passes Stage II and Stage III with two distinct liquids. It requires an
+exact corrected Provider artifact and independent installed-artifact evidence.
 
-The HELD2 solver strategy is canonized in
-`docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. It assigns
+The HELD2 algorithm is specified in
+`docs/designs/2026-07-24-held2-paper-algorithm.md` and implemented by
+`docs/plans/2026-07-24-held2-paper-rewrite.md`. It assigns
 deterministic pressure-root enumeration to homogeneous and trial-composition
 density topology, NLopt DIRECT-L to the reduced Stage-I TPD search, HiGHS to
-the Stage-II upper LP, global basin discovery plus exact-Hessian Ipopt to the
-Stage-II lower problem, and exact-Hessian Ipopt to Stage III. SLSQP is not the
-default replacement for Ipopt. Current `main` implements the Stage-I and
-Stage-II assignments as private development routes and links pinned NLopt
-2.11.0 and HiGHS 1.15.1 with Ipopt. Stage-III hardening, installed two-liquid
-evidence, public electrolyte dispatch, and capability admission remain outside
-that landed scope.
+the Stage-II upper LP, deterministic capped-multistart exact-Hessian Ipopt to
+Step 5, and exact-Hessian Ipopt to Problem (67) in Step 8. SLSQP is not the
+default replacement for Ipopt. The development route implements the Steps
+1--10 assignments and links pinned NLopt 2.11.0 and HiGHS 1.15.1 with Ipopt.
+Installed two-liquid evidence and capability admission remain outside the
+landed scope.
 
-The private controller also has an observational live-progress test for the
-Perdomo (2025) Table 3 NaCl-water workflow. It is silent by default. Run:
+The development-only native diagnostic is the live-progress route. After
+exporting the installed Provider model configuration, run:
 
 ```bash
-pytest -s tests/test_perdomo_held2_trace.py::test_perdomo_table3_nacl_workflow --held2-live
+build/epcsaft-equilibrium-diagnostic \
+  --model-config MODEL.json --temperature 298.15 --pressure 2508 \
+  --feed 0.8321050353538131,0.08394748232309347,0.08394748232309347 \
+  --trace
 ```
 
-to see reference roots, actual Stage-I evaluations, certificates, and exact
-skip/final reasons as they occur. The observer does not change the returned
-result, gates, budgets, or finite-search globality label.
+The trace shows reference roots, Stage-I evaluations, certificates, and exact
+failure reasons as they occur. Enabling it does not change results, gates,
+budgets, or the finite-search globality label.
 
 The earlier fixed-two-phase campaign remains `NON_ADMISSION` under the frozen
 May `3*u_c` composition contract: 12 of 17 rows passed, rows 002/009/010/011
@@ -179,10 +191,9 @@ The canonical documentation map is `docs/phase-equilibrium.md`. Detailed
 formulation owners are
 `docs/designs/2026-07-17-pure-saturation-slice.md`,
 `docs/designs/2026-07-17-neutral-held-v1.md`, and
-`docs/designs/2026-07-21-perdomo-held2.md`; the canonical HELD2 execution plan
+`docs/designs/2026-07-24-held2-paper-algorithm.md`; the canonical HELD2 execution plan
 and landed task record is
-`docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. The D-028 private,
-non-production
+`docs/plans/2026-07-24-held2-paper-rewrite.md`. The D-028 private, non-production
 reacting-phase foundation is documented separately in
 `docs/designs/2026-07-21-private-reacting-phase-kernel.md`. It currently has
 manufactured and installed-Provider-manufactured evidence only; application

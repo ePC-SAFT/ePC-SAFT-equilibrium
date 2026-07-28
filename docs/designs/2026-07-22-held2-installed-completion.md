@@ -40,6 +40,70 @@ set, a real Provider Stage-III solve, physical two-phase equilibrium, or
 predictive agreement with Khudaida. Its root-completeness and globality claims
 remain `not_proven` and `not_guaranteed`, respectively.
 
+## Corrected Step-5 through Step-9 status
+
+The current implementation no longer solves Problem (65) in a fixed volume box
+borrowed from the start composition. It minimizes a pressure-root-reduced
+objective in the independent modified-composition chart. Each trial
+composition obtains its own Provider volume domain, follows a numbered strict
+stable pressure branch with a safeguarded exact-derivative continuation, and
+falls back to the complete declared pressure-envelope search when branch
+continuation cannot be certified. The reduced gradient and Hessian are the
+exact pressure-manifold derivatives; the Hessian uses the Schur complement of
+the eliminated volume coordinate. The final state is reconstructed at the
+polished pressure root before physical KKT and Step-6 certification.
+
+Problem (65) is qualified only when its independently certified local value is
+not above the same-major Problem-(64) upper value, apart from the existing
+named Step-6 gap allowance. A locally converged point above that upper value is
+retained as failed evidence and cannot become a lower bound, cut, or candidate.
+The first qualified lower state supplies the next complete-cut iteration.
+When a Step-6 state is found, the same major continues through distinct
+representatives to look for a second co-minimizer.
+
+Provider-valid pressure-envelope representatives are eligible as affine dual
+cuts but not as candidate phases. Candidate eligibility additionally requires
+the exact-Hessian Ipopt terminal, pressure closure, original-coordinate KKT,
+physical multiplier signs, complementarity, dual reconstruction, same-major
+gap, and fixed-volume Eq. (66) gradient tests. Composition-rich simplex-vertex
+seeds are included so aqueous-rich and organic-rich basins do not depend on a
+fortunate Sobol point. HiGHS solves Problem (64) with a `1e-10` internal
+primal/dual target so its cut feasibility is resolved more tightly than the
+unchanged `1e-8` Step-6 gap gate; the public tolerance contract is unchanged.
+
+Manufactured end-to-end evidence now passes the Step-6 candidate set directly
+to the generic Problem-(67) owner. Step 8 converges with exact Hessians, and
+Step 9 accepts two phases only after modified and explicit material balances,
+charge, pressure, modified-potential equality, KKT, complementarity, phase
+identity, and active-set lifecycle checks pass. Deliberate potential,
+infeasible-set, trace-component, duplicate, and inactive-phase cases remain
+fail-closed.
+
+A private Perdomo Table-5 LiCl--water--1-butanol screening replay is useful only
+as numerical evidence because Perdomo used SAFT-gamma Mie and no
+source-equivalent Provider bundle exists. The declared ePC-SAFT hypothesis
+combines published solvent and ion records with explicit unfitted screening
+assumptions. The corrected search finds and pressure-certifies both an
+organic-rich and an aqueous-rich local basin. The prior controller nevertheless
+executed only the first Step-5-qualified local solve in each major whenever that
+state missed Step 6, despite declaring up to 50 attempts. The corrected
+controller continues through distinct representatives until two Step-6 states
+are found or the declared attempt cap is exhausted. In the 24-major private
+profile, both basins pass Eq. (66) in major 19 with same-major gaps below
+`4.1e-9`.
+
+The resulting generic Step-8 solve converges to two active phases. Before Step
+9, a bounded exact-derivative corrector polishes only active phase log-volumes
+on their already selected strict-stable pressure branches, then recomputes the
+NLP KKT and complementarity evidence. It does not alter compositions,
+balances, Provider equations, or physical gates. The private screening replay
+then passes material and charge closure, pressure, modified-potential equality,
+KKT, phase identity, and the independently computed Eq. (68) gap. This is
+end-to-end numerical evidence for the implemented controller under an
+unadmitted ePC-SAFT parameter hypothesis; it is not reproduction or validation
+of Perdomo's SAFT-gamma-Mie result, and its
+`globality_certificate` remains `not_guaranteed`.
+
 The subsequent issue-#27 replay classified the retained chart failure as
 solver-bound numerical contact, not a physical-simplex excursion. The earliest
 rejected trial was an `eval_f` request at `1.0000000000000002`, was not an
@@ -164,15 +228,31 @@ The final certificate must include:
 - active-set lifecycle and re-solve evidence; and
 - a computed source-faithful total-free-energy/HELD gap.
 
-`enumeration_objective_gap` or an equivalent field must be computed from
-independent quantities; a default zero is not evidence. A manufactured test
-must demonstrate rejection when local KKT and physical equalities pass but the
-free-energy gap fails.
+The source Eq. (68) quantity is
+`same_major_stage_ii_UBD - stage_iii_total_free_energy`. The generic owner
+retains the upper bound, total free energy, signed gap, and provenance. A
+default zero is not evidence. The installed derivative seam checks the generic
+Problem-(67) gradient and Lagrangian Hessian through the exact Provider
+callback. Manufactured tests independently enumerate the upper bound,
+demonstrate acceptance at the matching total free energy, reject a perturbed
+upper bound while local KKT and physical equalities still pass, and reject
+unavailable gap evidence.
 
-If the exact installed case reaches the declared trace threshold, logarithmic
-or complementarity-safe trace refinement requires its own derivative and KKT
-evidence. Until that evidence passes, `trace_component_requires_log_refinement`
-remains a fail-closed result.
+The private Perdomo Table-5 ePC-SAFT screening hypothesis reaches two distinct
+same-major Eq. (66) candidates in major 19 of the corrected 24-major campaign.
+The generic installed Step 8 therefore runs and, after the active-phase
+pressure correction described above, passes every Step-9 certificate and the
+independently computed Eq. (68) gap. This is numerical controller evidence for
+the exact private ePC-SAFT hypothesis, not a source-equivalent SAFT-gamma-Mie
+reproduction or a globality proof.
+
+The later Steps 1--10 rewrite now owns this case. It keeps all coupled
+conservation solves in linear coordinates and uses the source-bounded
+logarithmic coordinate only for a strictly positive charged trace component in
+Step 10. That scalar refinement preserves every non-lower-bound Step-1
+constraint and is accepted only after the reconstructed phases pass the full
+linear-balance, pressure, charge, KKT, free-energy, and modified-potential
+certificate.
 
 ## End-to-end private evidence contract
 

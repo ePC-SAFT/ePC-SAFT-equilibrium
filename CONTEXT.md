@@ -19,9 +19,8 @@ not change scientific admission or runtime authority.
 
 Canonical package-local phase-equilibrium documentation is indexed in
 `docs/phase-equilibrium.md`. The detailed current Perdomo formulation owner is
-`docs/designs/2026-07-21-perdomo-held2.md`; its canonical future numerical
-implementation plan is
-`docs/plans/2026-07-21-perdomo-held2-solver-strategy.md`. The accepted
+`docs/designs/2026-07-24-held2-paper-algorithm.md`; its implementation plan is
+`docs/plans/2026-07-24-held2-paper-rewrite.md`. The accepted
 pure-saturation and frozen neutral-HELD designs retain their existing
 ownership.
 
@@ -48,11 +47,11 @@ closed. HELD diagnostics report solver, numerical, and physical evidence on
 independent `passed`, `failed`, or `not_adjudicated` axes. The accepted pure-
 saturation route and authority are unchanged.
 
-The archived Perdomo HELD2 public-dispatch subject is non-production
-development evidence. It used the existing `TpFlashResult`, `HeldDiagnostics`,
-and `FlashError` owners, had no separate compatibility route, and created no
-authority, promotion, or predictive-admission claim. Current `main` retains
-the private manufactured HELD2 foundation but not that installed public route.
+The Perdomo HELD2 public dispatch is non-production development behavior. It
+uses the existing `TpFlashResult`, `HeldDiagnostics`, and `FlashError` owners,
+has no separate compatibility route, and creates no authority, promotion, or
+predictive-admission claim. The native diagnostic and public Python route call
+the same Steps 1--10 native core.
 
 The retained scientific sources are the Pereira and Perdomo Markdown files in
 the permanent lab at commit
@@ -72,16 +71,17 @@ one-phase result is cross-EOS source-topology-disagreement evidence, not an
 electrolyte-LLE or Perdomo numerical-reproduction admission.
 
 D-026 identified one source-complete installed ePC-SAFT two-liquid case as the
-next public Stage-I/II/III evidence gate. Current `main` now implements the
-private Stage-I/II numerical strategy: deterministic pressure-root
+next public Stage-I/II/III evidence gate. The current implementation uses the
+development Stage-I/II numerical strategy: deterministic pressure-root
 enumeration, DIRECT-L reduced-envelope Stage I, HiGHS Stage-II upper LP, and
-deterministic physical basin discovery plus exact-Hessian Ipopt for the
-Stage-II lower problem, and one exact-Hessian Stage-III owner with KKT-based
+deterministic capped-multistart exact-Hessian Ipopt for Step 5, and one
+exact-Hessian Problem-(67) owner with KKT-based
 phase retirement, duplicate merging, active-set re-solves, and hard physical
-certification. The private integrated controller is fail-closed under declared
-Stage-I and Stage-II resource budgets. A compatible installed two-liquid
-subject, Validation, and public admission require separate authority. No speculative
-case constants, route, tolerance, resource, or public runtime correction is
+certification. The integrated Steps 1--10 controller is fail-closed under
+declared Stage-I and Stage-II resource budgets and is shared by the native
+diagnostic and public Python development route. A compatible installed
+two-liquid subject, Validation, and public admission require separate
+authority. No case-specific constants or caller-selectable solver route is
 active.
 
 D-028 separately binds a private, non-production homogeneous reacting-phase
@@ -196,4 +196,4 @@ equilibrium capability.
 
 `implementation_plan_status: controller_redesign_design_deferred`
 
-`perdomo_held2_solver_strategy_status: integrated-private-stage-i-ii-iii-candidate-retained`
+`perdomo_held2_solver_strategy_status: integrated-public-development-steps-1-10`

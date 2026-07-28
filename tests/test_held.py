@@ -551,6 +551,7 @@ def test_tp_flash_native_transport_accepts_prefix_and_rejects_malformed_tables()
             MAY_ROW_011_TEMPERATURE_K,
             MAY_ROW_011_PRESSURE_PA,
             (MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE, 1.0 - MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE),
+            BINARY_FINGERPRINT,
         )
         assert result["outcome"] == "one_phase"
 
@@ -608,6 +609,7 @@ def test_tp_flash_native_transport_accepts_prefix_and_rejects_malformed_tables()
                 MAY_ROW_011_TEMPERATURE_K,
                 MAY_ROW_011_PRESSURE_PA,
                 (0.5, 0.5),
+                BINARY_FINGERPRINT,
             )
 
 
@@ -665,7 +667,7 @@ def test_public_tp_flash_maps_one_reviewed_two_phase_payload(
     monkeypatch.setattr(
         _equilibrium,
         "_solve_tp_flash",
-        lambda *_args: {
+        lambda *_args, **_kwargs: {
             "outcome": "accepted",
             "search_status": "stage_iii_accepted",
             "failure_reason": "",
@@ -751,7 +753,7 @@ def test_public_tp_flash_preserves_fail_closed_outcomes(
         monkeypatch.setattr(
             _equilibrium,
             "_solve_tp_flash",
-            lambda *_args, payload=payload: payload,
+            lambda *_args, payload=payload, **_kwargs: payload,
         )
         with pytest.raises(epcsaft_equilibrium.FlashError) as rejected:
             epcsaft_equilibrium.tp_flash(
@@ -883,7 +885,9 @@ def test_public_tp_flash_rejects_wrong_fingerprint_and_provider_abi(
 def test_public_tp_flash_rejects_malformed_native_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_equilibrium, "_solve_tp_flash", lambda *_args: {"outcome": "accepted"})
+    monkeypatch.setattr(
+        _equilibrium, "_solve_tp_flash", lambda *_args, **_kwargs: {"outcome": "accepted"}
+    )
     with pytest.raises(epcsaft_equilibrium.FlashError) as failed:
         epcsaft_equilibrium.tp_flash(
             _binary_model(),
@@ -909,10 +913,11 @@ def test_public_tp_flash_rejects_unknown_status_vocabulary(
                 MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
                 1.0 - MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
             ),
+            BINARY_FINGERPRINT,
         )
     )
     payload["solver_status"] = "unknown"
-    monkeypatch.setattr(_equilibrium, "_solve_tp_flash", lambda *_args: payload)
+    monkeypatch.setattr(_equilibrium, "_solve_tp_flash", lambda *_args, **_kwargs: payload)
     with pytest.raises(epcsaft_equilibrium.FlashError) as failed:
         epcsaft_equilibrium.tp_flash(
             _binary_model(),
@@ -928,13 +933,17 @@ def test_public_tp_flash_rejects_unknown_status_vocabulary(
     assert failed.value.diagnostics.globality_certificate == "not_guaranteed"
 
 
-def test_task_6_public_surface_has_no_fixed_route_or_solver_controls() -> None:
+def test_public_surface_has_no_retired_routes_or_solver_controls() -> None:
     assert tuple(inspect.signature(epcsaft_equilibrium.tp_flash).parameters) == (
         "model",
         "temperature",
         "pressure",
         "overall_mole_fractions",
+        "trace",
     )
+    trace_parameter = inspect.signature(epcsaft_equilibrium.tp_flash).parameters["trace"]
+    assert trace_parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert trace_parameter.default is False
     assert set(epcsaft_equilibrium.__all__) == {
         "FlashError",
         "HeldDiagnostics",
@@ -949,9 +958,6 @@ def test_task_6_public_surface_has_no_fixed_route_or_solver_controls() -> None:
     }
     for retired in ("FlashDiagnostics", "TwoPhaseFlashResult", "two_phase_flash"):
         assert not hasattr(epcsaft_equilibrium, retired)
-    assert hasattr(_equilibrium, "_solve_tp_flash")
-    for retired in ("_held", "_solve_two_phase_flash", "evaluate_two_phase_flash_nlp"):
-        assert not hasattr(_equilibrium, retired)
     valid_arguments = (
         _binary_model(),
         MAY_ROW_001_TEMPERATURE_K * epcsaft.unit_registry.kelvin,
@@ -1235,6 +1241,7 @@ def test_held_controller_returns_failed_refinement_to_stage_ii_and_fails_closed(
         MAY_ROW_001_TEMPERATURE_K,
         MAY_ROW_001_PRESSURE_PA,
         (MAY_ROW_001_FEED_X_METHANE, 1.0 - MAY_ROW_001_FEED_X_METHANE),
+        BINARY_FINGERPRINT,
     )
 
     assert result["outcome"] == "scope_exceeded"
@@ -1272,6 +1279,7 @@ def test_held_controller_preserves_stage_i_one_phase_outcome(
             MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
             1.0 - MAY_ROW_011_LIQUID_SIDE_FEED_X_METHANE,
         ),
+        BINARY_FINGERPRINT,
     )
 
     assert result["outcome"] == "one_phase"

@@ -1,28 +1,25 @@
 # Perdomo HELD2 Strong-Electrolyte Phase Equilibrium
 
-Status: canonical design with private integrated Stage-I/II/III implementation
+Status: superseded design provenance
 
 Authority effect: none
 
 ## Status and authority
 
-This document is the package-local scientific and numerical owner for the
-Perdomo HELD2 strong-electrolyte formulation. Current `main` contains one
-private callback-driven Stage-I/II/III controller. The later
-installed public-dispatch and reference-hardening runtime is archived at
-`archive/held2-pre-strategy-2026-07-21` as non-production evidence.
-Organization doctrine revision 3 and
-[the package authority map](../phase-equilibrium.md) govern ownership and the
-claim boundary. The canonical numerical decomposition, landed task state, and
-guarded execution order are in the
-[HELD2 solver-strategy implementation plan](../plans/2026-07-21-perdomo-held2-solver-strategy.md).
+This document preserves the pre-rewrite HELD2 design and solver-strategy
+provenance. It is not the current formulation or runtime owner. The normative
+scientific and numerical contract is the
+[paper-faithful Steps 1--10 specification](2026-07-24-held2-paper-algorithm.md);
+the [package authority map](../phase-equilibrium.md) and organization doctrine
+revision 4 govern ownership and claim boundaries.
 
-The archived subject exposed the controller through the existing public
-`tp_flash` operation for qualifying installed Provider capability tables.
-Current `main` does not expose that electrolyte dispatch. Neither the archived
-public exposure nor this canonical design is capability admission. The only
-accepted Equilibrium capability remains the receipt-bound pure-component
-saturation slice.
+The archived public-dispatch and reference-hardening subject remains at
+`archive/held2-pre-strategy-2026-07-21` as non-production evidence. Current
+`tp_flash` dispatches qualifying installed strong-electrolyte Provider models
+to the shared native HELD2 development route. Neither that public development
+route nor this historical design is capability admission. The only accepted
+Equilibrium capability remains the receipt-bound pure-component saturation
+slice.
 
 ## Scope and nonclaims
 
@@ -425,12 +422,38 @@ KKT-inactive retirement. Retirement requires a phase-amount bound, correct multi
 complementarity, a non-descending reduced derivative, remaining-balance
 feasibility, one-at-a-time retirement, and an active-set re-solve.
 
-The source requires bound complementarity and logarithmic refinement for
-trace-bound components. The controller detects that condition and fails closed
-with `complementarity_refinement_required`; it does not yet
-implement the final logarithmic trace refinement. Trace components are not
-passed to Ipopt near `1e-300` and must not be accepted through an unconditional
-interior modified-potential equality.
+This earlier design is superseded for Steps 1--10 by
+[the paper-faithful algorithm](2026-07-24-held2-paper-algorithm.md). The
+implemented coordinate contract keeps Steps 1--9 in linear modified
+composition coordinates and performs only the final charged trace refinement
+in bounded logarithmic coordinates. The finite Step-1 floor remains a search
+regularization; Step 10 may cross only that charged lower-bound constraint and
+must recertify the reconstructed linear balances and modified potentials.
+
+Step 9 applies Perdomo Eq. (68) to independent controller quantities:
+
+```text
+free_energy_gap = same_major_stage_ii_UBD - stage_iii_total_free_energy
+```
+
+The installed controller passes the Problem-(64) upper bound from the same
+Stage-II major that produced the candidate set. Stage III computes the
+Problem-(67) total free energy independently, retains both values and their
+provenance, and accepts only when the named free-energy-gap gate passes.
+Missing evidence, a default numeric value, or a locally converged Ipopt state
+with a failed gap returns to Stage II. The manufactured oracle computes its
+upper bound by independent enumeration and includes a perturbed-bound rejection
+case. Installed Provider directional-gradient and Hessian-vector tests exercise
+the same generic Stage-III derivative owner.
+
+An Ipopt terminal may meet its unscaled local target while its volume
+stationarity maps to a relative pressure residual just outside the physical
+pressure gate. After the active set is finalized, Stage III therefore applies a
+safeguarded Newton correction in log-volume using the exact Provider-derived
+pressure residual and derivative. Only phase-activity-certified phases are
+corrected; trace or inactive phases remain under their separate fail-closed
+logic. The corrected point is accepted only after KKT and complementarity are
+recomputed and all unchanged Step-9 gates pass.
 
 ## Certification and status axes
 
@@ -445,7 +468,7 @@ An accepted multiphase result requires all applicable existing certificates:
   coordinate from phase-fraction stationarity;
 - original-coordinate KKT stationarity and complementarity;
 - distinct active phases and no collapsed duplicate accepted as LLE;
-- Stage-II/Stage-III bound or feedback consistency; and
+- the source Eq. (68) same-major Stage-II/Stage-III free-energy gap; and
 - independent confirmation where the controller requires it.
 
 Potential-gap checks use mixed absolute/relative scaling rather than division

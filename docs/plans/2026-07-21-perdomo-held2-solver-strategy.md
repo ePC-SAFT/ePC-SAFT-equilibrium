@@ -104,8 +104,11 @@ homogeneous and trial-composition services enumerate pressure roots;
 `held2_stage_ii_upper.cpp` owns the HiGHS Problem-(64) LP; and
 `held2_stage_ii_basin.cpp` proposes deterministic physical basin
 representatives before `Held2SearchTnlp` refines each representative with
-exact-Hessian Ipopt. The pre-exploration Stage-II controller is reachable only
-through the manufactured Stage-II test oracle. Stage III retains its separate
+exact-Hessian Ipopt. One canonical Stage-II major loop consumes those owners
+for both installed and manufactured problems; the former duplicate
+manufactured loop has been deleted. `Held2WorkflowController` owns the closed
+Steps 1--10 transitions, while numerical stage owners return typed evidence
+and do not decide physical acceptance. Stage III retains its separate
 `Held2StageIIITnlp`. The installed public-dispatch WIP remains archived at
 `archive/held2-pre-strategy-2026-07-21` and has no production authority.
 
@@ -207,12 +210,12 @@ Do not return a large objective penalty for an invalid Provider evaluation or
 an incomplete root scan. Stop the declared search, retain the exact failure,
 and apply the asymmetric terminal logic above.
 
-Keep the current deterministic Ipopt multistart strategy as a named regression
-oracle during migration. Do not silently substitute the new strategy under an
-old resource-profile label. The bounded implementation assignment must freeze
-the DIRECT-L evaluation budget and completion contract from evidence; this
-plan consumes the categorized numerical tolerance contract and does not invent
-new resource values or case-specific gates.
+The displaced deterministic Stage-I Ipopt multistart route is deleted. Git
+history and frozen results provide its migration evidence; no compatibility
+flag, alias, or runtime fallback remains. The bounded DIRECT-L implementation
+retains its own explicit evaluation budget and completion contract. This plan
+consumes the categorized numerical tolerance contract and does not invent new
+resource values or case-specific gates.
 
 ## 5. Stage II Step 4: HiGHS upper LP
 

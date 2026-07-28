@@ -181,6 +181,60 @@ MixturePhaseEvaluation ProviderContext::evaluate_electrolyte(
     );
 }
 
+double ProviderContext::evaluate_electrolyte_value(
+    double temperature_k,
+    const std::vector<double>& amounts_mol,
+    double volume_m3
+) const {
+    if (sdk_.electrolyte_phase_value_result_size
+            != sizeof(epcsaft_electrolyte_phase_value_result_v1)
+        || sdk_.evaluate_electrolyte_phase_value == nullptr
+        || amounts_mol.size() != sdk_.component_count) {
+        throw std::invalid_argument(
+            "provider capsule is missing the electrolyte value contract"
+        );
+    }
+    epcsaft_electrolyte_phase_value_result_v1 result{};
+    result.struct_size = sizeof(result);
+    const int status = sdk_.evaluate_electrolyte_phase_value(
+        sdk_.model_context,
+        temperature_k,
+        amounts_mol.data(),
+        amounts_mol.size(),
+        volume_m3,
+        &result
+    );
+    if (status != result.status) {
+        throw std::runtime_error(
+            "provider electrolyte value returned inconsistent status values"
+        );
+    }
+    if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
+        throw std::domain_error(
+            "provider electrolyte value evaluation failed: "
+            + decode_provider_char_array(
+                result.error,
+                sizeof(result.error),
+                "provider electrolyte value error"
+            )
+        );
+    }
+    require_finite(
+        result.helmholtz_over_rt_reference_amount,
+        "provider electrolyte value"
+    );
+    if (decode_provider_char_array(
+            result.parameter_fingerprint,
+            sizeof(result.parameter_fingerprint),
+            "provider electrolyte value fingerprint"
+        ) != fingerprint_) {
+        throw std::invalid_argument(
+            "provider electrolyte value fingerprint does not match the requested model"
+        );
+    }
+    return result.helmholtz_over_rt_reference_amount;
+}
+
 std::array<double, 2> ProviderContext::evaluate_molar_volume_bounds(
     double temperature_k,
     const std::vector<double>& mole_fractions,
@@ -297,6 +351,10 @@ PackingFractionEvaluation ProviderContext::evaluate_packing_fraction(
 
 const std::string& ProviderContext::fingerprint() const {
     return fingerprint_;
+}
+
+const epcsaft_native_sdk_v1& ProviderContext::sdk() const noexcept {
+    return sdk_;
 }
 
 }  // namespace epcsaft_equilibrium

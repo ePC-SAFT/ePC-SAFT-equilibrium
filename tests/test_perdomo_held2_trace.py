@@ -3,6 +3,7 @@ from __future__ import annotations
 import epcsaft
 import pytest
 
+import epcsaft_equilibrium
 from epcsaft_equilibrium import _equilibrium
 
 WATER_MOLAR_MASS_G_PER_MOL = 18.0153
@@ -22,26 +23,15 @@ def _perdomo_table3_model() -> epcsaft.EPCSAFT:
     return epcsaft.EPCSAFT(parameters)
 
 
-def test_held2_terminal_progress_formats_expected_rows() -> None:
-    trace = _equilibrium._held2_terminal_progress_fixture()
-
-    assert "HELD2.0  case=perdomo-table3-nacl-water" in trace
-    assert "REFERENCE PRESSURE ROOTS" in trace
-    assert "STAGE I - DIRECT-L TPD SEARCH" in trace
-    assert "eval" in trace
-    assert "TPD" in trace
-    assert "P rel." in trace
-    assert "lower=unavailable" in trace
-    assert "STAGE II IPOPT" in trace
-    assert "stage=STAGE II STEP 6" in trace
-    assert "FAILURE" in trace
-    assert "STAGE II - SKIPPED" in trace
-    assert "FINAL" in trace
-    assert trace.endswith("\n")
-
-
-def test_held2_terminal_progress_disables_itself_on_output_failure() -> None:
-    assert _equilibrium._held2_terminal_progress_failure_fixture() is True
+def _without_times(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            key: 0.0 if key in {"wall_seconds", "cpu_seconds"} else _without_times(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_without_times(item) for item in value]
+    return value
 
 
 def test_held2_observer_is_quiet_by_default_and_does_not_change_results(capfd) -> None:
@@ -52,67 +42,44 @@ def test_held2_observer_is_quiet_by_default_and_does_not_change_results(capfd) -
         2508.0,
         PERDOMO_TABLE3_FEED,
         model.parameter_fingerprint,
-        1,
-        1,
-        1,
     )
 
-    quiet = _equilibrium._held2_controller(*arguments)
+    quiet = _equilibrium._solve_tp_flash(*arguments)
     quiet_output = capfd.readouterr()
-    traced = _equilibrium._held2_controller(*arguments, trace=True)
+    traced = _equilibrium._solve_tp_flash(*arguments, trace=True)
     traced_output = capfd.readouterr()
 
     assert quiet_output.out == ""
     assert quiet_output.err == ""
-    assert traced == quiet
-    assert "HELD2.0  case=installed-held2-controller" in traced_output.out
+    assert _without_times(traced) == _without_times(quiet)
+    assert "HELD2.0  case=installed-held2-paper-rewrite" in traced_output.out
+    assert "STEP 1" in traced_output.out
+    assert "STEP 2" in traced_output.out
     assert "REFERENCE PRESSURE ROOTS" in traced_output.out
-    assert "STAGE I - DIRECT-L TPD SEARCH" in traced_output.out
-    assert "x_ion=" in traced_output.out
-    assert "limit= 3.800000e-01" in traced_output.out
-    assert "STAGE II - SKIPPED" in traced_output.out
+    assert "reason=declared_search_complete" in traced_output.out
 
 
-def test_perdomo_stage_i_first_trial_respects_provider_ionic_domain() -> None:
+def test_perdomo_table3_nacl_workflow() -> None:
     model = _perdomo_table3_model()
-    result = _equilibrium._held2_stage_i_direct(
+    result = _equilibrium._solve_tp_flash(
         epcsaft.native_sdk(model),
         298.15,
         2508.0,
         PERDOMO_TABLE3_FEED,
         model.parameter_fingerprint,
-        1,
-    )
-
-    assert result["total_ion_mole_fraction_max"] == pytest.approx(0.38)
-    assert result["completed_evaluation_count"] >= 1
-    assert result["failed_evaluation_count"] == 0
-    first = result["evaluations"][0]
-    assert first["physical_total_ion_mole_fraction"] <= 0.38 + 1.0e-12
-    assert "status 3" not in first["failure_reason"]
-
-
-def test_perdomo_table3_nacl_workflow(held2_live: bool) -> None:
-    model = _perdomo_table3_model()
-    result = _equilibrium._held2_controller(
-        epcsaft.native_sdk(model),
-        298.15,
-        2508.0,
-        PERDOMO_TABLE3_FEED,
-        model.parameter_fingerprint,
-        50,
-        8,
-        50,
-        trace=held2_live,
     )
 
     expected_feed = tuple(value / sum(_source_amounts) for value in _source_amounts)
     assert PERDOMO_TABLE3_FEED == pytest.approx(expected_feed, abs=1.0e-15)
     assert sum(PERDOMO_TABLE3_FEED) == pytest.approx(1.0, abs=1.0e-15)
-    assert PERDOMO_TABLE3_FEED[1] - PERDOMO_TABLE3_FEED[2] == pytest.approx(
-        0.0, abs=1.0e-15
-    )
-    reference = result["reference_pressure_envelope"]
+    assert PERDOMO_TABLE3_FEED[1] - PERDOMO_TABLE3_FEED[2] == pytest.approx(0.0, abs=1.0e-15)
+    assert result["controller"] == "perdomo_held2_paper_steps_1_to_10_v1"
+    assert result["outcome"] == "one_phase_no_negative_witness_detected"
+    assert result["failure_reason"] is None
+    assert result["failure_stage"] is None
+    assert len(result["phases"]) == 1
+    assert result["phases"][0]["phase_fraction"] == pytest.approx(1.0)
+    reference = result["step2"]["reference_pressure_envelope"]
     assert reference["outcome"] == "selected"
     assert [root["mechanical_class"] for root in reference["roots"]] == [
         "strict_stable",
@@ -128,23 +95,25 @@ def test_perdomo_table3_nacl_workflow(held2_live: bool) -> None:
         if root["mechanical_class"] == "strict_stable"
     )
 
-    stage_i = result["stage_i"]
-    assert stage_i["outcome"] == "no_negative_witness_detected"
-    assert stage_i["termination_reason"] == "declared_budget_exhausted"
-    assert stage_i["completed_evaluation_count"] == 50
-    assert stage_i["failed_evaluation_count"] == 0
-    assert stage_i["minimum_tpd"] >= -1.0e-8
-    assert stage_i["total_ion_mole_fraction_max"] == pytest.approx(0.38)
-    assert all(
-        evaluation["physical_total_ion_mole_fraction"] <= 0.38 + 1.0e-12
-        and "status 3" not in evaluation["failure_reason"]
-        for evaluation in stage_i["evaluations"]
-    )
-    assert result["outcome"] == "stage_i_finite_search_without_negative_witness"
-    assert result["failure_reason"] == "declared_budget_exhausted"
-    assert result["failure_stage"] == "stage_i"
-    assert result["stage_ii_skip_reason"] == "stage_i_negative_witness_not_found"
-    assert result["stage_iii_skip_reason"] == "stage_i_negative_witness_not_found"
-    assert result["stage_ii"] is None
-    assert result["stage_iii"] is None
+    assert result["step2"]["reason"] == "declared_search_complete"
+    assert result["step2"]["minimum_tpd"] >= -1.0e-8
+    assert result["upper_solve_count"] == 0
+    assert result["step4_history"] == []
+    assert result["step8_history"] == []
+    assert result["step10"] is None
     assert result["globality_certificate"] == "not_guaranteed"
+
+
+def test_public_tp_flash_uses_the_paper_held2_route() -> None:
+    result = epcsaft_equilibrium.tp_flash(
+        _perdomo_table3_model(),
+        298.15 * epcsaft.unit_registry.kelvin,
+        2508.0 * epcsaft.unit_registry.pascal,
+        PERDOMO_TABLE3_FEED,
+    )
+
+    assert result.diagnostics.outcome == "one_phase_no_negative_witness_detected"
+    assert result.diagnostics.globality_certificate == "not_guaranteed"
+    assert result.overall_mole_fractions == pytest.approx(PERDOMO_TABLE3_FEED)
+    assert result.phase_fractions == pytest.approx((1.0,))
+    assert result.phases[0].mole_fractions == pytest.approx(PERDOMO_TABLE3_FEED)
