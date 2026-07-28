@@ -255,7 +255,7 @@ private:
     }
 
     const ProviderContext& provider_;
-    const FlashInput& input_;
+    FlashInput input_;
     Held2Coordinates coordinates_;
     double total_ion_mole_fraction_max_;
     double pressure_over_rt_;
@@ -331,7 +331,8 @@ FlashResult solve_tp_flash(
     FlashResult result;
     result.input = input;
     result.parameter_fingerprint = provider.fingerprint();
-    const bool electrolyte = provider.sdk().component_charges != nullptr
+    const bool electrolyte = provider.sdk().table_size >= kElectrolyteSdkTableSize
+        && provider.sdk().component_charges != nullptr
         && std::any_of(
             provider.sdk().component_charges,
             provider.sdk().component_charges
