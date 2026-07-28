@@ -507,7 +507,8 @@ std::vector<double> held2_lift_modified_fractions(
 
 std::vector<double> held2_lift_independent_fractions(
     const Held2Coordinates& coordinates,
-    const std::vector<double>& independent_modified_fractions
+    const std::vector<double>& independent_modified_fractions,
+    bool permit_trace
 ) {
     const std::size_t independent_count =
         coordinates.independent_indices.size();
@@ -520,9 +521,11 @@ std::vector<double> held2_lift_independent_fractions(
         independent_modified_fractions,
         "independent modified fractions"
     );
-    require_complete_polytope(
-        coordinates, independent_modified_fractions
-    );
+    if (!permit_trace) {
+        require_complete_polytope(
+            coordinates, independent_modified_fractions
+        );
+    }
     std::vector<double> modified_fractions(
         coordinates.retained_indices.size(), 0.0
     );
@@ -799,7 +802,8 @@ Held2StateEvaluation evaluate_held2_phase_block(
     double log_volume,
     double pressure_over_rt,
     double target_pressure_pa,
-    const Held2PhysicalPhaseBlock& block
+    const Held2PhysicalPhaseBlock& block,
+    bool permit_trace
 ) {
     const std::size_t component_count = coordinates.charges.size();
     const std::size_t independent_count =
@@ -857,7 +861,7 @@ Held2StateEvaluation evaluate_held2_phase_block(
         result.modified_fractions[retained] = value;
     }
     result.physical_amounts = held2_lift_independent_fractions(
-        coordinates, independent_modified_fractions
+        coordinates, independent_modified_fractions, permit_trace
     );
     const std::size_t dependent_retained = retained_position(
         coordinates, coordinates.dependent_index

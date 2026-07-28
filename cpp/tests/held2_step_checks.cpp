@@ -895,16 +895,21 @@ void run_held2_step10_checks() {
         prepared.coordinates->retained_indices.end(),
         provider
     ) - prepared.coordinates->retained_indices.begin());
+    Held2Step9Result trace_failure = step9;
+    trace_failure.outcome = Held2Step9Outcome::PaperConvergenceFailed;
+    trace_failure.reason = "paper_potential_convergence_failed";
     const Held2Step10Result refined = run_held2_step10(
         prepared,
         trace_step8,
-        step9,
+        trace_failure,
         [evaluator, coordinates = *prepared.coordinates, provider, retained](
             const auto& composition,
             double log_volume
         ) {
             const std::vector<double> physical =
-                held2_lift_trace_fractions(coordinates, composition);
+                held2_lift_independent_fractions(
+                    coordinates, composition, true
+                );
             std::vector<double> bounded = composition;
             for (std::size_t index = 0; index < bounded.size(); ++index) {
                 bounded[index] = std::max(
@@ -938,6 +943,13 @@ void run_held2_step10_checks() {
             ) <= 1.0e-18
             && refined.final_certificate->accepted,
         "Step-10 bounded trace root changed"
+    );
+    require(
+        run_held2_step10(
+            prepared, manufactured_step8(prepared, candidates),
+            trace_failure, evaluator
+        ).reason == "trace_refinement_not_applicable",
+        "Step-10 accepted a non-trace Step-9 potential failure"
     );
     for (Held2Phase& phase : step8.active_phases) {
         phase.independent_modified_fractions.front() = lower;

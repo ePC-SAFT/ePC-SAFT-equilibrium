@@ -69,7 +69,8 @@ struct Held2StateEvaluation;
 
 [[nodiscard]] std::vector<double> held2_lift_independent_fractions(
     const Held2Coordinates& coordinates,
-    const std::vector<double>& independent_modified_fractions
+    const std::vector<double>& independent_modified_fractions,
+    bool permit_trace = false
 );
 
 [[nodiscard]] std::vector<double> held2_map_unit_cube_to_independent_fractions(
@@ -538,7 +539,8 @@ struct Held2StageIIIResult {
     double log_volume,
     double pressure_over_rt,
     double target_pressure_pa,
-    const Held2PhysicalPhaseBlock& block
+    const Held2PhysicalPhaseBlock& block,
+    bool permit_trace = false
 );
 
 [[nodiscard]] Held2StageIIResult solve_held2_manufactured_stage_ii(

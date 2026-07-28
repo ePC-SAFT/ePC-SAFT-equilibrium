@@ -279,6 +279,9 @@ Held2Step8Result run_held2_step8(
     for (const Held2StageIIIPhase& phase : solved.phases) {
         const std::vector<double> composition =
             independent(*step1.coordinates, phase.modified_fractions);
+        const Held2StateEvaluation state =
+            evaluator(composition, std::log(phase.volume));
+        ++provider_evaluations;
         result.active_phases.push_back({
             nearest_id(selected_points, composition),
             phase.phase_fraction,
@@ -286,9 +289,9 @@ Held2Step8Result run_held2_step8(
             phase.physical_fractions,
             phase.volume,
             packing_fraction(composition, phase.volume),
-            0.0,
-            0.0,
-            {},
+            state.helmholtz_over_rt_reference_amount,
+            state.pressure_pa,
+            state.chemical_potentials_over_rt,
         });
         ++provider_evaluations;
     }

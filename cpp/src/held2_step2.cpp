@@ -319,20 +319,15 @@ Held2Step2Result run_held2_step2(
     observe_held2(observer, progress);
     const std::size_t dimension =
         step1.coordinates->independent_indices.size();
-    const Held2StageIReducedEvaluator reduced = [&](const auto& cube) {
+    const auto evaluate_independent = [&](const auto& independent) {
         Held2StageIReducedEvaluation evaluation;
+        evaluation.independent_modified_fractions = independent;
         try {
-            if (cube.size() != dimension) {
+            if (independent.size() != dimension) {
                 throw std::invalid_argument("invalid Step-2 search point");
             }
-            evaluation.independent_modified_fractions =
-                held2_map_unit_cube_to_independent_fractions(
-                    *step1.coordinates,
-                    cube,
-                    step1.total_ion_mole_fraction_max
-                );
             evaluation.pressure_envelope = envelope(
-                evaluation.independent_modified_fractions
+                independent
             );
             if (evaluation.pressure_envelope.outcome != "selected"
                 || evaluation.pressure_envelope.selected_root_index < 0) {
@@ -360,6 +355,69 @@ Held2Step2Result run_held2_step2(
         }
         return evaluation;
     };
+    std::vector<double> trace = feed;
+    bool has_independent_charge = false;
+    for (std::size_t index = 0; index < dimension; ++index) {
+        const std::size_t component =
+            step1.coordinates->independent_indices[index];
+        if (step1.coordinates->charges[component] == 0.0) {
+            continue;
+        }
+        has_independent_charge = true;
+        trace[index] = std::nextafter(
+            step1.coordinates->independent_lower_bounds[index],
+            step1.coordinates->independent_upper_bounds[index]
+        );
+    }
+    if (has_independent_charge) {
+        const Held2StageIReducedEvaluation boundary =
+            evaluate_independent(trace);
+        if (!boundary.certified || !std::isfinite(boundary.tpd)) {
+            return finish(
+                Held2Step2Outcome::Indeterminate,
+                "trace_boundary_evaluation_failed"
+            );
+        }
+        result.minimum_tpd = boundary.tpd;
+        progress = {};
+        progress.kind = Held2ProgressKind::StageIEvaluation;
+        progress.iteration = 1;
+        progress.objective = boundary.tpd;
+        progress.status = "certified_trace_boundary";
+        progress.volume = boundary.trial_volume;
+        progress.pressure_residual = boundary.trial_pressure_residual;
+        observe_held2(observer, progress);
+        if (audit_held2_tolerance(
+                kHeld2TpdNegativeMargin, boundary.tpd
+            ).passed) {
+            result.negative_witness = Held2StageICandidate{
+                held2_transform_physical_fractions(
+                    *step1.coordinates,
+                    held2_lift_independent_fractions(
+                        *step1.coordinates, trace
+                    )
+                ),
+                boundary.trial_volume,
+                boundary.tpd,
+            };
+            return finish(
+                Held2Step2Outcome::NegativeWitness,
+                "trace_boundary_negative_tpd_witness"
+            );
+        }
+    }
+    const Held2StageIReducedEvaluator reduced = [
+        &evaluate_independent,
+        &step1
+    ](const auto& cube) {
+        return evaluate_independent(
+            held2_map_unit_cube_to_independent_fractions(
+                *step1.coordinates,
+                cube,
+                step1.total_ion_mole_fraction_max
+            )
+        );
+    };
     ++result.timing.optimizer_solves;
     const Held2StageIDirectResult search = solve_held2_stage_i_direct(
         dimension,
@@ -370,7 +428,9 @@ Held2Step2Result run_held2_step2(
     );
     result.timing.optimizer_iterations =
         static_cast<std::uint64_t>(search.evaluations.size());
-    if (std::isfinite(search.minimum_tpd)) {
+    if (std::isfinite(search.minimum_tpd)
+        && (!result.minimum_tpd
+            || search.minimum_tpd < *result.minimum_tpd)) {
         result.minimum_tpd = search.minimum_tpd;
     }
     if (search.outcome == "negative_witness_found"

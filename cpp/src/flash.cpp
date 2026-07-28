@@ -133,7 +133,8 @@ public:
         return evaluate_physical(
             independent,
             held2_lift_independent_fractions(coordinates_, independent),
-            log_volume
+            log_volume,
+            false
         );
     }
 
@@ -143,8 +144,11 @@ public:
     ) const {
         return evaluate_physical(
             independent,
-            held2_lift_trace_fractions(coordinates_, independent),
-            log_volume
+            held2_lift_independent_fractions(
+                coordinates_, independent, true
+            ),
+            log_volume,
+            true
         );
     }
 
@@ -164,7 +168,8 @@ private:
     [[nodiscard]] Held2StateEvaluation evaluate_physical(
         const std::vector<double>& independent,
         const std::vector<double>& amounts,
-        double log_volume
+        double log_volume,
+        bool permit_trace
     ) const {
         MixturePhaseEvaluation provider_phase =
             provider_.evaluate_electrolyte(
@@ -181,7 +186,8 @@ private:
             log_volume,
             pressure_over_rt_,
             input_.pressure_pa,
-            block
+            block,
+            permit_trace
         );
     }
 

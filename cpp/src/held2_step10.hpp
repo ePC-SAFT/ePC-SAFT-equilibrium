@@ -25,11 +25,6 @@ struct Held2Step10Result {
     Held2StepTiming timing;
 };
 
-[[nodiscard]] std::vector<double> held2_lift_trace_fractions(
-    const Held2Coordinates& coordinates,
-    const std::vector<double>& independent_modified_fractions
-);
-
 [[nodiscard]] Held2Step10Result run_held2_step10(
     const Held2Step1Result& step1,
     const Held2Step8Result& step8,

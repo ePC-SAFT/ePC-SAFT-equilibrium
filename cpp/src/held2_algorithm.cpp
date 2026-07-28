@@ -245,7 +245,8 @@ Held2AlgorithmResult run_held2_algorithm(
             result.final_state = state;
             return fail("step9", step9.reason);
         }
-        if (step9.outcome == Held2Step9Outcome::PaperConvergenceFailed) {
+        if (step9.outcome == Held2Step9Outcome::PaperConvergenceFailed
+            && step9.reason != "paper_potential_convergence_failed") {
             if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail(
@@ -266,6 +267,15 @@ Held2AlgorithmResult run_held2_algorithm(
             );
         }, observer);
         result.step_timings.push_back(result.step10->timing);
+        if (result.step10->reason == "trace_refinement_not_applicable") {
+            if (!continue_stage_ii()) {
+                result.final_state = state;
+                return fail(
+                    "step7", result.step7_history.back().reason
+                );
+            }
+            continue;
+        }
         result.final_state = state;
         result.upper_solve_count = state.upper_solve_count;
         if (result.step10->status != "complete") {

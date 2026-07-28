@@ -47,30 +47,6 @@ double maximum_abs_difference(
 
 }  // namespace
 
-std::vector<double> held2_lift_trace_fractions(
-    const Held2Coordinates& coordinates,
-    const std::vector<double>& independent
-) {
-    if (independent.size() != coordinates.independent_indices.size()) {
-        throw std::invalid_argument("invalid trace-composition dimension");
-    }
-    std::vector<double> modified(
-        coordinates.retained_indices.size(), 0.0
-    );
-    double sum = 0.0;
-    for (std::size_t coordinate = 0;
-         coordinate < independent.size();
-         ++coordinate) {
-        modified[retained_position(
-            coordinates, coordinates.independent_indices[coordinate]
-        )] = independent[coordinate];
-        sum += independent[coordinate];
-    }
-    modified[retained_position(coordinates, coordinates.dependent_index)] =
-        1.0 - sum;
-    return held2_lift_modified_fractions(coordinates, modified);
-}
-
 Held2Step10Result run_held2_step10(
     const Held2Step1Result& step1,
     const Held2Step8Result& step8,
@@ -80,15 +56,37 @@ Held2Step10Result run_held2_step10(
 ) {
     Held2Step10Result result;
     result.timing.invocation_count = 1;
+    const bool trace_potential_failure =
+        step9.outcome == Held2Step9Outcome::PaperConvergenceFailed
+        && step9.reason == "paper_potential_convergence_failed";
     if (!step1.coordinates || !step1.independent_feed
         || step8.outcome != Held2Step8Outcome::CertifiedFeasible
-        || step9.outcome != Held2Step9Outcome::Converged
+        || (step9.outcome != Held2Step9Outcome::Converged
+            && !trace_potential_failure)
         || !step9.physical || !evaluator) {
         result.reason = "invalid_step10_input";
         return result;
     }
     const Held2Coordinates& coordinates = *step1.coordinates;
     result.phases = step8.active_phases;
+    if (trace_potential_failure
+        && std::any_of(
+            step9.potential_comparisons.begin(),
+            step9.potential_comparisons.end(),
+            [&](const Held2PotentialComparison& comparison) {
+                return !comparison.passed
+                    && (comparison.component_index
+                            >= coordinates.retained_indices.size()
+                        || coordinates.charges[
+                            coordinates.retained_indices[
+                                comparison.component_index
+                            ]
+                        ] == 0.0);
+            }
+        )) {
+        result.reason = "trace_refinement_not_applicable";
+        return result;
+    }
     bool trace_found = false;
     for (Held2Phase& phase : result.phases) {
         const std::vector<double> modified =
@@ -204,9 +202,10 @@ Held2Step10Result run_held2_step10(
                 coordinates.modified_factors[retained] * std::pow(10.0, root);
             try {
                 phase.physical_fractions_provider_order =
-                    held2_lift_trace_fractions(
+                    held2_lift_independent_fractions(
                         coordinates,
-                        phase.independent_modified_fractions
+                        phase.independent_modified_fractions,
+                        true
                     );
             } catch (const std::invalid_argument&) {
                 result.reason = "trace_reconstruction_failed";
@@ -222,6 +221,10 @@ Held2Step10Result run_held2_step10(
                 "refined",
             });
         }
+    }
+    if (!trace_found && trace_potential_failure) {
+        result.reason = "trace_refinement_not_applicable";
+        return result;
     }
 
     std::vector<double> material_balance(coordinates.charges.size(), 0.0);
