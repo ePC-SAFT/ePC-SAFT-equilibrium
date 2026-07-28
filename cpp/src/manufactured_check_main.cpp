@@ -9,6 +9,11 @@
 #include <vector>
 
 namespace epcsaft_equilibrium::test {
+Held2StateEvaluation evaluate_manufactured_state(
+    const Held2Coordinates&,
+    const std::vector<double>&,
+    double
+);
 void run_held2_step1_checks();
 std::string run_held2_step2_checks(Held2ProgressObserver*);
 void run_held2_step3_checks();
@@ -33,8 +38,7 @@ void run_workflow_check(bool trace) {
             {"neutral", "cation", "anion"},
             charges,
             [coordinates](const auto& composition, double log_volume) {
-                Held2StateEvaluation state =
-                    evaluate_held2_manufactured_state(
+                Held2StateEvaluation state = test::evaluate_manufactured_state(
                     coordinates, composition, log_volume
                 );
                 state.pressure_stationarity_relative *= -1.0;

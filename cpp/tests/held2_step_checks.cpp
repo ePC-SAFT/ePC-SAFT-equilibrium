@@ -47,6 +47,77 @@ Held2PhysicalVolumeBoundsEvaluator volume_bounds() {
     };
 }
 
+double manufactured_gibbs(double composition, double volume) {
+    const double shifted = composition - 0.5;
+    constexpr double inner_squared = 0.15 * 0.15;
+    constexpr double outer_squared = 0.30 * 0.30;
+    const double composition_energy = 1.0e4
+        * (std::pow(shifted, 6) / 6.0
+           - (inner_squared + outer_squared) * std::pow(shifted, 4) / 4.0
+           + inner_squared * outer_squared * shifted * shifted / 2.0);
+    const double volume_delta = volume - 1.2;
+    return composition_energy + 2.5 * volume_delta * volume_delta + volume;
+}
+
+std::array<double, 2> manufactured_gibbs_gradient(
+    double composition,
+    double volume
+) {
+    const double shifted = composition - 0.5;
+    constexpr double inner_squared = 0.15 * 0.15;
+    constexpr double outer_squared = 0.30 * 0.30;
+    return {
+        1.0e4
+            * (std::pow(shifted, 5)
+               - (inner_squared + outer_squared) * std::pow(shifted, 3)
+               + inner_squared * outer_squared * shifted),
+        5.0 * (volume - 1.2) + 1.0,
+    };
+}
+
+Held2StateEvaluation evaluate_manufactured_state_impl(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent,
+    double log_volume
+) {
+    if (independent.size() != 1 || !std::isfinite(log_volume)) {
+        throw std::invalid_argument("manufactured HELD2 phase state has the wrong size");
+    }
+    Held2StateEvaluation state;
+    state.physical_amounts = held2_lift_independent_fractions(coordinates, independent);
+    state.modified_fractions = held2_transform_physical_fractions(
+        coordinates, state.physical_amounts
+    );
+    state.volume = std::exp(log_volume);
+    if (!std::isfinite(state.volume) || state.volume <= 0.0) {
+        throw std::invalid_argument("manufactured HELD2 phase volume must be positive");
+    }
+    const double composition = independent.front();
+    const auto gradient = manufactured_gibbs_gradient(composition, state.volume);
+    state.objective = manufactured_gibbs(composition, state.volume);
+    state.gradient = {gradient[0], state.volume * gradient[1]};
+    const double shifted = composition - 0.5;
+    constexpr double inner_squared = 0.15 * 0.15;
+    constexpr double outer_squared = 0.30 * 0.30;
+    state.hessian = {
+        1.0e4
+            * (5.0 * std::pow(shifted, 4)
+               - 3.0 * (inner_squared + outer_squared) * shifted * shifted
+               + inner_squared * outer_squared),
+        0.0,
+        0.0,
+        5.0 * state.volume * state.volume + state.volume * gradient[1],
+    };
+    const double common_volume_term = -state.volume * gradient[1];
+    state.modified_potentials = {
+        state.objective - composition * gradient[0] + common_volume_term,
+        state.objective + (1.0 - composition) * gradient[0] + common_volume_term,
+    };
+    state.pressure_stationarity_relative = gradient[1];
+    state.pressure_stationarity_derivative_log_volume = 5.0 * state.volume;
+    return state;
+}
+
 Held2Step1Result step1(
     const std::vector<double>& charges,
     const std::vector<double>& feed,
@@ -480,7 +551,7 @@ Held2Step8Result manufactured_step8(
         [coordinates = *prepared.coordinates](
             const auto& composition, double log_volume
         ) {
-            return evaluate_held2_manufactured_state(
+            return evaluate_manufactured_state_impl(
                 coordinates, composition, log_volume
             );
         },
@@ -491,6 +562,14 @@ Held2Step8Result manufactured_step8(
 }
 
 }  // namespace
+
+Held2StateEvaluation evaluate_manufactured_state(
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& independent,
+    double log_volume
+) {
+    return evaluate_manufactured_state_impl(coordinates, independent, log_volume);
+}
 
 void run_held2_step1_checks() {
     check_coordinates();
@@ -810,7 +889,7 @@ void run_held2_step8_checks() {
         [coordinates = *prepared.coordinates](
             const auto& composition, double log_volume
         ) {
-            return evaluate_held2_manufactured_state(
+            return evaluate_manufactured_state(
                 coordinates, composition, log_volume
             );
         },
@@ -863,7 +942,7 @@ void run_held2_step9_checks() {
         const auto& composition, double log_volume
     ) {
         ++provider_evaluations;
-        return evaluate_held2_manufactured_state(
+        return evaluate_manufactured_state(
             coordinates, composition, log_volume
         );
     };
@@ -938,7 +1017,7 @@ void run_held2_step10_checks() {
     const auto evaluator = [coordinates = *prepared.coordinates](
         const auto& composition, double log_volume
     ) {
-        return evaluate_held2_manufactured_state(
+        return evaluate_manufactured_state(
             coordinates, composition, log_volume
         );
     };

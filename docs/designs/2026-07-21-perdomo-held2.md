@@ -1,28 +1,25 @@
 # Perdomo HELD2 Strong-Electrolyte Phase Equilibrium
 
-Status: canonical design with private integrated Stage-I/II/III implementation
+Status: superseded design provenance
 
 Authority effect: none
 
 ## Status and authority
 
-This document is the package-local scientific and numerical owner for the
-Perdomo HELD2 strong-electrolyte formulation. Current `main` contains one
-private callback-driven Stage-I/II/III controller. The later
-installed public-dispatch and reference-hardening runtime is archived at
-`archive/held2-pre-strategy-2026-07-21` as non-production evidence.
-Organization doctrine revision 3 and
-[the package authority map](../phase-equilibrium.md) govern ownership and the
-claim boundary. The canonical numerical decomposition, landed task state, and
-guarded execution order are in the
-[HELD2 solver-strategy implementation plan](../plans/2026-07-21-perdomo-held2-solver-strategy.md).
+This document preserves the pre-rewrite HELD2 design and solver-strategy
+provenance. It is not the current formulation or runtime owner. The normative
+scientific and numerical contract is the
+[paper-faithful Steps 1--10 specification](2026-07-24-held2-paper-algorithm.md);
+the [package authority map](../phase-equilibrium.md) and organization doctrine
+revision 4 govern ownership and claim boundaries.
 
-The archived subject exposed the controller through the existing public
-`tp_flash` operation for qualifying installed Provider capability tables.
-Current `main` does not expose that electrolyte dispatch. Neither the archived
-public exposure nor this canonical design is capability admission. The only
-accepted Equilibrium capability remains the receipt-bound pure-component
-saturation slice.
+The archived public-dispatch and reference-hardening subject remains at
+`archive/held2-pre-strategy-2026-07-21` as non-production evidence. Current
+`tp_flash` dispatches qualifying installed strong-electrolyte Provider models
+to the shared native HELD2 development route. Neither that public development
+route nor this historical design is capability admission. The only accepted
+Equilibrium capability remains the receipt-bound pure-component saturation
+slice.
 
 ## Scope and nonclaims
 

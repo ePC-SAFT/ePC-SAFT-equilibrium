@@ -105,16 +105,7 @@ def test_perdomo_table3_nacl_workflow(held2_live: bool) -> None:
     assert result["globality_certificate"] == "not_guaranteed"
 
 
-def test_public_tp_flash_uses_the_paper_held2_route(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        _equilibrium,
-        "evaluate_electrolyte_phase",
-        lambda *_args, **_kwargs: pytest.fail(
-            "Python must not recompute native phase thermodynamics"
-        ),
-    )
+def test_public_tp_flash_uses_the_paper_held2_route() -> None:
     result = epcsaft_equilibrium.tp_flash(
         _perdomo_table3_model(),
         298.15 * epcsaft.unit_registry.kelvin,

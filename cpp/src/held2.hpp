@@ -85,12 +85,6 @@ struct Held2StateEvaluation;
     const std::vector<double>& chemical_potentials
 );
 
-[[nodiscard]] Held2StateEvaluation evaluate_held2_manufactured_state(
-    const Held2Coordinates& coordinates,
-    const std::vector<double>& independent_modified_fractions,
-    double log_volume
-);
-
 struct Held2PhysicalPhaseBlock {
     double helmholtz_over_rt = 0.0;
     std::vector<double> gradient;
@@ -201,15 +195,6 @@ struct Held2StageIICandidate {
     double volume = 0.0;
     double phase_coordinate = 0.0;
     double lower_gap = 0.0;
-};
-
-struct Held2Problem67Evaluation {
-    double objective = 0.0;
-    std::vector<double> objective_gradient;
-    std::vector<double> constraints;
-    std::vector<double> constraint_jacobian;
-    std::vector<double> lagrangian_gradient;
-    std::vector<double> lagrangian_hessian;
 };
 
 struct Held2Problem67Phase {

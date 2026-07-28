@@ -166,6 +166,40 @@ public:
         ) + pressure_over_rt_ * volume;
     }
 
+    [[nodiscard]] std::array<double, 2> volume_bounds(
+        const std::vector<double>& independent
+    ) const {
+        return provider_.evaluate_molar_volume_bounds(
+            input_.temperature_k,
+            held2_lift_independent_fractions(coordinates_, independent),
+            kHeld2PackingFractionMinimum,
+            kHeld2PackingFractionMaximum
+        );
+    }
+
+    [[nodiscard]] std::vector<double> independent(
+        const std::vector<double>& physical
+    ) const {
+        const std::vector<double> modified =
+            held2_transform_physical_fractions(coordinates_, physical);
+        std::vector<double> result;
+        for (std::size_t provider : coordinates_.independent_indices) {
+            const auto retained = std::find(
+                coordinates_.retained_indices.begin(),
+                coordinates_.retained_indices.end(),
+                provider
+            );
+            result.push_back(modified[static_cast<std::size_t>(
+                retained - coordinates_.retained_indices.begin()
+            )]);
+        }
+        return result;
+    }
+
+    [[nodiscard]] double total_ion_mole_fraction_max() const {
+        return total_ion_mole_fraction_max_;
+    }
+
 private:
     [[nodiscard]] Held2StateEvaluation evaluate_physical(
         const std::vector<double>& independent,
@@ -193,51 +227,6 @@ private:
         );
     }
 
-public:
-
-    [[nodiscard]] std::array<double, 2> volume_bounds(
-        const std::vector<double>& independent
-    ) const {
-        return provider_.evaluate_molar_volume_bounds(
-            input_.temperature_k,
-            held2_lift_independent_fractions(coordinates_, independent),
-            kHeld2PackingFractionMinimum,
-            kHeld2PackingFractionMaximum
-        );
-    }
-
-    [[nodiscard]] const Held2Coordinates& coordinates() const {
-        return coordinates_;
-    }
-
-    [[nodiscard]] const std::vector<double>& physical_feed() const {
-        return input_.overall_mole_fractions;
-    }
-
-    [[nodiscard]] std::vector<double> independent(
-        const std::vector<double>& physical
-    ) const {
-        const std::vector<double> modified =
-            held2_transform_physical_fractions(coordinates_, physical);
-        std::vector<double> result;
-        for (std::size_t provider : coordinates_.independent_indices) {
-            const auto retained = std::find(
-                coordinates_.retained_indices.begin(),
-                coordinates_.retained_indices.end(),
-                provider
-            );
-            result.push_back(modified[static_cast<std::size_t>(
-                retained - coordinates_.retained_indices.begin()
-            )]);
-        }
-        return result;
-    }
-
-    [[nodiscard]] double total_ion_mole_fraction_max() const {
-        return total_ion_mole_fraction_max_;
-    }
-
-private:
     static std::vector<double> charges_from_sdk(
         const epcsaft_native_sdk_v1& sdk
     ) {

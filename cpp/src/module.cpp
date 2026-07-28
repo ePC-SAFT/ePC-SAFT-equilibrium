@@ -31,9 +31,6 @@ constexpr std::size_t kPureSdkTableSize = offsetof(epcsaft_native_sdk_v1, compon
 constexpr std::size_t kMixtureSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_mixture_phase)
     + sizeof(epcsaft_evaluate_mixture_phase_v1);
-constexpr std::size_t kElectrolyteSdkTableSize =
-    offsetof(epcsaft_native_sdk_v1, evaluate_electrolyte_phase)
-    + sizeof(epcsaft_evaluate_mixture_phase_v1);
 
 const epcsaft_native_sdk_v1& checked_sdk(const py::capsule& capsule) {
     const char* name = capsule.name();
@@ -74,23 +71,6 @@ const epcsaft_native_sdk_v1& checked_mixture_sdk(const py::capsule& capsule) {
     }
     if (sdk.evaluate_mixture_phase == nullptr) {
         throw py::value_error("provider capsule is missing its mixture phase evaluator");
-    }
-    return sdk;
-}
-
-const epcsaft_native_sdk_v1& checked_electrolyte_sdk(const py::capsule& capsule) {
-    const epcsaft_native_sdk_v1& sdk = checked_sdk(capsule);
-    if (sdk.table_size < kElectrolyteSdkTableSize) {
-        throw py::value_error("provider capsule is missing the electrolyte SDK tail");
-    }
-    if (sdk.component_count < 3 || sdk.component_ids == nullptr
-        || sdk.component_charges == nullptr || sdk.evaluate_electrolyte_phase == nullptr) {
-        throw py::value_error("provider capsule is missing the electrolyte phase contract");
-    }
-    if (sdk.mixture_result_size != sizeof(epcsaft_mixture_phase_block_result_v1)) {
-        throw py::value_error(
-            "provider capsule mixture result size does not match the v1 contract"
-        );
     }
     return sdk;
 }
@@ -138,26 +118,6 @@ py::dict evaluate_mixture_phase(
     return mixture_phase_to_dict(
         provider.evaluate_mixture(temperature_k, amounts_mol, volume_m3)
     );
-}
-
-py::dict evaluate_electrolyte_phase(
-    const py::capsule& capsule,
-    double temperature_k,
-    const std::vector<double>& amounts_mol,
-    double volume_m3,
-    const std::string& expected_fingerprint
-) {
-    const epcsaft_equilibrium::ProviderContext provider(
-        checked_electrolyte_sdk(capsule), expected_fingerprint
-    );
-    const epcsaft_equilibrium::MixturePhaseEvaluation phase =
-        provider.evaluate_electrolyte(temperature_k, amounts_mol, volume_m3);
-    py::dict result = mixture_phase_to_dict(phase);
-    result["chemical_potential_over_rt"] = std::vector<double>(
-        phase.gradient.begin(),
-        phase.gradient.begin() + static_cast<std::ptrdiff_t>(amounts_mol.size())
-    );
-    return result;
 }
 
 py::dict held_state_to_dict(const epcsaft_equilibrium::HeldStateEvaluation& state) {
@@ -1114,15 +1074,6 @@ PYBIND11_MODULE(_equilibrium, module) {
     module.def(
         "evaluate_mixture_phase",
         &evaluate_mixture_phase,
-        py::arg("capsule"),
-        py::arg("temperature_k"),
-        py::arg("amounts_mol"),
-        py::arg("volume_m3"),
-        py::arg("expected_fingerprint")
-    );
-    module.def(
-        "evaluate_electrolyte_phase",
-        &evaluate_electrolyte_phase,
         py::arg("capsule"),
         py::arg("temperature_k"),
         py::arg("amounts_mol"),

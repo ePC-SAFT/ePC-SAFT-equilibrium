@@ -219,6 +219,15 @@ double problem67_constraint(
     return value;
 }
 
+struct Held2Problem67Evaluation {
+    double objective = 0.0;
+    std::vector<double> objective_gradient;
+    std::vector<double> constraints;
+    std::vector<double> constraint_jacobian;
+    std::vector<double> lagrangian_gradient;
+    std::vector<double> lagrangian_hessian;
+};
+
 Held2Problem67Evaluation evaluate_problem67(
     const Held2Coordinates& coordinates,
     const std::vector<double>& feed,
