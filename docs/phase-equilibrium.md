@@ -141,7 +141,7 @@ reaction ranks, dimensionless source/reference-bound `lnK`, and the exact
 Provider identity before solving. It constructs `g_ref` in the Provider
 Helmholtz coordinate basis, uses a general positive electroneutral amount
 chart, performs max-min initialization, attempts the true Provider objective
-first, and permits only a final `lambda=1` continuation state to pass.
+once, and treats a failed direct solve as failed.
 
 Its certificate axes keep artifact/input completeness, Ipopt status, numerical
 and physical checks, reduced-Hessian local status, predictive status, finite

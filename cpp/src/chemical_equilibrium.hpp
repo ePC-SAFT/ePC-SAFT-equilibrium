@@ -39,34 +39,22 @@ struct ReactionSystemInput {
     double pressure_pa = 0.0;
 };
 
-struct HomogeneousSupportAnalysis {
-    std::vector<std::string> classifications;
-    bool exact_certificates_complete = false;
-};
-
 struct CompiledReactionSystem {
-    std::vector<std::string> original_species_ids;
+    std::size_t original_species_count = 0;
     std::vector<int> original_charges;
     std::vector<double> original_molar_masses_kg_per_mol;
     std::vector<double> original_feed_amounts;
-    std::vector<std::string> species_ids;
+    std::size_t species_count = 0;
     std::vector<int> charges;
     std::vector<double> molar_masses_kg_per_mol;
     DenseMatrix supplied_balance_matrix;
-    DenseMatrix reaction_transform;
-    std::vector<std::size_t> reaction_basis_rows;
-    HomogeneousSupportAnalysis support;
     std::vector<std::size_t> retained_species_indices;
     std::vector<std::size_t> removed_species_indices;
-    DenseMatrix accessible_reaction_transform;
     DenseMatrix balance_matrix;
     DenseMatrix reaction_matrix;
     std::vector<double> balance_totals;
     std::vector<double> feed_amounts;
-    std::vector<double> ln_k;
     std::vector<double> g_ref;
-    std::size_t balance_rank = 0;
-    std::size_t reaction_rank = 0;
 };
 
 struct AmountChart {
@@ -89,11 +77,8 @@ struct AmountChartEvaluation {
 
 struct MaxMinInitializationResult {
     std::string solver_status;
-    std::string reason;
     std::vector<double> amounts;
     std::vector<double> amount_upper_bounds;
-    double max_min_amount = 0.0;
-    double equality_inf_norm = 0.0;
     bool strict_positive_feasible = false;
 };
 
@@ -103,19 +88,14 @@ struct ChemicalSolveResult {
     std::string callback_error;
     std::string chemical_certification_level = "FEASIBLE_ONLY";
     std::string boundary_status = "not_adjudicated";
-    std::vector<std::string> support_qualifiers;
-    std::vector<std::size_t> retained_species_indices;
     std::vector<std::size_t> structural_zero_species_indices;
     std::string numerical_status = "not_adjudicated";
     std::string physical_status = "not_adjudicated";
     std::string provider_domain_status = "not_adjudicated";
     std::string local_minimum_status = "not_adjudicated";
     std::string trace_status = "not_adjudicated";
-    std::string predictive_status = "not_adjudicated";
-    std::string finite_search_status = "not_applicable_single_phase_local_nlp";
     std::vector<double> amounts;
     double volume_m3 = 0.0;
-    double objective = 0.0;
     double balance_inf_norm = 0.0;
     double charge_inf_norm = 0.0;
     double pressure_relative_residual = 0.0;
@@ -123,12 +103,6 @@ struct ChemicalSolveResult {
     double packing_fraction = 0.0;
     double kkt_stationarity_inf_norm = 0.0;
     double complementarity_inf_norm = 0.0;
-    double final_lambda = 0.0;
-    bool has_final_lambda = false;
-    bool continuation_used = false;
-    std::string kkt_scope = "not_adjudicated";
-    std::vector<double> kkt_residual;
-    std::vector<double> kkt_jacobian;
 };
 
 struct ManufacturedNlpEvaluation {
@@ -150,7 +124,6 @@ struct ProviderPhaseBlockEvidence {
     double packing_fraction = 0.0;
     std::vector<double> packing_gradient;
     std::vector<double> packing_hessian;
-    std::string parameter_fingerprint;
 };
 
 class ProviderContext;
@@ -179,7 +152,7 @@ class ProviderContext;
     double total_ion_fraction_max
 );
 
-[[nodiscard]] HomogeneousSupportAnalysis analyze_homogeneous_support(
+[[nodiscard]] std::vector<std::size_t> homogeneous_structural_zeros(
     const DenseMatrix& balance_matrix,
     const std::vector<double>& balance_totals,
     const std::vector<int>& charges
@@ -220,10 +193,6 @@ class ProviderContext;
     double total_ion_fraction_max,
     double trace_floor,
     int max_iterations = 500
-);
-
-[[nodiscard]] ChemicalSolveResult provider_structural_face_guard(
-    const CompiledReactionSystem& system
 );
 
 }  // namespace epcsaft_equilibrium

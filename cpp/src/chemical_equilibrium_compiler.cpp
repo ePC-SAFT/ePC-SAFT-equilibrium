@@ -1,5 +1,4 @@
 #include "chemical_equilibrium.hpp"
-#include "chemical_equilibrium_reference.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -216,6 +215,45 @@ std::vector<double> row_coordinates(
     return coordinates;
 }
 
+struct ReactionReference {
+    std::vector<double> values;
+    double residual = 0.0;
+};
+
+ReactionReference reconstruct_reference(
+    const DenseMatrix& reactions,
+    const std::vector<double>& ln_k
+) {
+    const RowQr factor = factor_row_basis(reactions);
+    std::vector<double> coefficients(reactions.rows, 0.0);
+    for (std::size_t reaction = 0; reaction < reactions.rows; ++reaction) {
+        double value = -ln_k[reaction];
+        for (std::size_t prior = 0; prior < reaction; ++prior) {
+            value -= factor.upper(prior, reaction) * coefficients[prior];
+        }
+        coefficients[reaction] =
+            value / factor.upper(reaction, reaction);
+    }
+    ReactionReference result{
+        std::vector<double>(reactions.columns, 0.0),
+        0.0,
+    };
+    for (std::size_t reaction = 0; reaction < reactions.rows; ++reaction) {
+        for (std::size_t species = 0; species < reactions.columns; ++species) {
+            result.values[species] += coefficients[reaction]
+                * factor.orthonormal[reaction][species];
+        }
+    }
+    for (std::size_t reaction = 0; reaction < reactions.rows; ++reaction) {
+        double residual = ln_k[reaction];
+        for (std::size_t species = 0; species < reactions.columns; ++species) {
+            residual += reactions(reaction, species) * result.values[species];
+        }
+        result.residual = std::max(result.residual, std::abs(residual));
+    }
+    return result;
+}
+
 double charge_reaction_inf_norm(
     const std::vector<int>& charges,
     const DenseMatrix& reaction_matrix
@@ -376,52 +414,6 @@ std::vector<std::vector<double>> seeded_balance_rows(
     return result;
 }
 
-double matrix_reconstruction_inf_norm(
-    const DenseMatrix& transform,
-    const DenseMatrix& basis,
-    const DenseMatrix& supplied
-) {
-    double norm = 0.0;
-    for (std::size_t row = 0; row < supplied.rows; ++row) {
-        for (std::size_t species = 0; species < supplied.columns; ++species) {
-            double value = supplied(row, species);
-            for (std::size_t basis_row = 0; basis_row < basis.rows; ++basis_row) {
-                value -= transform(row, basis_row) * basis(basis_row, species);
-            }
-            norm = std::max(norm, std::abs(value));
-        }
-    }
-    return norm;
-}
-
-double constant_reconstruction_inf_norm(
-    const DenseMatrix& transform,
-    const std::vector<double>& independent,
-    const std::vector<double>& supplied
-) {
-    double norm = 0.0;
-    for (std::size_t row = 0; row < supplied.size(); ++row) {
-        double value = -supplied[row];
-        for (std::size_t basis = 0; basis < independent.size(); ++basis) {
-            value += transform(row, basis) * independent[basis];
-        }
-        norm = std::max(norm, std::abs(value));
-    }
-    return norm;
-}
-
-DenseMatrix identity_matrix(std::size_t dimension) {
-    DenseMatrix result{
-        dimension,
-        dimension,
-        std::vector<double>(dimension * dimension, 0.0),
-    };
-    for (std::size_t index = 0; index < dimension; ++index) {
-        result(index, index) = 1.0;
-    }
-    return result;
-}
-
 DenseMatrix restrict_columns(
     const DenseMatrix& matrix,
     const std::vector<std::size_t>& retained_columns
@@ -549,30 +541,29 @@ double removed_species_residual(
     return result;
 }
 
-CompiledReactionSystem compile_accessible_face(CompiledReactionSystem system) {
-    system.original_species_ids = system.species_ids;
+CompiledReactionSystem compile_accessible_face(
+    CompiledReactionSystem system,
+    const std::vector<double>& ln_k
+) {
+    system.original_species_count = system.species_count;
     system.original_charges = system.charges;
     system.original_molar_masses_kg_per_mol = system.molar_masses_kg_per_mol;
     system.original_feed_amounts = system.feed_amounts;
-    system.support = analyze_homogeneous_support(
+    system.removed_species_indices = homogeneous_structural_zeros(
         system.balance_matrix,
         system.balance_totals,
         system.charges
     );
-    if (system.support.classifications.size() != system.species_ids.size()) {
-        throw std::runtime_error("homogeneous support evidence is incomplete");
+    std::vector<bool> removed(system.species_count, false);
+    for (std::size_t species : system.removed_species_indices) {
+        removed[species] = true;
     }
-    for (std::size_t species = 0; species < system.species_ids.size(); ++species) {
-        if (system.support.classifications[species] == "proved_structural_zero") {
-            system.removed_species_indices.push_back(species);
-        } else {
+    for (std::size_t species = 0; species < system.species_count; ++species) {
+        if (!removed[species]) {
             system.retained_species_indices.push_back(species);
         }
     }
     if (system.removed_species_indices.empty()) {
-        system.accessible_reaction_transform = identity_matrix(
-            system.reaction_matrix.rows
-        );
         return system;
     }
 
@@ -608,7 +599,7 @@ CompiledReactionSystem compile_accessible_face(CompiledReactionSystem system) {
         accessible_full_reactions, system.removed_species_indices
     );
     if (removed_residual > numerical_tolerance(
-            matrix_scale(system.reaction_matrix), system.species_ids.size()
+            matrix_scale(system.reaction_matrix), system.species_count
         )) {
         throw std::invalid_argument(
             "accessible reaction transform does not cancel removed species"
@@ -618,19 +609,16 @@ CompiledReactionSystem compile_accessible_face(CompiledReactionSystem system) {
         accessible_full_reactions, system.retained_species_indices
     );
     std::vector<double> accessible_ln_k = multiply_matrix_vector(
-        accessible_transform, system.ln_k
+        accessible_transform, ln_k
     );
 
-    std::vector<std::string> species_ids;
     std::vector<int> charges;
     std::vector<double> molar_masses;
     std::vector<double> feed_amounts;
-    species_ids.reserve(system.retained_species_indices.size());
     charges.reserve(system.retained_species_indices.size());
     molar_masses.reserve(system.retained_species_indices.size());
     feed_amounts.reserve(system.retained_species_indices.size());
     for (std::size_t original : system.retained_species_indices) {
-        species_ids.push_back(system.species_ids[original]);
         charges.push_back(system.charges[original]);
         molar_masses.push_back(system.molar_masses_kg_per_mol[original]);
         feed_amounts.push_back(system.feed_amounts[original]);
@@ -646,7 +634,7 @@ CompiledReactionSystem compile_accessible_face(CompiledReactionSystem system) {
     );
     if (balance_matrix.rows + (charge_is_independent ? 1 : 0)
             + accessible_reactions.rows
-        != species_ids.size()) {
+        != system.retained_species_indices.size()) {
         throw std::invalid_argument(
             "accessible closed system reaction matrix rank sum does not equal species count"
         );
@@ -659,7 +647,9 @@ CompiledReactionSystem compile_accessible_face(CompiledReactionSystem system) {
 
     std::vector<double> balance_totals(balance_matrix.rows, 0.0);
     for (std::size_t row = 0; row < balance_matrix.rows; ++row) {
-        for (std::size_t species = 0; species < species_ids.size(); ++species) {
+        for (std::size_t species = 0;
+             species < system.retained_species_indices.size();
+             ++species) {
             balance_totals[row] +=
                 balance_matrix(row, species) * feed_amounts[species];
         }
@@ -672,7 +662,7 @@ CompiledReactionSystem compile_accessible_face(CompiledReactionSystem system) {
                 *std::max_element(molar_masses.begin(), molar_masses.end()),
                 matrix_scale(balance_matrix)
             ) * matrix_scale(accessible_reactions),
-            species_ids.size()
+            system.retained_species_indices.size()
         )) {
         throw std::invalid_argument(
             "accessible reaction stoichiometry does not conserve balances"
@@ -682,38 +672,36 @@ CompiledReactionSystem compile_accessible_face(CompiledReactionSystem system) {
         charges, accessible_reactions
     );
     if (charge_norm > numerical_tolerance(
-            matrix_scale(accessible_reactions), species_ids.size()
+            matrix_scale(accessible_reactions), system.retained_species_indices.size()
         )) {
         throw std::invalid_argument(
             "accessible reaction stoichiometry does not conserve charge"
         );
     }
-    ReactionReferenceReconstruction reconstruction = reconstruct_reaction_reference(
+    ReactionReference reconstruction = reconstruct_reference(
         accessible_reactions, accessible_ln_k
     );
-    const double reference_residual = reconstruction.residual_inf_norm;
+    const double reference_residual = reconstruction.residual;
     double ln_k_scale = 0.0;
     for (double value : accessible_ln_k) {
         ln_k_scale = std::max(ln_k_scale, std::abs(value));
     }
-    if (reference_residual > numerical_tolerance(ln_k_scale, species_ids.size())) {
+    if (reference_residual > numerical_tolerance(
+            ln_k_scale, system.retained_species_indices.size()
+        )) {
         throw std::invalid_argument(
             "accessible chemical reference reconstruction is inconsistent"
         );
     }
 
-    system.species_ids = std::move(species_ids);
+    system.species_count = system.retained_species_indices.size();
     system.charges = std::move(charges);
     system.molar_masses_kg_per_mol = std::move(molar_masses);
     system.balance_matrix = balance_matrix;
     system.reaction_matrix = std::move(accessible_reactions);
     system.balance_totals = std::move(balance_totals);
     system.feed_amounts = std::move(feed_amounts);
-    system.ln_k = std::move(accessible_ln_k);
-    system.g_ref = std::move(reconstruction.reference);
-    system.accessible_reaction_transform = std::move(accessible_transform);
-    system.balance_rank = system.balance_matrix.rows;
-    system.reaction_rank = system.reaction_matrix.rows;
+    system.g_ref = std::move(reconstruction.values);
     return system;
 }
 
@@ -809,59 +797,46 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
         input.reaction_matrix, reaction_basis_rows
     );
     const RowQr reaction_factor = factor_row_basis(reaction_matrix);
-    DenseMatrix reaction_transform{
-        input.reaction_matrix.rows,
-        reaction_matrix.rows,
-        std::vector<double>(
-            input.reaction_matrix.rows * reaction_matrix.rows, 0.0
-        ),
-    };
-    for (std::size_t supplied = 0; supplied < input.reaction_matrix.rows; ++supplied) {
-        const auto basis_position = std::find(
-            reaction_basis_rows.begin(), reaction_basis_rows.end(), supplied
-        );
-        if (basis_position != reaction_basis_rows.end()) {
-            reaction_transform(
-                supplied,
-                static_cast<std::size_t>(
-                    std::distance(reaction_basis_rows.begin(), basis_position)
-                )
-            ) = 1.0;
-            continue;
-        }
-        const std::vector<double> coordinates = row_coordinates(
-            matrix_row(input.reaction_matrix, supplied), reaction_factor
-        );
-        for (std::size_t basis = 0; basis < coordinates.size(); ++basis) {
-            reaction_transform(supplied, basis) = coordinates[basis];
-        }
-    }
-    const double reaction_transform_norm = matrix_reconstruction_inf_norm(
-        reaction_transform, reaction_matrix, input.reaction_matrix
-    );
-    if (reaction_transform_norm > numerical_tolerance(
-            matrix_scale(input.reaction_matrix), species_count
-        )) {
-        throw std::invalid_argument("reaction matrix rank reduction is inconsistent");
-    }
     std::vector<double> independent_ln_k;
     independent_ln_k.reserve(reaction_basis_rows.size());
     for (std::size_t row : reaction_basis_rows) {
         independent_ln_k.push_back(input.ln_k[row]);
     }
-    const double reaction_cycle_norm = constant_reconstruction_inf_norm(
-        reaction_transform, independent_ln_k, input.ln_k
-    );
-    double ln_k_scale = 0.0;
-    for (double value : input.ln_k) {
-        ln_k_scale = std::max(ln_k_scale, std::abs(value));
-    }
-    if (reaction_cycle_norm > numerical_tolerance(
-            ln_k_scale, std::max(input.reaction_matrix.rows, species_count)
-        )) {
-        throw std::invalid_argument(
-            "reaction constant cycle is inconsistent after Provider-basis conversion"
+    const double ln_k_scale = std::abs(*std::max_element(
+        input.ln_k.begin(), input.ln_k.end(),
+        [](double left, double right) { return std::abs(left) < std::abs(right); }
+    ));
+    for (std::size_t supplied = 0; supplied < input.reaction_matrix.rows; ++supplied) {
+        const std::vector<double> coordinates = row_coordinates(
+            matrix_row(input.reaction_matrix, supplied), reaction_factor
         );
+        double reaction_residual = 0.0;
+        for (std::size_t species = 0; species < species_count; ++species) {
+            double value = input.reaction_matrix(supplied, species);
+            for (std::size_t basis = 0; basis < coordinates.size(); ++basis) {
+                value -= coordinates[basis] * reaction_matrix(basis, species);
+            }
+            reaction_residual = std::max(reaction_residual, std::abs(value));
+        }
+        double constant_residual = -input.ln_k[supplied];
+        for (std::size_t basis = 0; basis < coordinates.size(); ++basis) {
+            constant_residual += coordinates[basis] * independent_ln_k[basis];
+        }
+        const std::size_t dimension = std::max(
+            input.reaction_matrix.rows, species_count
+        );
+        if (reaction_residual > numerical_tolerance(
+                matrix_scale(input.reaction_matrix), dimension
+            )) {
+            throw std::invalid_argument("reaction matrix rank reduction is inconsistent");
+        }
+        if (std::abs(constant_residual) > numerical_tolerance(
+                ln_k_scale, dimension
+            )) {
+            throw std::invalid_argument(
+                "reaction constant cycle is inconsistent after Provider-basis conversion"
+            );
+        }
     }
 
     bool charge_is_independent = false;
@@ -882,11 +857,11 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
         );
     }
 
-    ReactionReferenceReconstruction reconstruction = reconstruct_reaction_reference(
+    ReactionReference reconstruction = reconstruct_reference(
         reaction_matrix, independent_ln_k
     );
 
-    const double reference_residual = reconstruction.residual_inf_norm;
+    const double reference_residual = reconstruction.residual;
     if (reference_residual > numerical_tolerance(ln_k_scale, species_count)) {
         throw std::invalid_argument("standard chemical reference reconstruction is inconsistent");
     }
@@ -899,21 +874,16 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
         }
     }
     CompiledReactionSystem result;
-    result.species_ids = input.species_ids;
+    result.species_count = species_count;
     result.charges = input.charges;
     result.molar_masses_kg_per_mol = input.molar_masses_kg_per_mol;
     result.supplied_balance_matrix = input.balance_matrix;
-    result.reaction_transform = std::move(reaction_transform);
-    result.reaction_basis_rows = reaction_basis_rows;
     result.balance_matrix = balance_matrix;
     result.reaction_matrix = reaction_matrix;
     result.balance_totals = std::move(balance_totals);
     result.feed_amounts = input.feed_amounts;
-    result.ln_k = std::move(independent_ln_k);
-    result.g_ref = std::move(reconstruction.reference);
-    result.balance_rank = balance_rank;
-    result.reaction_rank = reaction_rank;
-    return compile_accessible_face(std::move(result));
+    result.g_ref = std::move(reconstruction.values);
+    return compile_accessible_face(std::move(result), independent_ln_k);
 }
 
 }  // namespace epcsaft_equilibrium

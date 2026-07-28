@@ -115,10 +115,6 @@ def test_amount_chart_maps_neutral_logs_and_general_ionic_shares_exactly() -> No
     assert ionic["charge_residual"] == pytest.approx(0.0, abs=2.0e-15)
     assert ionic["trace_status"] == "interior"
 
-    inverse = _equilibrium._chemical_amount_chart_inverse(charges, ionic["amounts"])
-    assert inverse == pytest.approx(coordinates, abs=3.0e-15)
-
-
 def test_amount_chart_has_exact_directional_first_and_second_derivatives() -> None:
     charges = (0, 2, 1, -1, -2, 0)
     center = (0.2, -0.7, 0.4, -0.3, 0.8)
@@ -226,18 +222,13 @@ def test_manufactured_ideal_reactions_match_independent_analytic_states(
     assert result["trace_status"] == "interior"
     assert result["chemical_certification_level"] == "LOCAL_EQUILIBRIUM"
     assert result["boundary_status"] == "strict_interior"
-    assert result["support_qualifiers"] == []
-    assert result["predictive_status"] == "not_adjudicated"
     assert result["globality_certificate"] == "not_guaranteed"
-    assert result["final_lambda"] == 1.0
     assert result["balance_inf_norm"] <= 1.0e-9
     assert result["charge_inf_norm"] <= 1.0e-12
     assert result["pressure_relative_residual"] <= 1.0e-8
     assert result["reaction_affinity_inf_norm"] <= 1.0e-7
     assert result["kkt_stationarity_inf_norm"] <= 1.0e-7
     assert result["complementarity_inf_norm"] <= 1.0e-7
-    assert result["kkt_scope"] == "equality_kkt_on_strict_interior"
-    assert len(result["kkt_residual"]) + len(result["kkt_jacobian"]) > 0
 
 
 @pytest.mark.parametrize("trace_floor", (1.0e-50, 1.0e-55))
@@ -286,7 +277,6 @@ def test_belov_aristova_gas_restriction_resolves_extreme_positive_traces(
     assert result["local_minimum_status"] == "passed"
     assert result["chemical_certification_level"] == "LOCAL_EQUILIBRIUM"
     assert result["boundary_status"] == "strict_interior"
-    assert result["support_qualifiers"] == []
 
 
 @pytest.mark.parametrize(
@@ -405,19 +395,6 @@ def test_manufactured_equilibrium_is_gauge_scale_and_reaction_basis_invariant() 
     assert first_basis["amounts"] == pytest.approx(second_basis["amounts"], rel=3.0e-9)
 
 
-def test_max_min_initialization_fails_closed_without_strict_positive_state() -> None:
-    result = _equilibrium._chemical_max_min_initialization(
-        ((1.0, 0.0), (0.0, 1.0)),
-        (1.0, 0.0),
-        (0, 0),
-        1.0e-10,
-    )
-
-    assert result["solver_status"] == "solve_succeeded"
-    assert result["strict_positive_feasible"] is False
-    assert result["max_min_amount"] <= 1.0e-10
-    assert result["reason"] == "no_strict_positive_state_above_trace_floor"
-
 def test_manufactured_reaction_solve_has_no_feed_scaled_amount_cap() -> None:
     target = (0.5, 500.0, 0.5)
     volume = sum(target)
@@ -505,7 +482,6 @@ def test_manufactured_solver_rejects_indeterminate_and_false_success_terminals()
     assert indeterminate["accepted"] is False
     assert indeterminate["numerical_status"] == "failed"
     assert indeterminate["chemical_certification_level"] == "FEASIBLE_ONLY"
-    assert indeterminate["final_lambda"] is None
 
     trace = copy.deepcopy(spec)
     trace["ln_k"] = (math.log(1.0e-10),)
@@ -558,11 +534,57 @@ def test_manufactured_charged_solution_is_species_order_invariant() -> None:
     )
 
 
-def _figiel_provider_model() -> epcsaft.EPCSAFT:
+def _figiel_provider_model(
+    components: tuple[str, ...] = ("water", "sodium-cation", "chloride-anion"),
+) -> epcsaft.EPCSAFT:
     parameters = epcsaft.ParameterBundle.from_catalog(
         "figiel-2025-reference-electrolytes", version=1
-    ).select(("water", "sodium-cation", "chloride-anion"))
+    ).select(components)
     return epcsaft.EPCSAFT(parameters)
+
+
+def test_provider_structural_face_fails_before_reduced_topology_evaluation() -> None:
+    components = (
+        "water",
+        "ethanol",
+        "isobutanol",
+        "sodium-cation",
+        "chloride-anion",
+    )
+    parameters = epcsaft.ParameterBundle.from_catalog(
+        "khudaida-2026-figure-2-electrolyte-lle", version=1
+    ).select(components)
+    model = epcsaft.EPCSAFT(parameters)
+    spec = {
+        "species_ids": components,
+        "charges": (0, 0, 0, 1, -1),
+        "molar_masses_kg_per_mol": (1.0, 1.0, 1.0, 1.0, 1.0),
+        "provider_fingerprint": model.parameter_fingerprint,
+        "balance_matrix": (
+            (1.0, 1.0, 1.0, 1.0, 1.0),
+            (0.0, 0.0, 0.0, 1.0, 1.0),
+        ),
+        "reaction_matrix": (
+            (-1.0, 1.0, 0.0, 0.0, 0.0),
+            (-1.0, 0.0, 1.0, 0.0, 0.0),
+        ),
+        "feed_amounts": (1.0, 0.0, 0.0, 0.0, 0.0),
+        "ln_k": (0.0, 0.0),
+        "temperature_k": 293.15,
+        "pressure_pa": 100_000.0,
+    }
+    _bind_record(spec)
+
+    result = _equilibrium._chemical_solve_provider_manufactured(
+        epcsaft.native_sdk(model),
+        spec,
+        {"packing_fraction_bounds": (1.0e-6, 0.74)},
+    )
+
+    assert result["accepted"] is False
+    assert result["chemical_certification_level"] == "BOUNDARY_DIRECTION_UNRESOLVED"
+    assert result["structural_zero_species_indices"] == [3, 4]
+    assert result["amounts"] == []
 
 
 def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domain_blocks() -> None:
@@ -617,10 +639,8 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
     assert result["provider_domain_status"] == "passed"
     assert result["chemical_certification_level"] == "LOCAL_EQUILIBRIUM"
     assert result["boundary_status"] == "strict_interior"
-    assert result["support_qualifiers"] == []
     assert result["packing_fraction_bounds"] == pytest.approx((1.0e-6, 0.74))
     assert 1.0e-6 < result["packing_fraction"] < 0.74
-    assert result["predictive_status"] == "manufactured_nonpredictive"
     assert result["globality_certificate"] == "not_guaranteed"
 
 

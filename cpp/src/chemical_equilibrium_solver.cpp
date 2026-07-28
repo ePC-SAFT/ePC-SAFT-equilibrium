@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include <Highs.h>
 #include <coin/IpIpoptApplication.hpp>
 #include <coin/IpSolveStatistics.hpp>
 #include <coin/IpTNLP.hpp>
@@ -113,6 +114,23 @@ std::vector<double> matrix_vector(
     return result;
 }
 
+double reaction_residual_inf_norm(
+    const DenseMatrix& reactions,
+    const std::vector<double>& potentials
+) {
+    double result = 0.0;
+    for (std::size_t reaction = 0; reaction < reactions.rows; ++reaction) {
+        double value = 0.0;
+        double scale = 0.0;
+        for (std::size_t species = 0; species < reactions.columns; ++species) {
+            value += reactions(reaction, species) * potentials[species];
+            scale = std::hypot(scale, reactions(reaction, species));
+        }
+        result = std::max(result, std::abs(value) / scale);
+    }
+    return result;
+}
+
 bool add_independent_row(
     const std::vector<double>& row,
     std::vector<std::vector<double>>& orthonormal_basis
@@ -184,297 +202,97 @@ ConstraintRows independent_max_min_rows(
     return result;
 }
 
-ConstraintRows independent_chart_balance_rows(const CompiledReactionSystem& system) {
-    ConstraintRows result;
-    result.matrix.columns = system.species_ids.size();
-    std::vector<std::vector<double>> basis;
-    std::vector<double> charge_row(system.charges.begin(), system.charges.end());
-    add_independent_row(charge_row, basis);
-    for (std::size_t row = 0; row < system.balance_matrix.rows; ++row) {
-        std::vector<double> values(system.species_ids.size(), 0.0);
-        for (std::size_t species = 0; species < values.size(); ++species) {
-            values[species] = system.balance_matrix(row, species);
-        }
-        if (add_independent_row(values, basis)) {
-            result.matrix.values.insert(
-                result.matrix.values.end(), values.begin(), values.end()
-            );
-            result.totals.push_back(system.balance_totals[row]);
-        }
-    }
-    result.matrix.rows = result.totals.size();
-    return result;
-}
-
-class MaxMinTnlp final : public Ipopt::TNLP {
-public:
-    MaxMinTnlp(
-        ConstraintRows constraints,
-        std::vector<double> feed,
-        const std::vector<int>& charges,
-        double total_ion_fraction_max,
-        int objective_species = -1
-    )
-        : constraints_(std::move(constraints)),
-          feed_(std::move(feed)),
-          objective_species_(objective_species),
-          solution_(feed_.size() + 1, 0.0) {
-        if (objective_species_ >= static_cast<int>(feed_.size())) {
-            throw std::invalid_argument("max-min objective species is outside the system");
-        }
-        if (std::isfinite(total_ion_fraction_max)) {
-            ion_coefficients_.resize(feed_.size(), 0.0);
-            for (std::size_t species = 0; species < feed_.size(); ++species) {
-                ion_coefficients_[species] = charges[species] == 0
-                    ? -total_ion_fraction_max
-                    : 1.0 - total_ion_fraction_max;
-            }
-        }
-    }
-
-    bool get_nlp_info(
-        Ipopt::Index& n,
-        Ipopt::Index& m,
-        Ipopt::Index& nnz_jac_g,
-        Ipopt::Index& nnz_h_lag,
-        IndexStyleEnum& index_style
-    ) override {
-        n = static_cast<Ipopt::Index>(feed_.size() + 1);
-        m = static_cast<Ipopt::Index>(
-            constraints_.matrix.rows + feed_.size() + (ion_coefficients_.empty() ? 0 : 1)
-        );
-        nnz_jac_g = static_cast<Ipopt::Index>(
-            constraints_.matrix.rows * feed_.size() + 2 * feed_.size()
-                + ion_coefficients_.size()
-        );
-        nnz_h_lag = 0;
-        index_style = TNLP::C_STYLE;
-        return true;
-    }
-
-    bool get_bounds_info(
-        Ipopt::Index n,
-        Ipopt::Number* x_l,
-        Ipopt::Number* x_u,
-        Ipopt::Index m,
-        Ipopt::Number* g_l,
-        Ipopt::Number* g_u
-    ) override {
-        if (n != static_cast<Ipopt::Index>(feed_.size() + 1)
-            || m != static_cast<Ipopt::Index>(
-                constraints_.matrix.rows + feed_.size()
-                    + (ion_coefficients_.empty() ? 0 : 1)
-            )) {
-            return false;
-        }
-        std::fill(x_l, x_l + n, 0.0);
-        std::fill(x_u, x_u + n, kInfinity);
-        if (objective_species_ >= 0) {
-            x_u[feed_.size()] = 0.0;
-        }
-        for (std::size_t row = 0; row < constraints_.matrix.rows; ++row) {
-            g_l[row] = constraints_.totals[row];
-            g_u[row] = constraints_.totals[row];
-        }
-        for (std::size_t species = 0; species < feed_.size(); ++species) {
-            const std::size_t row = constraints_.matrix.rows + species;
-            g_l[row] = 0.0;
-            g_u[row] = kInfinity;
-        }
-        if (!ion_coefficients_.empty()) {
-            g_l[constraints_.matrix.rows + feed_.size()] = -kInfinity;
-            g_u[constraints_.matrix.rows + feed_.size()] = 0.0;
-        }
-        return true;
-    }
-
-    bool get_starting_point(
-        Ipopt::Index n,
-        bool init_x,
-        Ipopt::Number* x,
-        bool init_z,
-        Ipopt::Number*,
-        Ipopt::Number*,
-        Ipopt::Index m,
-        bool init_lambda,
-        Ipopt::Number*
-    ) override {
-        if (n != static_cast<Ipopt::Index>(feed_.size() + 1)
-            || m != static_cast<Ipopt::Index>(
-                constraints_.matrix.rows + feed_.size()
-                    + (ion_coefficients_.empty() ? 0 : 1)
-            )
-            || !init_x || init_z || init_lambda) {
-            return false;
-        }
-        std::copy(feed_.begin(), feed_.end(), x);
-        x[feed_.size()] = 0.0;
-        return true;
-    }
-
-    bool eval_f(Ipopt::Index n, const Ipopt::Number* x, bool, Ipopt::Number& objective) override {
-        if (n != static_cast<Ipopt::Index>(feed_.size() + 1)) {
-            return false;
-        }
-        objective = objective_species_ < 0
-            ? -x[feed_.size()]
-            : -x[static_cast<std::size_t>(objective_species_)];
-        return true;
-    }
-
-    bool eval_grad_f(
-        Ipopt::Index n,
-        const Ipopt::Number*,
-        bool,
-        Ipopt::Number* gradient
-    ) override {
-        if (n != static_cast<Ipopt::Index>(feed_.size() + 1)) {
-            return false;
-        }
-        std::fill(gradient, gradient + n, 0.0);
-        if (objective_species_ < 0) {
-            gradient[feed_.size()] = -1.0;
-        } else {
-            gradient[static_cast<std::size_t>(objective_species_)] = -1.0;
-        }
-        return true;
-    }
-
-    bool eval_g(
-        Ipopt::Index n,
-        const Ipopt::Number* x,
-        bool,
-        Ipopt::Index m,
-        Ipopt::Number* constraints
-    ) override {
-        if (n != static_cast<Ipopt::Index>(feed_.size() + 1)
-            || m != static_cast<Ipopt::Index>(
-                constraints_.matrix.rows + feed_.size()
-                    + (ion_coefficients_.empty() ? 0 : 1)
-            )) {
-            return false;
-        }
-        for (std::size_t row = 0; row < constraints_.matrix.rows; ++row) {
-            constraints[row] = 0.0;
-            for (std::size_t species = 0; species < feed_.size(); ++species) {
-                constraints[row] += constraints_.matrix(row, species) * x[species];
-            }
-        }
-        for (std::size_t species = 0; species < feed_.size(); ++species) {
-            constraints[constraints_.matrix.rows + species] = x[species] - x[feed_.size()];
-        }
-        if (!ion_coefficients_.empty()) {
-            constraints[constraints_.matrix.rows + feed_.size()] = std::inner_product(
-                ion_coefficients_.begin(), ion_coefficients_.end(), x, 0.0
-            );
-        }
-        return true;
-    }
-
-    bool eval_jac_g(
-        Ipopt::Index n,
-        const Ipopt::Number*,
-        bool,
-        Ipopt::Index m,
-        Ipopt::Index nonzero_count,
-        Ipopt::Index* rows,
-        Ipopt::Index* columns,
-        Ipopt::Number* values
-    ) override {
-        const std::size_t expected = constraints_.matrix.rows * feed_.size()
-            + 2 * feed_.size() + ion_coefficients_.size();
-        if (n != static_cast<Ipopt::Index>(feed_.size() + 1)
-            || m != static_cast<Ipopt::Index>(
-                constraints_.matrix.rows + feed_.size()
-                    + (ion_coefficients_.empty() ? 0 : 1)
-            )
-            || nonzero_count != static_cast<Ipopt::Index>(expected)) {
-            return false;
-        }
-        std::size_t entry = 0;
-        for (std::size_t row = 0; row < constraints_.matrix.rows; ++row) {
-            for (std::size_t species = 0; species < feed_.size(); ++species) {
-                if (values == nullptr) {
-                    rows[entry] = static_cast<Ipopt::Index>(row);
-                    columns[entry] = static_cast<Ipopt::Index>(species);
-                } else {
-                    values[entry] = constraints_.matrix(row, species);
-                }
-                ++entry;
-            }
-        }
-        for (std::size_t species = 0; species < feed_.size(); ++species) {
-            const std::size_t row = constraints_.matrix.rows + species;
-            if (values == nullptr) {
-                rows[entry] = static_cast<Ipopt::Index>(row);
-                columns[entry] = static_cast<Ipopt::Index>(species);
-                rows[entry + 1] = static_cast<Ipopt::Index>(row);
-                columns[entry + 1] = static_cast<Ipopt::Index>(feed_.size());
-            } else {
-                values[entry] = 1.0;
-                values[entry + 1] = -1.0;
-            }
-            entry += 2;
-        }
-        for (std::size_t species = 0; species < ion_coefficients_.size(); ++species) {
-            if (values == nullptr) {
-                rows[entry] = static_cast<Ipopt::Index>(
-                    constraints_.matrix.rows + feed_.size()
-                );
-                columns[entry] = static_cast<Ipopt::Index>(species);
-            } else {
-                values[entry] = ion_coefficients_[species];
-            }
-            ++entry;
-        }
-        return true;
-    }
-
-    bool eval_h(
-        Ipopt::Index,
-        const Ipopt::Number*,
-        bool,
-        Ipopt::Number,
-        Ipopt::Index,
-        const Ipopt::Number*,
-        bool,
-        Ipopt::Index nonzero_count,
-        Ipopt::Index*,
-        Ipopt::Index*,
-        Ipopt::Number*
-    ) override {
-        return nonzero_count == 0;
-    }
-
-    void finalize_solution(
-        Ipopt::SolverReturn,
-        Ipopt::Index n,
-        const Ipopt::Number* x,
-        const Ipopt::Number*,
-        const Ipopt::Number*,
-        Ipopt::Index,
-        const Ipopt::Number*,
-        const Ipopt::Number*,
-        Ipopt::Number,
-        const Ipopt::IpoptData*,
-        Ipopt::IpoptCalculatedQuantities*
-    ) override {
-        if (n == static_cast<Ipopt::Index>(solution_.size()) && x != nullptr) {
-            std::copy(x, x + n, solution_.begin());
-        }
-    }
-
-    [[nodiscard]] const std::vector<double>& solution() const {
-        return solution_;
-    }
-
-private:
-    ConstraintRows constraints_;
-    std::vector<double> feed_;
-    int objective_species_;
-    std::vector<double> solution_;
-    std::vector<double> ion_coefficients_;
+struct LinearInitialization {
+    std::string status;
+    std::vector<double> values;
 };
+
+LinearInitialization solve_initialization_lp(
+    const ConstraintRows& constraints,
+    const std::vector<int>& charges,
+    double ion_fraction_max
+) {
+    const std::size_t species_count = charges.size();
+    const std::size_t minimum_column = species_count;
+    const bool ion_limited = std::isfinite(ion_fraction_max);
+    const std::size_t row_count =
+        constraints.matrix.rows + species_count + (ion_limited ? 1 : 0);
+    HighsModel model;
+    model.lp_.num_col_ = static_cast<HighsInt>(species_count + 1);
+    model.lp_.num_row_ = static_cast<HighsInt>(row_count);
+    model.lp_.sense_ = ObjSense::kMaximize;
+    model.lp_.col_cost_.assign(species_count + 1, 0.0);
+    model.lp_.col_cost_[minimum_column] = 1.0;
+    model.lp_.col_lower_.assign(species_count + 1, 0.0);
+    model.lp_.col_upper_.assign(species_count + 1, kHighsInf);
+    model.lp_.row_lower_.reserve(row_count);
+    model.lp_.row_upper_.reserve(row_count);
+    for (double total : constraints.totals) {
+        model.lp_.row_lower_.push_back(total);
+        model.lp_.row_upper_.push_back(total);
+    }
+    model.lp_.row_lower_.insert(
+        model.lp_.row_lower_.end(), species_count, 0.0
+    );
+    model.lp_.row_upper_.insert(
+        model.lp_.row_upper_.end(), species_count, kHighsInf
+    );
+    if (ion_limited) {
+        model.lp_.row_lower_.push_back(-kHighsInf);
+        model.lp_.row_upper_.push_back(0.0);
+    }
+    model.lp_.a_matrix_.format_ = MatrixFormat::kColwise;
+    model.lp_.a_matrix_.start_ = {0};
+    for (std::size_t species = 0; species < species_count; ++species) {
+        for (std::size_t row = 0; row < constraints.matrix.rows; ++row) {
+            const double value = constraints.matrix(row, species);
+            if (value != 0.0) {
+                model.lp_.a_matrix_.index_.push_back(static_cast<HighsInt>(row));
+                model.lp_.a_matrix_.value_.push_back(value);
+            }
+        }
+        model.lp_.a_matrix_.index_.push_back(static_cast<HighsInt>(
+            constraints.matrix.rows + species
+        ));
+        model.lp_.a_matrix_.value_.push_back(1.0);
+        if (ion_limited) {
+            model.lp_.a_matrix_.index_.push_back(static_cast<HighsInt>(
+                row_count - 1
+            ));
+            model.lp_.a_matrix_.value_.push_back(
+                charges[species] == 0
+                    ? -ion_fraction_max
+                    : 1.0 - ion_fraction_max
+            );
+        }
+        model.lp_.a_matrix_.start_.push_back(static_cast<HighsInt>(
+            model.lp_.a_matrix_.index_.size()
+        ));
+    }
+    for (std::size_t species = 0; species < species_count; ++species) {
+        model.lp_.a_matrix_.index_.push_back(static_cast<HighsInt>(
+            constraints.matrix.rows + species
+        ));
+        model.lp_.a_matrix_.value_.push_back(-1.0);
+    }
+    model.lp_.a_matrix_.start_.push_back(static_cast<HighsInt>(
+        model.lp_.a_matrix_.index_.size()
+    ));
+    Highs highs;
+    if (highs.setOptionValue("output_flag", false) == HighsStatus::kError
+        || highs.setOptionValue("threads", 1) == HighsStatus::kError
+        || highs.setOptionValue("solver", std::string("simplex"))
+            == HighsStatus::kError
+        || highs.passModel(model) == HighsStatus::kError
+        || highs.run() == HighsStatus::kError) {
+        return {"setup_failed", {}};
+    }
+    if (highs.getModelStatus() != HighsModelStatus::kOptimal
+        || highs.getInfo().primal_solution_status != kSolutionStatusFeasible) {
+        return {highs.modelStatusToString(highs.getModelStatus()), {}};
+    }
+    return {"solve_succeeded", highs.getSolution().col_value};
+}
 
 struct PhysicalPhaseEvaluation {
     double value = 0.0;
@@ -1521,32 +1339,25 @@ MaxMinInitializationResult max_min_initialization(
     const ConstraintRows constraints = independent_max_min_rows(
         balance_matrix, feed_amounts, charges
     );
-    auto* raw_problem = new MaxMinTnlp(
-        constraints, feed_amounts, charges, total_ion_fraction_max
-    );
-    Ipopt::SmartPtr<Ipopt::TNLP> problem = raw_problem;
-    Ipopt::SmartPtr<Ipopt::IpoptApplication> application = IpoptApplicationFactory();
-    configure_ipopt(application, 300);
     MaxMinInitializationResult result;
-    const Ipopt::ApplicationReturnStatus initialize_status = application->Initialize();
-    if (initialize_status != Ipopt::Solve_Succeeded) {
-        result.solver_status = "initialization_" + ipopt_status_name(initialize_status);
-        result.reason = "ipopt_initialization_failed";
+    const LinearInitialization initialization = solve_initialization_lp(
+        constraints, charges, total_ion_fraction_max
+    );
+    result.solver_status = initialization.status;
+    if (initialization.values.size() != feed_amounts.size() + 1) {
         return result;
     }
-    const Ipopt::ApplicationReturnStatus status = application->OptimizeTNLP(problem);
-    result.solver_status = ipopt_status_name(status);
-    const std::vector<double>& solution = raw_problem->solution();
+    const std::vector<double>& solution = initialization.values;
     result.amounts.assign(solution.begin(), solution.begin() + static_cast<std::ptrdiff_t>(feed_amounts.size()));
-    result.max_min_amount = solution.back();
+    const double max_min_amount = solution.back();
     const std::vector<double> equality = matrix_vector(constraints.matrix, result.amounts);
     std::vector<double> residual(equality.size(), 0.0);
     for (std::size_t row = 0; row < equality.size(); ++row) {
         residual[row] = equality[row] - constraints.totals[row];
     }
-    result.equality_inf_norm = vector_inf_norm(residual);
-    const bool finite_solution = std::isfinite(result.max_min_amount)
-        && result.max_min_amount < 0.5 * kInfinity
+    const double equality_inf_norm = vector_inf_norm(residual);
+    const bool finite_solution = std::isfinite(max_min_amount)
+        && max_min_amount < 0.5 * kInfinity
         && std::all_of(result.amounts.begin(), result.amounts.end(), [](double amount) {
             return std::isfinite(amount) && amount >= 0.0;
         });
@@ -1557,7 +1368,7 @@ MaxMinInitializationResult max_min_initialization(
     for (double amount : result.amounts) {
         max_min_inequalities_feasible = max_min_inequalities_feasible
             && amount + kBalanceTolerance * std::max(1.0, std::abs(amount))
-                >= result.max_min_amount;
+                >= max_min_amount;
     }
     bool source_domain_feasible = true;
     if (std::isfinite(total_ion_fraction_max)) {
@@ -1572,48 +1383,24 @@ MaxMinInitializationResult max_min_initialization(
         source_domain_feasible = total > 0.0
             && ionic / total <= total_ion_fraction_max + kProviderDomainTolerance;
     }
-    bool finite_amount_bounds = status == Ipopt::Solve_Succeeded;
     result.amount_upper_bounds.assign(feed_amounts.size(), 0.0);
-    for (std::size_t species = 0; species < feed_amounts.size() && finite_amount_bounds;
-         ++species) {
-        auto* raw_bound_problem = new MaxMinTnlp(
-            constraints,
-            feed_amounts,
-            charges,
-            total_ion_fraction_max,
-            static_cast<int>(species)
+    const double bounding_total = constraints.totals.front();
+    bool finite_amount_bounds = bounding_total > 0.0;
+    for (std::size_t species = 0; species < feed_amounts.size(); ++species) {
+        const double coefficient = constraints.matrix(0, species);
+        finite_amount_bounds = finite_amount_bounds && coefficient > 0.0;
+        result.amount_upper_bounds[species] = std::nextafter(
+            2.0 * bounding_total / coefficient + 1.0e-12,
+            std::numeric_limits<double>::infinity()
         );
-        Ipopt::SmartPtr<Ipopt::TNLP> bound_problem = raw_bound_problem;
-        Ipopt::SmartPtr<Ipopt::IpoptApplication> bound_application =
-            IpoptApplicationFactory();
-        configure_ipopt(bound_application, 300);
-        const Ipopt::ApplicationReturnStatus bound_initialize =
-            bound_application->Initialize();
-        const Ipopt::ApplicationReturnStatus bound_status =
-            bound_initialize == Ipopt::Solve_Succeeded
-            ? bound_application->OptimizeTNLP(bound_problem)
-            : bound_initialize;
-        const double maximum = raw_bound_problem->solution()[species];
-        finite_amount_bounds = bound_status == Ipopt::Solve_Succeeded
-            && std::isfinite(maximum) && maximum > 0.0
-            && maximum < 0.5 * kInfinity;
-        if (finite_amount_bounds) {
-            result.amount_upper_bounds[species] = std::nextafter(
-                2.0 * maximum + 1.0e-12,
-                std::numeric_limits<double>::infinity()
-            );
-        }
     }
-    result.strict_positive_feasible = status == Ipopt::Solve_Succeeded
-        && result.equality_inf_norm <= kBalanceTolerance
+    result.strict_positive_feasible = result.solver_status == "solve_succeeded"
+        && equality_inf_norm <= kBalanceTolerance
         && recomputed_minimum > trace_floor
-        && result.max_min_amount > trace_floor
+        && max_min_amount > trace_floor
         && max_min_inequalities_feasible
         && source_domain_feasible
         && finite_amount_bounds;
-    result.reason = result.strict_positive_feasible
-        ? "strict_positive_state_found"
-        : "no_strict_positive_state_above_trace_floor";
     return result;
 }
 
@@ -1627,8 +1414,7 @@ ChemicalSolveResult solve_reaction(
     const MaxMinInitializationResult& initialization,
     const PhaseEvaluator& phase_evaluator,
     const ReactionDomain& domain,
-    double initial_volume,
-    const std::vector<double>& starting_amounts
+    double initial_volume
 ) {
     if (!std::isfinite(temperature_k) || temperature_k <= 0.0
         || !std::isfinite(pressure_pa) || pressure_pa <= 0.0
@@ -1656,14 +1442,12 @@ ChemicalSolveResult solve_reaction(
         }
     }
     const AmountChart chart = make_amount_chart(system.charges);
-    const std::vector<double>& initial_amounts = starting_amounts.empty()
-        ? initialization.amounts
-        : starting_amounts;
-    if (initial_amounts.size() != system.species_ids.size()
+    const std::vector<double>& initial_amounts = initialization.amounts;
+    if (initial_amounts.size() != system.species_count
         || !std::all_of(initial_amounts.begin(), initial_amounts.end(), [](double amount) {
             return std::isfinite(amount) && amount > 0.0;
         })) {
-        throw std::invalid_argument("reaction continuation start amounts are invalid");
+        throw std::invalid_argument("reaction starting amounts are invalid");
     }
     std::vector<double> initial = invert_amount_chart(chart, initial_amounts);
     if (!std::isfinite(initial_volume) || initial_volume <= 0.0) {
@@ -1677,7 +1461,7 @@ ChemicalSolveResult solve_reaction(
     std::vector<double> upper(initial.size(), 40.0);
     if (!chart.ionic()) {
         std::fill(lower.begin(), lower.end() - 1, std::log(0.1 * trace_floor));
-        for (std::size_t species = 0; species < system.species_ids.size(); ++species) {
+        for (std::size_t species = 0; species < system.species_count; ++species) {
             upper[species] = std::log(initialization.amount_upper_bounds[species]);
         }
     } else {
@@ -1699,7 +1483,7 @@ ChemicalSolveResult solve_reaction(
     }
     lower.back() = std::log(initial_volume) - 30.0;
     upper.back() = std::log(initial_volume) + 30.0;
-    const ConstraintRows balances = independent_chart_balance_rows(system);
+    const ConstraintRows balances{system.balance_matrix, system.balance_totals};
     auto* raw_problem = new ReactionTnlp(
         chart,
         balances,
@@ -1742,8 +1526,8 @@ ChemicalSolveResult solve_reaction(
             );
             const std::vector<double> preliminary_potentials =
                 chemical_potentials(preliminary, g_ref);
-            const double preliminary_affinity = vector_inf_norm(
-                matrix_vector(system.reaction_matrix, preliminary_potentials)
+            const double preliminary_affinity = reaction_residual_inf_norm(
+                system.reaction_matrix, preliminary_potentials
             );
             const double preliminary_balance = vector_inf_norm(std::vector<double>(
                 preliminary.constraints.begin(),
@@ -1788,9 +1572,9 @@ ChemicalSolveResult solve_reaction(
                         );
                     const std::vector<double> polished_potentials =
                         chemical_potentials(polished_evaluation, g_ref);
-                    const double polished_affinity = vector_inf_norm(matrix_vector(
+                    const double polished_affinity = reaction_residual_inf_norm(
                         system.reaction_matrix, polished_potentials
-                    ));
+                    );
                     if (polished_affinity <= kAffinityTolerance) {
                         variables = std::move(candidate);
                         polished = true;
@@ -1828,7 +1612,6 @@ ChemicalSolveResult solve_reaction(
     }
     result.amounts = evaluation.amount_chart.amounts;
     result.volume_m3 = evaluation.volume;
-    result.objective = evaluation.objective;
     result.balance_inf_norm = vector_inf_norm(std::vector<double>(
         evaluation.constraints.begin(),
         evaluation.constraints.begin() + static_cast<std::ptrdiff_t>(balances.matrix.rows)
@@ -1838,8 +1621,9 @@ ChemicalSolveResult solve_reaction(
         evaluation.phase.mechanical.pressure_pa - pressure_pa
     ) / pressure_pa;
     const std::vector<double> potentials = chemical_potentials(evaluation, g_ref);
-    std::vector<double> affinities = matrix_vector(system.reaction_matrix, potentials);
-    result.reaction_affinity_inf_norm = vector_inf_norm(affinities);
+    result.reaction_affinity_inf_norm = reaction_residual_inf_norm(
+        system.reaction_matrix, potentials
+    );
     if (domain.enforce_packing) {
         result.packing_fraction = evaluation.phase.packing.value;
         result.provider_domain_status = result.packing_fraction >= domain.packing_min
@@ -1915,31 +1699,17 @@ ChemicalSolveResult solve_reaction(
                 || evaluation.constraint_upper[row] - value > kInactiveMargin * scale);
     }
     result.complementarity_inf_norm = complementarity;
-    result.kkt_scope = sensitivity_interior
-        ? "equality_kkt_on_strict_interior"
-        : "active_inequality_kkt_not_assembled";
     std::vector<double> equality_multipliers(
         reaction_constraint_count(balances, domain), 0.0
+    );
+    const ConstraintRows physical_balances = independent_max_min_rows(
+        system.balance_matrix, system.feed_amounts, system.charges
     );
     std::vector<double> physical_multipliers;
     ReactionNlpEvaluation equality_evaluation;
     try {
-        const ReactionNlpEvaluation objective_evaluation = evaluate_reaction_nlp(
-            chart,
-            balances,
-            g_ref,
-            temperature_k,
-            pressure_pa,
-            phase_evaluator,
-            domain,
-            variables,
-            equality_multipliers
-        );
         const std::vector<double> recomputed =
             recompute_equality_multipliers(balances, potentials);
-        const ConstraintRows physical_balances = independent_max_min_rows(
-            system.balance_matrix, system.feed_amounts, system.charges
-        );
         physical_multipliers =
             recompute_equality_multipliers(physical_balances, potentials);
         std::copy(
@@ -1969,18 +1739,7 @@ ChemicalSolveResult solve_reaction(
         result.local_minimum_status = "not_adjudicated";
     }
 
-    std::vector<double> equality_stationarity = equality_evaluation.gradient;
-    for (std::size_t variable = 0; variable < equality_stationarity.size(); ++variable) {
-        for (std::size_t row = 0; row < balances.matrix.rows; ++row) {
-            equality_stationarity[variable] += equality_evaluation.jacobian[
-                row * equality_stationarity.size() + variable
-            ] * equality_multipliers[row];
-        }
-    }
     std::vector<double> physical_stationarity = potentials;
-    const ConstraintRows physical_balances = independent_max_min_rows(
-        system.balance_matrix, system.feed_amounts, system.charges
-    );
     for (std::size_t species = 0; species < physical_stationarity.size(); ++species) {
         for (std::size_t row = 0; row < physical_balances.matrix.rows; ++row) {
             physical_stationarity[species] +=
@@ -1988,34 +1747,6 @@ ChemicalSolveResult solve_reaction(
         }
     }
     result.kkt_stationarity_inf_norm = vector_inf_norm(physical_stationarity);
-    result.kkt_residual = equality_stationarity;
-    result.kkt_residual.insert(
-        result.kkt_residual.end(),
-        evaluation.constraints.begin(),
-        evaluation.constraints.begin() + static_cast<std::ptrdiff_t>(balances.matrix.rows)
-    );
-    const std::size_t primal_count = evaluation.gradient.size();
-    const std::size_t kkt_count = primal_count + balances.matrix.rows;
-    result.kkt_jacobian.assign(kkt_count * kkt_count, 0.0);
-    for (std::size_t row = 0; row < primal_count; ++row) {
-        for (std::size_t column = 0; column < primal_count; ++column) {
-            result.kkt_jacobian[row * kkt_count + column] =
-                equality_evaluation.lagrangian_hessian[row * primal_count + column];
-        }
-    }
-    for (std::size_t constraint = 0; constraint < balances.matrix.rows; ++constraint) {
-        for (std::size_t variable = 0; variable < primal_count; ++variable) {
-            const double value = equality_evaluation.jacobian[
-                constraint * primal_count + variable
-            ];
-            result.kkt_jacobian[variable * kkt_count + primal_count + constraint] = value;
-            result.kkt_jacobian[(primal_count + constraint) * kkt_count + variable] = value;
-        }
-    }
-    if (!sensitivity_interior) {
-        result.kkt_residual.clear();
-        result.kkt_jacobian.clear();
-    }
     result.numerical_status = status == Ipopt::Solve_Succeeded
             && result.balance_inf_norm <= kBalanceTolerance
             && result.kkt_stationarity_inf_norm <= kKktTolerance
@@ -2044,11 +1775,7 @@ void attach_support_evidence(
     const CompiledReactionSystem& system,
     ChemicalSolveResult& result
 ) {
-    result.retained_species_indices = system.retained_species_indices;
     result.structural_zero_species_indices = system.removed_species_indices;
-    if (!system.support.exact_certificates_complete) {
-        result.support_qualifiers.push_back("SEARCH_ONLY_LP_SUPPORT");
-    }
 }
 
 void expand_original_amounts_and_residuals(
@@ -2058,7 +1785,7 @@ void expand_original_amounts_and_residuals(
     if (!system.removed_species_indices.empty()
         && result.amounts.size() == system.retained_species_indices.size()) {
         std::vector<double> original_amounts(
-            system.original_species_ids.size(), 0.0
+            system.original_species_count, 0.0
         );
         for (std::size_t retained = 0;
              retained < system.retained_species_indices.size();
@@ -2068,13 +1795,13 @@ void expand_original_amounts_and_residuals(
         }
         result.amounts = std::move(original_amounts);
     }
-    if (result.amounts.size() != system.original_species_ids.size()) {
+    if (result.amounts.size() != system.original_species_count) {
         return;
     }
     for (std::size_t row = 0; row < system.supplied_balance_matrix.rows; ++row) {
         double residual = 0.0;
         for (std::size_t species = 0;
-             species < system.original_species_ids.size();
+             species < system.original_species_count;
              ++species) {
             residual += system.supplied_balance_matrix(row, species)
                 * (
@@ -2089,7 +1816,7 @@ void expand_original_amounts_and_residuals(
     double mass_residual = 0.0;
     double charge_residual = 0.0;
     for (std::size_t species = 0;
-         species < system.original_species_ids.size();
+         species < system.original_species_count;
          ++species) {
         mass_residual += system.original_molar_masses_kg_per_mol[species]
             * (
@@ -2131,15 +1858,11 @@ ChemicalSolveResult finalize_chemical_result(
         result.numerical_status = "failed";
         result.physical_status = "failed";
     }
-    if (result.accepted && system.support.exact_certificates_complete) {
+    if (result.accepted) {
         result.chemical_certification_level = "LOCAL_EQUILIBRIUM";
         result.boundary_status = system.removed_species_indices.empty()
             ? "strict_interior"
             : "structural_face";
-    } else if (result.accepted) {
-        result.accepted = false;
-        result.chemical_certification_level = "FEASIBLE_ONLY";
-        result.boundary_status = "not_adjudicated";
     } else if (!system.removed_species_indices.empty()) {
         result.boundary_status = "structural_face";
     }
@@ -2173,13 +1896,8 @@ ChemicalSolveResult solve_manufactured_ideal_reaction(
         initialization,
         ideal_phase_evaluator(),
         ReactionDomain{},
-        std::numeric_limits<double>::quiet_NaN(),
-        {}
+        std::numeric_limits<double>::quiet_NaN()
     );
-    if (result.accepted) {
-        result.final_lambda = 1.0;
-        result.has_final_lambda = true;
-    }
     return finalize_chemical_result(system, std::move(result), true);
 }
 
@@ -2203,19 +1921,7 @@ ProviderPhaseBlockEvidence evaluate_provider_phase_block(
         packing.value,
         packing.gradient,
         packing.hessian,
-        phase.parameter_fingerprint,
     };
-}
-
-ChemicalSolveResult provider_structural_face_guard(
-    const CompiledReactionSystem& system
-) {
-    if (system.removed_species_indices.empty()) {
-        throw std::invalid_argument(
-            "Provider structural-face guard requires a reduced component topology"
-        );
-    }
-    return finalize_chemical_result(system, ChemicalSolveResult{}, false);
 }
 
 ChemicalSolveResult solve_provider_reaction(
@@ -2236,19 +1942,7 @@ ChemicalSolveResult solve_provider_reaction(
         throw std::invalid_argument("packing-fraction bounds must be finite, positive, and ordered");
     }
     if (!system.removed_species_indices.empty()) {
-        return provider_structural_face_guard(system);
-    }
-    double ionic_feed = 0.0;
-    double total_feed = 0.0;
-    for (std::size_t species = 0; species < system.feed_amounts.size(); ++species) {
-        total_feed += system.feed_amounts[species];
-        if (system.charges[species] != 0) {
-            ionic_feed += system.feed_amounts[species];
-        }
-    }
-    if (std::isfinite(total_ion_fraction_max)
-        && (total_feed <= 0.0 || ionic_feed / total_feed > total_ion_fraction_max)) {
-        throw std::invalid_argument("feed composition exceeds the Provider source domain");
+        return finalize_chemical_result(system, ChemicalSolveResult{}, false);
     }
     const MaxMinInitializationResult initialization = max_min_initialization(
         system.balance_matrix,
@@ -2265,12 +1959,6 @@ ChemicalSolveResult solve_provider_reaction(
         return finalize_chemical_result(system, std::move(result), false);
     }
     const std::vector<double>& starting_amounts = initialization.amounts;
-    if (starting_amounts.size() != system.species_ids.size()
-        || !std::all_of(starting_amounts.begin(), starting_amounts.end(), [](double amount) {
-            return std::isfinite(amount) && amount > 0.0;
-        })) {
-        throw std::invalid_argument("Provider reaction starting amounts are invalid");
-    }
     const double total = std::accumulate(
         starting_amounts.begin(), starting_amounts.end(), 0.0
     );
@@ -2307,53 +1995,27 @@ ChemicalSolveResult solve_provider_reaction(
             }
         }
     }
-    const auto phase_evaluator_at = [&provider](double lambda) -> PhaseEvaluator {
-        return [&provider, lambda](
-            double temperature,
-            const std::vector<double>& amounts,
-            double volume
-        ) {
-            const PhysicalPhaseEvaluation ideal = evaluate_ideal_phase(
-                temperature, amounts, volume
-            );
-            PhaseBlockEvaluation result;
-            result.mechanical = ideal;
-            if (lambda == 0.0) {
-                const PackingFractionEvaluation packing = provider.evaluate_packing_fraction(
-                    temperature, amounts, volume
-                );
-                result.packing = {
-                    packing.value,
-                    packing.gradient,
-                    packing.hessian,
-                };
-            } else {
-                const ProviderPhaseBlockEvidence block = evaluate_provider_phase_block(
-                    provider, temperature, amounts, volume
-                );
-                result.mechanical.value += lambda * (block.value - ideal.value);
-                result.mechanical.pressure_pa += lambda
-                    * (block.pressure_pa - ideal.pressure_pa);
-                for (std::size_t index = 0;
-                     index < result.mechanical.gradient.size();
-                     ++index) {
-                    result.mechanical.gradient[index] += lambda
-                        * (block.gradient[index] - ideal.gradient[index]);
-                }
-                for (std::size_t index = 0;
-                     index < result.mechanical.hessian.size();
-                     ++index) {
-                    result.mechanical.hessian[index] += lambda
-                        * (block.hessian[index] - ideal.hessian[index]);
-                }
-                result.packing = {
-                    block.packing_fraction,
-                    block.packing_gradient,
-                    block.packing_hessian,
-                };
-            }
-            result.has_packing = true;
-            return result;
+    const PhaseEvaluator phase_evaluator = [&provider](
+        double temperature,
+        const std::vector<double>& amounts,
+        double volume
+    ) {
+        const ProviderPhaseBlockEvidence block = evaluate_provider_phase_block(
+            provider, temperature, amounts, volume
+        );
+        return PhaseBlockEvaluation{
+            {
+                block.value,
+                block.gradient,
+                block.hessian,
+                block.pressure_pa,
+            },
+            {
+                block.packing_fraction,
+                block.packing_gradient,
+                block.packing_hessian,
+            },
+            true,
         };
     };
     const ReactionDomain domain{
@@ -2362,49 +2024,9 @@ ChemicalSolveResult solve_provider_reaction(
         packing_fraction_max,
         total_ion_fraction_max,
     };
-    ChemicalSolveResult direct = solve_reaction(
+    return finalize_chemical_result(
         system,
-        temperature_k,
-        pressure_pa,
-        {},
-        trace_floor,
-        max_iterations,
-        initialization,
-        phase_evaluator_at(1.0),
-        domain,
-        initial_volume,
-        starting_amounts
-    );
-    if (direct.accepted) {
-        direct.final_lambda = 1.0;
-        direct.has_final_lambda = true;
-    }
-    if (direct.accepted || max_iterations == 0) {
-        return finalize_chemical_result(system, std::move(direct), false);
-    }
-    ChemicalSolveResult current = solve_reaction(
-        system,
-        temperature_k,
-        pressure_pa,
-        {},
-        trace_floor,
-        max_iterations,
-        initialization,
-        phase_evaluator_at(0.0),
-        domain,
-        initial_volume,
-        starting_amounts
-    );
-    if (!current.accepted) {
-        return finalize_chemical_result(system, std::move(direct), false);
-    }
-    current.final_lambda = 0.0;
-    current.has_final_lambda = true;
-    double lambda = 0.0;
-    double step = 0.25;
-    while (lambda < 1.0) {
-        const double trial_lambda = std::min(1.0, lambda + step);
-        ChemicalSolveResult trial = solve_reaction(
+        solve_reaction(
             system,
             temperature_k,
             pressure_pa,
@@ -2412,28 +2034,12 @@ ChemicalSolveResult solve_provider_reaction(
             trace_floor,
             max_iterations,
             initialization,
-            phase_evaluator_at(trial_lambda),
+            phase_evaluator,
             domain,
-            current.volume_m3,
-            current.amounts
-        );
-        if (!trial.accepted) {
-            step *= 0.5;
-            if (step < 1.0e-3) {
-                return finalize_chemical_result(
-                    system, std::move(direct), false
-                );
-            }
-            continue;
-        }
-        trial.final_lambda = trial_lambda;
-        trial.has_final_lambda = true;
-        current = std::move(trial);
-        lambda = trial_lambda;
-        step = std::min(0.25, 1.5 * step);
-    }
-    current.continuation_used = true;
-    return finalize_chemical_result(system, std::move(current), false);
+            initial_volume
+        ),
+        false
+    );
 }
 
 ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(
@@ -2457,7 +2063,7 @@ ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(
         }
     }
     const AmountChart chart = make_amount_chart(system.charges);
-    const ConstraintRows balances = independent_chart_balance_rows(system);
+    const ConstraintRows balances{system.balance_matrix, system.balance_totals};
     const ReactionNlpEvaluation evaluation = evaluate_reaction_nlp(
         chart,
         balances,

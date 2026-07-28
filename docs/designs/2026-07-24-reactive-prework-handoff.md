@@ -335,23 +335,22 @@ positive total charge equivalents, cation and anion simplex shares, positive
 neutral amounts, and log volume. Exact first and second chain rules are
 production requirements.
 
-The existing max-min problem supplies a strictly positive feasible state. The
-solver attempts the true Provider objective first. If necessary, adaptive
-continuation moves from the realizable ideal/reference objective to the full
-residual EOS. Only a final \(\lambda=1\) Ipopt solve can pass.
+The existing deterministic HiGHS max-min LP supplies a strictly positive
+feasible state. The solver makes one direct Ipopt solve of the true Provider
+objective. It owns no ideal-to-Provider continuation or fallback optimizer.
 
 Postsolve acceptance independently recomputes conservation, exact charge,
 pressure, reaction affinities, positivity, Provider domain and packing, KKT,
-trace-boundary status, and reduced curvature. Local KKT or continuation success
-does not prove globality or predictive agreement.
+trace-boundary status, and reduced curvature. Local KKT success does not prove
+globality or predictive agreement.
 
 The current logarithmic amount chart still solves only the strictly positive
-accessible species. Before solving, a homogeneous support layer uses HiGHS as
-candidate search and exact binary-rational primal or dual validation as the
-deletion authority. Only `proved_structural_zero` species are removed; every
-unresolved species remains retained. Reaction combinations are recomputed in
-the null space of the removed-species columns, so cancellation through absent
-intermediates is preserved.
+accessible species. Before solving, a homogeneous support layer exhaustively
+enumerates bounded feasible bases with exact binary-rational arithmetic as the
+deletion authority. A species is removed only when exhaustive enumeration
+finds no positive feasible vertex; an enumeration limit fails compilation.
+Reaction combinations are recomputed in the null space of the removed-species
+columns, so cancellation through absent intermediates is preserved.
 
 The manufactured ideal restriction supports this exact structural face and
 restores zero amounts in original species order. Installed Provider

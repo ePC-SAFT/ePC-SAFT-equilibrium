@@ -3,7 +3,6 @@
 
 #include <cmath>
 #include <cstddef>
-#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -134,42 +133,6 @@ ReactionSystemInput reaction_system_input(const py::dict& spec) {
     return input;
 }
 
-std::vector<std::vector<double>> matrix_rows(const DenseMatrix& matrix) {
-    std::vector<std::vector<double>> result(
-        matrix.rows, std::vector<double>(matrix.columns, 0.0)
-    );
-    for (std::size_t row = 0; row < matrix.rows; ++row) {
-        for (std::size_t column = 0; column < matrix.columns; ++column) {
-            result[row][column] = matrix(row, column);
-        }
-    }
-    return result;
-}
-
-py::dict compile_system(const py::dict& spec) {
-    const CompiledReactionSystem compiled = compile_reaction_system(
-        reaction_system_input(spec)
-    );
-    py::dict result;
-    result["original_species_ids"] = compiled.original_species_ids;
-    result["species_ids"] = compiled.species_ids;
-    result["retained_species_indices"] = compiled.retained_species_indices;
-    result["removed_species_indices"] = compiled.removed_species_indices;
-    result["balance_rank"] = compiled.balance_rank;
-    result["reaction_rank"] = compiled.reaction_rank;
-    result["supplied_reaction_rank"] = compiled.reaction_basis_rows.size();
-    result["reaction_basis_rows"] = compiled.reaction_basis_rows;
-    result["reaction_transform"] = matrix_rows(compiled.reaction_transform);
-    result["reaction_matrix"] = matrix_rows(compiled.reaction_matrix);
-    result["ln_k"] = compiled.ln_k;
-    result["accessible_reaction_transform"] = matrix_rows(
-        compiled.accessible_reaction_transform
-    );
-    result["support_classifications"] = compiled.support.classifications;
-    result["g_ref"] = compiled.g_ref;
-    return result;
-}
-
 py::dict amount_chart_evidence(
     const std::vector<int>& charges,
     const std::vector<double>& coordinates,
@@ -193,36 +156,6 @@ py::dict amount_chart_evidence(
     return result;
 }
 
-std::vector<double> amount_chart_inverse(
-    const std::vector<int>& charges,
-    const std::vector<double>& amounts
-) {
-    return invert_amount_chart(make_amount_chart(charges), amounts);
-}
-
-py::dict max_min_evidence(
-    const py::handle& balance_matrix,
-    const std::vector<double>& feed_amounts,
-    const std::vector<int>& charges,
-    double trace_floor
-) {
-    const MaxMinInitializationResult initialization = max_min_initialization(
-        dense_matrix(balance_matrix, "balance matrix"),
-        feed_amounts,
-        charges,
-        trace_floor,
-        std::numeric_limits<double>::quiet_NaN()
-    );
-    py::dict result;
-    result["solver_status"] = initialization.solver_status;
-    result["reason"] = initialization.reason;
-    result["amounts"] = initialization.amounts;
-    result["max_min_amount"] = initialization.max_min_amount;
-    result["equality_inf_norm"] = initialization.equality_inf_norm;
-    result["strict_positive_feasible"] = initialization.strict_positive_feasible;
-    return result;
-}
-
 py::dict chemical_result(
     const char* profile,
     const ChemicalSolveResult& evaluation
@@ -235,8 +168,6 @@ py::dict chemical_result(
     result["chemical_certification_level"] =
         evaluation.chemical_certification_level;
     result["boundary_status"] = evaluation.boundary_status;
-    result["support_qualifiers"] = evaluation.support_qualifiers;
-    result["retained_species_indices"] = evaluation.retained_species_indices;
     result["structural_zero_species_indices"] =
         evaluation.structural_zero_species_indices;
     result["numerical_status"] = evaluation.numerical_status;
@@ -244,12 +175,9 @@ py::dict chemical_result(
     result["provider_domain_status"] = evaluation.provider_domain_status;
     result["local_minimum_status"] = evaluation.local_minimum_status;
     result["trace_status"] = evaluation.trace_status;
-    result["predictive_status"] = evaluation.predictive_status;
-    result["finite_search_status"] = evaluation.finite_search_status;
     result["globality_certificate"] = "not_guaranteed";
     result["amounts"] = evaluation.amounts;
     result["volume_m3"] = evaluation.volume_m3;
-    result["objective"] = evaluation.objective;
     result["balance_inf_norm"] = evaluation.balance_inf_norm;
     result["charge_inf_norm"] = evaluation.charge_inf_norm;
     result["pressure_relative_residual"] = evaluation.pressure_relative_residual;
@@ -257,24 +185,7 @@ py::dict chemical_result(
     result["packing_fraction"] = evaluation.packing_fraction;
     result["kkt_stationarity_inf_norm"] = evaluation.kkt_stationarity_inf_norm;
     result["complementarity_inf_norm"] = evaluation.complementarity_inf_norm;
-    result["kkt_scope"] = evaluation.kkt_scope;
-    result["final_lambda"] = evaluation.has_final_lambda
-        ? py::cast(evaluation.final_lambda)
-        : py::none();
-    result["continuation_used"] = evaluation.continuation_used;
-    result["kkt_residual"] = evaluation.kkt_residual;
-    result["kkt_jacobian"] = evaluation.kkt_jacobian;
     return result;
-}
-
-py::dict provider_boundary_guard(const py::dict& spec) {
-    const CompiledReactionSystem compiled = compile_reaction_system(
-        reaction_system_input(spec)
-    );
-    return chemical_result(
-        "provider_structural_face_guard",
-        provider_structural_face_guard(compiled)
-    );
 }
 
 py::dict solve_manufactured(const py::dict& spec, const py::dict& options) {
@@ -323,16 +234,8 @@ py::dict provider_block_evidence(
         provider, temperature_k, amounts, volume_m3
     );
     py::dict result;
-    result["value"] = evaluation.value;
     result["gradient"] = evaluation.gradient;
-    result["hessian"] = evaluation.hessian;
     result["pressure_pa"] = evaluation.pressure_pa;
-    result["packing_fraction"] = evaluation.packing_fraction;
-    result["packing_gradient"] = evaluation.packing_gradient;
-    result["packing_hessian"] = evaluation.packing_hessian;
-    result["parameter_fingerprint"] = evaluation.parameter_fingerprint;
-    result["component_ids"] = metadata.component_ids;
-    result["charges"] = metadata.charges;
     return result;
 }
 
@@ -400,7 +303,6 @@ py::dict solve_provider_manufactured(
     );
     result["parameter_fingerprint"] = input.provider_fingerprint;
     result["packing_fraction_bounds"] = packing_bounds;
-    result["predictive_status"] = "manufactured_nonpredictive";
     return result;
 }
 
@@ -434,7 +336,6 @@ py::dict manufactured_nlp_evidence(
 }  // namespace
 
 void bind_chemical_equilibrium(py::module_& module) {
-    module.def("_chemical_compile_system", &compile_system, py::arg("spec"));
     module.def(
         "_chemical_amount_chart",
         &amount_chart_evidence,
@@ -443,29 +344,10 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("trace_floor")
     );
     module.def(
-        "_chemical_amount_chart_inverse",
-        &amount_chart_inverse,
-        py::arg("charges"),
-        py::arg("amounts")
-    );
-    module.def(
-        "_chemical_max_min_initialization",
-        &max_min_evidence,
-        py::arg("balance_matrix"),
-        py::arg("feed_amounts"),
-        py::arg("charges"),
-        py::arg("trace_floor")
-    );
-    module.def(
         "_chemical_solve_manufactured",
         &solve_manufactured,
         py::arg("spec"),
         py::arg("options")
-    );
-    module.def(
-        "_chemical_provider_boundary_guard",
-        &provider_boundary_guard,
-        py::arg("spec")
     );
     module.def(
         "_chemical_evaluate_provider_block",

@@ -361,7 +361,7 @@ private_reacting_phase_foundation:
   standard_reference_equation: nu_g_ref_equals_negative_lnK
   amount_coordinates: positive-electroneutral-charge-equivalents-and-simplex-shares
   objective: provider_total_helmholtz_over_rt_plus_PV_over_RT_plus_g_ref_dot_n
-  solver: native-Ipopt-direct-lambda-one-with-adaptive-continuation-fallback
+  solver: deterministic-HiGHS-interior-LP-then-one-native-Ipopt-Provider-NLP
   provider_contracts:
     - exact component order, charges, and fingerprint
     - electrolyte Helmholtz value, gradient, Hessian, and pressure

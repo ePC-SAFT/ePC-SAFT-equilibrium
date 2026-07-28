@@ -118,20 +118,20 @@ slice accepts only `lnK` already transformed into the declared Provider basis;
 source-standard-state transformation remains deferred until a source-complete
 application owns its inputs and acceptance evidence.
 
-## Initialization, solve, and continuation
+## Initialization and solve
 
-A linear max-min Ipopt problem maximizes the smallest species amount subject to
-the compiled balances and charge. Its independently recomputed optimum
-adjudicates whether a strict-positive start exists above the declared trace
-floor. No ad hoc epsilon species is inserted.
+A deterministic HiGHS max-min LP maximizes the smallest species amount subject
+to the compiled balances, charge, and Provider source-domain limit. Its
+independently recomputed optimum adjudicates whether a strict-positive start
+exists above the declared trace floor. The positive molar-mass balance supplies
+finite amount bounds; no per-species optimization or ad hoc epsilon species is
+inserted.
 
 The homogeneous TNLP uses the amount chart plus `log(V)`, exact objective and
 constraint derivatives, one fixed sparse schema, and exact Lagrangian Hessian.
-It attempts the true objective first. A failed direct attempt may use one
-adaptive continuation from a realizable analytic ideal/reference block to the
-full phase residual. Only a final independently recomputed `lambda=1` attempt
-can be accepted. Continuation is robustness evidence, never a nonideal or
-global-equilibrium proof.
+It makes one direct solve of the true Provider objective. A failed direct solve
+remains failed; this private kernel owns no ideal-to-Provider continuation or
+fallback optimizer.
 
 ## Certificates and claim axes
 
