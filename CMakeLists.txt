@@ -36,6 +36,17 @@ if(NOT highs_POPULATED)
   add_subdirectory("${highs_SOURCE_DIR}" "${highs_BINARY_DIR}" EXCLUDE_FROM_ALL)
 endif()
 
+FetchContent_Declare(
+  boost_headers
+  URL https://archives.boost.io/release/1.88.0/source/boost_1_88_0.tar.bz2
+  URL_HASH SHA256=46d9d2c06637b219270877c9e16155cbd015b6dc84349af064c088e9b5b12f7b
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_GetProperties(boost_headers)
+if(NOT boost_headers_POPULATED)
+  FetchContent_Populate(boost_headers)
+endif()
+
 set(NLOPT_CXX ON CACHE BOOL "" FORCE)
 set(NLOPT_FORTRAN OFF CACHE BOOL "" FORCE)
 set(NLOPT_PYTHON OFF CACHE BOOL "" FORCE)
@@ -74,6 +85,10 @@ find_package(epcsaft CONFIG REQUIRED PATHS "${epcsaft_cmake_dir}" NO_DEFAULT_PAT
 
 add_library(
   epcsaft_equilibrium_core STATIC
+  cpp/src/chemical_equilibrium.cpp
+  cpp/src/chemical_equilibrium_compiler.cpp
+  cpp/src/chemical_equilibrium_support.cpp
+  cpp/src/chemical_equilibrium_solver.cpp
   cpp/src/provider.cpp
   cpp/src/flash.cpp
   cpp/src/result_json.cpp
@@ -102,13 +117,20 @@ target_compile_features(epcsaft_equilibrium_core PUBLIC cxx_std_17)
 target_include_directories(
   epcsaft_equilibrium_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/cpp/src"
 )
+target_include_directories(
+  epcsaft_equilibrium_core SYSTEM PRIVATE "${boost_headers_SOURCE_DIR}"
+)
 target_link_libraries(
   epcsaft_equilibrium_core
   PUBLIC epcsaft::native_sdk
   PRIVATE PkgConfig::Ipopt highs nlopt
 )
 
-pybind11_add_module(_equilibrium MODULE cpp/src/module.cpp)
+pybind11_add_module(
+  _equilibrium MODULE
+  cpp/src/module.cpp
+  cpp/src/chemical_equilibrium_bindings.cpp
+)
 target_link_libraries(_equilibrium PRIVATE epcsaft_equilibrium_core)
 set(epcsaft_equilibrium_native_targets epcsaft_equilibrium_core _equilibrium)
 set(epcsaft_equilibrium_link_targets _equilibrium)

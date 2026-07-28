@@ -23,6 +23,10 @@
 
 namespace py = pybind11;
 
+namespace epcsaft_equilibrium {
+void bind_chemical_equilibrium(py::module_& module);
+}
+
 namespace {
 
 constexpr std::string_view kFlashFingerprint =
@@ -1070,6 +1074,7 @@ py::dict solve_tp_flash(
 
 PYBIND11_MODULE(_equilibrium, module) {
     module.doc() = "Native local equilibrium formulation over epcsaft.native_sdk.v1";
+    epcsaft_equilibrium::bind_chemical_equilibrium(module);
     module.def("sdk_info", &sdk_info, py::arg("capsule"));
     module.def(
         "evaluate_mixture_phase",

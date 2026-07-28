@@ -1,0 +1,198 @@
+#pragma once
+
+#include <cstddef>
+#include <string>
+#include <vector>
+
+namespace epcsaft_equilibrium {
+
+struct DenseMatrix {
+    std::size_t rows = 0;
+    std::size_t columns = 0;
+    std::vector<double> values;
+
+    [[nodiscard]] double operator()(std::size_t row, std::size_t column) const;
+    double& operator()(std::size_t row, std::size_t column);
+};
+
+struct EquilibriumConstantRecord {
+    std::string source_id;
+    std::string reference_id;
+    std::string reaction_orientation;
+    std::string conversion_id;
+    bool dimensionless = false;
+    double temperature_k = 0.0;
+    double pressure_pa = 0.0;
+};
+
+struct ReactionSystemInput {
+    std::vector<std::string> species_ids;
+    std::vector<int> charges;
+    std::string provider_fingerprint;
+    std::vector<double> molar_masses_kg_per_mol;
+    DenseMatrix balance_matrix;
+    DenseMatrix reaction_matrix;
+    std::vector<double> feed_amounts;
+    std::vector<double> ln_k;
+    std::vector<EquilibriumConstantRecord> equilibrium_constant_records;
+    double temperature_k = 0.0;
+    double pressure_pa = 0.0;
+};
+
+struct CompiledReactionSystem {
+    std::size_t original_species_count = 0;
+    std::vector<int> original_charges;
+    std::vector<double> original_molar_masses_kg_per_mol;
+    std::vector<double> original_feed_amounts;
+    std::size_t species_count = 0;
+    std::vector<int> charges;
+    std::vector<double> molar_masses_kg_per_mol;
+    DenseMatrix supplied_balance_matrix;
+    std::vector<std::size_t> retained_species_indices;
+    std::vector<std::size_t> removed_species_indices;
+    DenseMatrix balance_matrix;
+    DenseMatrix reaction_matrix;
+    std::vector<double> balance_totals;
+    std::vector<double> feed_amounts;
+    std::vector<double> g_ref;
+};
+
+struct AmountChart {
+    std::vector<int> charges;
+    std::vector<std::size_t> cation_indices;
+    std::vector<std::size_t> anion_indices;
+    std::vector<std::size_t> neutral_indices;
+
+    [[nodiscard]] std::size_t coordinate_count() const;
+    [[nodiscard]] bool ionic() const;
+};
+
+struct AmountChartEvaluation {
+    std::vector<double> amounts;
+    std::vector<double> jacobian;
+    std::vector<double> amount_hessians;
+    double minimum_amount = 0.0;
+    double charge_residual = 0.0;
+};
+
+struct MaxMinInitializationResult {
+    std::string solver_status;
+    std::vector<double> amounts;
+    std::vector<double> amount_upper_bounds;
+    bool strict_positive_feasible = false;
+};
+
+struct ChemicalSolveResult {
+    bool accepted = false;
+    std::string solver_status;
+    std::string callback_error;
+    std::string chemical_certification_level = "FEASIBLE_ONLY";
+    std::string boundary_status = "not_adjudicated";
+    std::vector<std::size_t> structural_zero_species_indices;
+    std::string numerical_status = "not_adjudicated";
+    std::string physical_status = "not_adjudicated";
+    std::string provider_domain_status = "not_adjudicated";
+    std::string local_minimum_status = "not_adjudicated";
+    std::string trace_status = "not_adjudicated";
+    std::vector<double> amounts;
+    double volume_m3 = 0.0;
+    double balance_inf_norm = 0.0;
+    double charge_inf_norm = 0.0;
+    double pressure_relative_residual = 0.0;
+    double reaction_affinity_inf_norm = 0.0;
+    double packing_fraction = 0.0;
+    double kkt_stationarity_inf_norm = 0.0;
+    double complementarity_inf_norm = 0.0;
+};
+
+struct ManufacturedNlpEvaluation {
+    double objective = 0.0;
+    std::vector<double> objective_gradient;
+    std::vector<double> constraints;
+    std::vector<double> constraint_jacobian;
+    std::vector<double> lagrangian_gradient;
+    std::vector<double> lagrangian_hessian;
+    std::vector<double> amounts;
+    double volume_m3 = 0.0;
+};
+
+struct ProviderPhaseBlockEvidence {
+    double value = 0.0;
+    std::vector<double> gradient;
+    std::vector<double> hessian;
+    double pressure_pa = 0.0;
+    double packing_fraction = 0.0;
+    std::vector<double> packing_gradient;
+    std::vector<double> packing_hessian;
+};
+
+class ProviderContext;
+
+[[nodiscard]] CompiledReactionSystem compile_reaction_system(
+    const ReactionSystemInput& input
+);
+
+[[nodiscard]] AmountChart make_amount_chart(const std::vector<int>& charges);
+
+[[nodiscard]] AmountChartEvaluation evaluate_amount_chart(
+    const AmountChart& chart,
+    const std::vector<double>& coordinates
+);
+
+[[nodiscard]] std::vector<double> invert_amount_chart(
+    const AmountChart& chart,
+    const std::vector<double>& amounts
+);
+
+[[nodiscard]] MaxMinInitializationResult max_min_initialization(
+    const DenseMatrix& balance_matrix,
+    const std::vector<double>& feed_amounts,
+    const std::vector<int>& charges,
+    double trace_floor,
+    double total_ion_fraction_max
+);
+
+[[nodiscard]] std::vector<std::size_t> homogeneous_structural_zeros(
+    const DenseMatrix& balance_matrix,
+    const std::vector<double>& balance_totals,
+    const std::vector<int>& charges
+);
+
+[[nodiscard]] ChemicalSolveResult solve_manufactured_ideal_reaction(
+    const CompiledReactionSystem& system,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& gauge_coefficients,
+    double trace_floor,
+    int max_iterations = 500
+);
+
+[[nodiscard]] ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(
+    const CompiledReactionSystem& system,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& gauge_coefficients,
+    const std::vector<double>& variables,
+    const std::vector<double>& constraint_multipliers
+);
+
+[[nodiscard]] ProviderPhaseBlockEvidence evaluate_provider_phase_block(
+    const ProviderContext& provider,
+    double temperature_k,
+    const std::vector<double>& amounts,
+    double volume_m3
+);
+
+[[nodiscard]] ChemicalSolveResult solve_provider_reaction(
+    const CompiledReactionSystem& system,
+    const ProviderContext& provider,
+    double temperature_k,
+    double pressure_pa,
+    double packing_fraction_min,
+    double packing_fraction_max,
+    double total_ion_fraction_max,
+    double trace_floor,
+    int max_iterations = 500
+);
+
+}  // namespace epcsaft_equilibrium

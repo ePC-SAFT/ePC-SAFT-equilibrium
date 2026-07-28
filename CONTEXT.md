@@ -84,6 +84,32 @@ two-liquid subject, Validation, and public admission require separate
 authority. No case-specific constants or caller-selectable solver route is
 active.
 
+D-028 separately binds a private, non-production homogeneous reacting-phase
+foundation, now deepened by the private GREPE homogeneous chemical layer. The
+implementation is intentionally reachable only through underscored native test
+seams. It compiles redundant supplied reactions only after Provider-basis
+provenance, mass, charge, span, and converted-cycle checks; classifies
+homogeneous species support using HiGHS candidates plus independent exact
+binary-rational primal or dual certificates; and recompiles reaction
+combinations on the accessible species face. The existing positive
+electroneutral chart, fixed-`T,P` exact-Hessian Ipopt minimization, and generic
+strictly-interior KKT polish remain the only optimization path. Manufactured
+ideal structural faces restore certified zeros exactly and can emit
+`LOCAL_EQUILIBRIUM`. Installed Provider structural faces fail before any
+reduced-component callback with `BOUNDARY_DIRECTION_UNRESOLVED`, because SDK
+v1 has no reduced-topology or boundary-direction contract.
+
+Final equality multipliers and certificates are rebuilt from the accepted
+physical state. The private Provider path consumes only the installed
+Provider's Helmholtz, pressure, volume-domain, packing, and derivative
+callbacks. A source-derived Belov-Aristova gas restriction supplies algorithm
+and trace-range evidence through the seam and remains
+`manufactured_nonpredictive`. No application chemistry, source-standard-state
+transport, or source-backed nonideal reacting case is retained in this
+package. The homogeneous layer emits no phase-stability, coupled-equilibrium,
+sensitivity, or globality claim, and D-026 remains the public HELD2 admission
+gate.
+
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD
 `5a678beff38717478fd333c65e77f005cc2f6b15` and record SHA-256
@@ -132,6 +158,12 @@ candidate source and a public route do not accept their own promotion.
 `promotion_status: accepted`
 
 `local_candidate: neutral-held-v1`
+
+`private_development_foundation: homogeneous-reacting-phase-d028`
+
+`private_development_layer: grepe-homogeneous-chemical-local`
+
+`private_development_foundation_authority_effect: none`
 
 `local_candidate_authority_effect: none`
 

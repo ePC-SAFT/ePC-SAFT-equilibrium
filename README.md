@@ -160,8 +160,8 @@ import private provider modules.
 
 Source builds require Python 3.13, CMake, a C++17 compiler, pkg-config, Ipopt,
 network or populated FetchContent caches for the pinned NLopt 2.11.0 and
-HiGHS 1.15.1 archives, and the non-editable provider wheel installed in the
-build environment. The
+HiGHS 1.15.1 archives and the header-only Boost 1.88.0 archive, and the
+non-editable provider wheel installed in the build environment. The
 local candidate gate hashes the exact provider wheel before creating an
 isolated build environment. Candidate wheels are retained as read-only files
 under a commit-bound `artifacts/equilibrium-neutral-held-v1/<commit>/`
@@ -193,7 +193,12 @@ formulation owners are
 `docs/designs/2026-07-17-neutral-held-v1.md`, and
 `docs/designs/2026-07-24-held2-paper-algorithm.md`; the canonical HELD2 execution plan
 and landed task record is
-`docs/plans/2026-07-24-held2-paper-rewrite.md`. Migration receipt
+`docs/plans/2026-07-24-held2-paper-rewrite.md`. The D-028 private, non-production
+reacting-phase foundation is documented separately in
+`docs/designs/2026-07-21-private-reacting-phase-kernel.md`. It currently has
+manufactured and installed-Provider-manufactured evidence only; application
+chemistry and source-backed nonideal reacting cases remain downstream work.
+Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
 solve is not a phase-discovery or global-stability proof. The local HELD
