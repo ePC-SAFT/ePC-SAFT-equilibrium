@@ -318,7 +318,8 @@ Held2Step10Result run_held2_step10(
         *step8.total_reduced_gibbs + *step9.free_energy_gap;
     const Held2Step9Result recertified =
         run_held2_step9(bound, refined, evaluator);
-    result.timing.provider_evaluations += result.phases.size();
+    result.timing.provider_evaluations +=
+        recertified.timing.provider_evaluations;
     if (recertified.outcome != Held2Step9Outcome::Converged) {
         result.final_certificate->accepted = false;
         result.reason = "trace_potential_recertification_failed";

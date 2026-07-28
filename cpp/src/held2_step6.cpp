@@ -60,6 +60,7 @@ Held2Step6Result run_held2_step6(
             continue;
         }
         Held2MPoint candidate = point;
+        ++result.timing.provider_evaluations;
         candidate.packing_fraction = packing_fraction(
             point.independent_modified_fractions, point.volume
         );

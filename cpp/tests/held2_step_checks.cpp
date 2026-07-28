@@ -678,25 +678,36 @@ void run_held2_step4_checks() {
 }
 
 void run_held2_step5_checks() {
+    std::size_t volume_evaluations = 0;
     const Held2Step1Result prepared = step1(
         {0.0, 1.0, -1.0},
         {0.50, 0.25, 0.25},
-        [](const std::vector<double>&) {
+        [&volume_evaluations](const std::vector<double>&) {
+            ++volume_evaluations;
             return std::array<double, 2>{
                 std::exp(-1.5), std::exp(1.5),
             };
         }
     );
+    volume_evaluations = 0;
     Held2PersistentState state = std::move(*appendix_c_result().state);
     const Held2Step4Result step4 = run_held2_step4(state);
+    std::size_t state_evaluations = 0;
+    std::size_t packing_evaluations = 0;
     const Held2Step5Result result = run_held2_step5(
         prepared,
         step4,
         state,
-        [](const auto& composition, double log_volume) {
+        [&state_evaluations](
+            const auto& composition, double log_volume
+        ) {
+            ++state_evaluations;
             return search_state(composition, log_volume, false);
         },
-        [](const auto&, double) { return 0.1; },
+        [&packing_evaluations](const auto&, double) {
+            ++packing_evaluations;
+            return 0.1;
+        },
         {0, 8, 10}
     );
     require(
@@ -705,6 +716,12 @@ void run_held2_step5_checks() {
             && result.attempts.back().accepted
             && state.next_start_ordinal == result.starts_consumed,
         "Step-5 certified persistent multistart changed"
+    );
+    require(
+        result.timing.provider_evaluations
+            == state_evaluations + volume_evaluations
+                + packing_evaluations,
+        "Step-5 Provider evaluation accounting changed"
     );
 }
 
@@ -719,11 +736,13 @@ void run_held2_step6_checks() {
     );
     Held2PersistentState state = std::move(*appendix_c_result().state);
     const Held2Step4Result step4 = run_held2_step4(state);
+    std::size_t packing_evaluations = 0;
     const Held2Step6Result result = run_held2_step6(
         prepared,
         step4,
         state,
-        [](const auto& composition, double) {
+        [&packing_evaluations](const auto& composition, double) {
+            ++packing_evaluations;
             return composition.front();
         }
     );
@@ -732,6 +751,10 @@ void run_held2_step6_checks() {
             && result.decisions.size() == state.M.size()
             && result.timing.next_step == 7,
         "Step-6 full-M search changed"
+    );
+    require(
+        result.timing.provider_evaluations == packing_evaluations,
+        "Step-6 Provider evaluation accounting changed"
     );
 }
 
@@ -832,9 +855,14 @@ void run_held2_step9_checks() {
     Held2Step4Result step4;
     step4.status = "complete";
     step4.upper_bound = step8.total_reduced_gibbs;
-    const auto evaluator = [coordinates = *prepared.coordinates](
+    std::size_t provider_evaluations = 0;
+    const auto evaluator = [
+        coordinates = *prepared.coordinates,
+        &provider_evaluations
+    ](
         const auto& composition, double log_volume
     ) {
+        ++provider_evaluations;
         return evaluate_held2_manufactured_state(
             coordinates, composition, log_volume
         );
@@ -847,6 +875,10 @@ void run_held2_step9_checks() {
             && converged.physical->accepted
             && !converged.potential_comparisons.empty(),
         "Step-9 Eqs. (68)-(69) convergence changed"
+    );
+    require(
+        converged.timing.provider_evaluations == provider_evaluations,
+        "Step-9 Provider evaluation accounting changed"
     );
     *step4.upper_bound -= 1.0e-9;
     require(

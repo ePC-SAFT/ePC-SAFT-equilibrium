@@ -232,9 +232,11 @@ Held2Step2Result run_held2_step2(
     };
     const auto envelope = [&](const std::vector<double>& composition) {
         ++result.timing.provider_evaluations;
+        const std::array<double, 2> physical_bounds =
+            (*step1.volume_bounds)(composition);
         return evaluate_held2_pressure_envelope(
             composition,
-            (*step1.volume_bounds)(composition),
+            physical_bounds,
             counted,
             kPressureIntervals,
             kPressureSubdivisionDepth

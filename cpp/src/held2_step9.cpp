@@ -39,14 +39,15 @@ Held2Step9Result run_held2_step9(
 
     std::vector<std::pair<std::uint64_t, Held2StateEvaluation>> states;
     for (const Held2Phase& phase : step8.active_phases) {
+        ++result.timing.provider_evaluations;
+        const Held2StateEvaluation state = evaluator(
+            phase.independent_modified_fractions,
+            std::log(phase.volume)
+        );
         states.emplace_back(
             phase.stable_id,
-            evaluator(
-                phase.independent_modified_fractions,
-                std::log(phase.volume)
-            )
+            state
         );
-        ++result.timing.provider_evaluations;
     }
     std::sort(
         states.begin(),

@@ -560,11 +560,14 @@ Held2Step5Result run_held2_step5(
             continue;
         }
         best = value;
+        ++result.timing.provider_evaluations;
+        const double best_packing_fraction =
+            packing_fraction(independent, terminal.volume);
         best_point = {
             static_cast<std::uint64_t>(state.M.size()),
             independent,
             terminal.volume,
-            packing_fraction(independent, terminal.volume),
+            best_packing_fraction,
             terminal.objective,
             terminal.gradient,
             "step5_local",
