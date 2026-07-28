@@ -17,6 +17,7 @@ def _base_system() -> dict[str, object]:
         "species_ids": ("A", "B"),
         "charges": (0, 0),
         "provider_fingerprint": "sha256:manufactured",
+        "molar_masses_kg_per_mol": (1.0, 1.0),
         "balance_matrix": ((1.0, 1.0),),
         "reaction_matrix": ((-1.0, 1.0),),
         "feed_amounts": (1.0, 0.0),
@@ -25,6 +26,8 @@ def _base_system() -> dict[str, object]:
             {
                 "source_id": "manufactured:A-to-B",
                 "reference_id": "provider-helmholtz-coordinate-basis",
+                "reaction_orientation": "products_positive",
+                "conversion_id": "already-provider-basis",
                 "dimensionless": True,
                 "temperature_k": temperature_k,
                 "pressure_pa": pressure_pa,
@@ -53,6 +56,8 @@ def _bind_record(spec: dict[str, object]) -> None:
         {
             "source_id": f"manufactured:reaction-{index}",
             "reference_id": "provider-helmholtz-coordinate-basis",
+            "reaction_orientation": "products_positive",
+            "conversion_id": "already-provider-basis",
             "dimensionless": True,
             "temperature_k": spec["temperature_k"],
             "pressure_pa": spec["pressure_pa"],
@@ -109,6 +114,16 @@ def _belov_aristova_gas_system() -> tuple[dict[str, object], tuple[float, ...]]:
         "provider_fingerprint": (
             "sha256:2f24904e5db64e96aa2ee96c53bd80863c9518b6c2ddd914e266181fe7459f84"
         ),
+        "molar_masses_kg_per_mol": (
+            0.016,
+            0.032,
+            0.048,
+            0.012,
+            0.024,
+            0.028,
+            0.044,
+            0.040,
+        ),
         "balance_matrix": (
             (0.0, 0.0, 0.0, 1.0, 2.0, 1.0, 1.0, 2.0),
             (1.0, 2.0, 3.0, 0.0, 0.0, 1.0, 2.0, 1.0),
@@ -153,6 +168,7 @@ def _nearly_dependent_system(
         **_base_system(),
         "species_ids": ("A", "B", "C", "D"),
         "charges": (0, 0, 0, 0),
+        "molar_masses_kg_per_mol": (1.0, 1.0, 1.0, 1.0),
         "balance_matrix": (
             (1.0, 1.0, 1.0, 1.0),
             (1.0, 1.0, 0.0, 0.0),
@@ -163,6 +179,56 @@ def _nearly_dependent_system(
     }
     _bind_record(spec)
     return spec
+
+
+@pytest.mark.parametrize("inconsistent", (False, True))
+def test_redundant_reaction_compiler_and_reaction_constant_cycle(
+    inconsistent: bool,
+) -> None:
+    spec = {
+        **_base_system(),
+        "species_ids": ("A", "B", "C"),
+        "charges": (0, 0, 0),
+        "molar_masses_kg_per_mol": (1.0, 1.0, 1.0),
+        "balance_matrix": ((1.0, 1.0, 1.0),),
+        "reaction_matrix": (
+            (-1.0, 1.0, 0.0),
+            (0.0, -1.0, 1.0),
+            (-1.0, 0.0, 1.0),
+        ),
+        "feed_amounts": (1.0, 0.0, 0.0),
+        "ln_k": (
+            math.log(2.0),
+            math.log(3.0),
+            math.log(7.0) if inconsistent else math.log(6.0),
+        ),
+    }
+    _bind_record(spec)
+
+    if inconsistent:
+        with pytest.raises(ValueError, match="reaction constant cycle"):
+            _equilibrium._chemical_compile_system(spec)
+        return
+
+    compiled = _equilibrium._chemical_compile_system(spec)
+
+    assert compiled["supplied_reaction_rank"] == 2
+    assert compiled["reaction_basis_rows"] == [0, 1]
+    for actual, expected in zip(
+        compiled["reaction_transform"],
+        ((1.0, 0.0), (0.0, 1.0), (1.0, 1.0)),
+        strict=True,
+    ):
+        assert actual == pytest.approx(expected, abs=2.0e-14)
+    assert compiled["independent_reaction_matrix"] == [
+        [-1.0, 1.0, 0.0],
+        [0.0, -1.0, 1.0],
+    ]
+    assert compiled["independent_ln_k"] == pytest.approx(
+        (math.log(2.0), math.log(3.0)), abs=2.0e-14
+    )
+    assert compiled["reaction_cycle_inf_norm"] <= 2.0e-14
+    assert compiled["reaction_transform_inf_norm"] <= 2.0e-14
 
 
 def test_reaction_compiler_is_stable_for_scaled_nearly_dependent_reactions() -> None:
@@ -214,9 +280,23 @@ def _change(path: str, value: object) -> Callable[[dict[str, object]], None]:
 @pytest.mark.parametrize(
     ("mutate", "message"),
     (
-        (_change("balance_matrix", ((1.0, 1.0), (2.0, 2.0))), "balance matrix rank"),
+        (_change("molar_masses_kg_per_mol", (1.0, 0.0)), "molar mass"),
         (_change("reaction_matrix", ((-1.0, 2.0),)), "conserve"),
         (_change("equilibrium_constant_records.dimensionless", False), "dimensionless"),
+        (
+            _change(
+                "equilibrium_constant_records.reaction_orientation",
+                "reactants_positive",
+            ),
+            "products_positive",
+        ),
+        (
+            _change(
+                "equilibrium_constant_records.conversion_id",
+                "unconverted-source-basis",
+            ),
+            "already-provider-basis",
+        ),
     ),
 )
 def test_reaction_compiler_rejects_inconsistent_contracts(
@@ -344,6 +424,7 @@ def _manufactured_solve(
                 **_base_system(),
                 "balance_matrix": ((1.0, 2.0),),
                 "reaction_matrix": ((-2.0, 1.0),),
+                "molar_masses_kg_per_mol": (1.0, 2.0),
                 "feed_amounts": (2.0, 0.0),
                 "ln_k": (math.log(0.75),),
                 "temperature_k": 300.0,
@@ -453,7 +534,12 @@ def test_belov_aristova_trace_solution_is_coordinate_invariant(variant: str) -> 
         _bind_record(spec)
     elif variant == "species_order":
         permutation = (7, 5, 3, 1, 6, 4, 2, 0)
-        for field in ("species_ids", "charges", "feed_amounts"):
+        for field in (
+            "species_ids",
+            "charges",
+            "molar_masses_kg_per_mol",
+            "feed_amounts",
+        ):
             values = spec[field]
             spec[field] = tuple(values[index] for index in permutation)  # type: ignore[index]
         spec["balance_matrix"] = tuple(
@@ -489,6 +575,7 @@ def test_manufactured_charged_reaction_uses_exact_electroneutral_chart() -> None
         **_base_system(),
         "species_ids": ("A", "C+", "D-"),
         "charges": (0, 1, -1),
+        "molar_masses_kg_per_mol": (2.0, 1.0, 1.0),
         "balance_matrix": ((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
         "reaction_matrix": ((-1.0, 1.0, 1.0),),
         "feed_amounts": (1.0, 0.0, 0.0),
@@ -526,6 +613,7 @@ def test_manufactured_equilibrium_is_gauge_scale_and_reaction_basis_invariant() 
         **_base_system(),
         "species_ids": ("A", "B", "C"),
         "charges": (0, 0, 0),
+        "molar_masses_kg_per_mol": (1.0, 1.0, 1.0),
         "balance_matrix": ((1.0, 1.0, 1.0),),
         "reaction_matrix": ((-1.0, 1.0, 0.0), (0.0, -1.0, 1.0)),
         "feed_amounts": (1.0, 0.0, 0.0),
@@ -561,6 +649,7 @@ def test_manufactured_reaction_solve_has_no_feed_scaled_amount_cap() -> None:
         **_base_system(),
         "species_ids": ("A", "B", "C"),
         "charges": (0, 0, 0),
+        "molar_masses_kg_per_mol": (1001.0, 1.0, 1.0),
         "balance_matrix": ((1000.0, 1.0, 0.0), (1.0, 0.0, 1.0)),
         "reaction_matrix": ((-1.0, 1000.0, 1.0),),
         "feed_amounts": (1.0, 0.0, 0.0),
@@ -657,6 +746,7 @@ def test_manufactured_charged_solution_is_species_order_invariant() -> None:
         **_base_system(),
         "species_ids": ("A", "C+", "D-"),
         "charges": (0, 1, -1),
+        "molar_masses_kg_per_mol": (2.0, 1.0, 1.0),
         "balance_matrix": ((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
         "reaction_matrix": ((-1.0, 1.0, 1.0),),
         "feed_amounts": (1.0, 0.0, 0.0),
@@ -671,6 +761,7 @@ def test_manufactured_charged_solution_is_species_order_invariant() -> None:
     for field in (
         "species_ids",
         "charges",
+        "molar_masses_kg_per_mol",
         "feed_amounts",
     ):
         values = original[field]
@@ -713,6 +804,7 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
     spec = {
         "species_ids": ("water", "sodium-cation", "chloride-anion"),
         "charges": (0, 1, -1),
+        "molar_masses_kg_per_mol": (2.0, 1.0, 1.0),
         "provider_fingerprint": model.parameter_fingerprint,
         "balance_matrix": ((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
         "reaction_matrix": ((-1.0, 1.0, 1.0),),
@@ -757,6 +849,7 @@ def test_provider_manufactured_reaction_rejects_capsule_identity_and_source_doma
     spec = {
         "species_ids": ("water", "sodium-cation", "chloride-anion"),
         "charges": (0, 1, -1),
+        "molar_masses_kg_per_mol": (2.0, 1.0, 1.0),
         "provider_fingerprint": model.parameter_fingerprint,
         "balance_matrix": ((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
         "reaction_matrix": ((-1.0, 1.0, 1.0),),

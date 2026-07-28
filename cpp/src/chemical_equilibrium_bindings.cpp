@@ -104,6 +104,8 @@ std::vector<EquilibriumConstantRecord> equilibrium_constant_records(
         result.push_back({
             py::cast<std::string>(record["source_id"]),
             py::cast<std::string>(record["reference_id"]),
+            py::cast<std::string>(record["reaction_orientation"]),
+            py::cast<std::string>(record["conversion_id"]),
             py::cast<bool>(record["dimensionless"]),
             py::cast<double>(record["temperature_k"]),
             py::cast<double>(record["pressure_pa"]),
@@ -117,6 +119,9 @@ ReactionSystemInput reaction_system_input(const py::dict& spec) {
     input.species_ids = py::cast<std::vector<std::string>>(spec["species_ids"]);
     input.charges = py::cast<std::vector<int>>(spec["charges"]);
     input.provider_fingerprint = py::cast<std::string>(spec["provider_fingerprint"]);
+    input.molar_masses_kg_per_mol = py::cast<std::vector<double>>(
+        spec["molar_masses_kg_per_mol"]
+    );
     input.balance_matrix = dense_matrix(spec["balance_matrix"], "balance matrix");
     input.reaction_matrix = dense_matrix(spec["reaction_matrix"], "reaction matrix");
     input.feed_amounts = py::cast<std::vector<double>>(spec["feed_amounts"]);
@@ -129,6 +134,18 @@ ReactionSystemInput reaction_system_input(const py::dict& spec) {
     return input;
 }
 
+std::vector<std::vector<double>> matrix_rows(const DenseMatrix& matrix) {
+    std::vector<std::vector<double>> result(
+        matrix.rows, std::vector<double>(matrix.columns, 0.0)
+    );
+    for (std::size_t row = 0; row < matrix.rows; ++row) {
+        for (std::size_t column = 0; column < matrix.columns; ++column) {
+            result[row][column] = matrix(row, column);
+        }
+    }
+    return result;
+}
+
 py::dict compile_system(const py::dict& spec) {
     const CompiledReactionSystem compiled = compile_reaction_system(
         reaction_system_input(spec)
@@ -138,6 +155,15 @@ py::dict compile_system(const py::dict& spec) {
     result["charges"] = compiled.charges;
     result["balance_rank"] = compiled.balance_rank;
     result["reaction_rank"] = compiled.reaction_rank;
+    result["supplied_reaction_rank"] = compiled.reaction_rank;
+    result["reaction_basis_rows"] = compiled.reaction_basis_rows;
+    result["reaction_transform"] = matrix_rows(compiled.reaction_transform);
+    result["independent_reaction_matrix"] = matrix_rows(compiled.reaction_matrix);
+    result["independent_ln_k"] = compiled.ln_k;
+    result["reaction_cycle_inf_norm"] = compiled.reaction_cycle_inf_norm;
+    result["reaction_transform_inf_norm"] = compiled.reaction_transform_inf_norm;
+    result["balance_matrix"] = matrix_rows(compiled.balance_matrix);
+    result["molar_masses_kg_per_mol"] = compiled.molar_masses_kg_per_mol;
     result["reaction_qr_diagonal_ratio"] = compiled.reaction_qr_diagonal_ratio;
     result["balance_totals"] = compiled.balance_totals;
     result["g_ref"] = compiled.g_ref;

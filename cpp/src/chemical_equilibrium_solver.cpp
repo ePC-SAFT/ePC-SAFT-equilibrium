@@ -1937,7 +1937,9 @@ ChemicalSolveResult solve_reaction(
         );
         const std::vector<double> recomputed =
             recompute_equality_multipliers(balances, potentials);
-        const ConstraintRows physical_balances{system.balance_matrix, {}};
+        const ConstraintRows physical_balances = independent_max_min_rows(
+            system.balance_matrix, system.feed_amounts, system.charges
+        );
         physical_multipliers =
             recompute_equality_multipliers(physical_balances, potentials);
         std::copy(
@@ -1976,10 +1978,13 @@ ChemicalSolveResult solve_reaction(
         }
     }
     std::vector<double> physical_stationarity = potentials;
+    const ConstraintRows physical_balances = independent_max_min_rows(
+        system.balance_matrix, system.feed_amounts, system.charges
+    );
     for (std::size_t species = 0; species < physical_stationarity.size(); ++species) {
-        for (std::size_t row = 0; row < system.balance_matrix.rows; ++row) {
+        for (std::size_t row = 0; row < physical_balances.matrix.rows; ++row) {
             physical_stationarity[species] +=
-                system.balance_matrix(row, species) * physical_multipliers[row];
+                physical_balances.matrix(row, species) * physical_multipliers[row];
         }
     }
     result.kkt_stationarity_inf_norm = vector_inf_norm(physical_stationarity);

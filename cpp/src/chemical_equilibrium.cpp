@@ -41,56 +41,178 @@ double numerical_tolerance(double scale, std::size_t dimension) {
         * std::max(1.0, scale) * static_cast<double>(std::max<std::size_t>(1, dimension));
 }
 
-std::size_t matrix_rank(DenseMatrix matrix) {
+double row_dot(const std::vector<double>& left, const std::vector<double>& right) {
+    if (left.size() != right.size()) {
+        throw std::invalid_argument("row dimensions do not match");
+    }
+    return std::inner_product(left.begin(), left.end(), right.begin(), 0.0);
+}
+
+double row_norm(const std::vector<double>& row) {
+    return std::sqrt(row_dot(row, row));
+}
+
+std::vector<double> matrix_row(const DenseMatrix& matrix, std::size_t row) {
+    std::vector<double> result(matrix.columns, 0.0);
+    for (std::size_t column = 0; column < matrix.columns; ++column) {
+        result[column] = matrix(row, column);
+    }
+    return result;
+}
+
+DenseMatrix matrix_from_rows(const std::vector<std::vector<double>>& rows) {
+    if (rows.empty()) {
+        return {};
+    }
+    const std::size_t columns = rows.front().size();
+    DenseMatrix result{rows.size(), columns, {}};
+    result.values.reserve(rows.size() * columns);
+    for (const std::vector<double>& row : rows) {
+        if (row.size() != columns) {
+            throw std::invalid_argument("rows must have a common column count");
+        }
+        result.values.insert(result.values.end(), row.begin(), row.end());
+    }
+    return result;
+}
+
+std::vector<std::vector<double>> orthonormal_rows(
+    const std::vector<std::vector<double>>& rows
+) {
+    std::vector<std::vector<double>> result;
+    result.reserve(rows.size());
+    for (const std::vector<double>& row : rows) {
+        std::vector<double> residual = row;
+        for (int pass = 0; pass < 2; ++pass) {
+            for (const std::vector<double>& basis : result) {
+                const double projection = row_dot(residual, basis);
+                for (std::size_t column = 0; column < residual.size(); ++column) {
+                    residual[column] -= projection * basis[column];
+                }
+            }
+        }
+        const double residual_norm = row_norm(residual);
+        if (residual_norm <= numerical_tolerance(1.0, row.size())) {
+            throw std::invalid_argument("row basis is numerically deficient");
+        }
+        for (double& value : residual) {
+            value /= residual_norm;
+        }
+        result.push_back(std::move(residual));
+    }
+    return result;
+}
+
+double scaled_residual_norm(
+    const std::vector<double>& row,
+    const std::vector<std::vector<double>>& basis
+) {
+    std::vector<double> residual = row;
+    for (int pass = 0; pass < 2; ++pass) {
+        for (const std::vector<double>& vector : basis) {
+            const double projection = row_dot(residual, vector);
+            for (std::size_t column = 0; column < residual.size(); ++column) {
+                residual[column] -= projection * vector[column];
+            }
+        }
+    }
+    const double scale = row_norm(row);
+    return scale == 0.0 ? 0.0 : row_norm(residual) / scale;
+}
+
+std::vector<std::size_t> select_independent_rows(const DenseMatrix& matrix) {
     if (matrix.values.size() != matrix.rows * matrix.columns) {
         throw std::invalid_argument("matrix dimensions do not match storage");
     }
+    std::vector<std::size_t> selected;
+    std::vector<std::vector<double>> basis;
+    std::vector<bool> used(matrix.rows, false);
     const double tolerance = numerical_tolerance(
-        matrix_scale(matrix), std::max(matrix.rows, matrix.columns)
+        1.0, std::max(matrix.rows, matrix.columns)
     );
-    std::size_t pivot_row = 0;
-    for (std::size_t column = 0; column < matrix.columns && pivot_row < matrix.rows; ++column) {
-        std::size_t pivot = pivot_row;
-        for (std::size_t row = pivot_row + 1; row < matrix.rows; ++row) {
-            if (std::abs(matrix(row, column)) > std::abs(matrix(pivot, column))) {
-                pivot = row;
+    while (selected.size() < matrix.columns) {
+        std::size_t best = matrix.rows;
+        double best_score = tolerance;
+        for (std::size_t candidate = 0; candidate < matrix.rows; ++candidate) {
+            if (used[candidate]) {
+                continue;
+            }
+            const double score = scaled_residual_norm(matrix_row(matrix, candidate), basis);
+            if (score > best_score) {
+                best = candidate;
+                best_score = score;
             }
         }
-        if (std::abs(matrix(pivot, column)) <= tolerance) {
-            continue;
+        if (best == matrix.rows) {
+            break;
         }
-        if (pivot != pivot_row) {
-            for (std::size_t index = 0; index < matrix.columns; ++index) {
-                std::swap(matrix(pivot, index), matrix(pivot_row, index));
+        used[best] = true;
+        selected.push_back(best);
+        basis = orthonormal_rows([&] {
+            std::vector<std::vector<double>> rows;
+            rows.reserve(selected.size());
+            for (std::size_t index : selected) {
+                rows.push_back(matrix_row(matrix, index));
             }
-        }
-        const double pivot_value = matrix(pivot_row, column);
-        for (std::size_t row = pivot_row + 1; row < matrix.rows; ++row) {
-            const double factor = matrix(row, column) / pivot_value;
-            for (std::size_t index = column; index < matrix.columns; ++index) {
-                matrix(row, index) -= factor * matrix(pivot_row, index);
-            }
-        }
-        ++pivot_row;
+            return rows;
+        }());
     }
-    return pivot_row;
+    return selected;
 }
 
-double multiply_inf_norm(const DenseMatrix& left, const DenseMatrix& right_transposed) {
-    if (left.columns != right_transposed.columns) {
-        throw std::invalid_argument("matrix product dimensions are inconsistent");
-    }
-    double norm = 0.0;
-    for (std::size_t row = 0; row < left.rows; ++row) {
-        for (std::size_t reaction = 0; reaction < right_transposed.rows; ++reaction) {
-            double value = 0.0;
-            for (std::size_t species = 0; species < left.columns; ++species) {
-                value += left(row, species) * right_transposed(reaction, species);
+struct RowQr {
+    DenseMatrix upper;
+    std::vector<std::vector<double>> orthonormal;
+};
+
+RowQr factor_row_basis(const DenseMatrix& basis) {
+    RowQr result{
+        DenseMatrix{basis.rows, basis.rows, std::vector<double>(basis.rows * basis.rows, 0.0)},
+        {},
+    };
+    result.orthonormal.reserve(basis.rows);
+    for (std::size_t column = 0; column < basis.rows; ++column) {
+        std::vector<double> residual = matrix_row(basis, column);
+        for (int pass = 0; pass < 2; ++pass) {
+            for (std::size_t row = 0; row < result.orthonormal.size(); ++row) {
+                const double projection = row_dot(residual, result.orthonormal[row]);
+                result.upper(row, column) += projection;
+                for (std::size_t species = 0; species < residual.size(); ++species) {
+                    residual[species] -= projection * result.orthonormal[row][species];
+                }
             }
-            norm = std::max(norm, std::abs(value));
         }
+        const double diagonal = row_norm(residual);
+        if (diagonal <= numerical_tolerance(1.0, basis.columns)) {
+            throw std::invalid_argument("reaction matrix rank is deficient");
+        }
+        result.upper(column, column) = diagonal;
+        for (double& value : residual) {
+            value /= diagonal;
+        }
+        result.orthonormal.push_back(std::move(residual));
     }
-    return norm;
+    return result;
+}
+
+std::vector<double> row_coordinates(
+    const std::vector<double>& row,
+    const RowQr& factor
+) {
+    std::vector<double> projected(factor.orthonormal.size(), 0.0);
+    for (std::size_t index = 0; index < factor.orthonormal.size(); ++index) {
+        projected[index] = row_dot(row, factor.orthonormal[index]);
+    }
+    std::vector<double> coordinates(projected.size(), 0.0);
+    for (std::size_t reverse = projected.size(); reverse > 0; --reverse) {
+        const std::size_t row_index = reverse - 1;
+        double value = projected[row_index];
+        for (std::size_t column = row_index + 1; column < coordinates.size(); ++column) {
+            value -= factor.upper(row_index, column) * coordinates[column];
+        }
+        coordinates[row_index] = value / factor.upper(row_index, row_index);
+    }
+    return coordinates;
 }
 
 struct ReferenceReconstruction {
@@ -284,6 +406,21 @@ void validate_reference_records(const ReactionSystemInput& input) {
         if (record.reference_id.empty()) {
             throw std::invalid_argument("equilibrium constant reference identity is incomplete");
         }
+        if (record.reaction_orientation != "products_positive") {
+            throw std::invalid_argument(
+                "equilibrium constant reaction orientation must be products_positive"
+            );
+        }
+        if (record.conversion_id != "already-provider-basis") {
+            throw std::invalid_argument(
+                "equilibrium constant conversion provenance is not already-provider-basis"
+            );
+        }
+        if (record.reference_id != "provider-helmholtz-coordinate-basis") {
+            throw std::invalid_argument(
+                "equilibrium constant reference is not the Provider chemical basis"
+            );
+        }
         if (!record.dimensionless) {
             throw std::invalid_argument("lnK must be explicitly dimensionless");
         }
@@ -296,6 +433,121 @@ void validate_reference_records(const ReactionSystemInput& input) {
             throw std::invalid_argument("equilibrium constant pressure binding does not match");
         }
     }
+}
+
+DenseMatrix selected_rows(
+    const DenseMatrix& matrix,
+    const std::vector<std::size_t>& row_indices
+) {
+    std::vector<std::vector<double>> rows;
+    rows.reserve(row_indices.size());
+    for (std::size_t row : row_indices) {
+        rows.push_back(matrix_row(matrix, row));
+    }
+    return matrix_from_rows(rows);
+}
+
+double reaction_conservation_inf_norm(
+    const std::vector<double>& molar_masses,
+    const DenseMatrix& balance_matrix,
+    const DenseMatrix& reaction_matrix
+) {
+    double norm = 0.0;
+    for (std::size_t reaction = 0; reaction < reaction_matrix.rows; ++reaction) {
+        double mass_value = 0.0;
+        for (std::size_t species = 0; species < reaction_matrix.columns; ++species) {
+            mass_value += molar_masses[species] * reaction_matrix(reaction, species);
+        }
+        norm = std::max(norm, std::abs(mass_value));
+        for (std::size_t balance = 0; balance < balance_matrix.rows; ++balance) {
+            double balance_value = 0.0;
+            for (std::size_t species = 0; species < reaction_matrix.columns; ++species) {
+                balance_value += balance_matrix(balance, species)
+                    * reaction_matrix(reaction, species);
+            }
+            norm = std::max(norm, std::abs(balance_value));
+        }
+    }
+    return norm;
+}
+
+std::vector<std::vector<double>> seeded_balance_rows(
+    const ReactionSystemInput& input,
+    bool& charge_is_independent
+) {
+    std::vector<std::vector<double>> basis_rows;
+    std::vector<std::vector<double>> orthonormal;
+    const double rank_tolerance = numerical_tolerance(1.0, input.species_ids.size());
+    const auto add_seed = [&](const std::vector<double>& row) {
+        const double score = scaled_residual_norm(row, orthonormal);
+        if (score <= rank_tolerance) {
+            return false;
+        }
+        basis_rows.push_back(row);
+        orthonormal = orthonormal_rows(basis_rows);
+        return true;
+    };
+
+    add_seed(input.molar_masses_kg_per_mol);
+    std::vector<double> charge_row(input.species_ids.size(), 0.0);
+    for (std::size_t species = 0; species < input.charges.size(); ++species) {
+        charge_row[species] = static_cast<double>(input.charges[species]);
+    }
+    charge_is_independent = !std::all_of(
+        charge_row.begin(), charge_row.end(), [](double value) { return value == 0.0; }
+    ) && add_seed(charge_row);
+
+    std::vector<std::vector<double>> retained_balance_rows;
+    for (std::size_t row = 0; row < input.balance_matrix.rows; ++row) {
+        const std::vector<double> candidate = matrix_row(input.balance_matrix, row);
+        const double score = scaled_residual_norm(candidate, orthonormal);
+        if (score <= rank_tolerance) {
+            continue;
+        }
+        retained_balance_rows.push_back(candidate);
+        basis_rows.push_back(candidate);
+        orthonormal = orthonormal_rows(basis_rows);
+    }
+
+    std::vector<std::vector<double>> result;
+    result.reserve(1 + retained_balance_rows.size());
+    result.push_back(input.molar_masses_kg_per_mol);
+    result.insert(result.end(), retained_balance_rows.begin(), retained_balance_rows.end());
+    return result;
+}
+
+double matrix_reconstruction_inf_norm(
+    const DenseMatrix& transform,
+    const DenseMatrix& basis,
+    const DenseMatrix& supplied
+) {
+    double norm = 0.0;
+    for (std::size_t row = 0; row < supplied.rows; ++row) {
+        for (std::size_t species = 0; species < supplied.columns; ++species) {
+            double value = supplied(row, species);
+            for (std::size_t basis_row = 0; basis_row < basis.rows; ++basis_row) {
+                value -= transform(row, basis_row) * basis(basis_row, species);
+            }
+            norm = std::max(norm, std::abs(value));
+        }
+    }
+    return norm;
+}
+
+double constant_reconstruction_inf_norm(
+    const DenseMatrix& transform,
+    const std::vector<double>& independent,
+    const std::vector<double>& supplied
+) {
+    double norm = 0.0;
+    for (std::size_t row = 0; row < supplied.size(); ++row) {
+        double value = -supplied[row];
+        for (std::size_t basis = 0; basis < independent.size(); ++basis) {
+            value += transform(row, basis) * independent[basis];
+        }
+        norm = std::max(norm, std::abs(value));
+    }
+    return norm;
 }
 
 }  // namespace
@@ -596,6 +848,7 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
         );
     }
     if (input.feed_amounts.size() != species_count
+        || input.molar_masses_kg_per_mol.size() != species_count
         || input.balance_matrix.columns != species_count
         || input.reaction_matrix.columns != species_count) {
         throw std::invalid_argument("reaction-system dimensions do not match species count");
@@ -612,30 +865,37 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     require_finite_vector(input.balance_matrix.values, "balance matrix");
     require_finite_vector(input.reaction_matrix.values, "reaction matrix");
     require_finite_vector(input.ln_k, "lnK");
-    const std::size_t balance_rank = matrix_rank(input.balance_matrix);
-    if (balance_rank != input.balance_matrix.rows) {
-        throw std::invalid_argument("balance matrix rank is deficient");
+    require_finite_vector(input.molar_masses_kg_per_mol, "molar masses");
+    if (!std::all_of(
+            input.molar_masses_kg_per_mol.begin(),
+            input.molar_masses_kg_per_mol.end(),
+            [](double value) { return value > 0.0; }
+        )) {
+        throw std::invalid_argument("molar masses must be finite and positive");
     }
     if (input.ln_k.size() != input.reaction_matrix.rows) {
         throw std::invalid_argument("equilibrium constants are incomplete for the reaction matrix");
     }
-    ReferenceReconstruction reconstruction = construct_minimum_norm_reference(
-        input.reaction_matrix, input.ln_k
-    );
-    const std::size_t reaction_rank = reconstruction.rank;
-    if (balance_rank + reaction_rank != species_count) {
-        throw std::invalid_argument("complete closed system rank sum does not equal species count");
-    }
+    validate_reference_records(input);
 
-    const double conservation_norm = multiply_inf_norm(
-        input.balance_matrix, input.reaction_matrix
+    const double conservation_norm = reaction_conservation_inf_norm(
+        input.molar_masses_kg_per_mol,
+        input.balance_matrix,
+        input.reaction_matrix
+    );
+    const double molar_mass_scale = *std::max_element(
+        input.molar_masses_kg_per_mol.begin(),
+        input.molar_masses_kg_per_mol.end()
     );
     const double conservation_tolerance = numerical_tolerance(
-        matrix_scale(input.balance_matrix) * matrix_scale(input.reaction_matrix),
+        std::max(molar_mass_scale, matrix_scale(input.balance_matrix))
+            * matrix_scale(input.reaction_matrix),
         species_count
     );
     if (conservation_norm > conservation_tolerance) {
-        throw std::invalid_argument("reaction stoichiometry does not conserve the balance matrix");
+        throw std::invalid_argument(
+            "reaction stoichiometry does not conserve molar mass and the balance matrix"
+        );
     }
     double feed_charge = 0.0;
     for (std::size_t species = 0; species < species_count; ++species) {
@@ -652,43 +912,128 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     if (reaction_charge_norm > numerical_tolerance(matrix_scale(input.reaction_matrix), species_count)) {
         throw std::invalid_argument("reaction stoichiometry does not conserve charge");
     }
-    validate_reference_records(input);
 
-    const double reference_residual = reference_residual_inf_norm(
-        input.reaction_matrix, reconstruction.reference, input.ln_k
+    const std::vector<std::size_t> reaction_basis_rows = select_independent_rows(
+        input.reaction_matrix
+    );
+    if (reaction_basis_rows.empty()) {
+        throw std::invalid_argument("reaction matrix rank is deficient");
+    }
+    const DenseMatrix reaction_matrix = selected_rows(
+        input.reaction_matrix, reaction_basis_rows
+    );
+    const RowQr reaction_factor = factor_row_basis(reaction_matrix);
+    DenseMatrix reaction_transform{
+        input.reaction_matrix.rows,
+        reaction_matrix.rows,
+        std::vector<double>(
+            input.reaction_matrix.rows * reaction_matrix.rows, 0.0
+        ),
+    };
+    for (std::size_t supplied = 0; supplied < input.reaction_matrix.rows; ++supplied) {
+        const auto basis_position = std::find(
+            reaction_basis_rows.begin(), reaction_basis_rows.end(), supplied
+        );
+        if (basis_position != reaction_basis_rows.end()) {
+            reaction_transform(
+                supplied,
+                static_cast<std::size_t>(
+                    std::distance(reaction_basis_rows.begin(), basis_position)
+                )
+            ) = 1.0;
+            continue;
+        }
+        const std::vector<double> coordinates = row_coordinates(
+            matrix_row(input.reaction_matrix, supplied), reaction_factor
+        );
+        for (std::size_t basis = 0; basis < coordinates.size(); ++basis) {
+            reaction_transform(supplied, basis) = coordinates[basis];
+        }
+    }
+    const double reaction_transform_norm = matrix_reconstruction_inf_norm(
+        reaction_transform, reaction_matrix, input.reaction_matrix
+    );
+    if (reaction_transform_norm > numerical_tolerance(
+            matrix_scale(input.reaction_matrix), species_count
+        )) {
+        throw std::invalid_argument("reaction matrix rank reduction is inconsistent");
+    }
+    std::vector<double> independent_ln_k;
+    independent_ln_k.reserve(reaction_basis_rows.size());
+    for (std::size_t row : reaction_basis_rows) {
+        independent_ln_k.push_back(input.ln_k[row]);
+    }
+    const double reaction_cycle_norm = constant_reconstruction_inf_norm(
+        reaction_transform, independent_ln_k, input.ln_k
     );
     double ln_k_scale = 0.0;
     for (double value : input.ln_k) {
         ln_k_scale = std::max(ln_k_scale, std::abs(value));
     }
+    if (reaction_cycle_norm > numerical_tolerance(
+            ln_k_scale, std::max(input.reaction_matrix.rows, species_count)
+        )) {
+        throw std::invalid_argument(
+            "reaction constant cycle is inconsistent after Provider-basis conversion"
+        );
+    }
+
+    bool charge_is_independent = false;
+    const DenseMatrix balance_matrix = matrix_from_rows(
+        seeded_balance_rows(input, charge_is_independent)
+    );
+    const std::size_t balance_rank = balance_matrix.rows;
+    const std::size_t reaction_rank = reaction_matrix.rows;
+    if (balance_rank + (charge_is_independent ? 1 : 0) + reaction_rank
+        != species_count) {
+        throw std::invalid_argument(
+            "complete closed system reaction matrix rank sum does not equal species count"
+        );
+    }
+
+    ReferenceReconstruction reconstruction = construct_minimum_norm_reference(
+        reaction_matrix, independent_ln_k
+    );
+
+    const double reference_residual = reference_residual_inf_norm(
+        reaction_matrix, reconstruction.reference, independent_ln_k
+    );
     if (reference_residual > numerical_tolerance(ln_k_scale, species_count)) {
         throw std::invalid_argument("standard chemical reference reconstruction is inconsistent");
     }
 
-    std::vector<double> balance_totals(input.balance_matrix.rows, 0.0);
-    for (std::size_t row = 0; row < input.balance_matrix.rows; ++row) {
+    std::vector<double> balance_totals(balance_matrix.rows, 0.0);
+    for (std::size_t row = 0; row < balance_matrix.rows; ++row) {
         for (std::size_t species = 0; species < species_count; ++species) {
-            balance_totals[row] += input.balance_matrix(row, species)
+            balance_totals[row] += balance_matrix(row, species)
                 * input.feed_amounts[species];
         }
     }
-    return {
-        input.species_ids,
-        input.charges,
-        input.balance_matrix,
-        input.reaction_matrix,
-        std::move(balance_totals),
-        input.feed_amounts,
-        input.ln_k,
-        std::move(reconstruction.reference),
-        input.provider_fingerprint,
-        balance_rank,
-        reaction_rank,
-        reconstruction.qr_diagonal_ratio,
-        reference_residual,
-        conservation_norm,
-        reaction_charge_norm,
-    };
+    CompiledReactionSystem result;
+    result.species_ids = input.species_ids;
+    result.charges = input.charges;
+    result.molar_masses_kg_per_mol = input.molar_masses_kg_per_mol;
+    result.supplied_balance_matrix = input.balance_matrix;
+    result.supplied_reaction_matrix = input.reaction_matrix;
+    result.supplied_ln_k = input.ln_k;
+    result.reaction_transform = std::move(reaction_transform);
+    result.reaction_basis_rows = reaction_basis_rows;
+    result.reaction_cycle_inf_norm = reaction_cycle_norm;
+    result.reaction_transform_inf_norm = reaction_transform_norm;
+    result.balance_matrix = balance_matrix;
+    result.reaction_matrix = reaction_matrix;
+    result.balance_totals = std::move(balance_totals);
+    result.feed_amounts = input.feed_amounts;
+    result.ln_k = std::move(independent_ln_k);
+    result.g_ref = std::move(reconstruction.reference);
+    result.provider_fingerprint = input.provider_fingerprint;
+    result.balance_rank = balance_rank;
+    result.reaction_rank = reaction_rank;
+    result.reaction_qr_diagonal_ratio = reconstruction.qr_diagonal_ratio;
+    result.reference_reconstruction_inf_norm = reference_residual;
+    result.conservation_reaction_inf_norm = conservation_norm;
+    result.charge_reaction_inf_norm = reaction_charge_norm;
+    return result;
 }
 
 }  // namespace epcsaft_equilibrium

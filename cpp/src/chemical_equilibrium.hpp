@@ -18,6 +18,8 @@ struct DenseMatrix {
 struct EquilibriumConstantRecord {
     std::string source_id;
     std::string reference_id;
+    std::string reaction_orientation;
+    std::string conversion_id;
     bool dimensionless = false;
     double temperature_k = 0.0;
     double pressure_pa = 0.0;
@@ -27,6 +29,7 @@ struct ReactionSystemInput {
     std::vector<std::string> species_ids;
     std::vector<int> charges;
     std::string provider_fingerprint;
+    std::vector<double> molar_masses_kg_per_mol;
     DenseMatrix balance_matrix;
     DenseMatrix reaction_matrix;
     std::vector<double> feed_amounts;
@@ -39,6 +42,14 @@ struct ReactionSystemInput {
 struct CompiledReactionSystem {
     std::vector<std::string> species_ids;
     std::vector<int> charges;
+    std::vector<double> molar_masses_kg_per_mol;
+    DenseMatrix supplied_balance_matrix;
+    DenseMatrix supplied_reaction_matrix;
+    std::vector<double> supplied_ln_k;
+    DenseMatrix reaction_transform;
+    std::vector<std::size_t> reaction_basis_rows;
+    double reaction_cycle_inf_norm = 0.0;
+    double reaction_transform_inf_norm = 0.0;
     DenseMatrix balance_matrix;
     DenseMatrix reaction_matrix;
     std::vector<double> balance_totals;
