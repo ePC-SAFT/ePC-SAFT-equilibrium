@@ -4,6 +4,9 @@ import copy
 import ctypes
 import json
 import math
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 
 import epcsaft
@@ -929,6 +932,86 @@ def _figiel_provider_model(
         version=1,
     )
     return epcsaft.Mixture(parameters)
+
+
+@pytest.mark.parametrize("with_sensitivity", (False, True))
+def test_unreachable_provider_state_fails_closed_in_subprocess(
+    with_sensitivity: bool,
+) -> None:
+    script = textwrap.dedent(
+        f"""
+        import json
+
+        import epcsaft
+        import epcsaft_equilibrium
+
+        component_ids = ("water", "sodium-cation", "chloride-anion")
+        parameters = epcsaft.Parameters.from_catalog(
+            "figiel-2025-reference-electrolytes",
+            components=component_ids,
+            version=1,
+        )
+        model = epcsaft.Mixture(parameters)
+        phase = epcsaft_equilibrium.ProviderPhase(
+            model=model,
+            expected_parameter_fingerprint=model.parameter_fingerprint,
+            admissible_packing_fraction_interval=(1.0e-6, 0.74),
+        )
+        problem = epcsaft_equilibrium.ChemicalEquilibriumProblem(
+            species_ids=component_ids,
+            charges=(0, 1, -1),
+            molar_masses_kg_per_mol=(2.0, 1.0, 1.0),
+            balance_matrix=((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
+            conserved_totals=(1.8, 0.0),
+            reaction_matrix=((-1.0, 1.0, 1.0),),
+            feed_amounts_mol=(0.8, 0.1, 0.1),
+            equilibrium_constants=(
+                epcsaft_equilibrium.ChemicalEquilibriumConstant(
+                    ln_value=0.0,
+                    source_id="issue-81-minimal-reproducer",
+                    reference_id="provider-helmholtz-coordinate-basis",
+                    reaction_orientation="products_positive",
+                    conversion_id="already-provider-basis",
+                    dimensionless=True,
+                ),
+            ),
+            strict_interior_amount_floor_mol=1.0e-12,
+        )
+        sensitivity = (
+            epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest()
+            if {with_sensitivity!r}
+            else None
+        )
+        try:
+            epcsaft_equilibrium.chemical_equilibrium(
+                phase,
+                298.15 * epcsaft.unit_registry.kelvin,
+                100000.0 * epcsaft.unit_registry.pascal,
+                problem,
+                sensitivity_request=sensitivity,
+            )
+        except epcsaft_equilibrium.ChemicalEquilibriumError as error:
+            print(json.dumps({{
+                "kind": type(error).__name__,
+                "solver_status": error.diagnostics.solver_status,
+                "failure_reason": error.diagnostics.failure_reason,
+                "callback_error": error.diagnostics.callback_error,
+            }}, sort_keys=True))
+            raise SystemExit(0)
+        raise SystemExit(3)
+        """
+    )
+    completed = subprocess.run(
+        (sys.executable, "-X", "faulthandler", "-c", script),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["kind"] == "ChemicalEquilibriumError"
+    assert payload["solver_status"]
+    assert "ion mole fraction exceeds the parameter source domain" in payload["callback_error"]
 
 
 def _held_water_ionization_problem() -> tuple[

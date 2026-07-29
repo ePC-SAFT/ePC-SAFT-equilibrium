@@ -1215,7 +1215,11 @@ public:
         Ipopt::Number* g_u
     ) override {
         if (n != static_cast<Ipopt::Index>(initial_.size())
-            || m != static_cast<Ipopt::Index>(constraint_multipliers_.size())) {
+            || m != static_cast<Ipopt::Index>(constraint_multipliers_.size())
+            || x_l == nullptr
+            || x_u == nullptr
+            || g_l == nullptr
+            || g_u == nullptr) {
             return false;
         }
         std::copy(lower_.begin(), lower_.end(), x_l);
@@ -1248,7 +1252,8 @@ public:
     ) override {
         if (n != static_cast<Ipopt::Index>(initial_.size())
             || m != static_cast<Ipopt::Index>(constraint_multipliers_.size())
-            || !init_x) {
+            || !init_x
+            || x == nullptr) {
             return false;
         }
         std::copy(initial_.begin(), initial_.end(), x);
@@ -1261,7 +1266,7 @@ public:
         bool,
         Ipopt::Number& objective
     ) override {
-        if (n != static_cast<Ipopt::Index>(initial_.size())) {
+        if (n != static_cast<Ipopt::Index>(initial_.size()) || x == nullptr) {
             return false;
         }
         try {
@@ -1269,7 +1274,8 @@ public:
             return true;
         } catch (const std::exception& error) {
             callback_error_ = error.what();
-            return false;
+            objective = 0.0;
+            return true;
         }
     }
 
@@ -1279,7 +1285,9 @@ public:
         bool,
         Ipopt::Number* gradient
     ) override {
-        if (n != static_cast<Ipopt::Index>(initial_.size())) {
+        if (n != static_cast<Ipopt::Index>(initial_.size())
+            || x == nullptr
+            || gradient == nullptr) {
             return false;
         }
         try {
@@ -1290,7 +1298,8 @@ public:
             return true;
         } catch (const std::exception& error) {
             callback_error_ = error.what();
-            return false;
+            std::fill(gradient, gradient + n, 0.0);
+            return true;
         }
     }
 
@@ -1302,7 +1311,9 @@ public:
         Ipopt::Number* constraints
     ) override {
         if (n != static_cast<Ipopt::Index>(initial_.size())
-            || m != static_cast<Ipopt::Index>(constraint_multipliers_.size())) {
+            || m != static_cast<Ipopt::Index>(constraint_multipliers_.size())
+            || x == nullptr
+            || constraints == nullptr) {
             return false;
         }
         try {
@@ -1313,7 +1324,8 @@ public:
             return true;
         } catch (const std::exception& error) {
             callback_error_ = error.what();
-            return false;
+            std::fill(constraints, constraints + m, 0.0);
+            return true;
         }
     }
 
@@ -1333,6 +1345,9 @@ public:
             return false;
         }
         if (values == nullptr) {
+            if (rows == nullptr || columns == nullptr) {
+                return false;
+            }
             for (Ipopt::Index row = 0; row < m; ++row) {
                 for (Ipopt::Index column = 0; column < n; ++column) {
                     rows[row * n + column] = row;
@@ -1340,6 +1355,9 @@ public:
                 }
             }
             return true;
+        }
+        if (x == nullptr) {
+            return false;
         }
         try {
             const ReactionNlpEvaluation evaluation = evaluate(
@@ -1349,7 +1367,8 @@ public:
             return true;
         } catch (const std::exception& error) {
             callback_error_ = error.what();
-            return false;
+            std::fill(values, values + nonzero_count, 0.0);
+            return true;
         }
     }
 
@@ -1372,6 +1391,9 @@ public:
             return false;
         }
         if (values == nullptr) {
+            if (rows == nullptr || columns == nullptr) {
+                return false;
+            }
             Ipopt::Index entry = 0;
             for (Ipopt::Index row = 0; row < n; ++row) {
                 for (Ipopt::Index column = 0; column <= row; ++column) {
@@ -1381,6 +1403,9 @@ public:
                 }
             }
             return true;
+        }
+        if (x == nullptr || multipliers == nullptr) {
+            return false;
         }
         try {
             std::vector<double> lambda(multipliers, multipliers + m);
@@ -1400,8 +1425,31 @@ public:
             return true;
         } catch (const std::exception& error) {
             callback_error_ = error.what();
-            return false;
+            std::fill(values, values + nonzero_count, 0.0);
+            return true;
         }
+    }
+
+    bool intermediate_callback(
+        Ipopt::AlgorithmMode,
+        Ipopt::Index,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Number,
+        Ipopt::Index,
+        const Ipopt::IpoptData*,
+        Ipopt::IpoptCalculatedQuantities*
+    ) override {
+        // Ipopt 3.11 may read callback buffers after a false return. Every
+        // caught Provider failure writes finite containment values instead;
+        // this callback stops the solve and the recorded error rejects the
+        // result, so the containment values can never become scientific data.
+        return callback_error_.empty();
     }
 
     void finalize_solution(
@@ -1417,7 +1465,10 @@ public:
         const Ipopt::IpoptData*,
         Ipopt::IpoptCalculatedQuantities*
     ) override {
-        if (n == static_cast<Ipopt::Index>(solution_.size()) && x != nullptr) {
+        if (n == static_cast<Ipopt::Index>(solution_.size())
+            && x != nullptr
+            && z_l != nullptr
+            && z_u != nullptr) {
             std::copy(x, x + n, solution_.begin());
             std::copy(z_l, z_l + n, lower_multipliers_.begin());
             std::copy(z_u, z_u + n, upper_multipliers_.begin());
