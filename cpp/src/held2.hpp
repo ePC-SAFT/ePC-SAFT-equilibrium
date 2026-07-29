@@ -187,14 +187,14 @@ struct Held2StageICandidate {
     std::vector<double> modified_fractions;
     double volume = 0.0;
     double tpd = 0.0;
+    double reduced_gibbs = 0.0;
+    std::vector<double> reduced_gibbs_gradient;
 };
 
 struct Held2StageIICandidate {
-    std::vector<double> modified_fractions;
     std::vector<double> independent_modified_fractions;
     double volume = 0.0;
     double phase_coordinate = 0.0;
-    double lower_gap = 0.0;
 };
 
 struct Held2Problem67Phase {
@@ -207,43 +207,19 @@ struct Held2Problem67Phase {
 struct Held2Problem67Result {
     std::string solver_status = "not_run";
     std::string numerical_status = "not_adjudicated";
-    std::string physical_status = "not_adjudicated";
-    std::string feedback = "return_to_stage_ii";
     std::string failure_reason;
-    std::string trace_refinement_status = "not_adjudicated";
-    int input_candidate_count = 0;
-    int retired_duplicate_count = 0;
-    int retired_inactive_count = 0;
     int stage_iii_solve_count = 0;
     int optimizer_iteration_count = 0;
-    int active_set_resolve_count = 0;
-    int pressure_polish_iteration_count = 0;
-    std::string pressure_polish_status = "not_run";
-    int trace_component_count = 0;
-    int certified_modified_potential_count = 0;
     double objective = 0.0;
     double modified_balance_inf_norm = 0.0;
     double ordinary_balance_inf_norm = 0.0;
     double phase_charge_inf_norm = 0.0;
     double phase_charge_scale = 0.0;
     double pressure_stationarity_inf_norm = 0.0;
-    double modified_potential_mixed_gap = 0.0;
-    double modified_potential_scale = 0.0;
-    double minimum_phase_distance = 0.0;
-    std::string phase_identity_status = "not_adjudicated";
     double kkt_stationarity_inf_norm = 0.0;
     double dual_sign_violation_inf_norm = 0.0;
     double bound_complementarity_inf_norm = 0.0;
-    double minimum_phase_fraction = 0.0;
-    double free_energy_upper_bound =
-        std::numeric_limits<double>::quiet_NaN();
-    double free_energy_gap =
-        std::numeric_limits<double>::quiet_NaN();
-    std::string free_energy_gap_provenance = "unavailable";
-    bool kkt_evidence_available = false;
-    bool physical_evidence_available = false;
-    bool phase_identity_evidence_available = false;
-    bool free_energy_gap_available = false;
+    std::vector<std::size_t> candidate_indices;
     std::vector<Held2Problem67Phase> phases;
     std::vector<double> solution_variables;
 };
@@ -264,8 +240,6 @@ struct Held2Problem67Result {
     const std::vector<Held2StageIICandidate>& candidates,
     const Held2StateEvaluator& evaluator,
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
-    double free_energy_upper_bound,
-    const std::string& free_energy_gap_provenance,
     std::vector<double> initial = {},
     const Held2StateValueEvaluator& value_evaluator = {}
 );

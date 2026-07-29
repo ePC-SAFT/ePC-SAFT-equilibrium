@@ -41,6 +41,24 @@ auto run_step(
     return result;
 }
 
+void retain_step8_feedback(
+    Held2PersistentState& state,
+    const Held2Step8Result& step8
+) {
+    for (const Held2Phase& phase : step8.active_phases) {
+        Held2MPoint feedback{
+            0,
+            phase.independent_modified_fractions,
+            phase.volume,
+            phase.packing_fraction,
+            phase.reduced_gibbs,
+            phase.reduced_gibbs_gradient,
+            "step8_feedback",
+        };
+        static_cast<void>(retain_held2_m_point(state, feedback));
+    }
+}
+
 }  // namespace
 
 Held2AlgorithmResult run_held2_algorithm(
@@ -80,7 +98,7 @@ Held2AlgorithmResult run_held2_algorithm(
         return run_held2_step2(
             result.step1,
             thermodynamics.evaluate,
-            resources.step2_search_budget,
+            resources.step2_provider_evaluation_budget,
             observer
         );
     }, observer);
@@ -103,6 +121,8 @@ Held2AlgorithmResult run_held2_algorithm(
             reference.helmholtz_over_rt_reference_amount,
             reference.pressure_pa,
             reference.chemical_potentials_over_rt,
+            reference.objective,
+            reference.gradient,
         }};
         result.total_free_energy_over_rt = reference.objective;
         result.outcome = "one_phase_no_negative_witness_detected";
@@ -144,7 +164,6 @@ Held2AlgorithmResult run_held2_algorithm(
                 step4,
                 state,
                 thermodynamics.evaluate,
-                thermodynamics.packing_fraction,
                 resources,
                 observer
             );
@@ -247,6 +266,7 @@ Held2AlgorithmResult run_held2_algorithm(
             return fail("step9", step9.reason);
         }
         if (step9.next_action == Held2Step9Action::ReturnStageII) {
+            retain_step8_feedback(state, step8);
             if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail(
@@ -269,6 +289,7 @@ Held2AlgorithmResult run_held2_algorithm(
         result.step_timings.push_back(result.step10->timing);
         if (result.step10->next_action
             == Held2Step10Action::ReturnStageII) {
+            retain_step8_feedback(state, step8);
             if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail(

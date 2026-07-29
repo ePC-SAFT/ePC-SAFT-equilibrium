@@ -16,7 +16,7 @@ using Held2PackingFractionEvaluator = std::function<double(
 )>;
 
 struct Held2ResourceProfile {
-    int step2_search_budget = 50;
+    int step2_provider_evaluation_budget = 6500;
     int step5_start_cap = 128;
     int step7_major_iteration_cap = 80;
 };
@@ -38,12 +38,16 @@ struct Held2Step5Result {
     Held2StepTiming timing;
 };
 
+[[nodiscard]] bool retain_held2_m_point(
+    Held2PersistentState& state,
+    Held2MPoint& point
+);
+
 [[nodiscard]] Held2Step5Result run_held2_step5(
     const Held2Step1Result& step1,
     const Held2Step4Result& step4,
     Held2PersistentState& state,
     const Held2StateEvaluator& evaluator,
-    const Held2PackingFractionEvaluator& packing_fraction,
     const Held2ResourceProfile& resources,
     Held2ProgressObserver* observer = nullptr
 );

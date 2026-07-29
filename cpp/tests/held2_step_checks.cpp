@@ -6,12 +6,14 @@
 #include "held2_step8.hpp"
 #include "held2_step9.hpp"
 #include "held2_step10.hpp"
+#include "held2_tolerances.hpp"
 
 #include <array>
 #include <cmath>
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -436,21 +438,31 @@ Held2StateEvaluation search_state(
     return state;
 }
 
-Held2StateEvaluation tied_state(
+Held2StateEvaluation multi_root_state(
     const std::vector<double>& independent,
-    double log_volume
+    double log_volume,
+    double tilt
 ) {
     Held2StateEvaluation state = search_state(
         independent, log_volume, false
     );
-    state.objective += 0.25 * std::pow(log_volume, 4)
-        - 0.5 * log_volume * log_volume;
-    state.gradient.back() = log_volume * (log_volume * log_volume - 1.0);
+    state.objective += 0.25 * std::pow(
+        log_volume * log_volume - 1.0, 2
+    ) - 0.5 * log_volume * log_volume + tilt * log_volume;
+    state.gradient.back() =
+        log_volume * (log_volume * log_volume - 1.0) + tilt;
     state.hessian.back() = 3.0 * log_volume * log_volume - 1.0;
     state.pressure_stationarity_relative = -state.gradient.back();
     state.pressure_stationarity_derivative_log_volume =
         -state.hessian.back();
     return state;
+}
+
+Held2StateEvaluation tied_state(
+    const std::vector<double>& independent,
+    double log_volume
+) {
+    return multi_root_state(independent, log_volume, 0.0);
 }
 
 Held2StateEvaluation narrow_liquid_state(
@@ -462,6 +474,13 @@ Held2StateEvaluation narrow_liquid_state(
     );
     state.volume = std::exp(log_volume);
     return state;
+}
+
+Held2StateEvaluation multiple_root_state(
+    const std::vector<double>& independent,
+    double log_volume
+) {
+    return multi_root_state(independent, log_volume, 0.05);
 }
 
 Held2Step3Result appendix_c_result() {
@@ -477,6 +496,20 @@ Held2Step3Result appendix_c_result() {
     Held2Step2Result step2;
     step2.outcome = Held2Step2Outcome::NegativeWitness;
     step2.reference = search_state({0.5}, 0.0, false);
+    const Held2StateEvaluation witness =
+        search_state({0.75}, 0.0, true);
+    step2.negative_witness = Held2StageICandidate{
+        held2_transform_physical_fractions(
+            *prepared.coordinates,
+            held2_lift_independent_fractions(
+                *prepared.coordinates, {0.75}
+            )
+        ),
+        witness.volume,
+        -0.1,
+        witness.objective,
+        witness.gradient,
+    };
     return run_held2_step3(
         prepared,
         step2,
@@ -510,6 +543,21 @@ Held2Step3Result electrolyte_appendix_c_result() {
     Held2Step2Result step2;
     step2.outcome = Held2Step2Outcome::NegativeWitness;
     step2.reference = search_state({0.2210482084793968, 0.5989566348560451}, 0.0, false);
+    const std::vector<double> witness_independent{0.20, 0.55};
+    const Held2StateEvaluation witness =
+        search_state(witness_independent, 0.0, true);
+    step2.negative_witness = Held2StageICandidate{
+        held2_transform_physical_fractions(
+            *prepared.coordinates,
+            held2_lift_independent_fractions(
+                *prepared.coordinates, witness_independent
+            )
+        ),
+        witness.volume,
+        -0.1,
+        witness.objective,
+        witness.gradient,
+    };
     return run_held2_step3(
         prepared,
         step2,
@@ -646,6 +694,43 @@ void run_held2_step2_checks() {
             && negative.negative_witness->tpd < -1.0e-8,
         "Step 2 missed a strict negative TPD witness"
     );
+    const Held2StateEvaluation transient_reference =
+        search_state({0.5}, 0.0, true);
+    std::optional<std::pair<double, double>> transient_negative;
+    const Held2Step2Result recertification_failure = run_held2_step2(
+        prepared,
+        [&transient_negative, &transient_reference](
+            const auto& composition,
+            double log_volume
+        ) {
+            if (transient_negative
+                && composition.front() == transient_negative->first
+                && log_volume == transient_negative->second) {
+                throw std::runtime_error(
+                    "manufactured transient negative state"
+                );
+            }
+            Held2StateEvaluation state =
+                search_state(composition, log_volume, true);
+            if (evaluate_held2_tpd(
+                    transient_reference,
+                    {0.5},
+                    state,
+                    composition
+                ).value < -1.0e-8) {
+                transient_negative = {
+                    composition.front(), log_volume,
+                };
+            }
+            return state;
+        },
+        200
+    );
+    require(
+        recertification_failure.outcome
+            == Held2Step2Outcome::Indeterminate,
+        "Step 2 accepted a negative state that failed recertification"
+    );
     const Held2Step1Result narrow_prepared = step1(
         {0.0, 1.0, -1.0},
         {0.50, 0.25, 0.25},
@@ -657,9 +742,9 @@ void run_held2_step2_checks() {
     );
     require(
         run_held2_step2(
-            narrow_prepared, narrow_liquid_state, 50
+            narrow_prepared, narrow_liquid_state, 6500
         ).outcome == Held2Step2Outcome::NegativeWitness,
-        "Step 2 missed a narrow pressure-root TPD witness"
+        "Step 2 missed a narrow joint composition-volume TPD basin"
     );
     const Held2Step2Result nonnegative = run_held2_step2(
         prepared,
@@ -679,6 +764,25 @@ void run_held2_step2_checks() {
         run_held2_step2(prepared, tied_state, 80).outcome
             == Held2Step2Outcome::Indeterminate,
         "tied reference roots did not fail closed"
+    );
+    const Held2Step2Result multiple = run_held2_step2(
+        prepared, multiple_root_state, 80
+    );
+    require(
+        multiple.outcome
+                == Held2Step2Outcome::NoNegativeWitnessDetected
+            && multiple.reference_envelope
+            && multiple.reference_envelope->roots.size() == 3
+            && multiple.reference_envelope->selected_root_index == 0
+            && multiple.reference_envelope->roots[0].mechanical_class
+                == "strict_stable"
+            && multiple.reference_envelope->roots[1].mechanical_class
+                == "unstable"
+            && multiple.reference_envelope->roots[2].mechanical_class
+                == "strict_stable"
+            && multiple.reference_envelope->roots[0].objective
+                < multiple.reference_envelope->roots[2].objective,
+        "multiple-root homogeneous reference selection changed"
     );
 }
 
@@ -707,7 +811,9 @@ void run_held2_step3_checks() {
     const Held2Step3Result electrolyte = electrolyte_appendix_c_result();
     require(
         electrolyte.status == "complete"
-            && electrolyte.state->M.size() == 5,
+            && electrolyte.state->M.size() == 6
+            && electrolyte.state->M.back().origin
+                == "stage_i_negative_witness",
         "Appendix C left the four-component electroneutral simplex"
     );
     for (std::size_t coordinate = 0; coordinate < 2; ++coordinate) {
@@ -745,6 +851,31 @@ void run_held2_step4_checks() {
 }
 
 void run_held2_step5_checks() {
+    Held2PersistentState identity_state;
+    identity_state.M.push_back({
+        42, {0.25}, 1.0, std::numeric_limits<double>::quiet_NaN(),
+        0.0, {}, "appendix_c",
+    });
+    Held2MPoint numerical_copy{
+        0, {0.25 + 1.0e-9}, std::exp(1.0e-9),
+        std::numeric_limits<double>::quiet_NaN(), 0.0, {}, "step5",
+    };
+    require(
+        !retain_held2_m_point(identity_state, numerical_copy)
+            && numerical_copy.insertion_id == 42
+            && identity_state.M.size() == 1,
+        "Step-5 M identity retained a numerical representation copy"
+    );
+    Held2MPoint volume_distinct{
+        0, {0.25}, std::exp(1.0e-5),
+        std::numeric_limits<double>::quiet_NaN(), 0.0, {}, "step5",
+    };
+    require(
+        retain_held2_m_point(identity_state, volume_distinct)
+            && identity_state.M.size() == 2,
+        "Step-5 M identity collapsed a distinct molar volume"
+    );
+
     std::size_t volume_evaluations = 0;
     const Held2Step1Result prepared = step1(
         {0.0, 1.0, -1.0},
@@ -760,7 +891,6 @@ void run_held2_step5_checks() {
     Held2PersistentState state = std::move(*appendix_c_result().state);
     const Held2Step4Result step4 = run_held2_step4(state);
     std::size_t state_evaluations = 0;
-    std::size_t packing_evaluations = 0;
     const Held2Step5Result result = run_held2_step5(
         prepared,
         step4,
@@ -770,10 +900,6 @@ void run_held2_step5_checks() {
         ) {
             ++state_evaluations;
             return search_state(composition, log_volume, false);
-        },
-        [&packing_evaluations](const auto&, double) {
-            ++packing_evaluations;
-            return 0.1;
         },
         {0, 8, 10}
     );
@@ -786,8 +912,7 @@ void run_held2_step5_checks() {
     );
     require(
         result.timing.provider_evaluations
-            == state_evaluations + volume_evaluations
-                + packing_evaluations,
+            == state_evaluations + volume_evaluations,
         "Step-5 Provider evaluation accounting changed"
     );
 }
@@ -868,6 +993,17 @@ void run_held2_step8_checks() {
     );
     const Held2Step8Result expanded =
         manufactured_step8(prepared, candidates);
+    require(
+        expanded.outcome == Held2Step8Outcome::CertifiedFeasible
+            && expanded.timing.optimizer_solves == 2
+            && expanded.candidate_ids
+                == std::vector<std::uint64_t>{7, 9}
+            && expanded.continuation_variables.size()
+                == expanded.candidate_ids.size() * 3
+            && expanded.ordinary_balance_inf
+                <= kHeld2Stage3ExplicitBalance.atol,
+        "Step-8 inactive-phase re-solve lost its active-set state"
+    );
     candidates.candidates.push_back(
         {11, {0.55}, 1.0, 0.55, 0.0, {}, "manufactured"}
     );

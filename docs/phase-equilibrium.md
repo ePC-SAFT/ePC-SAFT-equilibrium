@@ -83,9 +83,10 @@ coordinate-domain restriction rather than an EOS approximation or tolerance.
 Malformed or infeasible ceilings fail before global exploration; `NaN` retains
 the ordinary modified-simplex domain declared by a Provider with no ion cap.
 The linked implementation plan assigns deterministic pressure-root
-enumeration to density topology, DIRECT-L to the reduced Stage-I search, HiGHS
-to the Stage-II upper LP, deterministic capped-multistart exact-Hessian Ipopt
-to Step 5, and exact-Hessian Ipopt to Problem (67) in Step 8. One typed
+enumeration to feed-reference density topology, DIRECT-L to the joint
+modified-composition/log-volume Stage-I search, HiGHS to the Stage-II upper
+LP, deterministic capped-multistart exact-Hessian Ipopt to Step 5, and
+exact-Hessian Ipopt to Problem (67) in Step 8. One typed
 `run_held2_algorithm` state machine owns the closed Steps 1--10 transitions for
 both installed and manufactured problems. Stage II has one major loop and one
 Eq. (66) decision owner. Each major retains its upper-solve identity, `UBD`,
@@ -95,12 +96,15 @@ focused manufactured numerical oracles call the same transition and step
 owners. None of these internal owners is a caller-selectable backend; public
 electrolyte dispatch remains non-admitted development behavior.
 
-The remaining installed-completion contract is specified in
+The current charged Steps 1--10 contract is the
+[HELD2.0 Paper Algorithm Specification](designs/2026-07-24-held2-paper-algorithm.md),
+with its first Perdomo/Khudaida working state frozen in the
+[validated working baseline](designs/2026-07-28-held2-validated-working-baseline.md).
+The older
 [HELD2 Installed Completion](designs/2026-07-22-held2-installed-completion.md)
-and sequenced by the
-[HELD2 Installed Completion Plan](plans/2026-07-22-held2-installed-completion.md).
-Those documents begin from the retained Stage-II-indeterminate artifact and do
-not reinterpret it as an equilibrium result. Current source has classified the
+and its implementation plan are superseded investigation provenance. They
+begin from the retained Stage-II-indeterminate artifact and do not reinterpret
+it as an equilibrium result. Current source has classified the
 artifact's unit-cube callback failure as bounded binary64 contact, preserves
 ordered trial/accepted-iterate and upper-LP evidence, and reaches successful
 local Ipopt termination for that exact start. The corrected Problem-(65) owner
@@ -159,14 +163,13 @@ build/epcsaft-equilibrium-diagnostic \
 Without `--trace`, the executable is quiet and returns the same structured
 result. Current ePC-SAFT/Provider evidence selects the lowest of two stable
 reference roots. The Figiel Provider caps total ion mole fraction at `0.38`;
-the domain-aware Stage-I map therefore changes the first DIRECT-L midpoint from
-the inadmissible `0.50` physical ion fraction to `0.1900000001`. All 50 declared
-evaluations complete without Provider failure and detect no TPD below the
-material `-1e-8` margin; the smallest detected TPD is positive and near zero.
-Stage II and Stage III are consequently skipped because no negative witness was
-detected under the completed finite search. This is not a stability proof, a
-reproduction of Perdomo's SAFT-gamma-Mie endpoint, or an admitted electrolyte-
-LLE result.
+the domain-aware Stage-I map therefore keeps every DIRECT-L composition inside
+that immutable source domain. The declared 6500-Provider-callback joint
+composition/log-volume allowance completes without detecting a TPD below the
+material `-1e-8` margin. Stage II and Stage III are consequently skipped
+because no negative witness was detected under the completed finite search.
+This is not a stability proof, a reproduction of Perdomo's
+SAFT-gamma-Mie endpoint, or an admitted electrolyte-LLE result.
 
 ## Shared package contract
 
@@ -248,7 +251,9 @@ to the solver and never substitute for scientific acceptance.
 | Stage-II LP | primal, dual, complementarity, active-cut diagnostic | `1e-9 + 1e-8*scale`, `1e-9 + 1e-8*scale`, `1e-8`, `1e-7` |
 | Stage-II KKT | primal, dual sign, pullback, stationarity, complementarity | `1e-8`, `1e-9`, `1e-9 + 1e-9*scale`, `1e-7`, `1e-8` |
 | Step 6 | gap; fixed-volume gradient | `1e-8`; `1e-8 + 1e-7*scale` |
-| Candidate identity | numerical duplicate; confidently distinct | `<=1e-7`; either physical composition or log-volume distance `>1e-5` |
+| Generic candidate identity | numerical duplicate; confidently distinct | `<=1e-7`; either physical composition or log-volume distance `>1e-5` |
+| HELD2 persistent \(\mathcal M\) identity | modified composition and relative molar-volume numerical copy | `<=1e-8` in every modified-composition coordinate and log-volume difference |
+| HELD2 Step-6 distinctness | Perdomo Eq. (66) Provider packing fraction or modified composition | either difference `>=1e-3` |
 | Stage III | modified/explicit balances, scaled charge, pressure | `1e-8`, `1e-8`, `1e-9`, `1e-8` |
 | Stage III | modified potentials; KKT, dual sign, complementarity, free-energy gap | `1e-8 + 1e-7*scale`, `1e-7`, `1e-9`, `1e-8`, `1e-8` |
 | Phase identity | active, retirement evidence, merge, confidently distinct | `>1e-8`, `>1e-8`, `<=1e-6`, `>1e-4` |
@@ -264,6 +269,13 @@ iterates. The Step-10 trace domain relaxes only a charged independent
 coordinate's finite-search lower bound; it does not relax any other polytope
 constraint. Finite search always retains
 `globality_certificate="not_guaranteed"`.
+
+HELD2 keeps three identities separate. Appendix C and persistent
+\(\mathcal M\) membership use modified composition plus molar volume. Step 6
+alone uses Provider packing fraction plus modified composition for Eq. (66).
+Step 8 merges numerical phase copies using physical composition plus molar
+volume; log-volume difference is only the dimensionless representation of
+relative volume in the two volume-based identities.
 
 ## Closed future formulations
 

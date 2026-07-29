@@ -665,6 +665,19 @@ JsonValue paper_phase_to_json(const Held2Phase& phase) {
     return result;
 }
 
+JsonValue paper_m_point_to_json(const Held2MPoint& point) {
+    JsonValue result = JsonValue::object();
+    result["insertion_id"] = point.insertion_id;
+    result["independent_modified_fractions"] =
+        point.independent_modified_fractions;
+    result["molar_volume_m3_mol"] = point.volume;
+    result["packing_fraction"] = point.packing_fraction;
+    result["reduced_gibbs"] = point.reduced_gibbs;
+    result["reduced_gibbs_gradient"] = point.reduced_gibbs_gradient;
+    result["origin"] = point.origin;
+    return result;
+}
+
 JsonValue paper_physical_certificate_to_json(
     const Held2PhysicalCertificate& value
 ) {
@@ -841,6 +854,20 @@ JsonValue paper_algorithm_to_json(
             solve.step2->globality_certificate;
         step2["minimum_tpd"] = solve.step2->minimum_tpd
             ? JsonValue(*solve.step2->minimum_tpd) : JsonValue(nullptr);
+        if (solve.step2->negative_witness) {
+            JsonValue witness = JsonValue::object();
+            witness["modified_fractions"] =
+                solve.step2->negative_witness->modified_fractions;
+            witness["volume"] = solve.step2->negative_witness->volume;
+            witness["tpd"] = solve.step2->negative_witness->tpd;
+            witness["reduced_gibbs"] =
+                solve.step2->negative_witness->reduced_gibbs;
+            witness["reduced_gibbs_gradient"] =
+                solve.step2->negative_witness->reduced_gibbs_gradient;
+            step2["negative_witness"] = std::move(witness);
+        } else {
+            step2["negative_witness"] = nullptr;
+        }
         step2["reference_pressure_envelope"] =
             solve.step2->reference_envelope
             ? held2_pressure_envelope_to_json(
@@ -862,9 +889,60 @@ JsonValue paper_algorithm_to_json(
         }
         return items;
     };
-    result["step4_history"] = history(solve.step4_history);
-    result["step5_history"] = history(solve.step5_history);
-    result["step6_history"] = history(solve.step6_history);
+    JsonValue step4_history = JsonValue::array();
+    for (const Held2Step4Result& value : solve.step4_history) {
+        JsonValue item = JsonValue::object();
+        item["status"] = value.status;
+        item["reason"] = value.reason;
+        item["upper_bound"] = value.upper_bound
+            ? JsonValue(*value.upper_bound) : JsonValue(nullptr);
+        item["multipliers"] = value.multipliers
+            ? JsonValue(*value.multipliers) : JsonValue(nullptr);
+        item["active_cut_ids"] = value.active_cut_ids;
+        item["timing"] = paper_timing_to_json(value.timing);
+        step4_history.append(std::move(item));
+    }
+    result["step4_history"] = std::move(step4_history);
+    JsonValue step5_history = JsonValue::array();
+    for (const Held2Step5Result& value : solve.step5_history) {
+        JsonValue item = JsonValue::object();
+        item["status"] = value.status;
+        item["reason"] = value.reason;
+        item["lower_value"] = value.lower_value
+            ? JsonValue(*value.lower_value) : JsonValue(nullptr);
+        item["terminal"] = value.terminal
+            ? paper_m_point_to_json(*value.terminal) : JsonValue(nullptr);
+        item["starts_consumed"] = value.starts_consumed;
+        item["timing"] = paper_timing_to_json(value.timing);
+        step5_history.append(std::move(item));
+    }
+    result["step5_history"] = std::move(step5_history);
+    JsonValue step6_history = JsonValue::array();
+    for (const Held2Step6Result& value : solve.step6_history) {
+        JsonValue item = JsonValue::object();
+        item["status"] = value.status;
+        item["reason"] = value.reason;
+        JsonValue candidates = JsonValue::array();
+        for (const Held2MPoint& candidate : value.candidates) {
+            candidates.append(paper_m_point_to_json(candidate));
+        }
+        item["candidates"] = std::move(candidates);
+        JsonValue decisions = JsonValue::array();
+        for (const Held2CandidateDecision& decision : value.decisions) {
+            JsonValue serialized = JsonValue::object();
+            serialized["insertion_id"] = decision.insertion_id;
+            serialized["gap_passed"] = decision.gap_passed;
+            serialized["derivative_passed"] = decision.derivative_passed;
+            serialized["pairwise_distinct"] = decision.pairwise_distinct;
+            serialized["retained"] = decision.retained;
+            serialized["reason"] = decision.reason;
+            decisions.append(std::move(serialized));
+        }
+        item["decisions"] = std::move(decisions);
+        item["timing"] = paper_timing_to_json(value.timing);
+        step6_history.append(std::move(item));
+    }
+    result["step6_history"] = std::move(step6_history);
     result["step7_history"] = history(solve.step7_history);
 
     JsonValue step8_history = JsonValue::array();

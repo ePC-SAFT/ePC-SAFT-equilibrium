@@ -23,6 +23,27 @@ This document supersedes the Stage-II same-major search behavior described in
 `docs/designs/2026-07-22-held2-installed-completion.md`. In particular, HELD2.0
 does not require two new candidates from one major iteration.
 
+The first implementation state demonstrated against both the Perdomo
+electrolyte cases and one Khudaida Figure-2 electrolyte LLE case is frozen in
+[`2026-07-28-held2-validated-working-baseline.md`](2026-07-28-held2-validated-working-baseline.md).
+That evidence checkpoint is the regression guardrail for later cleanup and
+performance work; it does not replace this specification.
+
+The paper conditions, package certificates, and deliberate implementation
+policies are cross-referenced in the
+[`2026-07-28-held2-necessary-condition-map.md`](2026-07-28-held2-necessary-condition-map.md).
+That map explains differences; it does not relax this specification.
+
+The 2026-07-28 Khudaida Figure-2 investigation supersedes the earlier Step-8
+prohibition on a
+same-major active-set re-solve. Multiplier-only deletion followed by a
+phase-fraction LP removed phases carrying material and froze the surviving
+compositions, so the reduced state could not satisfy the unchanged balance
+gate. Step 8 now retires at most one KKT-inactive candidate at a time and
+re-solves Problem (67) on the retained candidate neighborhoods. A failed
+reduced solve terminates indeterminate; it is not accepted through
+phase-fraction recovery and is not converted into Stage-II feedback.
+
 ## Scope
 
 The algorithm accepts:
@@ -420,6 +441,15 @@ T,P_o,\bar{\mathbf{x}}_o^{(EC)})
 
 over the Step-1 composition and volume domain.
 
+Problem (63) is a joint minimization over the \(C-2\) independent modified
+compositions and molar volume. It does not constrain a trial state to
+\(P(T,V,\bar{\mathbf{x}}^{(EC)})=P_o\). Consequently, a finite admissible
+state with independently re-evaluated \(d<-10^{-8}\) proves that the
+homogeneous reference is unstable even when that trial volume is not a
+pressure-stationary root. Pressure stationarity is required for a phase used
+by the later equilibrium construction, not for the logical validity of the
+negative witness itself.
+
 **Paper erratum resolution:** the typeset Eq. (62) prints the reference-state
 term
 \(\bar A^{el}(T,V_o,\bar{\mathbf{x}}_o^{(EC)})-T_A\).
@@ -456,6 +486,61 @@ work budget, and report `globality_certificate = not_guaranteed`. Absence of a
 negative witness is an operational finite-search result, not certified global
 stability. It is returned only when every declared Step-2 search completed
 successfully.
+
+The package implements Problem (63) with DIRECT-L in the joint coordinates
+
+\[
+\left(q_V,\mathbf q_x\right)\in[0,1]^{C-1},
+\qquad
+\log V =
+\log V_L(\bar{\mathbf{x}}^{(EC)})
++q_V\left[
+\log V_U(\bar{\mathbf{x}}^{(EC)})
+-\log V_L(\bar{\mathbf{x}}^{(EC)})
+\right],
+\]
+
+where the Step-1 map sends \(\mathbf q_x\) to the complete admissible
+modified-composition polytope and the installed Provider supplies
+composition-dependent \(V_L,V_U\). Each joint trial therefore consumes one
+Provider bounds query and one state evaluation at the explicit mapped volume.
+The deterministic search allowance is 6500 such Provider callbacks, rather
+than 50 composition points that each trigger a new 64-interval pressure-root
+enumeration. Complete pressure-root enumeration remains mandatory at the feed
+because selecting the homogeneous reference is a different scientific
+decision.
+
+The first strict-negative joint state stops the instability search and is
+freshly re-evaluated before it can become evidence. All Step-1 polytope,
+ion-domain, finite-state, explicit-volume consistency, and strict-negative
+checks are repeated. Failure of that independent check is indeterminate.
+The minimum raw joint TPD is retained separately from any state prepared for
+the later candidate construction.
+
+A pressure-stationary state is useful to Steps 3–8 even though it is not
+needed for the instability proof. After a certified negative witness exists,
+the remaining search allowance may therefore prepare a downstream seed. A
+composition DIRECT-L trial samples 65 deterministic log-volume points but
+does not enumerate a pressure envelope. Only when the best sampled TPD is at
+most 0.2 does it refine the single most-promising pressure-residual bracket,
+using at most 64 safeguarded evaluations. The 0.2 value is a routing threshold
+for local refinement; it cannot accept a witness. The refined state must be a
+strict mechanically stable pressure root and must independently retain
+\(d<-10^{-8}\). If the selected certified witness remains off-pressure, one
+complete-envelope refinement at that composition is permitted for downstream
+initialization. Thus complete envelopes are never nested inside every global
+composition trial.
+
+The joint trials have an exact two-callback charge and each downstream
+preparation trial has an explicit worst-case charge of
+\(1+65+64=130\) Provider callbacks. DIRECT-L receives only the number of
+whole trials that fit the remaining 6500-callback allowance; zero permitted
+trials is invalid rather than NLopt's unlimited-work convention. Mandatory
+feed-reference work, charged trace-boundary evidence, independent
+recertification, and the single targeted fallback are reported in the total
+Step-2 Provider count but are not allowed to shrink the declared joint-search
+coverage. Every finite result continues to report
+`globality_certificate = not_guaranteed`.
 
 ### Step 3 — initialize the dual problem and \(\mathcal M\)
 
@@ -524,7 +609,18 @@ is not a valid bound on its dual function.
 For every valid vector, solve
 \(P(T,V,\bar{\mathbf{x}}^{(EC)})=P_o\), and insert the resulting
 \((V,\bar{\mathbf{x}}^{(EC)})\) into \(\mathcal M\). Step 3 therefore
-contributes the feed plus \(2(C-2)\) Appendix-C bounding states.
+contributes the feed plus \(2(C-2)\) Appendix-C bounding states as the
+paper-defined initialization.
+
+**Implementation policy for multivariate finite search:** when \(C-2>1\),
+also retain the independently certified negative-TPD state returned by Step 2
+as one additional physical cut in \(\mathcal M\). The axis-aligned Appendix-C
+states bracket each multiplier direction but do not represent the interior
+multivariate witness that established instability. In one dimension the two
+Appendix-C states already bracket the complete interval, so the witness is not
+inserted. This is a declared finite-search acceleration; it does not replace
+an Appendix-C state, change the lower-bound semantics, or upgrade
+`globality_certificate="not_guaranteed"`.
 
 **Paper erratum resolution:** the prose of Appendix C says
 “for each \(i\in\mathcal C\),” while the equations, the \(C-2\)-dimensional
@@ -543,12 +639,13 @@ finite box may be invented without a cited formula and a revision to this
 specification.
 
 The rewrite must test lower/upper bracketing, exact simplex closure, the
-inverse Eq. (30) lift, and the four-component Table 5 coordinate layout.
+inverse Eq. (30) lift, the one-dimensional no-extra-cut rule, and the
+four-component Table 5 coordinate layout with its retained interior witness.
 
 **Implementation policy:** if a constructed composition has multiple pressure
 roots, select the unique lowest-objective strict-stable root. A missing root or
-unresolved objective tie terminates indeterminate. Do not insert Stage-I
-witnesses, arbitrary perturbations, or synthetic points into \(\mathcal M\).
+unresolved objective tie terminates indeterminate. Do not insert arbitrary
+perturbations or synthetic points into \(\mathcal M\).
 
 ## Stage II — identify candidate stable phases
 
@@ -636,8 +733,11 @@ be reported as a new cut.
 - use the repository’s named physical KKT and dual-reconstruction tolerances
   for the independent local-solution certificate;
 - maintain one tight physical-state equivalence rule for \(\mathcal M\)
-  membership, expressed in modified composition and Provider packing
-  fraction; keep Eq. (66) phase distinctness as a separate, looser rule;
+  membership, expressed in modified composition and molar volume, matching
+  Appendix C's stored \((V,\bar{\mathbf{x}}^{(EC)})\) pair. Compare volume
+  through log-volume difference as a dimensionless relative-volume measure;
+  keep Eq. (66) Provider-packing-fraction distinctness as a separate, looser
+  rule;
 - if the qualifying solution is representation-equivalent, proceed through
   Steps 6–7 without claiming a new cut; the next major consumes the next
   unused start ordinal rather than replaying the same search; and
@@ -647,7 +747,10 @@ be reported as a new cut.
 Within one invocation, this step does not seek two candidates and does not
 continue merely to find a different basin after its stop condition has been
 met. Algorithm 1 can return through Step 7 with an unchanged \(\mathcal M\);
-the persistent start ordinal makes that later invocation new work.
+the persistent start ordinal makes that later invocation new work. The
+Khudaida Figure-2 audit confirmed that forcing all 128 default starts after
+the paper stop condition adds 238--285 seconds per feed and changes later
+candidate selection; it is prohibited.
 
 ### Step 6 — search all of \(\mathcal M\)
 
@@ -815,14 +918,52 @@ manufacture a Step-6 candidate count.
 
 1. Visit solved phases by stable candidate ID. Build a greedy maximal
    pairwise-distinct set using the named `phase_merge` test in physical
-   composition and Provider packing fraction; do not apply a nontransitive
-   equivalence-class algorithm. Retain the larger-weight numerical
-   representative of a duplicate pair; break equal-weight ties by stable ID.
+   composition and molar volume, matching the paper's “same composition and
+   volume” duplicate rule. Use log-volume difference only as a dimensionless
+   relative-volume measure; do not apply a nontransitive equivalence-class
+   algorithm. Retain the larger-weight numerical representative of a
+   duplicate pair; break equal-weight ties by stable ID.
 2. Sum a removed numerical duplicate's phase fraction into its retained
    representative and re-run the full balance and physical certificates.
-3. Do not retire a distinct phase based on a small interior-point phase
-   fraction. Algorithm 1 removes duplicate phases only, and a second
-   same-major Problem-(67) solve is not part of the paper workflow.
+3. Do not retire a distinct phase because its amount or any component
+   fraction is small. Trace component fractions remain valid linear Step-8
+   variables and do not trigger phase identity changes.
+4. After a full KKT audit passes, a positive lower-bound phase-amount
+   multiplier above the named retirement margin may nominate one inactive
+   candidate. Remove at most that one candidate and re-solve Problem (67) on
+   the retained neighborhoods, preserving their complete composition freedom.
+5. Accept the reduced active set only after the reduced solve independently
+   passes every nonlinear, KKT, balance, physical, and phase-identity gate.
+   Preserve the reduced candidate-ID/continuation mapping. If the reduced solve
+   fails, terminate indeterminate at Step 8.
+6. A supplied active-set continuation is an optimizer initial condition, not
+   scientific evidence. If that warm solve fails any Step-8 acceptance gate,
+   retry the identical candidate problem once from the deterministic cold
+   initialization. Combine resource accounting across both attempts and
+   terminate indeterminate if the cold attempt also fails.
+
+**Implementation policy for repeated Stage-III work:** persistent
+\(\mathcal M\) is append-only, and a stable insertion ID identifies an
+immutable physical cut. After a Stage-III return, initialize the next
+Problem-(67) candidate problem from the previously retained active IDs plus
+the newest currently eligible Step-6 ID. If that selection contains fewer
+than two candidates, use the complete current \(\mathcal M^*\). Surviving
+candidate neighborhoods may be recentered only under the boundary rule above.
+
+If the resulting ordered stable-ID vector is exactly unchanged from the
+previous Step-8 solve, reuse that certified Problem-(67) result instead of
+replaying the same nonlinear problem. This is exact memoization, not scientific
+acceptance: the feed and immutable candidate states are unchanged, and
+Problem (67) contains neither the Step-4 multipliers nor \(UBD^V\). Step 9 is
+still executed against the current Step-4 upper bound. Any new cut, changed
+eligibility, changed stable-ID order, or uncertified previous result requires
+a new Step-8 solve.
+
+Step 8 remains in linear phase amounts and modified composition coordinates.
+Logarithmic coordinates would remove the exact zero needed for inactive phase
+amounts and would make the exact linear material balances nonlinear. Only the
+Step-10 charged trace refinement uses the bounded logarithmic coordinate
+specified by the hybrid coordinate contract.
 
 ### Step 9 — convergence tests
 
@@ -872,7 +1013,12 @@ not be substituted silently for Eq. (69).
 **Transition:**
 
 - Eq. (68), or Eq. (69) for a non-trace component, violated: increment \(k\)
-  and return to Step 4 without discarding \(\mathcal M\);
+  and return to Step 4 without discarding \(\mathcal M\). Retain the
+  independently certified Step-8 phase states as cutting planes, and
+  recenter the next Problem-(67) neighborhoods for surviving candidate
+  identities on those refined states. The radius remains the paper's fixed
+  \(10^{-3}\); feedback advances the local neighborhoods rather than
+  widening them;
 - both tests pass: proceed to Step 10;
 - Eq. (69) fails only for charged components pinned to the finite Step-1
   search floor: proceed to Step 10 for bounded logarithmic refinement and
@@ -1014,6 +1160,7 @@ held2(T, P0, x0):
 
         s9 = step9_convergence(state, s8)
         if s9 == paper_convergence_failed:
+            state.M.insert_independently_certified(s8.active_phases)
             step7_continue(state)
             continue
         if s9 != certified:
@@ -1021,6 +1168,10 @@ held2(T, P0, x0):
 
         s10 = step10_refine_trace_components(state, s8)
         if not s10.certified:
+            if s10 requests_stage_ii:
+                state.M.insert_independently_certified(s8.active_phases)
+                step7_continue(state)
+                continue
             return indeterminate(step=10)
         return accepted_multiphase_result(s10)
 ```
@@ -1100,8 +1251,9 @@ construct diagnostics.
 - Every non-paper numerical choice is present in the implementation-policy
   sections above.
 - A review must find no same-major candidate quota, candidate-origin gate,
-  log-volume proxy for \(\eta\), arbitrary Step-3 cuts, or Python-only
-  scientific gate.
+  log-volume proxy for the Eq. (66) packing fraction \(\eta\), arbitrary
+  Step-3 cuts, or Python-only scientific gate. Log-volume remains the
+  relative-volume coordinate for identities whose paper variable is \(V\).
 
 ### Step tests
 
@@ -1114,9 +1266,10 @@ Each step has manufactured tests for:
 - trace on/off result identity; and
 - resource exhaustion where applicable.
 
-Step 3 tests the exact Appendix-C formulas and exactly
-\(1+2(C-2)\) initial states. Step 5 tests stopping at the first best value
-satisfying \(\bar L^{V,k}\leq UBD^V\). Step 6 tests reuse of old
+Step 3 tests the exact \(1+2(C-2)\) Appendix-C states and the additional
+multivariate Step-2 witness. Step 5 tests stopping at the first best value
+satisfying \(\bar L^{V,k}\leq UBD^V\) and advancing the persistent start
+ordinal by exactly the starts consumed. Step 6 tests reuse of old
 \(\mathcal M\) members under new multipliers and packing-fraction
 distinctness.
 
@@ -1239,14 +1392,17 @@ The rewrite must not contain:
 - continuation after Step 5 solely to find another basin;
 - Step-6 eligibility restricted to Step-5 KKT-certified origins;
 - Step-6 search restricted to current-major terminals;
-- Stage-I witnesses inserted into \(\mathcal M\);
+- Stage-I witnesses inserted unconditionally or used to replace Appendix-C
+  cuts;
 - arbitrary coordinate perturbations inserted in place of Appendix C;
 - infinite multiplier bounds made finite by unrelated synthetic cuts;
 - basin-identity tolerances used to suppress nonidentical \(\mathcal M\)
   members;
 - exact-bit comparison used to accumulate numerical copies of one
   \(\mathcal M\) member;
-- log-volume distance used as packing fraction;
+- log-volume distance substituted for Provider packing fraction in Eq. (66);
+- Provider packing fraction substituted for Appendix C's persistent
+  composition-and-volume identity;
 - a 24-major scientific default presented as part of Perdomo HELD2.0;
 - Provider or optimizer replay for JSON construction;
 - an overall Table-5 feed fabricated from molality plus an arbitrary water,

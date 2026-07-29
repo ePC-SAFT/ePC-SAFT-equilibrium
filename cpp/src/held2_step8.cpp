@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace epcsaft_equilibrium {
 namespace {
@@ -25,33 +24,6 @@ std::vector<double> independent(
         )]);
     }
     return result;
-}
-
-std::uint64_t nearest_id(
-    const std::vector<Held2MPoint>& candidates,
-    const std::vector<double>& composition
-) {
-    return std::min_element(
-        candidates.begin(),
-        candidates.end(),
-        [&](const Held2MPoint& left, const Held2MPoint& right) {
-            const auto distance = [&](const Held2MPoint& point) {
-                double value = 0.0;
-                for (std::size_t index = 0; index < composition.size(); ++index) {
-                    value = std::max(value, std::abs(
-                        point.independent_modified_fractions[index]
-                        - composition[index]
-                    ));
-                }
-                return value;
-            };
-            const double left_distance = distance(left);
-            const double right_distance = distance(right);
-            return left_distance == right_distance
-                ? left.insertion_id < right.insertion_id
-                : left_distance < right_distance;
-        }
-    )->insertion_id;
 }
 
 }  // namespace
@@ -99,8 +71,42 @@ Held2Step8Result run_held2_step8(
         }
     }
     if (selected_points.size() < 2) {
-        result.reason = "active_set_incomplete";
-        return result;
+        selected_points = step6.candidates;
+    }
+    if (continue_active_set) {
+        for (Held2MPoint& point : selected_points) {
+            const auto refined = std::find_if(
+                previous->active_phases.begin(),
+                previous->active_phases.end(),
+                [&](const Held2Phase& phase) {
+                    return phase.stable_id == point.insertion_id;
+                }
+            );
+            if (refined != previous->active_phases.end()) {
+                bool neighborhood_boundary_active = false;
+                for (std::size_t coordinate = 0;
+                     coordinate
+                        < point.independent_modified_fractions.size();
+                     ++coordinate) {
+                    neighborhood_boundary_active =
+                        neighborhood_boundary_active
+                        || std::abs(
+                            refined->independent_modified_fractions[
+                                coordinate
+                            ]
+                            - point.independent_modified_fractions[
+                                coordinate
+                            ]
+                        ) >= kHeld2Problem67Radius
+                            - kHeld2BoundActivity.atol;
+                }
+                if (neighborhood_boundary_active) {
+                    point.independent_modified_fractions =
+                        refined->independent_modified_fractions;
+                    point.volume = refined->volume;
+                }
+            }
+        }
     }
     for (const Held2MPoint& point : selected_points) {
         result.candidate_ids.push_back(point.insertion_id);
@@ -116,11 +122,9 @@ Held2Step8Result run_held2_step8(
             (*step1.volume_bounds)(point.independent_modified_fractions);
         ++provider_evaluations;
         candidates.push_back({
-            {},
             point.independent_modified_fractions,
             point.volume,
             std::log(point.volume),
-            point.reduced_gibbs,
         });
         bounds.push_back({
             std::log(physical_bounds[0]), std::log(physical_bounds[1]),
@@ -208,24 +212,40 @@ Held2Step8Result run_held2_step8(
             );
         }
     }
-    const Held2Problem67Result solved = solve_held2_problem67(
-        *step1.coordinates,
+    const bool warm_started = !initial.empty();
+    const std::vector<double> physical_feed =
         held2_lift_independent_fractions(
             *step1.coordinates, *step1.independent_feed
-        ),
-        candidates,
-        counted_evaluator,
-        bounds,
-        std::numeric_limits<double>::quiet_NaN(),
-        "unavailable",
-        std::move(initial),
-        counted_value
-    );
+        );
+    const auto solve = [&](std::vector<double> start) {
+        return solve_held2_problem67(
+            *step1.coordinates, physical_feed,
+            candidates, counted_evaluator, bounds,
+            std::move(start), counted_value
+        );
+    };
+    Held2Problem67Result solved = solve(std::move(initial));
+    if (warm_started
+        && solved.failure_reason == "stage_iii_solver_not_converged") {
+        Held2Problem67Result cold = solve({});
+        cold.stage_iii_solve_count += solved.stage_iii_solve_count;
+        cold.optimizer_iteration_count +=
+            solved.optimizer_iteration_count;
+        solved = std::move(cold);
+    }
     result.timing.provider_evaluations = provider_evaluations;
     result.timing.optimizer_solves =
         static_cast<std::uint64_t>(solved.stage_iii_solve_count);
     result.timing.optimizer_iterations =
         static_cast<std::uint64_t>(solved.optimizer_iteration_count);
+    if (!solved.candidate_indices.empty()) {
+        result.candidate_ids.clear();
+        for (std::size_t index : solved.candidate_indices) {
+            result.candidate_ids.push_back(
+                selected_points.at(index).insertion_id
+            );
+        }
+    }
     result.continuation_variables = solved.solution_variables;
     result.ordinary_balance_inf = solved.ordinary_balance_inf_norm;
     result.electroneutrality_inf = solved.phase_charge_inf_norm;
@@ -276,7 +296,9 @@ Held2Step8Result run_held2_step8(
         return result;
     }
 
-    for (const Held2Problem67Phase& phase : solved.phases) {
+    for (std::size_t phase_index = 0;
+         phase_index < solved.phases.size(); ++phase_index) {
+        const Held2Problem67Phase& phase = solved.phases[phase_index];
         const std::vector<double> composition =
             independent(*step1.coordinates, phase.modified_fractions);
         ++provider_evaluations;
@@ -286,7 +308,7 @@ Held2Step8Result run_held2_step8(
         const double phase_packing_fraction =
             packing_fraction(composition, phase.volume);
         result.active_phases.push_back({
-            nearest_id(selected_points, composition),
+            result.candidate_ids.at(phase_index),
             phase.phase_fraction,
             composition,
             phase.physical_fractions,
@@ -295,6 +317,8 @@ Held2Step8Result run_held2_step8(
             state.helmholtz_over_rt_reference_amount,
             state.pressure_pa,
             state.chemical_potentials_over_rt,
+            state.objective,
+            state.gradient,
         });
     }
     result.timing.provider_evaluations = provider_evaluations;

@@ -8,12 +8,28 @@ from epcsaft_equilibrium import _equilibrium
 
 WATER_MOLAR_MASS_G_PER_MOL = 18.0153
 PERDOMO_TABLE3_NACL_MOL_PER_KG_WATER = 5.6
+NUMERICAL_ATOL = 1.0e-8
+NUMERICAL_RTOL = 1.0e-8
+PHASE_FRACTION_ATOL = 5.0e-8
+PHASE_VOLUME_ATOL = 5.0e-8
+PHASE_COMPOSITION_ATOL = 5.0e-7
+
+
+def _nacl_feed(molality_mol_per_kg: float) -> tuple[float, float, float]:
+    amounts = (
+        1000.0 / WATER_MOLAR_MASS_G_PER_MOL,
+        molality_mol_per_kg,
+        molality_mol_per_kg,
+    )
+    return tuple(value / sum(amounts) for value in amounts)
+
+
 _source_amounts = (
     1000.0 / WATER_MOLAR_MASS_G_PER_MOL,
     PERDOMO_TABLE3_NACL_MOL_PER_KG_WATER,
     PERDOMO_TABLE3_NACL_MOL_PER_KG_WATER,
 )
-PERDOMO_TABLE3_FEED = tuple(value / sum(_source_amounts) for value in _source_amounts)
+PERDOMO_TABLE3_FEED = _nacl_feed(PERDOMO_TABLE3_NACL_MOL_PER_KG_WATER)
 
 
 def _perdomo_table3_model() -> epcsaft.EPCSAFT:
@@ -104,16 +120,101 @@ def test_perdomo_table3_nacl_workflow() -> None:
     assert result["globality_certificate"] == "not_guaranteed"
 
 
-def test_public_tp_flash_uses_the_paper_held2_route() -> None:
+@pytest.mark.parametrize(
+    (
+        "pressure_pa",
+        "molality_mol_per_kg",
+        "expected_outcome",
+        "expected_free_energy",
+        "expected_phase_fractions",
+        "expected_mole_fractions",
+        "expected_phase_volumes",
+    ),
+    (
+        pytest.param(
+            3181.454397,
+            0.005000000139214637,
+            "physical_equilibrium_accepted",
+            0.2115564867696947,
+            (0.9851851698936737, 0.014814830106326362),
+            (
+                (0.9999403402476303, 2.9829876184803458e-05, 2.9829876184803458e-05),
+                (0.9918092444117386, 0.004095377794130721, 0.004095377794130721),
+            ),
+            (1.7802235135045623e-05, 0.011511741581933847),
+            id="figure1a-0.005molal-below-boundary",
+        ),
+        pytest.param(
+            3213.5903,
+            0.005000000139214637,
+            "physical_equilibrium_accepted",
+            0.21162822804854456,
+            (0.9976330842742641, 0.0023669157257357933),
+            (
+                (0.9998598441728949, 7.007791355255787e-05, 7.007791355255787e-05),
+                (0.9829751159939637, 0.008512442003018143, 0.008512442003018143),
+            ),
+            (1.8026580233950744e-05, 0.0018208010582469352),
+            id="figure1a-0.005molal-source-boundary",
+        ),
+        pytest.param(
+            2508.0,
+            5.6,
+            "one_phase_no_negative_witness_detected",
+            -24.27753305522489,
+            (1.0,),
+            ((0.8321050353538131, 0.08394748232309347, 0.08394748232309347),),
+            (0.9849669198212629,),
+            id="table3-5.6molal",
+        ),
+    ),
+)
+def test_perdomo_nacl_public_results_remain_in_the_numerical_regression_region(
+    pressure_pa: float,
+    molality_mol_per_kg: float,
+    expected_outcome: str,
+    expected_free_energy: float,
+    expected_phase_fractions: tuple[float, ...],
+    expected_mole_fractions: tuple[tuple[float, ...], ...],
+    expected_phase_volumes: tuple[float, ...],
+) -> None:
+    feed = _nacl_feed(molality_mol_per_kg)
     result = epcsaft_equilibrium.tp_flash(
         _perdomo_table3_model(),
         298.15 * epcsaft.unit_registry.kelvin,
-        2508.0 * epcsaft.unit_registry.pascal,
-        PERDOMO_TABLE3_FEED,
+        pressure_pa * epcsaft.unit_registry.pascal,
+        feed,
     )
 
-    assert result.diagnostics.outcome == "one_phase_no_negative_witness_detected"
+    assert result.diagnostics.outcome == expected_outcome
+    assert result.diagnostics.solver_status == "passed"
+    assert result.diagnostics.numerical_status == "passed"
+    assert result.diagnostics.physical_status == "passed"
     assert result.diagnostics.globality_certificate == "not_guaranteed"
-    assert result.overall_mole_fractions == pytest.approx(PERDOMO_TABLE3_FEED)
-    assert result.phase_fractions == pytest.approx((1.0,))
-    assert result.phases[0].mole_fractions == pytest.approx(PERDOMO_TABLE3_FEED)
+    assert result.overall_mole_fractions == pytest.approx(
+        feed,
+        abs=NUMERICAL_ATOL,
+        rel=NUMERICAL_RTOL,
+    )
+    assert result.total_free_energy_over_rt == pytest.approx(
+        expected_free_energy,
+        abs=NUMERICAL_ATOL,
+        rel=NUMERICAL_RTOL,
+    )
+    assert result.phase_fractions == pytest.approx(
+        expected_phase_fractions,
+        abs=PHASE_FRACTION_ATOL,
+        rel=NUMERICAL_RTOL,
+    )
+    assert tuple(phase.volume_m3 for phase in result.phases) == pytest.approx(
+        expected_phase_volumes,
+        abs=PHASE_VOLUME_ATOL,
+        rel=NUMERICAL_RTOL,
+    )
+    assert len(result.phases) == len(expected_mole_fractions)
+    for phase, expected in zip(result.phases, expected_mole_fractions, strict=True):
+        assert phase.mole_fractions == pytest.approx(
+            expected,
+            abs=PHASE_COMPOSITION_ATOL,
+            rel=NUMERICAL_RTOL,
+        )

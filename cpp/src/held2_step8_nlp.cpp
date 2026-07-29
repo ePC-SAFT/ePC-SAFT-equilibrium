@@ -623,11 +623,18 @@ std::string ipopt_status(Ipopt::ApplicationReturnStatus status) {
     }
 }
 
-std::string problem67_feasibility(
+struct Problem67FeasibilityResult {
+    std::string status = "indeterminate";
+    std::vector<double> phase_fractions;
+    std::vector<std::vector<double>> compositions;
+};
+
+Problem67FeasibilityResult problem67_feasibility(
     const Held2Coordinates& coordinates,
     const std::vector<double>& feed,
     const std::vector<Held2StageIICandidate>& candidates
 ) {
+    Problem67FeasibilityResult result;
     const std::size_t phase_count = candidates.size();
     const std::size_t dimension = feed.size();
     const std::size_t fraction_count = phase_count;
@@ -739,15 +746,45 @@ std::string problem67_feasibility(
         ) == HighsStatus::kError
         || highs.passModel(model) == HighsStatus::kError
         || highs.run() == HighsStatus::kError) {
-        return "indeterminate";
+        return result;
     }
     if (highs.getModelStatus() == HighsModelStatus::kInfeasible) {
-        return "infeasible";
+        result.status = "infeasible";
+        return result;
     }
-    return highs.getModelStatus() == HighsModelStatus::kOptimal
-        && highs.getInfo().primal_solution_status
-            == kSolutionStatusFeasible
-        ? "feasible" : "indeterminate";
+    const HighsSolution& solution = highs.getSolution();
+    if (highs.getModelStatus() != HighsModelStatus::kOptimal
+        || highs.getInfo().primal_solution_status
+            != kSolutionStatusFeasible
+        || !solution.value_valid
+        || solution.col_value.size()
+            != fraction_count + phase_count * dimension) {
+        return result;
+    }
+    result.phase_fractions.assign(
+        solution.col_value.begin(),
+        solution.col_value.begin()
+            + static_cast<std::ptrdiff_t>(fraction_count)
+    );
+    result.compositions.reserve(phase_count);
+    for (std::size_t phase = 0; phase < phase_count; ++phase) {
+        const double fraction = result.phase_fractions[phase];
+        std::vector<double> composition =
+            candidates[phase].independent_modified_fractions;
+        if (fraction > 0.0) {
+            for (std::size_t coordinate = 0;
+                 coordinate < dimension;
+                 ++coordinate) {
+                const double weighted = solution.col_value[
+                    fraction_count + phase * dimension + coordinate
+                ];
+                composition[coordinate] = weighted / fraction;
+            }
+        }
+        result.compositions.push_back(std::move(composition));
+    }
+    result.status = "feasible";
+    return result;
 }
 
 double charge_residual(
@@ -759,66 +796,6 @@ double charge_residual(
         residual += charges[index] * fractions[index];
     }
     return residual;
-}
-
-bool recover_phase_fractions(
-    const std::vector<double>& feed,
-    std::vector<Held2Problem67Phase>& phases
-) {
-    const HighsInt count = static_cast<HighsInt>(phases.size());
-    HighsModel model;
-    model.lp_.num_col_ = count;
-    model.lp_.num_row_ = static_cast<HighsInt>(feed.size() + 1);
-    model.lp_.col_lower_.assign(phases.size(), 0.0);
-    model.lp_.col_upper_.assign(phases.size(), 1.0);
-    model.lp_.a_matrix_.format_ = MatrixFormat::kRowwise;
-    model.lp_.a_matrix_.start_ = {0};
-    model.hessian_.dim_ = count;
-    model.hessian_.start_ = {0};
-    for (HighsInt phase = 0; phase < count; ++phase) {
-        const double fraction =
-            phases[static_cast<std::size_t>(phase)].phase_fraction;
-        model.lp_.col_cost_.push_back(-fraction);
-        model.hessian_.index_.push_back(phase);
-        model.hessian_.value_.push_back(1.0);
-        model.hessian_.start_.push_back(phase + 1);
-        model.lp_.a_matrix_.index_.push_back(phase);
-        model.lp_.a_matrix_.value_.push_back(1.0);
-    }
-    model.lp_.row_lower_.push_back(1.0);
-    model.lp_.row_upper_.push_back(1.0);
-    model.lp_.a_matrix_.start_.push_back(count);
-    for (std::size_t coordinate = 0; coordinate < feed.size(); ++coordinate) {
-        for (HighsInt phase = 0; phase < count; ++phase) {
-            model.lp_.a_matrix_.index_.push_back(phase);
-            model.lp_.a_matrix_.value_.push_back(
-                phases[static_cast<std::size_t>(phase)]
-                    .physical_fractions[coordinate]
-            );
-        }
-        model.lp_.row_lower_.push_back(feed[coordinate]);
-        model.lp_.row_upper_.push_back(feed[coordinate]);
-        model.lp_.a_matrix_.start_.push_back(
-            static_cast<HighsInt>(model.lp_.a_matrix_.index_.size())
-        );
-    }
-    Highs highs;
-    if (highs.setOptionValue("output_flag", false) == HighsStatus::kError
-        || highs.setOptionValue("threads", 1) == HighsStatus::kError
-        || highs.passModel(model) == HighsStatus::kError
-        || highs.run() == HighsStatus::kError
-        || highs.getModelStatus() != HighsModelStatus::kOptimal) {
-        return false;
-    }
-    const HighsSolution& solution = highs.getSolution();
-    if (!solution.value_valid
-        || solution.col_value.size() != phases.size()) {
-        return false;
-    }
-    for (std::size_t phase = 0; phase < phases.size(); ++phase) {
-        phases[phase].phase_fraction = solution.col_value[phase];
-    }
-    return true;
 }
 
 Held2Problem67Evaluation evaluate_problem67(
@@ -939,14 +916,14 @@ Held2Problem67Result solve_held2_problem67(
     const std::vector<Held2StageIICandidate>& candidates,
     const Held2StateEvaluator& evaluator,
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
-    double free_energy_upper_bound,
-    const std::string& free_energy_gap_provenance,
     std::vector<double> variables,
     const Held2StateValueEvaluator& value_evaluator
 ) {
     Held2Problem67Result result;
-    result.input_candidate_count = static_cast<int>(candidates.size());
     result.stage_iii_solve_count = 1;
+    for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+        result.candidate_indices.push_back(phase);
+    }
     const std::size_t dimension = coordinates.independent_indices.size();
     const std::size_t block_size = dimension + 2;
     if (candidates.size() < 2
@@ -965,15 +942,27 @@ Held2Problem67Result solve_held2_problem67(
         result.failure_reason = "feed_dimension_changed";
         return result;
     }
-    const std::string feasibility = problem67_feasibility(
+    if (std::any_of(
+            candidates.begin(),
+            candidates.end(),
+            [dimension](const Held2StageIICandidate& candidate) {
+                return candidate.independent_modified_fractions.size()
+                    != dimension;
+            }
+        )) {
+        result.failure_reason = "candidate_dimension_changed";
+        return result;
+    }
+    const Problem67FeasibilityResult feasibility =
+        problem67_feasibility(
         coordinates, feed, candidates
     );
-    if (feasibility == "infeasible") {
+    if (feasibility.status == "infeasible") {
         result.solver_status = "infeasible_problem_detected";
         result.failure_reason = "problem_67_infeasible";
         return result;
     }
-    if (feasibility != "feasible") {
+    if (feasibility.status != "feasible") {
         result.solver_status = "feasibility_indeterminate";
         result.failure_reason = "problem_67_feasibility_indeterminate";
         return result;
@@ -990,17 +979,11 @@ Held2Problem67Result solve_held2_problem67(
     std::vector<double> lower(variable_count);
     std::vector<double> upper(variable_count);
     for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
-        if (candidates[phase].independent_modified_fractions.size()
-            != dimension) {
-            result.failure_reason = "candidate_dimension_changed";
-            return result;
-        }
         const std::size_t offset = phase * block_size;
         lower[offset] = 0.0;
         upper[offset] = 1.0;
         if (!supplied_initial) {
-            variables[offset] =
-                1.0 / static_cast<double>(candidates.size());
+            variables[offset] = feasibility.phase_fractions[phase];
         }
         for (std::size_t coordinate = 0;
              coordinate < dimension;
@@ -1019,8 +1002,8 @@ Held2Problem67Result solve_held2_problem67(
                     + kHeld2Problem67Radius
             );
             if (!supplied_initial) {
-                variables[variable] = candidates[phase]
-                    .independent_modified_fractions[coordinate];
+                variables[variable] =
+                    feasibility.compositions[phase][coordinate];
             }
         }
         const std::size_t volume = offset + 1 + dimension;
@@ -1078,6 +1061,9 @@ Held2Problem67Result solve_held2_problem67(
         "constr_viol_tol", kHeld2IpoptConstraint.atol
     );
     application->Options()->SetStringValue(
+        "nlp_scaling_method", "gradient-based"
+    );
+    application->Options()->SetStringValue(
         "jacobian_approximation", "exact"
     );
     application->Options()->SetStringValue(
@@ -1094,8 +1080,7 @@ Held2Problem67Result solve_held2_problem67(
         application->OptimizeTNLP(nlp_problem);
     result.solver_status = ipopt_status(status);
     result.optimizer_iteration_count = raw->iterations();
-    if (!raw->converged()
-        && raw->variables().size() != variable_count) {
+    if (!raw->converged()) {
         result.numerical_status = "not_converged";
         result.failure_reason = "stage_iii_solver_not_converged";
         return result;
@@ -1117,6 +1102,7 @@ Held2Problem67Result solve_held2_problem67(
             )
         );
         double& log_volume = variables[offset + 1 + dimension];
+        bool pressure_certified = false;
         for (int iteration = 0; iteration < 8; ++iteration) {
             const Held2StateEvaluation state = evaluator(
                 independent, log_volume
@@ -1125,6 +1111,7 @@ Held2Problem67Result solve_held2_problem67(
                     kHeld2Stage3Pressure,
                     state.pressure_stationarity_relative
                 ).passed) {
+                pressure_certified = true;
                 break;
             }
             const double derivative =
@@ -1146,9 +1133,9 @@ Held2Problem67Result solve_held2_problem67(
                 return result;
             }
             log_volume = next;
-            ++result.pressure_polish_iteration_count;
         }
-        if (!audit_held2_tolerance(
+        if (!pressure_certified
+            && !audit_held2_tolerance(
                 kHeld2Stage3Pressure,
                 evaluator(independent, log_volume)
                     .pressure_stationarity_relative
@@ -1158,7 +1145,6 @@ Held2Problem67Result solve_held2_problem67(
             return result;
         }
     }
-    result.pressure_polish_status = "complete";
     result.solution_variables = variables;
 
     std::vector<double> equality_residuals;
@@ -1219,25 +1205,98 @@ Held2Problem67Result solve_held2_problem67(
     }
     result.kkt_stationarity_inf_norm = maximum_abs(stationarity);
 
-    result.objective = objective;
-    result.free_energy_upper_bound = free_energy_upper_bound;
-    result.free_energy_gap_provenance = free_energy_gap_provenance;
-    result.free_energy_gap_available =
-        std::isfinite(free_energy_upper_bound)
-        && !free_energy_gap_provenance.empty()
-        && free_energy_gap_provenance != "unavailable";
-    if (result.free_energy_gap_available) {
-        result.free_energy_gap = free_energy_upper_bound - objective;
+    const bool retirement_evidence =
+        audit_held2_tolerance(
+            kHeld2Stage3ModifiedBalance,
+            result.modified_balance_inf_norm
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3Stationarity,
+            result.kkt_stationarity_inf_norm
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3DualSign,
+            result.dual_sign_violation_inf_norm
+        ).passed
+        && audit_held2_tolerance(
+            kHeld2Stage3Complementarity,
+            result.bound_complementarity_inf_norm
+        ).passed;
+    std::size_t retired_index = candidates.size();
+    if (retirement_evidence) {
+        for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+            if (z_lower[phase * block_size]
+                    > kHeld2PhaseRetirementMargin.atol
+                && (retired_index == candidates.size()
+                    || z_lower[phase * block_size]
+                        > z_lower[retired_index * block_size])) {
+                retired_index = phase;
+            }
+        }
     }
-    result.minimum_phase_fraction =
-        std::numeric_limits<double>::infinity();
+    if (retired_index < candidates.size() && candidates.size() > 2) {
+        std::vector<Held2StageIICandidate> retained_candidates;
+        std::vector<std::array<double, 2>> retained_bounds;
+        std::vector<double> retained_variables;
+        retained_candidates.reserve(candidates.size() - 1);
+        retained_bounds.reserve(candidates.size() - 1);
+        retained_variables.reserve(
+            (candidates.size() - 1) * block_size
+        );
+        for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+            if (phase == retired_index) {
+                continue;
+            }
+            retained_candidates.push_back(candidates[phase]);
+            retained_bounds.push_back(phase_coordinate_bounds[phase]);
+            const std::size_t offset = phase * block_size;
+            retained_variables.insert(
+                retained_variables.end(),
+                variables.begin() + static_cast<std::ptrdiff_t>(offset),
+                variables.begin()
+                    + static_cast<std::ptrdiff_t>(offset + block_size)
+            );
+        }
+        Held2Problem67Result refined = solve_held2_problem67(
+            coordinates,
+            physical_feed,
+            retained_candidates,
+            evaluator,
+            retained_bounds,
+            std::move(retained_variables),
+            value_evaluator
+        );
+        if (refined.numerical_status == "converged") {
+            std::vector<std::size_t> candidate_indices;
+            candidate_indices.reserve(refined.candidate_indices.size());
+            for (std::size_t phase : refined.candidate_indices) {
+                candidate_indices.push_back(
+                    phase < retired_index ? phase : phase + 1
+                );
+            }
+            refined.candidate_indices = std::move(candidate_indices);
+            refined.stage_iii_solve_count += result.stage_iii_solve_count;
+            refined.optimizer_iteration_count +=
+                result.optimizer_iteration_count;
+            return refined;
+        }
+        result.numerical_status = "not_converged";
+        result.failure_reason = "stage_iii_active_set_resolve_failed";
+        return result;
+    }
+    if (retired_index < candidates.size()) {
+        result.numerical_status = "not_converged";
+        result.failure_reason = "collapsed_phase_set";
+        return result;
+    }
+
+    result.objective = objective;
+    const std::vector<std::size_t> source_candidate_indices =
+        result.candidate_indices;
+    std::vector<std::size_t> active_candidate_indices;
     for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
         const std::size_t offset = phase * block_size;
         const double fraction = variables[offset];
-        if (z_lower[offset] > kHeld2PhaseRetirementMargin.atol) {
-            ++result.retired_inactive_count;
-            continue;
-        }
         const std::vector<double> independent(
             variables.begin() + static_cast<std::ptrdiff_t>(offset + 1),
             variables.begin() + static_cast<std::ptrdiff_t>(
@@ -1271,72 +1330,40 @@ Held2Problem67Result solve_held2_problem67(
         );
         if (duplicate == result.phases.end()) {
             result.phases.push_back(std::move(current));
+            active_candidate_indices.push_back(
+                source_candidate_indices.at(phase)
+            );
         } else {
+            const std::size_t retained = static_cast<std::size_t>(
+                duplicate - result.phases.begin()
+            );
             const double combined =
                 duplicate->phase_fraction + current.phase_fraction;
-            const double retained_weight =
-                duplicate->phase_fraction / combined;
-            const double current_weight =
-                current.phase_fraction / combined;
-            for (std::size_t index = 0;
-                 index < duplicate->modified_fractions.size();
-                 ++index) {
-                duplicate->modified_fractions[index] =
-                    retained_weight * duplicate->modified_fractions[index]
-                    + current_weight * current.modified_fractions[index];
+            if (!(combined > 0.0)) {
+                result.failure_reason =
+                    "stage_iii_zero_weight_duplicate";
+                return result;
             }
-            for (std::size_t index = 0;
-                 index < duplicate->physical_fractions.size();
-                 ++index) {
-                duplicate->physical_fractions[index] =
-                    retained_weight * duplicate->physical_fractions[index]
-                    + current_weight * current.physical_fractions[index];
+            if (current.phase_fraction > duplicate->phase_fraction) {
+                current.phase_fraction = combined;
+                *duplicate = std::move(current);
+                active_candidate_indices[retained] =
+                    source_candidate_indices.at(phase);
+            } else {
+                duplicate->phase_fraction = combined;
             }
-            duplicate->volume =
-                retained_weight * duplicate->volume
-                + current_weight * current.volume;
-            duplicate->phase_fraction = combined;
-            ++result.retired_duplicate_count;
         }
     }
+    result.candidate_indices = std::move(active_candidate_indices);
     if (result.phases.size() < 2) {
         result.failure_reason = "collapsed_phase_set";
         return result;
     }
-    if (result.retired_inactive_count > 0) {
-        ++result.stage_iii_solve_count;
-        if (!recover_phase_fractions(
-                physical_feed, result.phases
-            )) {
-            result.failure_reason =
-                "stage_iii_phase_fraction_recovery_failed";
-            return result;
-        }
-        result.phases.erase(
-            std::remove_if(
-                result.phases.begin(),
-                result.phases.end(),
-            [](const Held2Problem67Phase& phase) {
-                return phase.phase_fraction <= 0.0;
-            }),
-            result.phases.end()
-        );
-        if (result.phases.size() < 2) {
-            result.failure_reason = "collapsed_phase_set";
-            return result;
-        }
-    }
-
     std::vector<double> modified_balance(modified_feed.size());
     std::vector<double> ordinary_balance(physical_feed.size());
     result.objective = 0.0;
     result.pressure_stationarity_inf_norm = 0.0;
-    result.minimum_phase_distance =
-        std::numeric_limits<double>::infinity();
     for (const Held2Problem67Phase& phase : result.phases) {
-        result.minimum_phase_fraction = std::min(
-            result.minimum_phase_fraction, phase.phase_fraction
-        );
         for (std::size_t index = 0;
              index < modified_balance.size();
              ++index) {
@@ -1397,32 +1424,7 @@ Held2Problem67Result solve_held2_problem67(
         result.failure_reason = "stage_iii_active_set_balance_failed";
         return result;
     }
-    for (std::size_t left = 0; left < result.phases.size(); ++left) {
-        for (std::size_t right = left + 1;
-             right < result.phases.size();
-             ++right) {
-            result.minimum_phase_distance = std::min(
-                result.minimum_phase_distance,
-                std::max(
-                    maximum_difference(
-                        result.phases[left].physical_fractions,
-                        result.phases[right].physical_fractions
-                    ),
-                    std::abs(
-                        std::log(result.phases[left].volume)
-                        - std::log(result.phases[right].volume)
-                    )
-                )
-            );
-        }
-    }
     result.numerical_status = "converged";
-    result.physical_status = "accepted";
-    result.feedback = "none";
-    result.phase_identity_status = "paper_duplicate_removal_complete";
-    result.kkt_evidence_available = true;
-    result.physical_evidence_available = true;
-    result.phase_identity_evidence_available = true;
     return result;
 }
 
