@@ -1848,12 +1848,12 @@ ChemicalSolveResult solve_reaction(
         }
         const std::size_t neutral_offset = 1 + chart.cation_indices.size() - 1
             + chart.anion_indices.size() - 1;
-        // The charged-group coordinates are log(share/reference_share).  A
-        // static +/-40 bounds are artificial floors when trace_floor is below
+        // The charged-group coordinates are log(share/reference_share).
+        // Static +/-40 bounds are artificial floors when trace_floor is below
         // exp(-40) mol. Since each share is at most one and charge_equivalents
-        // is bounded above, these conservative bounds keep every species above
-        // trace_floor in the differentiable interior while retaining a
-        // ten-fold numerical margin like the neutral coordinates.
+        // is bounded above, these conservative bounds keep any species above
+        // trace_floor away from the coordinate bounds while retaining the
+        // neutral coordinates' ten-fold numerical margin.
         const double log_trace_share_floor = std::log(0.1 * trace_floor)
             - std::log(charge_equivalent_upper);
         const auto share_upper = [&](std::size_t reference_species) {
