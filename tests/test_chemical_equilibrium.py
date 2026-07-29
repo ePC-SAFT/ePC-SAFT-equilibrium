@@ -749,6 +749,38 @@ def test_manufactured_charged_reaction_uses_exact_electroneutral_chart() -> None
     assert result.diagnostics.charge_inf_norm <= 2.0e-15
 
 
+def test_manufactured_ultra_trace_charged_share_stays_differentiable() -> None:
+    """A positive ionic share below exp(-40) is not an artificial bound."""
+
+    temperature_k = 300.0
+    trace_floor = 1.0e-18
+    spec = {
+        **_base_system(),
+        "species_ids": ("A", "C+", "D-"),
+        "charges": (0, 1, -1),
+        "molar_masses_kg_per_mol": (2.0, 1.0, 1.0),
+        "balance_matrix": ((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
+        "reaction_matrix": ((-1.0, 1.0, 1.0),),
+        "feed_amounts": (1.0, 0.0, 0.0),
+        # This produces n(C+) = n(D-) ~= 1.56e-18 mol.
+        "ln_k": (-82.0,),
+        "temperature_k": temperature_k,
+        "pressure_pa": 8.31446261815324 * temperature_k,
+    }
+    _bind_record(spec)
+
+    native = _equilibrium._chemical_equilibrium(None, spec, None, None, trace_floor)
+
+    amounts = tuple(native["amounts"])
+    assert amounts[1] > trace_floor
+    assert amounts[2] > trace_floor
+    sensitivities = native["sensitivities"]
+    assert sensitivities["status"] == "available"
+    assert sensitivities["failure_reason"] == ""
+    assert sensitivities["active_lower_bounds"] == ()
+    assert sensitivities["active_trace_species"] == ()
+
+
 def test_manufactured_equilibrium_is_gauge_scale_and_reaction_basis_invariant() -> None:
     base = _base_system()
     base["feed_amounts"] = (1.0, 0.0)

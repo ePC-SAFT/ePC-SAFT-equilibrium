@@ -1843,8 +1843,31 @@ ChemicalSolveResult solve_reaction(
                 * initialization.amount_upper_bounds[species];
         }
         upper[0] = std::log(charge_equivalent_upper);
+        if (!std::isfinite(charge_equivalent_upper) || charge_equivalent_upper <= 0.0) {
+            throw std::invalid_argument("ionic charge-equivalent upper bound is invalid");
+        }
         const std::size_t neutral_offset = 1 + chart.cation_indices.size() - 1
             + chart.anion_indices.size() - 1;
+        // The charged-group coordinates are log(share/reference_share).  A
+        // static -40 bound is an artificial floor when trace_floor is below
+        // exp(-40) mol.  Since share <= 1 and charge_equivalents <= the
+        // initialization upper bound, this conservative bound keeps every
+        // species above trace_floor in the differentiable interior while
+        // retaining a ten-fold numerical margin like the neutral coordinates.
+        const double log_trace_share_floor = std::log(0.1 * trace_floor)
+            - std::log(charge_equivalent_upper);
+        std::size_t cation_offset = 1;
+        for (std::size_t category = 0; category + 1 < chart.cation_indices.size(); ++category) {
+            const std::size_t species = chart.cation_indices[category];
+            lower[cation_offset + category] = log_trace_share_floor
+                + std::log(static_cast<double>(std::abs(system.charges[species])));
+        }
+        const std::size_t anion_offset = cation_offset + chart.cation_indices.size() - 1;
+        for (std::size_t category = 0; category + 1 < chart.anion_indices.size(); ++category) {
+            const std::size_t species = chart.anion_indices[category];
+            lower[anion_offset + category] = log_trace_share_floor
+                + std::log(static_cast<double>(std::abs(system.charges[species])));
+        }
         for (std::size_t neutral = 0; neutral < chart.neutral_indices.size(); ++neutral) {
             lower[neutral_offset + neutral] = std::log(0.1 * trace_floor);
             upper[neutral_offset + neutral] = std::log(
