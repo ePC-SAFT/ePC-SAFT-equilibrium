@@ -117,6 +117,9 @@ struct ChemicalSolveResult {
     std::string physical_status = "not_adjudicated";
     std::string provider_domain_status = "not_adjudicated";
     std::string local_minimum_status = "not_adjudicated";
+    std::string negative_curvature_recovery_status = "not_needed";
+    std::size_t negative_curvature_recovery_attempts = 0;
+    int negative_curvature_recovery_selected_sign = 0;
     std::string trace_status = "not_adjudicated";
     std::vector<double> amounts;
     double volume_m3 = 0.0;
@@ -142,6 +145,12 @@ struct ManufacturedNlpEvaluation {
     // Populated only by the private inverse-chart evidence seam.
     std::vector<double> kkt_backtransform_rhs;
     std::vector<double> kkt_backtransform_solution;
+};
+
+struct ManufacturedReducedHessianEvidence {
+    bool positive = false;
+    double curvature = 0.0;
+    std::vector<double> negative_direction;
 };
 
 struct ProviderPhaseBlockEvidence {
@@ -206,6 +215,17 @@ struct SourceStandardStateResult {
     int max_iterations = 500
 );
 
+// Private manufactured nonconvex case used only to verify the generic
+// negative-curvature recovery path. It is not a public model or capability.
+[[nodiscard]] ChemicalSolveResult solve_manufactured_nonconvex_reaction(
+    const CompiledReactionSystem& system,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& gauge_coefficients,
+    double trace_floor,
+    int max_iterations = 500
+);
+
 [[nodiscard]] ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(
     const CompiledReactionSystem& system,
     double temperature_k,
@@ -213,6 +233,18 @@ struct SourceStandardStateResult {
     const std::vector<double>& gauge_coefficients,
     const std::vector<double>& variables,
     const std::vector<double>& constraint_multipliers
+);
+
+// Private manufactured seams used to test the generic recovery mathematics.
+[[nodiscard]] ManufacturedReducedHessianEvidence
+analyze_manufactured_reduced_hessian(const std::vector<double>& hessian);
+
+[[nodiscard]] std::vector<double> manufactured_recovery_displacement(
+    const std::vector<double>& variables,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    const std::vector<double>& direction,
+    int sign
 );
 
 // Private derivative evidence seam. This is intentionally not part of the

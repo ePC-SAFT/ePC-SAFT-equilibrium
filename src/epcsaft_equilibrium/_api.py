@@ -204,6 +204,9 @@ class ChemicalEquilibriumDiagnostics:
     predictive_status: str
     provider_domain_status: str
     local_minimum_status: str
+    negative_curvature_recovery_status: str
+    negative_curvature_recovery_attempts: int
+    negative_curvature_recovery_selected_sign: int
     trace_status: str
     globality_status: str
     balance_inf_norm: float | None
@@ -880,6 +883,9 @@ def _failed_chemical_diagnostics(
         predictive_status="not_adjudicated",
         provider_domain_status="not_adjudicated",
         local_minimum_status="not_adjudicated",
+        negative_curvature_recovery_status="not_needed",
+        negative_curvature_recovery_attempts=0,
+        negative_curvature_recovery_selected_sign=0,
         trace_status="not_adjudicated",
         globality_status="not_adjudicated",
         balance_inf_norm=None,
@@ -917,6 +923,15 @@ def _chemical_diagnostics(
         predictive_status="not_adjudicated",
         provider_domain_status=str(native["provider_domain_status"]),
         local_minimum_status=str(native["local_minimum_status"]),
+        negative_curvature_recovery_status=str(
+            native.get("negative_curvature_recovery_status", "not_needed")
+        ),
+        negative_curvature_recovery_attempts=int(
+            native.get("negative_curvature_recovery_attempts", 0)
+        ),
+        negative_curvature_recovery_selected_sign=int(
+            native.get("negative_curvature_recovery_selected_sign", 0)
+        ),
         trace_status=str(native["trace_status"]),
         globality_status=str(native["globality_certificate"]),
         balance_inf_norm=float(cast(float, native["balance_inf_norm"])),

@@ -426,6 +426,90 @@ def test_manufactured_ideal_reactions_match_independent_analytic_states(
     assert diagnostics.complementarity_inf_norm <= 1.0e-7
 
 
+def test_manufactured_nonconvex_saddle_recovers_certified_lower_minimum() -> None:
+    """A deterministic tangent displacement escapes a stationary saddle only."""
+
+    spec = {**_base_system(), "ln_k": (0.0,)}
+    _bind_record(spec)
+    native = _equilibrium._chemical_solve_manufactured_nonconvex(
+        spec,
+        trace_floor=1.0e-12,
+        max_iterations=200,
+    )
+
+    assert native["accepted"] is True
+    assert native["solver_status"] == "solve_succeeded"
+    assert native["numerical_status"] == "passed"
+    assert native["physical_status"] == "passed"
+    assert native["local_minimum_status"] == "passed"
+    assert native["negative_curvature_recovery_status"] == "recovered"
+    assert native["negative_curvature_recovery_attempts"] == 2
+    assert native["negative_curvature_recovery_selected_sign"] in (-1, 1)
+    assert native["amounts"][0] != pytest.approx(native["amounts"][1], abs=1.0e-5)
+    pressure_over_rt = spec["pressure_pa"] / (8.31446261815324 * spec["temperature_k"])
+
+    def objective(amounts: tuple[float, ...], volume: float) -> float:
+        value = math.fsum(
+            amount * (math.log(amount / volume) - 1.0)
+            for amount in amounts
+        )
+        difference = amounts[0] - amounts[1]
+        value += -2.0 * difference * difference + 2.0 * difference**4
+        return value + pressure_over_rt * volume
+
+    saddle_volume = 1.0 / pressure_over_rt
+    assert objective(tuple(native["amounts"]), native["volume_m3"]) < objective(
+        (0.5, 0.5), saddle_volume
+    )
+
+
+def test_reduced_hessian_counterexample_returns_certified_direction() -> None:
+    evidence = _equilibrium._chemical_analyze_manufactured_reduced_hessian(
+        (1.0, 0.5, 0.2, 0.5, 1.0, 0.4, 0.2, 0.4, 0.15)
+    )
+
+    assert evidence["positive"] is False
+    assert evidence["curvature"] < 0.0
+    assert len(evidence["negative_direction"]) == 3
+
+
+def test_recovery_displacement_uses_mixed_sign_bound_room() -> None:
+    variables = (0.0, 0.0)
+    lower = (-1.0, -0.02)
+    upper = (1.0, 1.0)
+    direction = (1.0, -1.0)
+
+    positive = _equilibrium._chemical_manufactured_recovery_displacement(
+        variables, lower, upper, direction, 1
+    )
+    negative = _equilibrium._chemical_manufactured_recovery_displacement(
+        variables, lower, upper, direction, -1
+    )
+
+    assert positive == pytest.approx((0.005, -0.005))
+    assert negative == pytest.approx((-0.25, 0.25))
+    assert all(lower[i] < positive[i] < upper[i] for i in range(2))
+    assert all(lower[i] < negative[i] < upper[i] for i in range(2))
+
+
+def test_manufactured_ideal_case_does_not_attempt_negative_curvature_recovery() -> None:
+    spec = _base_system()
+    _bind_record(spec)
+    native = _equilibrium._chemical_equilibrium(
+        None,
+        spec,
+        None,
+        None,
+        1.0e-12,
+        None,
+    )
+
+    assert native["accepted"] is True
+    assert native["negative_curvature_recovery_status"] == "not_needed"
+    assert native["negative_curvature_recovery_attempts"] == 0
+    assert native["negative_curvature_recovery_selected_sign"] == 0
+
+
 def test_manufactured_reaction_reports_exact_conditioned_implicit_sensitivities() -> None:
     spec = _base_system()
     _bind_record(spec)
