@@ -37,7 +37,7 @@ _BELOV_SOURCE_GIBBS = (
     -17.10224518423043,
 )
 _HELD_WATER_IONIZATION_FINGERPRINT = (
-    "sha256:cc40aeb2902bfc9a7be46ceb066cfdb41c5cd5d1024fe119be3d559b75f8a256"
+    "sha256:6af6c7aec1106723cf6fa536391b7ba08f2e70ef9fe7064bcb6bb61db18644e8"
 )
 
 
@@ -97,15 +97,10 @@ def _belov_aristova_gas_system() -> tuple[dict[str, object], tuple[float, ...]]:
         (-2.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0),
         (-1.0, 0.0, 0.0, -2.0, 0.0, 0.0, 0.0, 1.0),
     )
-    concentration_shift = math.log(
-        8.31446261815324 * temperature_k / standard_pressure_pa
-    )
-    manufactured_gibbs = tuple(
-        value + concentration_shift for value in _BELOV_SOURCE_GIBBS
-    )
+    concentration_shift = math.log(8.31446261815324 * temperature_k / standard_pressure_pa)
+    manufactured_gibbs = tuple(value + concentration_shift for value in _BELOV_SOURCE_GIBBS)
     ln_k = tuple(
-        -sum(row[index] * manufactured_gibbs[index] for index in range(8))
-        for row in reactions
+        -sum(row[index] * manufactured_gibbs[index] for index in range(8)) for row in reactions
     )
     spec: dict[str, object] = {
         "species_ids": ("O", "O2", "O3", "C", "C2", "CO", "CO2", "C2O"),
@@ -166,6 +161,7 @@ def test_amount_chart_maps_neutral_logs_and_general_ionic_shares_exactly() -> No
     assert ionic["charge_residual"] == pytest.approx(0.0, abs=2.0e-15)
     assert ionic["trace_status"] == "interior"
 
+
 def test_amount_chart_has_exact_directional_first_and_second_derivatives() -> None:
     charges = (0, 2, 1, -1, -2, 0)
     center = (0.2, -0.7, 0.4, -0.3, 0.8)
@@ -186,9 +182,7 @@ def test_amount_chart_has_exact_directional_first_and_second_derivatives() -> No
     jacobian = result["jacobian"]
     hessians = result["amount_hessians"]
     for species in range(len(charges)):
-        first_directional = (upper["amounts"][species] - lower["amounts"][species]) / (
-            2.0 * step
-        )
+        first_directional = (upper["amounts"][species] - lower["amounts"][species]) / (2.0 * step)
         exact_first = sum(
             jacobian[species * dimension + column] * direction[column]
             for column in range(dimension)
@@ -201,15 +195,11 @@ def test_amount_chart_has_exact_directional_first_and_second_derivatives() -> No
                 - lower["jacobian"][species * dimension + row]
             ) / (2.0 * step)
             exact_second = sum(
-                hessians[
-                    species * dimension * dimension + row * dimension + column
-                ]
+                hessians[species * dimension * dimension + row * dimension + column]
                 * direction[column]
                 for column in range(dimension)
             )
-            assert jacobian_directional == pytest.approx(
-                exact_second, rel=2.0e-9, abs=5.0e-11
-            )
+            assert jacobian_directional == pytest.approx(exact_second, rel=2.0e-9, abs=5.0e-11)
 
 
 def test_amount_chart_classifies_trace_floor_without_zeroing_species() -> None:
@@ -276,9 +266,7 @@ def test_manufactured_ideal_reactions_match_independent_analytic_states(
     volume = expected_volume or sum(expected_amounts) / pressure_over_rt
     diagnostics = result.diagnostics
     assert result.thermodynamic_model == "ideal_gas"
-    assert result.amounts_mol == pytest.approx(
-        expected_amounts, rel=2.0e-8, abs=2.0e-10
-    )
+    assert result.amounts_mol == pytest.approx(expected_amounts, rel=2.0e-8, abs=2.0e-10)
     assert result.volume_m3 == pytest.approx(volume, rel=2.0e-8)
     assert diagnostics.solver_status == "solve_succeeded"
     assert diagnostics.numerical_status == "passed"
@@ -314,12 +302,13 @@ def test_belov_aristova_gas_restriction_resolves_extreme_positive_traces(
         sum(row[index] * amounts[index] for index in range(8))
         for row in balances  # type: ignore[union-attr]
     ) == pytest.approx((2.0, 1.0), abs=1.0e-9)
-    assert (
-        8.31446261815324 * 2000.0 * sum(amounts) / result.volume_m3
-    ) == pytest.approx(100_000.0, rel=1.0e-8)
+    assert (8.31446261815324 * 2000.0 * sum(amounts) / result.volume_m3) == pytest.approx(
+        100_000.0, rel=1.0e-8
+    )
     concentration_shift = math.log(8.31446261815324 * 2000.0 / 101_325.0)
     potentials = tuple(
-        _BELOV_SOURCE_GIBBS[index] + concentration_shift
+        _BELOV_SOURCE_GIBBS[index]
+        + concentration_shift
         + math.log(amounts[index] / result.volume_m3)
         for index in range(8)
     )
@@ -398,7 +387,8 @@ def test_belov_aristova_trace_solution_is_coordinate_invariant(variant: str) -> 
     else:
         scale = 3.0
         spec["feed_amounts"] = tuple(
-            scale * value for value in spec["feed_amounts"]  # type: ignore[union-attr]
+            scale * value
+            for value in spec["feed_amounts"]  # type: ignore[union-attr]
         )
         expected = tuple(scale * value for value in expected)
         _bind_record(spec)
@@ -452,9 +442,7 @@ def test_manufactured_equilibrium_is_gauge_scale_and_reaction_basis_invariant() 
     assert scaled_result.amounts_mol == pytest.approx(
         tuple(7.0 * value for value in plain.amounts_mol), rel=3.0e-8
     )
-    assert scaled_result.volume_m3 == pytest.approx(
-        7.0 * plain.volume_m3, rel=3.0e-8
-    )
+    assert scaled_result.volume_m3 == pytest.approx(7.0 * plain.volume_m3, rel=3.0e-8)
 
     three = {
         **_base_system(),
@@ -473,9 +461,7 @@ def test_manufactured_equilibrium_is_gauge_scale_and_reaction_basis_invariant() 
     changed_basis["ln_k"] = (math.log(6.0), math.log(3.0))
     _bind_record(changed_basis)
     second_basis = _manufactured_solve(changed_basis)
-    assert first_basis.amounts_mol == pytest.approx(
-        second_basis.amounts_mol, rel=3.0e-9
-    )
+    assert first_basis.amounts_mol == pytest.approx(second_basis.amounts_mol, rel=3.0e-9)
 
 
 def test_manufactured_reaction_solve_has_no_feed_scaled_amount_cap() -> None:
@@ -510,9 +496,7 @@ def test_manufactured_nlp_has_exact_directional_gradient_jacobian_and_hessian() 
     step = 2.0e-5
 
     def evaluate(variables: tuple[float, ...]) -> dict[str, object]:
-        return _equilibrium._chemical_evaluate_manufactured_nlp(
-            spec, variables, multipliers
-        )
+        return _equilibrium._chemical_evaluate_manufactured_nlp(spec, variables, multipliers)
 
     lower = evaluate(
         tuple(value - step * delta for value, delta in zip(center, direction, strict=True))
@@ -531,9 +515,7 @@ def test_manufactured_nlp_has_exact_directional_gradient_jacobian_and_hessian() 
         rel=2.0e-9,
         abs=2.0e-10,
     )
-    constraint_directional = (upper["constraints"][0] - lower["constraints"][0]) / (
-        2.0 * step
-    )
+    constraint_directional = (upper["constraints"][0] - lower["constraints"][0]) / (2.0 * step)
     assert constraint_directional == pytest.approx(
         sum(
             result["constraint_jacobian"][index] * direction[index]
@@ -551,9 +533,7 @@ def test_manufactured_nlp_has_exact_directional_gradient_jacobian_and_hessian() 
             result["lagrangian_hessian"][row * dimension + column] * direction[column]
             for column in range(dimension)
         )
-        assert gradient_directional == pytest.approx(
-            hessian_directional, rel=3.0e-9, abs=3.0e-10
-        )
+        assert gradient_directional == pytest.approx(hessian_directional, rel=3.0e-9, abs=3.0e-10)
 
 
 def test_manufactured_solver_rejects_trace_false_success() -> None:
@@ -612,15 +592,17 @@ def test_manufactured_charged_solution_is_species_order_invariant() -> None:
 
 def _figiel_provider_model(
     components: tuple[str, ...] = ("water", "sodium-cation", "chloride-anion"),
-) -> epcsaft.EPCSAFT:
-    parameters = epcsaft.ParameterBundle.from_catalog(
-        "figiel-2025-reference-electrolytes", version=1
-    ).select(components)
-    return epcsaft.EPCSAFT(parameters)
+) -> epcsaft.Mixture:
+    parameters = epcsaft.Parameters.from_catalog(
+        "figiel-2025-reference-electrolytes",
+        components=components,
+        version=1,
+    )
+    return epcsaft.Mixture(parameters)
 
 
 def _held_water_ionization_problem() -> tuple[
-    epcsaft.EPCSAFT, dict[str, object], dict[str, object]
+    epcsaft.Mixture, dict[str, object], dict[str, object]
 ]:
     source = _water_ionization_source()
     state = source["state"]
@@ -630,10 +612,12 @@ def _held_water_ionization_problem() -> tuple[
     assert isinstance(standard_state, dict)
     assert isinstance(values, dict)
     components = ("water", "hydronium-cation", "hydroxide-anion")
-    parameters = epcsaft.ParameterBundle.from_catalog(
-        "held-2008-water-self-ionization", version=1
-    ).select(components)
-    model = epcsaft.EPCSAFT(parameters)
+    parameters = epcsaft.Parameters.from_catalog(
+        "held-2008-water-self-ionization",
+        components=components,
+        version=1,
+    )
+    model = epcsaft.Mixture(parameters)
     assert model.parameter_fingerprint == _HELD_WATER_IONIZATION_FINGERPRINT
     conversion = math.log(
         standard_state["standard_molality_mol_per_kg"]
@@ -662,15 +646,19 @@ def _held_water_ionization_problem() -> tuple[
         "temperature_k": state["temperature_k"],
         "pressure_pa": state["pressure_pa"],
     }
-    return model, spec, {
-        "id": standard_state["id"],
-        "activity_scale_id": standard_state["activity_scale_id"],
-        "log_activity_scale_factors": (0.0, conversion, conversion),
-    }
+    return (
+        model,
+        spec,
+        {
+            "id": standard_state["id"],
+            "activity_scale_id": standard_state["activity_scale_id"],
+            "log_activity_scale_factors": (0.0, conversion, conversion),
+        },
+    )
 
 
 def _provider_solve(
-    model: epcsaft.EPCSAFT,
+    model: epcsaft.Mixture,
     spec: dict[str, object],
     source_standard_state: dict[str, object] | None = None,
 ) -> epcsaft_equilibrium.ChemicalEquilibriumResult:
@@ -680,9 +668,7 @@ def _provider_solve(
         else epcsaft_equilibrium.ChemicalStandardState(
             id=source_standard_state["id"],
             activity_scale_id=source_standard_state["activity_scale_id"],
-            log_activity_scale_factors=tuple(
-                source_standard_state["log_activity_scale_factors"]
-            ),
+            log_activity_scale_factors=tuple(source_standard_state["log_activity_scale_factors"]),
         )
     )
     return epcsaft_equilibrium.chemical_equilibrium(
@@ -735,9 +721,7 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     assert provider_affinity - result.standard_offsets[0] == pytest.approx(
         spec["ln_k"][0], abs=2.0e-7
     )
-    assert result.source_standard_state.id == (
-        "iapws-molality-ions-mole-fraction-water"
-    )
+    assert result.source_standard_state.id == ("iapws-molality-ions-mole-fraction-water")
     assert result.provider_reference_id == (
         "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3"
     )
@@ -745,15 +729,11 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     assert diagnostics.reference_derivative_availability == 0
     assert diagnostics.reference_convergence_error <= 5.0e-5
     assert diagnostics.reference_representation_residual_inf_norm <= 1.0e-12
-    assert result.source_standard_state.activity_scale_id == source_standard_state[
-        "activity_scale_id"
-    ]
-    assert result.standard_offsets == pytest.approx(
-        (-21.200377331401143,), abs=2.0e-12
+    assert (
+        result.source_standard_state.activity_scale_id == source_standard_state["activity_scale_id"]
     )
-    assert result.ln_k_provider_basis == pytest.approx(
-        (-53.423919749357395,), abs=2.0e-12
-    )
+    assert result.standard_offsets == pytest.approx((-21.200377331401143,), abs=2.0e-12)
+    assert result.ln_k_provider_basis == pytest.approx((-53.423919749357395,), abs=2.0e-12)
     assert diagnostics.chemical_certification_level == "LOCAL_EQUILIBRIUM"
     assert diagnostics.boundary_status == "strict_interior"
     assert diagnostics.trace_status == "interior"
@@ -770,10 +750,12 @@ def test_held_source_transform_is_coordinate_invariant(variant: str) -> None:
     if variant == "species_order":
         permutation = (2, 0, 1)
         components = tuple(spec["species_ids"][index] for index in permutation)
-        parameters = epcsaft.ParameterBundle.from_catalog(
-            "held-2008-water-self-ionization", version=1
-        ).select(components)
-        model = epcsaft.EPCSAFT(parameters)
+        parameters = epcsaft.Parameters.from_catalog(
+            "held-2008-water-self-ionization",
+            components=components,
+            version=1,
+        )
+        model = epcsaft.Mixture(parameters)
         for field in (
             "species_ids",
             "charges",
@@ -803,9 +785,7 @@ def test_held_source_transform_is_coordinate_invariant(variant: str) -> None:
 
     result = _provider_solve(model, spec, source_standard_state)
 
-    assert result.amounts_mol[water_index] == pytest.approx(
-        0.9999999999956604, rel=2.0e-10
-    )
+    assert result.amounts_mol[water_index] == pytest.approx(0.9999999999956604, rel=2.0e-10)
     assert result.amounts_mol[cation_index] == pytest.approx(
         result.amounts_mol[anion_index], abs=2.0e-12
     )
@@ -850,10 +830,12 @@ def test_provider_structural_face_fails_before_reduced_topology_evaluation() -> 
         "sodium-cation",
         "chloride-anion",
     )
-    parameters = epcsaft.ParameterBundle.from_catalog(
-        "khudaida-2026-figure-2-electrolyte-lle", version=1
-    ).select(components)
-    model = epcsaft.EPCSAFT(parameters)
+    parameters = epcsaft.Parameters.from_catalog(
+        "khudaida-2026-figure-2-electrolyte-lle",
+        components=components,
+        version=1,
+    )
+    model = epcsaft.Mixture(parameters)
     spec = {
         "species_ids": components,
         "charges": (0, 0, 0, 1, -1),
@@ -877,10 +859,7 @@ def test_provider_structural_face_fails_before_reduced_topology_evaluation() -> 
     with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError) as failed:
         _provider_solve(model, spec)
 
-    assert (
-        failed.value.diagnostics.chemical_certification_level
-        == "BOUNDARY_DIRECTION_UNRESOLVED"
-    )
+    assert failed.value.diagnostics.chemical_certification_level == "BOUNDARY_DIRECTION_UNRESOLVED"
     assert failed.value.diagnostics.structural_zero_species_indices == (3, 4)
 
 
@@ -922,10 +901,12 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
         result.volume_m3,
         model.parameter_fingerprint,
     )
-    assert 2.0 * result.amounts_mol[0] + result.amounts_mol[1] + result.amounts_mol[2] \
-        == pytest.approx(1.8, abs=2.0e-9)
-    assert -final["gradient"][0] + final["gradient"][1] + final["gradient"][2] \
-        == pytest.approx(ln_k, abs=2.0e-7)
+    assert 2.0 * result.amounts_mol[0] + result.amounts_mol[1] + result.amounts_mol[
+        2
+    ] == pytest.approx(1.8, abs=2.0e-9)
+    assert -final["gradient"][0] + final["gradient"][1] + final["gradient"][2] == pytest.approx(
+        ln_k, abs=2.0e-7
+    )
     assert final["pressure_pa"] == pytest.approx(target["pressure_pa"], rel=1.0e-8)
     assert result.provider_parameter_fingerprint == model.parameter_fingerprint
     assert result.diagnostics.provider_domain_status == "passed"
@@ -953,16 +934,12 @@ def test_provider_manufactured_reaction_rejects_capsule_identity_and_source_doma
     wrong_order = copy.deepcopy(spec)
     wrong_order["species_ids"] = ("chloride-anion", "sodium-cation", "water")
     wrong_order["charges"] = (-1, 1, 0)
-    with pytest.raises(
-        epcsaft_equilibrium.ChemicalEquilibriumError, match="component order"
-    ):
+    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError, match="component order"):
         _provider_solve(model, wrong_order)
 
     fingerprint = copy.deepcopy(spec)
     fingerprint["provider_fingerprint"] = "sha256:wrong"
-    with pytest.raises(
-        epcsaft_equilibrium.ChemicalEquilibriumError, match="fingerprint"
-    ) as failed:
+    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError, match="fingerprint") as failed:
         _provider_solve(model, fingerprint)
     assert "fingerprint" in failed.value.diagnostics.failure_reason
     assert failed.value.diagnostics.numerical_status == "not_adjudicated"
@@ -971,7 +948,5 @@ def test_provider_manufactured_reaction_rejects_capsule_identity_and_source_doma
     outside = copy.deepcopy(spec)
     outside["feed_amounts"] = (0.02, 0.49, 0.49)
     _bind_record(outside)
-    with pytest.raises(
-        epcsaft_equilibrium.ChemicalEquilibriumError, match="source domain"
-    ):
+    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError, match="source domain"):
         _provider_solve(model, outside)

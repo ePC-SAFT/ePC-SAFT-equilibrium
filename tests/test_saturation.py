@@ -60,10 +60,10 @@ def _capsule(table: _NativeSdkTable, name: str = "epcsaft.native_sdk.v1") -> obj
     return new_capsule(ctypes.addressof(table), name_buffer, None)
 
 
-def _model(component: str = "methane") -> epcsaft.EPCSAFT:
+def _model(component: str = "methane") -> epcsaft.Mixture:
     catalog = "gross-2001-propane" if component == "propane" else "gross-2001-methane-ethane"
-    parameters = epcsaft.ParameterBundle.from_catalog(catalog, version=1).select((component,))
-    return epcsaft.EPCSAFT(parameters)
+    parameters = epcsaft.Parameters.from_catalog(catalog, components=(component,), version=1)
+    return epcsaft.Mixture(parameters)
 
 
 def test_native_extension_accepts_and_retains_the_public_provider_capsule() -> None:
@@ -286,6 +286,9 @@ def test_saturation_nlp_exact_derivatives_match_independent_directional_differen
 
 
 def test_public_saturation_rejects_noncanonical_or_out_of_scope_inputs() -> None:
+    with pytest.raises(TypeError, match=r"saturation requires an epcsaft\.Mixture"):
+        epcsaft_equilibrium.saturation(object(), 150.0 * epcsaft.unit_registry.kelvin)
+
     methane = _model("methane")
 
     with pytest.raises(TypeError, match="Pint temperature quantity"):
@@ -295,10 +298,12 @@ def test_public_saturation_rejects_noncanonical_or_out_of_scope_inputs() -> None
     with pytest.raises(ValueError, match="source domain"):
         epcsaft_equilibrium.saturation(methane, 96.0 * epcsaft.unit_registry.kelvin)
 
-    binary_parameters = epcsaft.ParameterBundle.from_catalog(
-        "gross-2001-methane-ethane", version=1
-    ).select(("methane", "ethane"))
-    binary = epcsaft.EPCSAFT(binary_parameters)
+    binary_parameters = epcsaft.Parameters.from_catalog(
+        "gross-2001-methane-ethane",
+        components=("methane", "ethane"),
+        version=1,
+    )
+    binary = epcsaft.Mixture(binary_parameters)
     with pytest.raises(ValueError, match="approved pure-component fingerprint"):
         epcsaft_equilibrium.saturation(binary, 150.0 * epcsaft.unit_registry.kelvin)
 
@@ -336,7 +341,7 @@ def test_public_ethane_saturation_separates_all_acceptance_layers(
 
     assert result.temperature_k == 240.0
     assert result.parameter_fingerprint == (
-        "sha256:288fbcaa1304881c16f64c3a784eeed19b75c58cca4558f92a21268e5e91258a"
+        "sha256:b81f32e44adb46080dfa91026c6428045e04a219900305767672d0547f9a9fb9"
     )
     assert result.saturation_pressure_pa == pytest.approx(969_152.1055945412, rel=5.0e-6)
     assert result.vapor.amount_mol == 1.0
@@ -394,8 +399,8 @@ def test_public_saturation_matches_retained_lab_and_nist_anchors() -> None:
 
     for anchor in anchors:
         component = anchor["component"]
-        model = epcsaft.EPCSAFT(
-            epcsaft.ParameterBundle.from_catalog(anchor["catalog"], version=1).select((component,))
+        model = epcsaft.Mixture(
+            epcsaft.Parameters.from_catalog(anchor["catalog"], components=(component,), version=1)
         )
         result = epcsaft_equilibrium.saturation(
             model,

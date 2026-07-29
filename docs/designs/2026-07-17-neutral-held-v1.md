@@ -302,7 +302,7 @@ The only new operation is
 
 ```python
 tp_flash(
-    model: epcsaft.EPCSAFT,
+    model: epcsaft.Mixture,
     temperature: pint.Quantity,
     pressure: pint.Quantity,
     overall_mole_fractions: Sequence[float],

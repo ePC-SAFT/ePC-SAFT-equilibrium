@@ -27,8 +27,8 @@ def main() -> int:
 
     for row in rows:
         component = row["component"]
-        model = epcsaft.EPCSAFT(
-            epcsaft.ParameterBundle.from_catalog(row["catalog"], version=1).select((component,))
+        model = epcsaft.Mixture(
+            epcsaft.Parameters.from_catalog(row["catalog"], components=(component,), version=1)
         )
         result = epcsaft_equilibrium.saturation(
             model,
