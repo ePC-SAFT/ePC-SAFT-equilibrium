@@ -117,6 +117,9 @@ struct ChemicalSolveResult {
     std::string physical_status = "not_adjudicated";
     std::string provider_domain_status = "not_adjudicated";
     std::string local_minimum_status = "not_adjudicated";
+    std::string negative_curvature_recovery_status = "not_needed";
+    std::size_t negative_curvature_recovery_attempts = 0;
+    int negative_curvature_recovery_selected_sign = 0;
     std::string trace_status = "not_adjudicated";
     std::vector<double> amounts;
     double volume_m3 = 0.0;
@@ -198,6 +201,17 @@ struct SourceStandardStateResult {
 );
 
 [[nodiscard]] ChemicalSolveResult solve_manufactured_ideal_reaction(
+    const CompiledReactionSystem& system,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& gauge_coefficients,
+    double trace_floor,
+    int max_iterations = 500
+);
+
+// Private manufactured nonconvex case used only to verify the generic
+// negative-curvature recovery path. It is not a public model or capability.
+[[nodiscard]] ChemicalSolveResult solve_manufactured_nonconvex_reaction(
     const CompiledReactionSystem& system,
     double temperature_k,
     double pressure_pa,

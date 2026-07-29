@@ -410,6 +410,39 @@ PhaseEvaluator ideal_phase_evaluator() {
     return evaluate_ideal_phase_block;
 }
 
+PhaseEvaluator manufactured_nonconvex_phase_evaluator() {
+    return [](
+        double temperature_k,
+        const std::vector<double>& amounts,
+        double volume
+    ) {
+        if (amounts.size() != 2) {
+            throw std::invalid_argument(
+                "manufactured nonconvex phase requires two species"
+            );
+        }
+        PhaseBlockEvaluation result = evaluate_ideal_phase_block(
+            temperature_k, amounts, volume
+        );
+        constexpr double quadratic_strength = 2.0;
+        constexpr double quartic_strength = 2.0;
+        const double difference = amounts[0] - amounts[1];
+        const double difference_gradient = -2.0 * quadratic_strength * difference
+            + 4.0 * quartic_strength * difference * difference * difference;
+        const double difference_hessian = -2.0 * quadratic_strength
+            + 12.0 * quartic_strength * difference * difference;
+        result.mechanical.value += -quadratic_strength * difference * difference
+            + quartic_strength * difference * difference * difference * difference;
+        result.mechanical.gradient[0] += difference_gradient;
+        result.mechanical.gradient[1] -= difference_gradient;
+        result.mechanical.hessian[0 * 3 + 0] += difference_hessian;
+        result.mechanical.hessian[0 * 3 + 1] -= difference_hessian;
+        result.mechanical.hessian[1 * 3 + 0] -= difference_hessian;
+        result.mechanical.hessian[1 * 3 + 1] += difference_hessian;
+        return result;
+    };
+}
+
 std::size_t reaction_constraint_count(
     const ConstraintRows& balances,
     const ReactionDomain& domain
@@ -2004,16 +2037,23 @@ std::vector<double> recompute_equality_multipliers(
     return right_hand_side;
 }
 
-bool reduced_hessian_positive(
+struct ReducedHessianAnalysis {
+    bool positive = false;
+    std::vector<double> negative_direction;
+};
+
+ReducedHessianAnalysis analyze_reduced_hessian(
     const ReactionNlpEvaluation& evaluation,
     std::size_t constraint_count
 ) {
+    ReducedHessianAnalysis result;
     const std::size_t dimension = evaluation.gradient.size();
     const std::vector<std::vector<double>> basis = nullspace_basis(
         evaluation.jacobian, constraint_count, dimension
     );
     if (basis.empty()) {
-        return true;
+        result.positive = true;
+        return result;
     }
     std::vector<double> reduced(basis.size() * basis.size(), 0.0);
     for (std::size_t row = 0; row < basis.size(); ++row) {
@@ -2031,7 +2071,10 @@ bool reduced_hessian_positive(
     for (std::size_t index = 0; index < basis.size(); ++index) {
         const double diagonal = reduced[index * basis.size() + index];
         if (!std::isfinite(diagonal) || diagonal <= 0.0) {
-            return false;
+            if (std::isfinite(diagonal)) {
+                result.negative_direction = basis[index];
+            }
+            return result;
         }
         diagonal_scales[index] = std::sqrt(diagonal);
     }
@@ -2048,7 +2091,38 @@ bool reduced_hessian_positive(
             diagonal -= value * value;
         }
         if (diagonal <= 1.0e-10) {
-            return false;
+            if (std::isfinite(diagonal)) {
+                std::vector<double> reduced_direction(basis.size(), 0.0);
+                reduced_direction[column] = 1.0;
+                for (std::size_t prior = 0; prior < column; ++prior) {
+                    reduced_direction[prior] = -reduced[
+                        column * basis.size() + prior
+                    ];
+                }
+                result.negative_direction.assign(dimension, 0.0);
+                for (std::size_t entry = 0; entry < basis.size(); ++entry) {
+                    for (std::size_t coordinate = 0;
+                         coordinate < dimension;
+                         ++coordinate) {
+                        result.negative_direction[coordinate] +=
+                            reduced_direction[entry] * basis[entry][coordinate];
+                    }
+                }
+                const double norm = std::sqrt(std::inner_product(
+                    result.negative_direction.begin(),
+                    result.negative_direction.end(),
+                    result.negative_direction.begin(),
+                    0.0
+                ));
+                if (!std::isfinite(norm) || norm == 0.0) {
+                    result.negative_direction.clear();
+                } else {
+                    for (double& value : result.negative_direction) {
+                        value /= norm;
+                    }
+                }
+            }
+            return result;
         }
         reduced[column * basis.size() + column] = std::sqrt(diagonal);
         for (std::size_t row = column + 1; row < basis.size(); ++row) {
@@ -2061,7 +2135,8 @@ bool reduced_hessian_positive(
                 value / reduced[column * basis.size() + column];
         }
     }
-    return true;
+    result.positive = true;
+    return result;
 }
 
 }  // namespace
@@ -2163,7 +2238,8 @@ ChemicalSolveResult solve_reaction(
     const std::vector<double>& ln_k_pressure_derivatives_per_pa,
     const std::vector<double>& ln_k_parameter_derivatives,
     const std::array<double, 2>& volume_bounds,
-    const VolumeCoordinateTransform* volume_transform = nullptr
+    const VolumeCoordinateTransform* volume_transform = nullptr,
+    bool allow_negative_curvature_recovery = true
 ) {
     if (!std::isfinite(temperature_k) || temperature_k <= 0.0
         || !std::isfinite(pressure_pa) || pressure_pa <= 0.0
@@ -2562,10 +2638,13 @@ ChemicalSolveResult solve_reaction(
         result.numerical_status = "failed";
         return result;
     }
+    std::vector<double> negative_curvature_direction;
     if (sensitivity_interior) {
-        result.local_minimum_status = reduced_hessian_positive(
+        const ReducedHessianAnalysis curvature = analyze_reduced_hessian(
             equality_evaluation, balances.matrix.rows
-        ) ? "passed" : "failed";
+        );
+        result.local_minimum_status = curvature.positive ? "passed" : "failed";
+        negative_curvature_direction = curvature.negative_direction;
     } else {
         result.local_minimum_status = "not_adjudicated";
     }
@@ -2597,6 +2676,145 @@ ChemicalSolveResult solve_reaction(
         && result.numerical_status == "passed"
         && result.physical_status == "passed"
         && result.local_minimum_status == "passed";
+    if (allow_negative_curvature_recovery
+        && status == Ipopt::Solve_Succeeded
+        && result.callback_error.empty()
+        && result.numerical_status == "passed"
+        && result.physical_status == "passed"
+        && result.trace_status == "interior"
+        && result.local_minimum_status == "failed"
+        && !negative_curvature_direction.empty()) {
+        result.negative_curvature_recovery_status = "unresolved";
+        double best_objective = std::numeric_limits<double>::infinity();
+        ChemicalSolveResult best_result;
+        int best_sign = 0;
+        auto fixed_objective = [&](const ChemicalSolveResult& candidate) {
+            if (candidate.amounts.size() != g_ref.size()
+                || !std::isfinite(candidate.volume_m3)
+                || candidate.volume_m3 <= 0.0) {
+                return std::numeric_limits<double>::quiet_NaN();
+            }
+            try {
+                const PhaseBlockEvaluation phase = phase_evaluator(
+                    temperature_k, candidate.amounts, candidate.volume_m3
+                );
+                double objective = phase.mechanical.value
+                    + pressure_pa / (kGasConstantJPerMolK * temperature_k)
+                        * candidate.volume_m3;
+                for (std::size_t species = 0; species < g_ref.size(); ++species) {
+                    objective += g_ref[species] * candidate.amounts[species];
+                }
+                return objective;
+            } catch (const std::exception&) {
+                return std::numeric_limits<double>::quiet_NaN();
+            }
+        };
+        for (const int sign : {1, -1}) {
+            double step_limit = std::numeric_limits<double>::infinity();
+            for (std::size_t variable = 0;
+                 variable < variables.size();
+                 ++variable) {
+                const double direction = negative_curvature_direction[variable];
+                if (direction == 0.0) {
+                    continue;
+                }
+                const double room = sign > 0
+                    ? upper[variable] - variables[variable]
+                    : variables[variable] - lower[variable];
+                if (!std::isfinite(room) || room <= 0.0) {
+                    step_limit = 0.0;
+                    break;
+                }
+                step_limit = std::min(
+                    step_limit, room / std::abs(direction)
+                );
+            }
+            if (!std::isfinite(step_limit) || step_limit <= 0.0) {
+                continue;
+            }
+            const double step = std::min(0.25 * step_limit, 1.0);
+            std::vector<double> displaced = variables;
+            for (std::size_t variable = 0;
+                 variable < displaced.size();
+                 ++variable) {
+                displaced[variable] += sign * step
+                    * negative_curvature_direction[variable];
+            }
+            ReactionNlpEvaluation displaced_evaluation;
+            try {
+                displaced_evaluation = evaluate_reaction_nlp(
+                    chart,
+                    balances,
+                    g_ref,
+                    temperature_k,
+                    pressure_pa,
+                    phase_evaluator,
+                    domain,
+                    displaced,
+                    std::vector<double>(
+                        reaction_constraint_count(balances, domain), 0.0
+                    ),
+                    volume_transform
+                );
+            } catch (const std::exception&) {
+                continue;
+            }
+            if (displaced_evaluation.amount_chart.minimum_amount <= trace_floor) {
+                continue;
+            }
+            MaxMinInitializationResult recovery_initialization = initialization;
+            recovery_initialization.amounts =
+                displaced_evaluation.amount_chart.amounts;
+            recovery_initialization.strict_positive_feasible = true;
+            ++result.negative_curvature_recovery_attempts;
+            VolumeCoordinateTransform displaced_transform;
+            const VolumeCoordinateTransform* recovery_transform = volume_transform;
+            if (volume_transform != nullptr) {
+                displaced_transform = *volume_transform;
+                displaced_transform.initial_coordinate = displaced.back();
+                recovery_transform = &displaced_transform;
+            }
+            ChemicalSolveResult candidate;
+            try {
+                candidate = solve_reaction(
+                    system,
+                    temperature_k,
+                    pressure_pa,
+                    gauge_coefficients,
+                    trace_floor,
+                    max_iterations,
+                    recovery_initialization,
+                    phase_evaluator,
+                    domain,
+                    displaced_evaluation.volume,
+                    ln_k_pressure_derivatives_per_pa,
+                    ln_k_parameter_derivatives,
+                    volume_bounds,
+                    recovery_transform,
+                    false
+                );
+            } catch (const std::exception&) {
+                continue;
+            }
+            if (!candidate.accepted
+                || candidate.local_minimum_status != "passed") {
+                continue;
+            }
+            const double objective = fixed_objective(candidate);
+            if (std::isfinite(objective) && objective < best_objective) {
+                best_objective = objective;
+                best_result = std::move(candidate);
+                best_sign = sign;
+            }
+        }
+        if (best_sign != 0) {
+            best_result.negative_curvature_recovery_status = "recovered";
+            best_result.negative_curvature_recovery_attempts =
+                result.negative_curvature_recovery_attempts;
+            best_result.negative_curvature_recovery_selected_sign = best_sign;
+            return best_result;
+        }
+    }
     if (status == Ipopt::Solve_Succeeded && result.callback_error.empty()) {
         result.sensitivities = evaluate_implicit_sensitivities(
             chart,
@@ -2765,6 +2983,42 @@ ChemicalSolveResult solve_manufactured_ideal_reaction(
         max_iterations,
         initialization,
         ideal_phase_evaluator(),
+        ReactionDomain{},
+        std::numeric_limits<double>::quiet_NaN(),
+        {},
+        {},
+        {
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(),
+        }
+    );
+    return finalize_chemical_result(system, std::move(result), true);
+}
+
+ChemicalSolveResult solve_manufactured_nonconvex_reaction(
+    const CompiledReactionSystem& system,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& gauge_coefficients,
+    double trace_floor,
+    int max_iterations
+) {
+    const MaxMinInitializationResult initialization = max_min_initialization(
+        system.balance_matrix,
+        system.feed_amounts,
+        system.charges,
+        trace_floor,
+        std::numeric_limits<double>::quiet_NaN()
+    );
+    ChemicalSolveResult result = solve_reaction(
+        system,
+        temperature_k,
+        pressure_pa,
+        gauge_coefficients,
+        trace_floor,
+        max_iterations,
+        initialization,
+        manufactured_nonconvex_phase_evaluator(),
         ReactionDomain{},
         std::numeric_limits<double>::quiet_NaN(),
         {},

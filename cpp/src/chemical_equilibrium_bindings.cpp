@@ -201,6 +201,12 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
     result["physical_status"] = evaluation.physical_status;
     result["provider_domain_status"] = evaluation.provider_domain_status;
     result["local_minimum_status"] = evaluation.local_minimum_status;
+    result["negative_curvature_recovery_status"] =
+        evaluation.negative_curvature_recovery_status;
+    result["negative_curvature_recovery_attempts"] =
+        evaluation.negative_curvature_recovery_attempts;
+    result["negative_curvature_recovery_selected_sign"] =
+        evaluation.negative_curvature_recovery_selected_sign;
     result["trace_status"] = evaluation.trace_status;
     result["globality_certificate"] = "not_guaranteed";
     result["amounts"] = evaluation.amounts;
@@ -290,6 +296,25 @@ py::dict solve_manufactured(const py::dict& spec, double trace_floor) {
             input.pressure_pa,
             {},
             trace_floor
+        )
+    );
+}
+
+py::dict solve_manufactured_nonconvex(
+    const py::dict& spec,
+    double trace_floor,
+    int max_iterations
+) {
+    const ReactionSystemInput input = reaction_system_input(spec);
+    const CompiledReactionSystem compiled = compile_reaction_system(input);
+    return chemical_result(
+        solve_manufactured_nonconvex_reaction(
+            compiled,
+            input.temperature_k,
+            input.pressure_pa,
+            {},
+            trace_floor,
+            max_iterations
         )
     );
 }
@@ -760,6 +785,13 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("constraint_multipliers"),
         py::arg("gauge_coefficients") = std::vector<double>{},
         py::arg("zero_kkt_rhs") = false
+    );
+    module.def(
+        "_chemical_solve_manufactured_nonconvex",
+        &solve_manufactured_nonconvex,
+        py::arg("spec"),
+        py::arg("trace_floor") = 1.0e-12,
+        py::arg("max_iterations") = 500
     );
     bind_chemical_observation(module);
 }

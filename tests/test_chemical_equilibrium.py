@@ -426,6 +426,46 @@ def test_manufactured_ideal_reactions_match_independent_analytic_states(
     assert diagnostics.complementarity_inf_norm <= 1.0e-7
 
 
+def test_manufactured_nonconvex_saddle_recovers_certified_lower_minimum() -> None:
+    """A deterministic tangent displacement escapes a stationary saddle only."""
+
+    spec = {**_base_system(), "ln_k": (0.0,)}
+    _bind_record(spec)
+    native = _equilibrium._chemical_solve_manufactured_nonconvex(
+        spec,
+        trace_floor=1.0e-12,
+        max_iterations=200,
+    )
+
+    assert native["accepted"] is True
+    assert native["solver_status"] == "solve_succeeded"
+    assert native["numerical_status"] == "passed"
+    assert native["physical_status"] == "passed"
+    assert native["local_minimum_status"] == "passed"
+    assert native["negative_curvature_recovery_status"] == "recovered"
+    assert native["negative_curvature_recovery_attempts"] == 2
+    assert native["negative_curvature_recovery_selected_sign"] in (-1, 1)
+    assert native["amounts"][0] != pytest.approx(native["amounts"][1], abs=1.0e-5)
+
+
+def test_manufactured_ideal_case_does_not_attempt_negative_curvature_recovery() -> None:
+    spec = _base_system()
+    _bind_record(spec)
+    native = _equilibrium._chemical_equilibrium(
+        None,
+        spec,
+        None,
+        None,
+        1.0e-12,
+        None,
+    )
+
+    assert native["accepted"] is True
+    assert native["negative_curvature_recovery_status"] == "not_needed"
+    assert native["negative_curvature_recovery_attempts"] == 0
+    assert native["negative_curvature_recovery_selected_sign"] == 0
+
+
 def test_manufactured_reaction_reports_exact_conditioned_implicit_sensitivities() -> None:
     spec = _base_system()
     _bind_record(spec)
