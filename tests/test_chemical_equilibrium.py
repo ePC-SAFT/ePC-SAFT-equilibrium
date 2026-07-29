@@ -750,35 +750,59 @@ def test_manufactured_charged_reaction_uses_exact_electroneutral_chart() -> None
 
 
 def test_manufactured_ultra_trace_charged_share_stays_differentiable() -> None:
-    """A positive ionic share below exp(-40) is not an artificial bound."""
+    """Both charged softmax references and explicit shares stay interior."""
 
     temperature_k = 300.0
     trace_floor = 1.0e-18
-    spec = {
-        **_base_system(),
-        "species_ids": ("A", "C+", "D-"),
-        "charges": (0, 1, -1),
-        "molar_masses_kg_per_mol": (2.0, 1.0, 1.0),
-        "balance_matrix": ((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
-        "reaction_matrix": ((-1.0, 1.0, 1.0),),
-        "feed_amounts": (1.0, 0.0, 0.0),
-        # This produces n(C+) = n(D-) ~= 1.56e-18 mol.
-        "ln_k": (-82.0,),
-        "temperature_k": temperature_k,
-        "pressure_pa": 8.31446261815324 * temperature_k,
-    }
-    _bind_record(spec)
+    records = tuple(
+        {
+            "source_id": f"manufactured:reaction-{index}",
+            "reference_id": "provider-helmholtz-coordinate-basis",
+            "reaction_orientation": "products_positive",
+            "conversion_id": "already-provider-basis",
+            "dimensionless": True,
+            "temperature_k": temperature_k,
+            "pressure_pa": 8.31446261815324 * temperature_k,
+        }
+        for index in range(2)
+    )
 
-    native = _equilibrium._chemical_equilibrium(None, spec, None, None, trace_floor)
+    def solve(log_ratio_constants: tuple[float, float], floor: float) -> dict[str, object]:
+        spec = {
+            **_base_system(),
+            "species_ids": ("C1+", "C2+", "D1-", "D2-"),
+            "charges": (1, 1, -1, -1),
+            "molar_masses_kg_per_mol": (1.0, 1.0, 1.0, 1.0),
+            "balance_matrix": ((1.0, 1.0, 1.0, 1.0), (1.0, 1.0, -1.0, -1.0)),
+            "reaction_matrix": ((1.0, -1.0, 0.0, 0.0), (0.0, 0.0, 1.0, -1.0)),
+            "feed_amounts": (1.0, 0.0, 1.0, 0.0),
+            "ln_k": log_ratio_constants,
+            "temperature_k": temperature_k,
+            "pressure_pa": 8.31446261815324 * temperature_k,
+            "equilibrium_constant_records": records,
+        }
+        spec["conserved_totals"] = (2.0, 0.0)
+        return _equilibrium._chemical_equilibrium(None, spec, None, None, floor)
 
-    amounts = tuple(native["amounts"])
-    assert amounts[1] > trace_floor
-    assert amounts[2] > trace_floor
-    sensitivities = native["sensitivities"]
-    assert sensitivities["status"] == "available"
-    assert sensitivities["failure_reason"] == ""
-    assert sensitivities["active_lower_bounds"] == ()
-    assert sensitivities["active_trace_species"] == ()
+    explicit_trace = solve((-40.0, 0.0), trace_floor)
+    assert explicit_trace["amounts"][0] > trace_floor
+    assert explicit_trace["sensitivities"]["status"] == "available"
+    assert explicit_trace["sensitivities"]["active_lower_bounds"] == ()
+    assert explicit_trace["sensitivities"]["active_upper_bounds"] == ()
+
+    reference_trace = solve((40.0, 40.0), trace_floor)
+    assert reference_trace["amounts"][1] > trace_floor
+    assert reference_trace["amounts"][3] > trace_floor
+    assert reference_trace["sensitivities"]["status"] == "available"
+    assert reference_trace["sensitivities"]["active_lower_bounds"] == ()
+    assert reference_trace["sensitivities"]["active_upper_bounds"] == ()
+
+    rejected_trace = solve((40.0, 40.0), 1.0e-12)
+    assert rejected_trace["sensitivities"]["status"] == "unavailable"
+    assert rejected_trace["sensitivities"]["failure_reason"] == (
+        "active_set_change_not_differentiable"
+    )
+    assert rejected_trace["sensitivities"]["active_trace_species"] == (1, 3)
 
 
 def test_manufactured_equilibrium_is_gauge_scale_and_reaction_basis_invariant() -> None:

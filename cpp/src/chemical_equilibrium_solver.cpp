@@ -1849,24 +1849,31 @@ ChemicalSolveResult solve_reaction(
         const std::size_t neutral_offset = 1 + chart.cation_indices.size() - 1
             + chart.anion_indices.size() - 1;
         // The charged-group coordinates are log(share/reference_share).  A
-        // static -40 bound is an artificial floor when trace_floor is below
-        // exp(-40) mol.  Since share <= 1 and charge_equivalents <= the
-        // initialization upper bound, this conservative bound keeps every
-        // species above trace_floor in the differentiable interior while
-        // retaining a ten-fold numerical margin like the neutral coordinates.
+        // static +/-40 bounds are artificial floors when trace_floor is below
+        // exp(-40) mol. Since each share is at most one and charge_equivalents
+        // is bounded above, these conservative bounds keep every species above
+        // trace_floor in the differentiable interior while retaining a
+        // ten-fold numerical margin like the neutral coordinates.
         const double log_trace_share_floor = std::log(0.1 * trace_floor)
             - std::log(charge_equivalent_upper);
+        const auto share_upper = [&](std::size_t reference_species) {
+            return std::log(10.0 * charge_equivalent_upper)
+                - std::log(trace_floor)
+                - std::log(static_cast<double>(std::abs(system.charges[reference_species])));
+        };
         std::size_t cation_offset = 1;
         for (std::size_t category = 0; category + 1 < chart.cation_indices.size(); ++category) {
             const std::size_t species = chart.cation_indices[category];
             lower[cation_offset + category] = log_trace_share_floor
                 + std::log(static_cast<double>(std::abs(system.charges[species])));
+            upper[cation_offset + category] = share_upper(chart.cation_indices.back());
         }
         const std::size_t anion_offset = cation_offset + chart.cation_indices.size() - 1;
         for (std::size_t category = 0; category + 1 < chart.anion_indices.size(); ++category) {
             const std::size_t species = chart.anion_indices[category];
             lower[anion_offset + category] = log_trace_share_floor
                 + std::log(static_cast<double>(std::abs(system.charges[species])));
+            upper[anion_offset + category] = share_upper(chart.anion_indices.back());
         }
         for (std::size_t neutral = 0; neutral < chart.neutral_indices.size(); ++neutral) {
             lower[neutral_offset + neutral] = std::log(0.1 * trace_floor);
