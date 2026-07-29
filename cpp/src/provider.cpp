@@ -1100,6 +1100,7 @@ InversePackingGeometryEvaluation ProviderContext::evaluate_inverse_packing_geome
                 "Provider inverse-packing topology capability is incomplete"
             );
         }
+        std::size_t matching_descriptor_count = 0;
         for (std::size_t index = 0; index < sdk_.capability_count; ++index) {
             const auto& descriptor = sdk_.capabilities[index];
             if (descriptor.struct_size != sizeof(descriptor)
@@ -1107,6 +1108,16 @@ InversePackingGeometryEvaluation ProviderContext::evaluate_inverse_packing_geome
                     != EPCSAFT_NATIVE_CAPABILITY_SCHEMA_VERSION_V1
                 || descriptor.model_domain
                     != EPCSAFT_NATIVE_MODEL_DOMAIN_REACTING_ELECTROLYTE_PHASE_V1
+                || descriptor.tensor_layout
+                    != EPCSAFT_NATIVE_TENSOR_LAYOUT_ROW_MAJOR_V1
+                || descriptor.derivative_order < 2
+                || descriptor.maturity
+                    != EPCSAFT_NATIVE_CAPABILITY_DERIVATIVE_READY_V1
+                || descriptor.authority_effect
+                    != EPCSAFT_NATIVE_AUTHORITY_EFFECT_NONE_V1
+                || descriptor.state_coordinate_count
+                    != sdk_.component_count + 1
+                || descriptor.coordinates == nullptr
                 || descriptor.component_count != sdk_.component_count) {
                 continue;
             }
@@ -1126,6 +1137,29 @@ InversePackingGeometryEvaluation ProviderContext::evaluate_inverse_packing_geome
             if (descriptor_topology.empty()) {
                 continue;
             }
+            const std::string descriptor_basis = decode_provider_char_array(
+                descriptor.helmholtz_basis_id,
+                sizeof(descriptor.helmholtz_basis_id),
+                "Provider inverse-packing capability basis"
+            );
+            if (descriptor_basis != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1
+                || descriptor.component_ids == nullptr) {
+                continue;
+            }
+            bool component_order_matches = true;
+            for (std::size_t component = 0;
+                 component < sdk_.component_count;
+                 ++component) {
+                component_order_matches = component_order_matches
+                    && descriptor.component_ids[component] != nullptr
+                    && sdk_.component_ids[component] != nullptr
+                    && std::string_view(descriptor.component_ids[component])
+                        == sdk_.component_ids[component];
+            }
+            if (!component_order_matches) {
+                continue;
+            }
+            ++matching_descriptor_count;
             if (topology.empty()) {
                 topology = descriptor_topology;
             } else if (topology != descriptor_topology) {
@@ -1137,6 +1171,11 @@ InversePackingGeometryEvaluation ProviderContext::evaluate_inverse_packing_geome
         if (topology.empty()) {
             throw std::invalid_argument(
                 "Provider inverse-packing topology capability is missing"
+            );
+        }
+        if (matching_descriptor_count == 0) {
+            throw std::invalid_argument(
+                "Provider inverse-packing topology capability is not derivative-ready"
             );
         }
     }

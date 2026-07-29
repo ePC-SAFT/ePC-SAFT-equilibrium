@@ -1116,9 +1116,25 @@ bool solve_equilibrated_square_system(
     for (double value : scaled_right_hand_side) {
         solution_norm_inf = std::max(solution_norm_inf, std::abs(value));
     }
+    if (!std::isfinite(matrix_norm_inf)
+        || !std::isfinite(solution_norm_inf)
+        || !std::isfinite(right_hand_side_norm_inf)
+        || !std::isfinite(residual_norm_inf)) {
+        return false;
+    }
+    const double matrix_solution_product =
+        matrix_norm_inf * solution_norm_inf;
+    if (!std::isfinite(matrix_solution_product)) {
+        return false;
+    }
+    const double denominator_unclamped =
+        matrix_solution_product + right_hand_side_norm_inf;
+    if (!std::isfinite(denominator_unclamped)
+        || denominator_unclamped <= 0.0) {
+        return false;
+    }
     const double denominator = std::max(
-        std::numeric_limits<double>::min(),
-        matrix_norm_inf * solution_norm_inf + right_hand_side_norm_inf
+        std::numeric_limits<double>::min(), denominator_unclamped
     );
     const double backward_error = residual_norm_inf / denominator;
     const double tolerance = 2048.0
@@ -2401,15 +2417,11 @@ ChemicalSolveResult solve_reaction(
         );
     } catch (const std::exception& error) {
         result.callback_error = error.what();
-        if (volume_transform != nullptr) {
-        }
         result.numerical_status = "failed";
         return result;
     }
     result.amounts = evaluation.amount_chart.amounts;
     result.volume_m3 = evaluation.volume;
-    if (volume_transform != nullptr) {
-    }
     result.balance_inf_norm = vector_inf_norm(std::vector<double>(
         evaluation.constraints.begin(),
         evaluation.constraints.begin() + static_cast<std::ptrdiff_t>(balances.matrix.rows)
@@ -3118,6 +3130,126 @@ ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(
     result.lagrangian_hessian = evaluation.lagrangian_hessian;
     result.amounts = evaluation.amount_chart.amounts;
     result.volume_m3 = evaluation.volume;
+    return result;
+}
+
+ManufacturedNlpEvaluation evaluate_manufactured_inverse_log_packing_nlp(
+    const CompiledReactionSystem& system,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& gauge_coefficients,
+    const std::vector<double>& variables,
+    const std::vector<double>& constraint_multipliers
+) {
+    std::vector<double> g_ref = system.g_ref;
+    if (!gauge_coefficients.empty()) {
+        if (gauge_coefficients.size() != system.balance_matrix.rows) {
+            throw std::invalid_argument("gauge coefficient count does not match balances");
+        }
+        for (std::size_t species = 0; species < g_ref.size(); ++species) {
+            for (std::size_t row = 0; row < system.balance_matrix.rows; ++row) {
+                g_ref[species] += system.balance_matrix(row, species)
+                    * gauge_coefficients[row];
+            }
+        }
+    }
+    const AmountChart chart = make_amount_chart(system.charges);
+    const ConstraintRows balances{system.balance_matrix, system.balance_totals};
+    VolumeCoordinateTransform inverse_log_packing;
+    inverse_log_packing.lower_coordinate = -40.0;
+    inverse_log_packing.upper_coordinate = 40.0;
+    inverse_log_packing.initial_coordinate = 0.0;
+    inverse_log_packing.evaluate = [](
+        double,
+        const std::vector<double>& amounts,
+        double log_packing_fraction
+    ) {
+        const double packing_fraction = std::exp(log_packing_fraction);
+        const double total = std::accumulate(
+            amounts.begin(), amounts.end(), 0.0
+        );
+        const double volume = total / packing_fraction;
+        const std::size_t physical_count = amounts.size() + 1;
+        VolumeCoordinateEvaluation result;
+        result.volume = volume;
+        result.gradient.assign(physical_count, 1.0 / packing_fraction);
+        result.gradient.back() = -volume;
+        result.hessian.assign(physical_count * physical_count, 0.0);
+        for (std::size_t species = 0; species < amounts.size(); ++species) {
+            result.hessian[species * physical_count + amounts.size()] =
+                -1.0 / packing_fraction;
+            result.hessian[amounts.size() * physical_count + species] =
+                -1.0 / packing_fraction;
+        }
+        result.hessian.back() = volume;
+        return result;
+    };
+    const ReactionNlpEvaluation evaluation = evaluate_reaction_nlp(
+        chart,
+        balances,
+        g_ref,
+        temperature_k,
+        pressure_pa,
+        ideal_phase_evaluator(),
+        ReactionDomain{},
+        variables,
+        constraint_multipliers,
+        &inverse_log_packing
+    );
+    ManufacturedNlpEvaluation result;
+    result.objective = evaluation.objective;
+    result.objective_gradient = evaluation.gradient;
+    result.constraints = evaluation.constraints;
+    result.constraint_jacobian = evaluation.jacobian;
+    result.lagrangian_gradient = evaluation.gradient;
+    for (std::size_t variable = 0;
+         variable < result.lagrangian_gradient.size();
+         ++variable) {
+        for (std::size_t row = 0; row < balances.matrix.rows; ++row) {
+            result.lagrangian_gradient[variable] += evaluation.jacobian[
+                row * result.lagrangian_gradient.size() + variable
+            ] * constraint_multipliers[row];
+        }
+    }
+    result.lagrangian_hessian = evaluation.lagrangian_hessian;
+    result.amounts = evaluation.amount_chart.amounts;
+    result.volume_m3 = evaluation.volume;
+    const std::size_t variable_count = variables.size();
+    const std::size_t equality_count = balances.matrix.rows;
+    const std::size_t kkt_dimension = variable_count + equality_count;
+    std::vector<double> kkt_matrix(kkt_dimension * kkt_dimension, 0.0);
+    for (std::size_t row = 0; row < variable_count; ++row) {
+        for (std::size_t column = 0; column < variable_count; ++column) {
+            kkt_matrix[row * kkt_dimension + column] =
+                evaluation.lagrangian_hessian[row * variable_count + column];
+        }
+    }
+    for (std::size_t row = 0; row < equality_count; ++row) {
+        for (std::size_t column = 0; column < variable_count; ++column) {
+            const double value = evaluation.jacobian[
+                row * variable_count + column
+            ];
+            kkt_matrix[column * kkt_dimension + variable_count + row] = value;
+            kkt_matrix[(variable_count + row) * kkt_dimension + column] = value;
+        }
+    }
+    result.kkt_backtransform_rhs.resize(kkt_dimension);
+    for (std::size_t index = 0; index < kkt_dimension; ++index) {
+        result.kkt_backtransform_rhs[index] =
+            0.125 * static_cast<double>(index + 1);
+    }
+    const EquilibratedSquareSystem equilibrated =
+        equilibrate_square_system(kkt_matrix);
+    result.kkt_backtransform_solution = result.kkt_backtransform_rhs;
+    if (!solve_equilibrated_square_system(
+            equilibrated,
+            result.kkt_backtransform_rhs,
+            result.kkt_backtransform_solution
+        )) {
+        throw std::domain_error(
+            "manufactured inverse log-packing KKT back-transform failed"
+        );
+    }
     return result;
 }
 

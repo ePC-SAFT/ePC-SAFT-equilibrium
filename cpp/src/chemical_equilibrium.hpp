@@ -139,6 +139,9 @@ struct ManufacturedNlpEvaluation {
     std::vector<double> lagrangian_hessian;
     std::vector<double> amounts;
     double volume_m3 = 0.0;
+    // Populated only by the private inverse-chart evidence seam.
+    std::vector<double> kkt_backtransform_rhs;
+    std::vector<double> kkt_backtransform_solution;
 };
 
 struct ProviderPhaseBlockEvidence {
@@ -204,6 +207,19 @@ struct SourceStandardStateResult {
 );
 
 [[nodiscard]] ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(
+    const CompiledReactionSystem& system,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& gauge_coefficients,
+    const std::vector<double>& variables,
+    const std::vector<double>& constraint_multipliers
+);
+
+// Private derivative evidence seam. This is intentionally not part of the
+// public equilibrium API; tests use it to exercise the inverse log-packing
+// chart with the same exact chain rules and KKT pullback as Provider phases.
+[[nodiscard]] ManufacturedNlpEvaluation
+evaluate_manufactured_inverse_log_packing_nlp(
     const CompiledReactionSystem& system,
     double temperature_k,
     double pressure_pa,

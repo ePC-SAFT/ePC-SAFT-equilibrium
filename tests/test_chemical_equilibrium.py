@@ -919,6 +919,86 @@ def test_manufactured_nlp_has_exact_directional_gradient_jacobian_and_hessian() 
         assert gradient_directional == pytest.approx(hessian_directional, rel=3.0e-9, abs=3.0e-10)
 
 
+def test_manufactured_inverse_log_packing_has_exact_directional_pullback() -> None:
+    spec = _base_system()
+    _bind_record(spec)
+    center = (math.log(0.3), math.log(0.7), 0.15)
+    direction = (0.2, -0.4, 0.3)
+    multipliers = (0.37,)
+    step = 2.0e-5
+
+    def evaluate(variables: tuple[float, ...]) -> dict[str, object]:
+        return _equilibrium._chemical_evaluate_manufactured_inverse_log_packing_nlp(
+            spec, variables, multipliers
+        )
+
+    lower = evaluate(
+        tuple(value - step * delta for value, delta in zip(center, direction, strict=True))
+    )
+    result = evaluate(center)
+    upper = evaluate(
+        tuple(value + step * delta for value, delta in zip(center, direction, strict=True))
+    )
+
+    objective_directional = (upper["objective"] - lower["objective"]) / (2.0 * step)
+    assert objective_directional == pytest.approx(
+        sum(
+            result["objective_gradient"][index] * direction[index]
+            for index in range(len(direction))
+        ),
+        rel=3.0e-9,
+        abs=3.0e-10,
+    )
+    constraint_directional = (upper["constraints"][0] - lower["constraints"][0]) / (2.0 * step)
+    assert constraint_directional == pytest.approx(
+        sum(
+            result["constraint_jacobian"][index] * direction[index]
+            for index in range(len(direction))
+        ),
+        rel=3.0e-10,
+        abs=3.0e-11,
+    )
+    dimension = len(direction)
+    for row in range(dimension):
+        gradient_directional = (
+            upper["lagrangian_gradient"][row]
+            - lower["lagrangian_gradient"][row]
+        ) / (2.0 * step)
+        hessian_directional = sum(
+            result["lagrangian_hessian"][row * dimension + column] * direction[column]
+            for column in range(dimension)
+        )
+        assert gradient_directional == pytest.approx(
+            hessian_directional, rel=5.0e-9, abs=5.0e-10
+        )
+    hessian = result["lagrangian_hessian"]
+    for row in range(dimension):
+        for column in range(dimension):
+            scale = max(1.0, abs(hessian[row * dimension + column]))
+            assert abs(
+                hessian[row * dimension + column]
+                - hessian[column * dimension + row]
+            ) <= 2.0e-13 * scale
+    assert result["volume_m3"] == pytest.approx(math.exp(-center[-1]), rel=2.0e-15)
+    kkt_rhs = result["kkt_backtransform_rhs"]
+    kkt_solution = result["kkt_backtransform_solution"]
+    kkt_dimension = len(kkt_solution)
+    assert kkt_dimension == dimension + 1
+    for row in range(dimension):
+        reconstructed = sum(
+            hessian[row * dimension + column] * kkt_solution[column]
+            for column in range(dimension)
+        ) + result["constraint_jacobian"][row] * kkt_solution[-1]
+        assert reconstructed == pytest.approx(kkt_rhs[row], rel=2.0e-12, abs=2.0e-13)
+    constraint_reconstructed = sum(
+        result["constraint_jacobian"][column] * kkt_solution[column]
+        for column in range(dimension)
+    )
+    assert constraint_reconstructed == pytest.approx(
+        kkt_rhs[-1], rel=2.0e-12, abs=2.0e-13
+    )
+
+
 def test_manufactured_solver_rejects_trace_false_success() -> None:
     spec = _base_system()
     trace = copy.deepcopy(spec)

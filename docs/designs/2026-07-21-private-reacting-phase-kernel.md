@@ -168,11 +168,19 @@ Jacobian internally. For a certified strict-interior solution it solves that
 system for the deterministic parameter order of compiled balance totals,
 Provider-basis reaction constants, and pressure, then maps the result through
 the exact amount-chart Jacobian and logarithmic volume coordinate. The private
-result records the KKT rank, infinity-norm condition number, active variable,
+result records the KKT rank and the deterministic infinity-norm condition
+number of the four-pass row/column-equilibrated KKT system (the single
+`condition_number_inf` metric), active variable,
 domain-constraint, and trace bounds, chart topology, and immutable Provider
 parameter fingerprint. It returns no derivative when the KKT matrix is
 singular or unacceptably conditioned, the active set can change, or the primal
 result is not certified.
+
+The local-minimum check is independent of that conditioning gate. `Z` is the
+null-space basis of the actual transformed equality Jacobian, and the check
+uses the exact symmetric Lagrangian Hessian restricted to `Z`, followed by
+the normalized Cholesky pivot threshold. Solver termination, KKT conditioning,
+and reduced-curvature status remain separate result axes.
 
 Provider parameters require typed phase-KKT cross derivatives and the
 corresponding derivative of the transformed Provider reference vector. The
