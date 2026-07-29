@@ -2067,12 +2067,54 @@ ReducedHessianAnalysis analyze_reduced_hessian(
             }
         }
     }
+    auto certified_direction = [&](const std::vector<double>& direction) {
+        if (direction.size() != basis.size()) {
+            return std::vector<double>{};
+        }
+        std::vector<double> physical_direction(dimension, 0.0);
+        for (std::size_t entry = 0; entry < basis.size(); ++entry) {
+            for (std::size_t coordinate = 0;
+                 coordinate < dimension;
+                 ++coordinate) {
+                physical_direction[coordinate] += direction[entry]
+                    * basis[entry][coordinate];
+            }
+        }
+        double curvature = 0.0;
+        for (std::size_t left = 0; left < dimension; ++left) {
+            for (std::size_t right = 0; right < dimension; ++right) {
+                curvature += physical_direction[left]
+                    * evaluation.lagrangian_hessian[left * dimension + right]
+                    * physical_direction[right];
+            }
+        }
+        const double norm = std::sqrt(std::inner_product(
+            physical_direction.begin(),
+            physical_direction.end(),
+            physical_direction.begin(),
+            0.0
+        ));
+        if (!std::isfinite(curvature) || curvature >= 0.0
+            || !std::isfinite(norm) || norm == 0.0) {
+            return std::vector<double>{};
+        }
+        for (double& value : physical_direction) {
+            value /= norm;
+        }
+        return physical_direction;
+    };
     std::vector<double> diagonal_scales(basis.size(), 0.0);
     for (std::size_t index = 0; index < basis.size(); ++index) {
         const double diagonal = reduced[index * basis.size() + index];
         if (!std::isfinite(diagonal) || diagonal <= 0.0) {
-            if (std::isfinite(diagonal)) {
-                result.negative_direction = basis[index];
+            if (std::isfinite(diagonal) && diagonal < 0.0) {
+                result.negative_direction = certified_direction(
+                    [&] {
+                        std::vector<double> direction(basis.size(), 0.0);
+                        direction[index] = 1.0;
+                        return direction;
+                    }()
+                );
             }
             return result;
         }
@@ -2092,35 +2134,31 @@ ReducedHessianAnalysis analyze_reduced_hessian(
         }
         if (diagonal <= 1.0e-10) {
             if (std::isfinite(diagonal)) {
+                std::vector<double> right_hand_side(column, 0.0);
+                for (std::size_t row = 0; row < column; ++row) {
+                    double value = -reduced[row * basis.size() + column];
+                    for (std::size_t prior = 0; prior < row; ++prior) {
+                        value -= reduced[row * basis.size() + prior]
+                            * right_hand_side[prior];
+                    }
+                    right_hand_side[row] = value
+                        / reduced[row * basis.size() + row];
+                }
                 std::vector<double> reduced_direction(basis.size(), 0.0);
+                for (std::size_t row = column; row-- > 0;) {
+                    double value = right_hand_side[row];
+                    for (std::size_t next = row + 1; next < column; ++next) {
+                        value -= reduced[next * basis.size() + row]
+                            * reduced_direction[next];
+                    }
+                    reduced_direction[row] = value
+                        / reduced[row * basis.size() + row];
+                }
                 reduced_direction[column] = 1.0;
-                for (std::size_t prior = 0; prior < column; ++prior) {
-                    reduced_direction[prior] = -reduced[
-                        column * basis.size() + prior
-                    ];
-                }
-                result.negative_direction.assign(dimension, 0.0);
                 for (std::size_t entry = 0; entry < basis.size(); ++entry) {
-                    for (std::size_t coordinate = 0;
-                         coordinate < dimension;
-                         ++coordinate) {
-                        result.negative_direction[coordinate] +=
-                            reduced_direction[entry] * basis[entry][coordinate];
-                    }
+                    reduced_direction[entry] /= diagonal_scales[entry];
                 }
-                const double norm = std::sqrt(std::inner_product(
-                    result.negative_direction.begin(),
-                    result.negative_direction.end(),
-                    result.negative_direction.begin(),
-                    0.0
-                ));
-                if (!std::isfinite(norm) || norm == 0.0) {
-                    result.negative_direction.clear();
-                } else {
-                    for (double& value : result.negative_direction) {
-                        value /= norm;
-                    }
-                }
+                result.negative_direction = certified_direction(reduced_direction);
             }
             return result;
         }
@@ -2140,6 +2178,97 @@ ReducedHessianAnalysis analyze_reduced_hessian(
 }
 
 }  // namespace
+
+ManufacturedReducedHessianEvidence analyze_manufactured_reduced_hessian(
+    const std::vector<double>& hessian
+) {
+    const double dimension = std::sqrt(static_cast<double>(hessian.size()));
+    const std::size_t coordinate_count = static_cast<std::size_t>(dimension);
+    if (coordinate_count == 0
+        || coordinate_count * coordinate_count != hessian.size()
+        || !std::all_of(hessian.begin(), hessian.end(), [](double value) {
+            return std::isfinite(value);
+        })) {
+        throw std::invalid_argument("manufactured Hessian dimensions are invalid");
+    }
+    ReactionNlpEvaluation evaluation;
+    evaluation.gradient.assign(coordinate_count, 0.0);
+    evaluation.lagrangian_hessian = hessian;
+    const ReducedHessianAnalysis analysis = analyze_reduced_hessian(evaluation, 0);
+    ManufacturedReducedHessianEvidence result;
+    result.positive = analysis.positive;
+    result.negative_direction = analysis.negative_direction;
+    if (!result.negative_direction.empty()) {
+        for (std::size_t left = 0; left < coordinate_count; ++left) {
+            for (std::size_t right = 0; right < coordinate_count; ++right) {
+                result.curvature += result.negative_direction[left]
+                    * hessian[left * coordinate_count + right]
+                    * result.negative_direction[right];
+            }
+        }
+    }
+    return result;
+}
+
+std::vector<double> manufactured_recovery_displacement(
+    const std::vector<double>& variables,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    const std::vector<double>& direction,
+    int sign
+) {
+    if (variables.empty()
+        || variables.size() != lower.size()
+        || variables.size() != upper.size()
+        || variables.size() != direction.size()
+        || (sign != 1 && sign != -1)) {
+        return {};
+    }
+    double step_limit = std::numeric_limits<double>::infinity();
+    bool has_direction = false;
+    for (std::size_t variable = 0;
+         variable < variables.size();
+         ++variable) {
+        if (!std::isfinite(variables[variable])
+            || !std::isfinite(lower[variable])
+            || !std::isfinite(upper[variable])
+            || variables[variable] <= lower[variable]
+            || variables[variable] >= upper[variable]
+            || !std::isfinite(direction[variable])) {
+            return {};
+        }
+        const double displacement = sign * direction[variable];
+        if (displacement == 0.0) {
+            continue;
+        }
+        has_direction = true;
+        const double room = displacement > 0.0
+            ? upper[variable] - variables[variable]
+            : variables[variable] - lower[variable];
+        if (!std::isfinite(room) || room <= 0.0) {
+            return {};
+        }
+        step_limit = std::min(
+            step_limit, room / std::abs(displacement)
+        );
+    }
+    if (!has_direction || !std::isfinite(step_limit) || step_limit <= 0.0) {
+        return {};
+    }
+    const double step = std::min(0.25 * step_limit, 1.0);
+    std::vector<double> displaced = variables;
+    for (std::size_t variable = 0;
+         variable < displaced.size();
+         ++variable) {
+        displaced[variable] += sign * step * direction[variable];
+        if (!std::isfinite(displaced[variable])
+            || displaced[variable] <= lower[variable]
+            || displaced[variable] >= upper[variable]) {
+            return {};
+        }
+    }
+    return displaced;
+}
 
 MaxMinInitializationResult max_min_initialization(
     const DenseMatrix& balance_matrix,
@@ -2685,7 +2814,7 @@ ChemicalSolveResult solve_reaction(
         && result.local_minimum_status == "failed"
         && !negative_curvature_direction.empty()) {
         result.negative_curvature_recovery_status = "unresolved";
-        double best_objective = std::numeric_limits<double>::infinity();
+        double best_objective = std::numeric_limits<double>::quiet_NaN();
         ChemicalSolveResult best_result;
         int best_sign = 0;
         auto fixed_objective = [&](const ChemicalSolveResult& candidate) {
@@ -2709,36 +2838,24 @@ ChemicalSolveResult solve_reaction(
                 return std::numeric_limits<double>::quiet_NaN();
             }
         };
+        const double original_objective = fixed_objective(result);
+        if (std::isfinite(original_objective)) {
+            best_objective = original_objective;
+        }
         for (const int sign : {1, -1}) {
-            double step_limit = std::numeric_limits<double>::infinity();
-            for (std::size_t variable = 0;
-                 variable < variables.size();
-                 ++variable) {
-                const double direction = negative_curvature_direction[variable];
-                if (direction == 0.0) {
-                    continue;
-                }
-                const double room = sign > 0
-                    ? upper[variable] - variables[variable]
-                    : variables[variable] - lower[variable];
-                if (!std::isfinite(room) || room <= 0.0) {
-                    step_limit = 0.0;
-                    break;
-                }
-                step_limit = std::min(
-                    step_limit, room / std::abs(direction)
+            if (!std::isfinite(original_objective)) {
+                break;
+            }
+            const std::vector<double> displaced =
+                manufactured_recovery_displacement(
+                    variables,
+                    lower,
+                    upper,
+                    negative_curvature_direction,
+                    sign
                 );
-            }
-            if (!std::isfinite(step_limit) || step_limit <= 0.0) {
+            if (displaced.empty()) {
                 continue;
-            }
-            const double step = std::min(0.25 * step_limit, 1.0);
-            std::vector<double> displaced = variables;
-            for (std::size_t variable = 0;
-                 variable < displaced.size();
-                 ++variable) {
-                displaced[variable] += sign * step
-                    * negative_curvature_direction[variable];
             }
             ReactionNlpEvaluation displaced_evaluation;
             try {

@@ -740,6 +740,30 @@ py::dict manufactured_inverse_log_packing_nlp_evidence(
     return result;
 }
 
+py::dict manufactured_reduced_hessian_evidence(
+    const std::vector<double>& hessian
+) {
+    const ManufacturedReducedHessianEvidence evidence =
+        analyze_manufactured_reduced_hessian(hessian);
+    py::dict result;
+    result["positive"] = evidence.positive;
+    result["curvature"] = evidence.curvature;
+    result["negative_direction"] = evidence.negative_direction;
+    return result;
+}
+
+std::vector<double> manufactured_recovery_displacement_evidence(
+    const std::vector<double>& variables,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    const std::vector<double>& direction,
+    int sign
+) {
+    return manufactured_recovery_displacement(
+        variables, lower, upper, direction, sign
+    );
+}
+
 }  // namespace
 
 void bind_chemical_equilibrium(py::module_& module) {
@@ -785,6 +809,20 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("constraint_multipliers"),
         py::arg("gauge_coefficients") = std::vector<double>{},
         py::arg("zero_kkt_rhs") = false
+    );
+    module.def(
+        "_chemical_analyze_manufactured_reduced_hessian",
+        &manufactured_reduced_hessian_evidence,
+        py::arg("hessian")
+    );
+    module.def(
+        "_chemical_manufactured_recovery_displacement",
+        &manufactured_recovery_displacement_evidence,
+        py::arg("variables"),
+        py::arg("lower"),
+        py::arg("upper"),
+        py::arg("direction"),
+        py::arg("sign")
     );
     module.def(
         "_chemical_solve_manufactured_nonconvex",

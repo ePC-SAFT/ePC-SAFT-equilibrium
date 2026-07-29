@@ -147,6 +147,12 @@ struct ManufacturedNlpEvaluation {
     std::vector<double> kkt_backtransform_solution;
 };
 
+struct ManufacturedReducedHessianEvidence {
+    bool positive = false;
+    double curvature = 0.0;
+    std::vector<double> negative_direction;
+};
+
 struct ProviderPhaseBlockEvidence {
     double value = 0.0;
     std::vector<double> gradient;
@@ -227,6 +233,18 @@ struct SourceStandardStateResult {
     const std::vector<double>& gauge_coefficients,
     const std::vector<double>& variables,
     const std::vector<double>& constraint_multipliers
+);
+
+// Private manufactured seams used to test the generic recovery mathematics.
+[[nodiscard]] ManufacturedReducedHessianEvidence
+analyze_manufactured_reduced_hessian(const std::vector<double>& hessian);
+
+[[nodiscard]] std::vector<double> manufactured_recovery_displacement(
+    const std::vector<double>& variables,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    const std::vector<double>& direction,
+    int sign
 );
 
 // Private derivative evidence seam. This is intentionally not part of the
