@@ -1677,6 +1677,22 @@ def test_installed_generic_observation_handle_batches_rows_and_exact_columns() -
     assert len(exact["jacobian"]) == 2
     assert all(math.isfinite(value) for value in exact["jacobian"])
     assert [row["status"] for row in exact["row_results"]] == [0, 0]
+    assert [row["solver_status"] for row in exact["row_results"]] == [
+        "solve_succeeded",
+        "solve_succeeded",
+    ]
+    assert [row["numerical_status"] for row in exact["row_results"]] == [
+        "passed",
+        "passed",
+    ]
+    assert [row["physical_status"] for row in exact["row_results"]] == [
+        "passed",
+        "passed",
+    ]
+    assert [row["derivative_status"] for row in exact["row_results"]] == [
+        "available",
+        "available",
+    ]
     assert exact["parameter_ids"] == [
         "segment_diameter;component;hydronium-cation"
     ]

@@ -12,6 +12,13 @@ extern "C" {
 #define EPCSAFT_REGRESSION_EVALUATOR_V1_ABI_VERSION 1u
 #define EPCSAFT_REGRESSION_EVALUATOR_V1_TEXT_CAPACITY 256u
 
+/* Stable row-status vocabulary for the v1 chemical-observation owner. */
+#define EPCSAFT_REGRESSION_EVALUATOR_V1_SOLVER_STATUS_SOLVE_SUCCEEDED \
+    "solve_succeeded"
+#define EPCSAFT_REGRESSION_EVALUATOR_V1_NUMERICAL_STATUS_PASSED "passed"
+#define EPCSAFT_REGRESSION_EVALUATOR_V1_PHYSICAL_STATUS_PASSED "passed"
+#define EPCSAFT_REGRESSION_EVALUATOR_V1_DERIVATIVE_STATUS_AVAILABLE "available"
+
 enum {
     EPCSAFT_REGRESSION_EVALUATOR_STATUS_OK_V1 = 0,
     EPCSAFT_REGRESSION_EVALUATOR_STATUS_UNAVAILABLE_V1 = 1,
@@ -107,11 +114,12 @@ typedef struct epcsaft_regression_evaluator_sdk_v1 {
 } epcsaft_regression_evaluator_sdk_v1;
 
 /*
- * The capsule owner retains the SDK table, context, and upstream model for the
- * complete fit. Calls are synchronous; the caller owns all result buffers.
- * The callback is native and does not require the Python GIL. A v1 consumer
- * must provide exact result and row-result struct sizes. The table's declared
- * single-thread/non-reentrant mode is authoritative.
+ * The capsule owner retains the SDK table, context, upstream model, and every
+ * metadata string backing its pointer fields as NUL-terminated storage for the
+ * complete handle lifetime. Calls are synchronous; the caller owns all result
+ * buffers. The callback is native and does not require the Python GIL. A v1
+ * consumer must provide exact result and row-result struct sizes. The table's
+ * declared single-thread/non-reentrant mode is authoritative.
  */
 
 #ifdef __cplusplus
