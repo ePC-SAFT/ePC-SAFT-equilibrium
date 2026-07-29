@@ -20,19 +20,16 @@ evidence is recorded in
 ## Reproducible source identity
 
 - Repository branch: `codex/held2-step5-best-qualified`
-- Validated base commit: `efc4c6cd86b55dd1eaf3f6cd5e11c4731d03c18e`
+- Validated integration base: `8abbe02f0d79cad05202f8998c119a5e3083353f`
+  (Provider frontend 0.2, PR #76)
 - Tracked production/test working-diff SHA-256:
-  `ff77023e98d3032c43e7a2582377924b48d9ebb7fc97635097cdf4f18c218e90`
-- Untracked Khudaida numerical-gate SHA-256:
-  `efccbc3161ea35659409ec081313d6084f835bbcef87c49365eec3f06ef8caad`
-- Khudaida native result artifact SHA-256:
-  `feecd9bb8919dcd132ae60e77c532fc78ca8902d790fe21c16631e9ce5ce1a8d`
+  `f24031fa81a6612d2befa5ee6709190822893fd1db31ada49df24c2d64a50735`
+- Khudaida numerical-gate SHA-256:
+  `25bfc55842052134d62a0c8c9a3448451231e734ee460acbc854f787913825fe`
 
 The tracked-diff digest covers `cpp/src`, `cpp/tests`, and
-`tests/test_perdomo_held2_trace.py`. The separate digest covers
-`tests/test_khudaida_held2_gate.py`, which was untracked at the checkpoint.
-`origin/main` had advanced independently after this state was validated; it
-is not part of this checkpoint.
+`tests/test_perdomo_held2_trace.py` relative to the validated integration base.
+The separate digest covers `tests/test_khudaida_held2_gate.py`.
 
 ## Working workflow invariants
 
@@ -105,7 +102,7 @@ public-API gate:
 - components = water, ethanol, isobutanol, sodium-cation, chloride-anion
 - parameter bundle = `khudaida-2026-figure-2-electrolyte-lle@1`
 - parameter fingerprint =
-  `sha256:5a59828d86bb29c919513484a26cedaa0f025463aaa7c149ae3d1fbd0eda97ae`
+  `sha256:b43fac77754d9d5cca8b3db2cbe709892a786d97b756084b167ce126ab4c3007`
 - feed =
   `(0.7005034356224062, 0.03286847384962303, 0.21275572005079824,
   0.026936185238586256, 0.026936185238586256)`
@@ -179,6 +176,9 @@ At this checkpoint:
   (`88 passed in 105.99s`);
 - after the code-surface cleanup, the native manufactured workflow passed in
   0.11 s and the full Python suite passed (`88 passed in 30.93s`);
+- after integration with Provider frontend 0.2, the native manufactured
+  workflow passed in 0.09 s and the complete Python suite, including all
+  native/Python diagnostic parity cases, passed (`131 passed in 40.01s`);
 - Ruff, mypy, native/Python diagnostics, and repository cleanup checks passed.
 
 The eight-row exploratory Khudaida campaign remains a historical

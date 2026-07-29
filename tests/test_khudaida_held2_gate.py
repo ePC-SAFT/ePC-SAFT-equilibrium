@@ -13,7 +13,7 @@ COMPONENT_IDS = (
     "chloride-anion",
 )
 PARAMETER_FINGERPRINT = (
-    "sha256:5a59828d86bb29c919513484a26cedaa0f025463aaa7c149ae3d1fbd0eda97ae"
+    "sha256:b43fac77754d9d5cca8b3db2cbe709892a786d97b756084b167ce126ab4c3007"
 )
 FIGURE2_TIE_LINE5_FEED = (
     0.7005034356224062,
@@ -49,13 +49,16 @@ EXPECTED_PHASE_VOLUMES_M3 = (
 
 
 def test_khudaida_figure2_tie_line5_public_numerical_gate() -> None:
-    parameters = epcsaft.ParameterBundle.from_catalog(
-        "khudaida-2026-figure-2-electrolyte-lle", version=1
-    ).select(COMPONENT_IDS)
+    parameters = epcsaft.Parameters.from_catalog(
+        "khudaida-2026-figure-2-electrolyte-lle",
+        components=COMPONENT_IDS,
+        version=1,
+    )
     assert parameters.fingerprint == PARAMETER_FINGERPRINT
+    model = epcsaft.Mixture(parameters)
 
     result = epcsaft_equilibrium.tp_flash(
-        epcsaft.EPCSAFT(parameters),
+        model,
         293.15 * epcsaft.unit_registry.kelvin,
         100000.0 * epcsaft.unit_registry.pascal,
         FIGURE2_TIE_LINE5_FEED,
