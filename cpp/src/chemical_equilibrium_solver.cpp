@@ -336,6 +336,29 @@ using PhaseEvaluator = std::function<PhaseBlockEvaluation(
     double
 )>;
 
+// A Provider-owned inverse packing map replaces the nonlinear volume
+// coordinate with a bounded log-packing coordinate.  The callback returns
+// exact value/gradient/Hessian data in [n_1..n_C, coordinate, theta] order;
+// the solver consumes only the [n,coordinate] block for its primal chain
+// rule and keeps the direct parameter partials for implicit sensitivities.
+struct VolumeCoordinateEvaluation {
+    double volume = 0.0;
+    std::vector<double> gradient;
+    std::vector<double> hessian;
+    std::vector<double> parameter_derivatives;
+};
+
+struct VolumeCoordinateTransform {
+    double lower_coordinate = 0.0;
+    double upper_coordinate = 0.0;
+    double initial_coordinate = 0.0;
+    std::function<VolumeCoordinateEvaluation(
+        double,
+        const std::vector<double>&,
+        double
+    )> evaluate;
+};
+
 struct ReactionDomain {
     bool enforce_packing = false;
     double packing_min = 0.0;
@@ -405,6 +428,9 @@ struct ReactionNlpEvaluation {
     PhaseBlockEvaluation phase;
     std::vector<double> constraint_lower;
     std::vector<double> constraint_upper;
+    std::vector<double> volume_gradient;
+    std::vector<double> volume_hessian;
+    std::vector<double> volume_parameter_derivatives;
     double volume = 0.0;
 };
 
@@ -417,7 +443,8 @@ ReactionNlpEvaluation evaluate_reaction_nlp(
     const PhaseEvaluator& phase_evaluator,
     const ReactionDomain& domain,
     const std::vector<double>& variables,
-    const std::vector<double>& multipliers
+    const std::vector<double>& multipliers,
+    const VolumeCoordinateTransform* volume_transform = nullptr
 ) {
     const std::size_t amount_dimension = chart.coordinate_count();
     const std::size_t variable_count = amount_dimension + 1;
@@ -430,9 +457,49 @@ ReactionNlpEvaluation evaluate_reaction_nlp(
     );
     ReactionNlpEvaluation result;
     result.amount_chart = evaluate_amount_chart(chart, amount_coordinates);
-    result.volume = std::exp(variables.back());
-    if (!std::isfinite(result.volume) || result.volume <= 0.0) {
-        throw std::domain_error("reaction NLP volume is invalid");
+    const std::size_t physical_count = g_ref.size() + 1;
+    if (volume_transform != nullptr) {
+        if (!volume_transform->evaluate
+            || !std::isfinite(volume_transform->lower_coordinate)
+            || !std::isfinite(volume_transform->upper_coordinate)
+            || volume_transform->upper_coordinate
+                <= volume_transform->lower_coordinate
+            || domain.enforce_packing) {
+            throw std::invalid_argument("invalid volume-coordinate transform");
+        }
+        const VolumeCoordinateEvaluation mapped = volume_transform->evaluate(
+            temperature_k,
+            result.amount_chart.amounts,
+            variables.back()
+        );
+        if (mapped.gradient.size() != physical_count
+            || mapped.hessian.size() != physical_count * physical_count
+            || !std::isfinite(mapped.volume)
+            || mapped.volume <= 0.0
+            || !std::all_of(mapped.gradient.begin(), mapped.gradient.end(),
+                [](double value) { return std::isfinite(value); })
+            || !std::all_of(mapped.hessian.begin(), mapped.hessian.end(),
+                [](double value) { return std::isfinite(value); })) {
+            throw std::invalid_argument("volume-coordinate transform returned invalid tensors");
+        }
+        if (!std::all_of(mapped.parameter_derivatives.begin(),
+                mapped.parameter_derivatives.end(),
+                [](double value) { return std::isfinite(value); })) {
+            throw std::invalid_argument("volume-coordinate parameter derivatives are invalid");
+        }
+        result.volume = mapped.volume;
+        result.volume_gradient = mapped.gradient;
+        result.volume_hessian = mapped.hessian;
+        result.volume_parameter_derivatives = mapped.parameter_derivatives;
+    } else {
+        result.volume = std::exp(variables.back());
+        if (!std::isfinite(result.volume) || result.volume <= 0.0) {
+            throw std::domain_error("reaction NLP volume is invalid");
+        }
+        result.volume_gradient.assign(physical_count, 0.0);
+        result.volume_gradient.back() = result.volume;
+        result.volume_hessian.assign(physical_count * physical_count, 0.0);
+        result.volume_hessian.back() = result.volume;
     }
     result.phase = phase_evaluator(
         temperature_k, result.amount_chart.amounts, result.volume
@@ -459,17 +526,22 @@ ReactionNlpEvaluation evaluate_reaction_nlp(
                 species * amount_dimension + reduced
             ] * physical_gradient[species];
         }
+        for (std::size_t species = 0; species < g_ref.size(); ++species) {
+            result.gradient[reduced] += result.volume_gradient[species]
+                * result.amount_chart.jacobian[species * amount_dimension + reduced]
+                * physical_gradient.back();
+        }
     }
-    result.gradient.back() = result.volume * physical_gradient.back();
+    result.gradient.back() = result.volume_gradient.back() * physical_gradient.back();
 
     result.constraints.assign(constraint_count, 0.0);
     result.constraint_lower.assign(constraint_count, 0.0);
     result.constraint_upper.assign(constraint_count, 0.0);
     std::vector<double> physical_constraint_gradients(
-        constraint_count * (g_ref.size() + 1), 0.0
+        constraint_count * physical_count, 0.0
     );
     std::vector<double> physical_constraint_hessians(
-        constraint_count * (g_ref.size() + 1) * (g_ref.size() + 1), 0.0
+        constraint_count * physical_count * physical_count, 0.0
     );
     for (std::size_t row = 0; row < balances.matrix.rows; ++row) {
         result.constraints[row] = -balances.totals[row];
@@ -524,24 +596,30 @@ ReactionNlpEvaluation evaluate_reaction_nlp(
 
     result.jacobian.assign(constraint_count * variable_count, 0.0);
 
-    std::vector<double> physical_jacobian((g_ref.size() + 1) * variable_count, 0.0);
+    std::vector<double> physical_jacobian(physical_count * variable_count, 0.0);
     for (std::size_t species = 0; species < g_ref.size(); ++species) {
         for (std::size_t reduced = 0; reduced < amount_dimension; ++reduced) {
             physical_jacobian[species * variable_count + reduced] =
                 result.amount_chart.jacobian[species * amount_dimension + reduced];
         }
     }
-    physical_jacobian[g_ref.size() * variable_count + amount_dimension] = result.volume;
+    for (std::size_t reduced = 0; reduced < amount_dimension; ++reduced) {
+        for (std::size_t species = 0; species < g_ref.size(); ++species) {
+            physical_jacobian[g_ref.size() * variable_count + reduced] +=
+                result.volume_gradient[species]
+                * result.amount_chart.jacobian[species * amount_dimension + reduced];
+        }
+    }
+    physical_jacobian[g_ref.size() * variable_count + amount_dimension] =
+        result.volume_gradient.back();
     for (std::size_t row = 0; row < constraint_count; ++row) {
-        for (std::size_t reduced = 0; reduced < amount_dimension; ++reduced) {
-            for (std::size_t species = 0; species < g_ref.size(); ++species) {
+        for (std::size_t reduced = 0; reduced < variable_count; ++reduced) {
+            for (std::size_t physical = 0; physical < physical_count; ++physical) {
                 result.jacobian[row * variable_count + reduced] +=
-                    physical_constraint_gradients[row * (g_ref.size() + 1) + species]
-                    * result.amount_chart.jacobian[species * amount_dimension + reduced];
+                    physical_constraint_gradients[row * physical_count + physical]
+                    * physical_jacobian[physical * variable_count + reduced];
             }
         }
-        result.jacobian[row * variable_count + amount_dimension] = result.volume
-            * physical_constraint_gradients[row * (g_ref.size() + 1) + g_ref.size()];
     }
 
     std::vector<double> physical_lagrangian_gradient = physical_gradient;
@@ -587,7 +665,54 @@ ReactionNlpEvaluation evaluate_reaction_nlp(
             }
         }
     }
-    result.lagrangian_hessian.back() += physical_lagrangian_gradient.back() * result.volume;
+    // The inverse-packing Hessian is with respect to its own inputs
+    // [n_1..n_C, coordinate], not the physical phase inputs [n_1..n_C,V]
+    // used above.  Pull it back through the amount chart and the identity
+    // coordinate map before adding the volume-chain term to the Lagrangian
+    // Hessian.  Reusing physical_jacobian here would apply dV/dx to the
+    // coordinate row a second time and corrupt the Newton model.
+    std::vector<double> volume_input_jacobian(
+        physical_count * variable_count,
+        0.0
+    );
+    for (std::size_t species = 0; species < g_ref.size(); ++species) {
+        for (std::size_t reduced = 0;
+             reduced < amount_dimension;
+             ++reduced) {
+            volume_input_jacobian[
+                species * variable_count + reduced
+            ] = result.amount_chart.jacobian[
+                species * amount_dimension + reduced
+            ];
+        }
+    }
+    volume_input_jacobian[
+        g_ref.size() * variable_count + amount_dimension
+    ] = 1.0;
+    for (std::size_t row = 0; row < variable_count; ++row) {
+        for (std::size_t column = 0; column < variable_count; ++column) {
+            double mapped_hessian = 0.0;
+            for (std::size_t left = 0; left < physical_count; ++left) {
+                for (std::size_t right = 0; right < physical_count; ++right) {
+                    mapped_hessian += result.volume_hessian[
+                        left * physical_count + right
+                    ] * volume_input_jacobian[left * variable_count + row]
+                        * volume_input_jacobian[right * variable_count + column];
+                }
+            }
+            if (row < amount_dimension && column < amount_dimension) {
+                for (std::size_t species = 0; species < g_ref.size(); ++species) {
+                    mapped_hessian += result.volume_gradient[species]
+                        * result.amount_chart.amount_hessians[
+                            species * amount_dimension * amount_dimension
+                                + row * amount_dimension + column
+                        ];
+                }
+            }
+            result.lagrangian_hessian[row * variable_count + column] +=
+                physical_lagrangian_gradient.back() * mapped_hessian;
+        }
+    }
     return result;
 }
 
@@ -628,7 +753,8 @@ KktPolishEvaluation evaluate_kkt_polish(
     double pressure_pa,
     const PhaseEvaluator& phase_evaluator,
     const ReactionDomain& domain,
-    const std::vector<double>& variables
+    const std::vector<double>& variables,
+    const VolumeCoordinateTransform* volume_transform = nullptr
 ) {
     if (reactions.columns != g_ref.size()) {
         throw std::invalid_argument("reaction polish dimensions are inconsistent");
@@ -642,7 +768,8 @@ KktPolishEvaluation evaluate_kkt_polish(
         phase_evaluator,
         domain,
         variables,
-        std::vector<double>(reaction_constraint_count(balances, domain), 0.0)
+        std::vector<double>(reaction_constraint_count(balances, domain), 0.0),
+        volume_transform
     );
     const std::size_t species_count = g_ref.size();
     const std::size_t variable_count = variables.size();
@@ -677,8 +804,15 @@ KktPolishEvaluation evaluate_kkt_polish(
                 base.amount_chart.jacobian[species * amount_dimension + reduced];
         }
     }
+    for (std::size_t reduced = 0; reduced < amount_dimension; ++reduced) {
+        for (std::size_t species = 0; species < species_count; ++species) {
+            physical_jacobian[species_count * variable_count + reduced] +=
+                base.volume_gradient[species]
+                * base.amount_chart.jacobian[species * amount_dimension + reduced];
+        }
+    }
     physical_jacobian[species_count * variable_count + amount_dimension] =
-        base.volume;
+        base.volume_gradient.back();
 
     const std::vector<double> potentials = chemical_potentials(base, g_ref);
     std::size_t constraint = balances.matrix.rows;
@@ -781,6 +915,23 @@ struct SquareSystemAnalysis {
     double condition_number_inf = std::numeric_limits<double>::infinity();
 };
 
+struct EquilibratedSquareSystem {
+    std::vector<double> matrix;
+    std::vector<double> row_scale;
+    std::vector<double> column_scale;
+    SquareSystemAnalysis analysis;
+};
+
+EquilibratedSquareSystem equilibrate_square_system(
+    const std::vector<double>& matrix
+);
+
+bool solve_equilibrated_square_system(
+    const EquilibratedSquareSystem& system,
+    const std::vector<double>& right_hand_side,
+    std::vector<double>& solution
+);
+
 SquareSystemAnalysis analyze_square_system(const std::vector<double>& matrix) {
     const std::size_t dimension = static_cast<std::size_t>(
         std::sqrt(static_cast<double>(matrix.size()))
@@ -853,6 +1004,139 @@ SquareSystemAnalysis analyze_square_system(const std::vector<double>& matrix) {
     return result;
 }
 
+EquilibratedSquareSystem equilibrate_square_system(
+    const std::vector<double>& matrix
+) {
+    const std::size_t dimension = static_cast<std::size_t>(
+        std::sqrt(static_cast<double>(matrix.size()))
+    );
+    EquilibratedSquareSystem result;
+    if (dimension * dimension != matrix.size() || dimension == 0
+        || !std::all_of(matrix.begin(), matrix.end(), [](double value) {
+            return std::isfinite(value);
+        })) {
+        return result;
+    }
+    result.row_scale.assign(dimension, 1.0);
+    result.column_scale.assign(dimension, 1.0);
+    result.matrix = matrix;
+
+    // The reaction and pressure rows are already physically scaled, but the
+    // amount-chart and volume-coordinate columns can differ by many orders
+    // of magnitude.  Balance the remaining square system with deterministic
+    // infinity-norm row/column factors.  The factors are retained so solves
+    // can be mapped back to the original coordinates without changing the
+    // derivative contract.
+    constexpr std::size_t kEquilibrationPasses = 4;
+    for (std::size_t pass = 0; pass < kEquilibrationPasses; ++pass) {
+        for (std::size_t row = 0; row < dimension; ++row) {
+            double scale = 0.0;
+            for (std::size_t column = 0; column < dimension; ++column) {
+                scale = std::max(
+                    scale,
+                    std::abs(
+                        matrix[row * dimension + column]
+                        * result.row_scale[row]
+                        * result.column_scale[column]
+                    )
+                );
+            }
+            if (scale > 0.0 && std::isfinite(scale)) {
+                result.row_scale[row] /= scale;
+            }
+        }
+        for (std::size_t column = 0; column < dimension; ++column) {
+            double scale = 0.0;
+            for (std::size_t row = 0; row < dimension; ++row) {
+                scale = std::max(
+                    scale,
+                    std::abs(
+                        matrix[row * dimension + column]
+                        * result.row_scale[row]
+                        * result.column_scale[column]
+                    )
+                );
+            }
+            if (scale > 0.0 && std::isfinite(scale)) {
+                result.column_scale[column] /= scale;
+            }
+        }
+    }
+    for (std::size_t row = 0; row < dimension; ++row) {
+        for (std::size_t column = 0; column < dimension; ++column) {
+            result.matrix[row * dimension + column] =
+                matrix[row * dimension + column]
+                * result.row_scale[row]
+                * result.column_scale[column];
+        }
+    }
+    result.analysis = analyze_square_system(result.matrix);
+    return result;
+}
+
+bool solve_equilibrated_square_system(
+    const EquilibratedSquareSystem& system,
+    const std::vector<double>& right_hand_side,
+    std::vector<double>& solution
+) {
+    const std::size_t dimension = right_hand_side.size();
+    if (system.matrix.size() != dimension * dimension
+        || system.row_scale.size() != dimension
+        || system.column_scale.size() != dimension) {
+        return false;
+    }
+    std::vector<double> scaled_right_hand_side(dimension, 0.0);
+    for (std::size_t row = 0; row < dimension; ++row) {
+        scaled_right_hand_side[row] =
+            system.row_scale[row] * right_hand_side[row];
+    }
+    const std::vector<double> scaled_input = scaled_right_hand_side;
+    if (!solve_square_system(system.matrix, scaled_right_hand_side)) {
+        return false;
+    }
+    double matrix_norm_inf = 0.0;
+    double solution_norm_inf = 0.0;
+    double right_hand_side_norm_inf = 0.0;
+    double residual_norm_inf = 0.0;
+    for (std::size_t row = 0; row < dimension; ++row) {
+        double matrix_row_norm = 0.0;
+        double residual = -scaled_input[row];
+        for (std::size_t column = 0; column < dimension; ++column) {
+            matrix_row_norm += std::abs(system.matrix[row * dimension + column]);
+            residual += system.matrix[row * dimension + column]
+                * scaled_right_hand_side[column];
+        }
+        matrix_norm_inf = std::max(matrix_norm_inf, matrix_row_norm);
+        residual_norm_inf = std::max(residual_norm_inf, std::abs(residual));
+        right_hand_side_norm_inf = std::max(
+            right_hand_side_norm_inf,
+            std::abs(scaled_input[row])
+        );
+    }
+    for (double value : scaled_right_hand_side) {
+        solution_norm_inf = std::max(solution_norm_inf, std::abs(value));
+    }
+    const double denominator = std::max(
+        std::numeric_limits<double>::min(),
+        matrix_norm_inf * solution_norm_inf + right_hand_side_norm_inf
+    );
+    const double backward_error = residual_norm_inf / denominator;
+    const double tolerance = 2048.0
+        * std::numeric_limits<double>::epsilon()
+        * static_cast<double>(std::max<std::size_t>(1, dimension));
+    if (!std::isfinite(backward_error) || backward_error > tolerance) {
+        return false;
+    }
+    solution.resize(dimension);
+    for (std::size_t column = 0; column < dimension; ++column) {
+        solution[column] =
+            system.column_scale[column] * scaled_right_hand_side[column];
+    }
+    return std::all_of(solution.begin(), solution.end(), [](double value) {
+        return std::isfinite(value);
+    });
+}
+
 ChemicalSensitivityResult evaluate_implicit_sensitivities(
     const AmountChart& chart,
     const ConstraintRows& balances,
@@ -869,15 +1153,17 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
     double trace_floor,
     const std::string& parameter_fingerprint,
     const std::vector<double>& ln_k_pressure_derivatives_per_pa,
-    const std::vector<double>& ln_k_parameter_derivatives
+    const std::vector<double>& ln_k_parameter_derivatives,
+    const VolumeCoordinateTransform* volume_transform = nullptr
 ) {
     constexpr double kInactiveMargin = 1.0e-7;
     ChemicalSensitivityResult result;
     result.parameter_fingerprint = parameter_fingerprint;
     result.chart_topology = chart.ionic()
-        ? "electroneutral_log_total+softmax_shares+neutral_log_amounts+log_volume"
+        ? "electroneutral_log_total+softmax_shares+neutral_log_amounts+"
+            + std::string(volume_transform == nullptr ? "log_volume" : "log_packing_fraction")
         : "neutral_log_amounts[" + std::to_string(chart.coordinate_count())
-            + "]+log_volume";
+            + "]+" + (volume_transform == nullptr ? "log_volume" : "log_packing_fraction");
     for (std::size_t variable = 0; variable < variables.size(); ++variable) {
         if (variables[variable] - lower[variable] <= kInactiveMargin) {
             result.active_lower_bounds.push_back(variable);
@@ -898,14 +1184,17 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
             pressure_pa,
             phase_evaluator,
             domain,
-            variables
+            variables,
+            volume_transform
         );
     } catch (const std::exception&) {
         result.failure_reason = "kkt_evaluation_failed";
         return result;
     }
     result.kkt_dimension = variables.size();
-    const SquareSystemAnalysis analysis = analyze_square_system(evaluation.jacobian);
+    const EquilibratedSquareSystem equilibrated =
+        equilibrate_square_system(evaluation.jacobian);
+    const SquareSystemAnalysis& analysis = equilibrated.analysis;
     result.kkt_rank = analysis.rank;
     result.condition_number_inf = analysis.condition_number_inf;
     if (!result.active_lower_bounds.empty()
@@ -941,18 +1230,28 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
             variables.begin() + static_cast<std::ptrdiff_t>(amount_dimension)
         )
     );
-    const double volume = std::exp(variables.back());
-    PhaseBlockEvaluation phase;
-    try {
-        phase = phase_evaluator(
-            temperature_k, amount_chart.amounts, volume
-        );
-    } catch (const std::exception&) {
-        result.failure_reason = "provider_parameter_partial_evaluation_failed";
-        return result;
-    }
+    const ReactionNlpEvaluation solved = evaluate_reaction_nlp(
+        chart,
+        balances,
+        g_ref,
+        temperature_k,
+        pressure_pa,
+        phase_evaluator,
+        domain,
+        variables,
+        std::vector<double>(reaction_constraint_count(balances, domain), 0.0),
+        volume_transform
+    );
+    const PhaseBlockEvaluation& phase = solved.phase;
     const std::size_t active_parameter_count =
         phase.active_parameter_names.size();
+    if ((volume_transform != nullptr
+            && solved.volume_parameter_derivatives.size() != active_parameter_count)
+        || (volume_transform == nullptr
+            && !solved.volume_parameter_derivatives.empty())) {
+        result.failure_reason = "volume_parameter_partial_evaluation_failed";
+        return result;
+    }
     if (active_parameter_count != 0
         && (phase.state_parameter_derivatives.size()
                 != (g_ref.size() + 1) * active_parameter_count
@@ -1033,13 +1332,22 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
         } else {
             const std::size_t active = parameter
                 - balances.matrix.rows - reactions.rows - 1;
+            const double direct_volume_derivative =
+                solved.volume_parameter_derivatives.empty()
+                ? 0.0
+                : solved.volume_parameter_derivatives[active];
             for (std::size_t reaction = 0; reaction < reactions.rows; ++reaction) {
                 double mechanical_derivative = 0.0;
                 for (std::size_t species = 0; species < g_ref.size(); ++species) {
                     mechanical_derivative += reactions(reaction, species)
-                        * phase.chemical_potential_parameter_derivatives_over_rt[
-                            species * active_parameter_count + active
-                        ];
+                        * (
+                            phase.chemical_potential_parameter_derivatives_over_rt[
+                                species * active_parameter_count + active
+                            ]
+                            + phase.mechanical.hessian[
+                                species * (g_ref.size() + 1) + g_ref.size()
+                            ] * direct_volume_derivative
+                        );
                 }
                 right_hand_side[balances.matrix.rows + reaction] = (
                     ln_k_parameter_derivatives[
@@ -1047,15 +1355,25 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
                     ] - mechanical_derivative
                 ) / matrix_row_l2_norm(reactions, reaction);
             }
-            right_hand_side.back() =
-                -phase.pressure_parameter_derivatives_pa[active] / pressure_pa;
+            right_hand_side.back() = -(
+                phase.pressure_parameter_derivatives_pa[active]
+                - kGasConstantJPerMolK * temperature_k
+                    * phase.mechanical.hessian.back()
+                    * direct_volume_derivative
+            ) / pressure_pa;
         }
-        if (!solve_square_system(evaluation.jacobian, right_hand_side)) {
+        std::vector<double> solution;
+        if (!solve_equilibrated_square_system(
+                equilibrated,
+                right_hand_side,
+                solution
+            )) {
             result.failure_reason = "singular_kkt_jacobian";
             result.amount_derivatives.clear();
             result.volume_derivatives.clear();
             return result;
         }
+        right_hand_side = std::move(solution);
         for (std::size_t species = 0; species < g_ref.size(); ++species) {
             for (std::size_t coordinate = 0;
                  coordinate < amount_dimension;
@@ -1067,7 +1385,19 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
             }
         }
         result.volume_derivatives[parameter] =
-            volume * right_hand_side.back();
+            std::inner_product(
+                solved.volume_gradient.begin(),
+                solved.volume_gradient.begin()
+                    + static_cast<std::ptrdiff_t>(g_ref.size()),
+                result.amount_derivatives.begin()
+                    + static_cast<std::ptrdiff_t>(parameter * g_ref.size()),
+                solved.volume_gradient.back() * right_hand_side.back()
+            )
+            + (parameter >= balances.matrix.rows + reactions.rows + 1
+                ? solved.volume_parameter_derivatives[
+                    parameter - balances.matrix.rows - reactions.rows - 1
+                ]
+                : 0.0);
     }
     result.status = "available";
     result.failure_reason.clear();
@@ -1086,7 +1416,8 @@ bool polish_interior_kkt(
     const std::vector<double>& lower,
     const std::vector<double>& upper,
     int max_iterations,
-    std::vector<double>& variables
+    std::vector<double>& variables,
+    const VolumeCoordinateTransform* volume_transform = nullptr
 ) {
     const std::size_t dimension = variables.size();
     if (kkt_polish_constraint_count(balances, reactions) != dimension) {
@@ -1102,17 +1433,36 @@ bool polish_interior_kkt(
             pressure_pa,
             phase_evaluator,
             domain,
-            variables
+            variables,
+            volume_transform
         );
         const double residual = vector_inf_norm(evaluation.constraints);
-        if (residual <= kAffinityTolerance) {
+        const double pressure_residual = evaluation.constraints.empty()
+            ? std::numeric_limits<double>::infinity()
+            : std::abs(evaluation.constraints.back());
+        const double nonpressure_residual = evaluation.constraints.size() <= 1
+            ? 0.0
+            : vector_inf_norm(std::vector<double>(
+                evaluation.constraints.begin(),
+                evaluation.constraints.end() - 1
+            ));
+        if (nonpressure_residual <= kAffinityTolerance
+            && pressure_residual <= kPressureTolerance) {
             return evaluation.domain_feasible;
         }
-        std::vector<double> step = evaluation.constraints;
-        for (double& value : step) {
+        std::vector<double> right_hand_side = evaluation.constraints;
+        for (double& value : right_hand_side) {
             value = -value;
         }
-        if (!solve_square_system(evaluation.jacobian, step)) {
+        const EquilibratedSquareSystem equilibrated =
+            equilibrate_square_system(evaluation.jacobian);
+        std::vector<double> step;
+        if (equilibrated.analysis.rank != dimension
+            || !solve_equilibrated_square_system(
+                equilibrated,
+                right_hand_side,
+                step
+            )) {
             return false;
         }
         double alpha = 1.0;
@@ -1143,7 +1493,8 @@ bool polish_interior_kkt(
                     pressure_pa,
                     phase_evaluator,
                     domain,
-                    candidate
+                    candidate,
+                    volume_transform
                 );
                 if (trial.domain_feasible
                     && vector_inf_norm(trial.constraints) < residual) {
@@ -1174,7 +1525,8 @@ public:
         ReactionDomain domain,
         std::vector<double> initial,
         std::vector<double> lower,
-        std::vector<double> upper
+        std::vector<double> upper,
+        const VolumeCoordinateTransform* volume_transform
     )
         : chart_(std::move(chart)),
           balances_(std::move(balances)),
@@ -1186,6 +1538,7 @@ public:
           initial_(std::move(initial)),
           lower_(std::move(lower)),
           upper_(std::move(upper)),
+          volume_transform_(volume_transform),
           solution_(initial_),
           constraint_multipliers_(reaction_constraint_count(balances_, domain_), 0.0),
           lower_multipliers_(initial_.size(), 0.0),
@@ -1504,7 +1857,8 @@ private:
             phase_evaluator_,
             domain_,
             std::vector<double>(values, values + initial_.size()),
-            multipliers
+            multipliers,
+            volume_transform_
         );
     }
 
@@ -1518,6 +1872,7 @@ private:
     std::vector<double> initial_;
     std::vector<double> lower_;
     std::vector<double> upper_;
+    const VolumeCoordinateTransform* volume_transform_;
     std::vector<double> solution_;
     std::vector<double> constraint_multipliers_;
     std::vector<double> lower_multipliers_;
@@ -1784,7 +2139,8 @@ ChemicalSolveResult solve_reaction(
     double initial_volume,
     const std::vector<double>& ln_k_pressure_derivatives_per_pa,
     const std::vector<double>& ln_k_parameter_derivatives,
-    const std::array<double, 2>& volume_bounds
+    const std::array<double, 2>& volume_bounds,
+    const VolumeCoordinateTransform* volume_transform = nullptr
 ) {
     if (!std::isfinite(temperature_k) || temperature_k <= 0.0
         || !std::isfinite(pressure_pa) || pressure_pa <= 0.0
@@ -1826,7 +2182,14 @@ ChemicalSolveResult solve_reaction(
             initialization.amounts.begin(), initialization.amounts.end(), 0.0
         ) / pressure_over_rt;
     }
-    initial.push_back(std::log(initial_volume));
+    if (volume_transform != nullptr) {
+        if (!std::isfinite(volume_transform->initial_coordinate)) {
+            throw std::invalid_argument("volume-coordinate initial value is invalid");
+        }
+        initial.push_back(volume_transform->initial_coordinate);
+    } else {
+        initial.push_back(std::log(initial_volume));
+    }
     std::vector<double> lower(initial.size(), -40.0);
     std::vector<double> upper(initial.size(), 40.0);
     if (!chart.ionic()) {
@@ -1895,7 +2258,10 @@ ChemicalSolveResult solve_reaction(
             );
         }
     }
-    if (std::isfinite(volume_bounds[0])
+    if (volume_transform != nullptr) {
+        lower.back() = volume_transform->lower_coordinate;
+        upper.back() = volume_transform->upper_coordinate;
+    } else if (std::isfinite(volume_bounds[0])
         && std::isfinite(volume_bounds[1])) {
         if (volume_bounds[0] <= 0.0
             || volume_bounds[1] <= volume_bounds[0]
@@ -1922,7 +2288,8 @@ ChemicalSolveResult solve_reaction(
         domain,
         initial,
         lower,
-        upper
+        upper,
+        volume_transform
     );
     Ipopt::SmartPtr<Ipopt::TNLP> problem = raw_problem;
     Ipopt::SmartPtr<Ipopt::IpoptApplication> application = IpoptApplicationFactory();
@@ -1950,7 +2317,8 @@ ChemicalSolveResult solve_reaction(
                 phase_evaluator,
                 domain,
                 variables,
-                raw_problem->constraint_multipliers()
+                raw_problem->constraint_multipliers(),
+                volume_transform
             );
             const std::vector<double> preliminary_potentials =
                 chemical_potentials(preliminary, g_ref);
@@ -1960,14 +2328,9 @@ ChemicalSolveResult solve_reaction(
             const double preliminary_balance = vector_inf_norm(std::vector<double>(
                 preliminary.constraints.begin(),
                 preliminary.constraints.begin()
-                    + static_cast<std::ptrdiff_t>(balances.matrix.rows)
+                + static_cast<std::ptrdiff_t>(balances.matrix.rows)
             ));
-            const double preliminary_pressure = std::abs(
-                preliminary.phase.mechanical.pressure_pa - pressure_pa
-            ) / pressure_pa;
-            if (preliminary_affinity > kAffinityTolerance
-                && preliminary_balance <= kBalanceTolerance
-                && preliminary_pressure <= kPressureTolerance
+            if (preliminary_balance <= kBalanceTolerance
                 && preliminary.amount_chart.minimum_amount > trace_floor) {
                 std::vector<double> candidate = variables;
                 if (polish_interior_kkt(
@@ -1982,7 +2345,8 @@ ChemicalSolveResult solve_reaction(
                     lower,
                     upper,
                     max_iterations,
-                    candidate
+                    candidate,
+                    volume_transform
                 )) {
                     const ReactionNlpEvaluation polished_evaluation =
                         evaluate_reaction_nlp(
@@ -1996,7 +2360,8 @@ ChemicalSolveResult solve_reaction(
                             candidate,
                             std::vector<double>(
                                 reaction_constraint_count(balances, domain), 0.0
-                            )
+                            ),
+                            volume_transform
                         );
                     const std::vector<double> polished_potentials =
                         chemical_potentials(polished_evaluation, g_ref);
@@ -2031,15 +2396,20 @@ ChemicalSolveResult solve_reaction(
                 ? std::vector<double>(
                     reaction_constraint_count(balances, domain), 0.0
                 )
-                : raw_problem->constraint_multipliers()
+                : raw_problem->constraint_multipliers(),
+            volume_transform
         );
     } catch (const std::exception& error) {
         result.callback_error = error.what();
+        if (volume_transform != nullptr) {
+        }
         result.numerical_status = "failed";
         return result;
     }
     result.amounts = evaluation.amount_chart.amounts;
     result.volume_m3 = evaluation.volume;
+    if (volume_transform != nullptr) {
+    }
     result.balance_inf_norm = vector_inf_norm(std::vector<double>(
         evaluation.constraints.begin(),
         evaluation.constraints.begin() + static_cast<std::ptrdiff_t>(balances.matrix.rows)
@@ -2052,12 +2422,16 @@ ChemicalSolveResult solve_reaction(
     result.reaction_affinity_inf_norm = reaction_residual_inf_norm(
         system.reaction_matrix, potentials
     );
-    if (domain.enforce_packing) {
-        result.packing_fraction = evaluation.phase.packing.value;
-        result.provider_domain_status = result.packing_fraction >= domain.packing_min
+    if (domain.enforce_packing || volume_transform != nullptr) {
+        if (!evaluation.phase.has_packing) {
+            result.provider_domain_status = "failed";
+        } else {
+            result.packing_fraction = evaluation.phase.packing.value;
+            result.provider_domain_status = result.packing_fraction >= domain.packing_min
                 && result.packing_fraction <= domain.packing_max
-            ? "passed"
-            : "failed";
+                ? "passed"
+                : "failed";
+        }
     } else {
         result.provider_domain_status = "not_applicable";
     }
@@ -2161,7 +2535,8 @@ ChemicalSolveResult solve_reaction(
             phase_evaluator,
             domain,
             variables,
-            equality_multipliers
+            equality_multipliers,
+            volume_transform
         );
     } catch (const std::exception& error) {
         result.callback_error = error.what();
@@ -2220,7 +2595,8 @@ ChemicalSolveResult solve_reaction(
             trace_floor,
             system.provider_fingerprint,
             ln_k_pressure_derivatives_per_pa,
-            ln_k_parameter_derivatives
+            ln_k_parameter_derivatives,
+            volume_transform
         );
         if (!result.accepted && result.sensitivities.status == "available") {
             result.sensitivities.status = "unavailable";
@@ -2510,6 +2886,84 @@ ChemicalSolveResult solve_provider_reaction(
             }
         }
     }
+    const ProviderActiveParameterSet inverse_parameters = active_parameters == nullptr
+        ? ProviderActiveParameterSet{}
+        : *active_parameters;
+    VolumeCoordinateTransform volume_transform;
+    volume_transform.lower_coordinate = std::log(packing_fraction_min);
+    volume_transform.upper_coordinate = std::nextafter(
+        std::log(packing_fraction_max), -std::numeric_limits<double>::infinity()
+    );
+    const double initial_packing_fraction = parameterized
+        ? provider.evaluate_reacting_phase_parameters(
+            temperature_k,
+            starting_amounts,
+            initial_volume,
+            packing_fraction_min,
+            packing_fraction_max,
+            *active_parameters
+        ).packing.value
+        : provider.evaluate_packing_fraction(
+            temperature_k, starting_amounts, initial_volume
+        ).value;
+    volume_transform.initial_coordinate = std::log(initial_packing_fraction);
+    if (!std::isfinite(volume_transform.lower_coordinate)
+        || !std::isfinite(volume_transform.upper_coordinate)
+        || volume_transform.upper_coordinate <= volume_transform.lower_coordinate
+        || !std::isfinite(volume_transform.initial_coordinate)
+        || volume_transform.initial_coordinate <= volume_transform.lower_coordinate
+        || volume_transform.initial_coordinate >= volume_transform.upper_coordinate) {
+        throw std::invalid_argument(
+            "Provider inverse-packing coordinate bounds are incompatible with the seed"
+        );
+    }
+    volume_transform.evaluate = [
+        &provider,
+        inverse_parameters
+    ](
+        double temperature,
+        const std::vector<double>& amounts,
+        double coordinate
+    ) {
+        const InversePackingGeometryEvaluation block =
+            provider.evaluate_inverse_packing_geometry(
+                temperature,
+                amounts,
+                coordinate,
+                inverse_parameters
+            );
+        const std::size_t state_count = amounts.size() + 1;
+        const std::size_t parameter_count = inverse_parameters.parameters.size();
+        if (block.gradient.size() != state_count + parameter_count
+            || block.hessian.size()
+                != (state_count + parameter_count) * (state_count + parameter_count)) {
+            throw std::invalid_argument(
+                "Provider inverse-packing geometry tensor dimensions changed"
+            );
+        }
+        std::vector<double> state_gradient(
+            block.gradient.begin(), block.gradient.begin()
+                + static_cast<std::ptrdiff_t>(state_count)
+        );
+        std::vector<double> state_hessian(state_count * state_count, 0.0);
+        for (std::size_t row = 0; row < state_count; ++row) {
+            for (std::size_t column = 0; column < state_count; ++column) {
+                state_hessian[row * state_count + column] = block.hessian[
+                    row * (state_count + parameter_count) + column
+                ];
+            }
+        }
+        std::vector<double> parameter_derivatives(
+            block.gradient.begin() + static_cast<std::ptrdiff_t>(state_count),
+            block.gradient.end()
+        );
+        return VolumeCoordinateEvaluation{
+            block.volume_m3,
+            std::move(state_gradient),
+            std::move(state_hessian),
+            std::move(parameter_derivatives),
+        };
+    };
     const PhaseEvaluator phase_evaluator = [
         &provider,
         active_parameters,
@@ -2588,7 +3042,7 @@ ChemicalSolveResult solve_provider_reaction(
         return result;
     };
     const ReactionDomain domain{
-        true,
+        false,
         packing_fraction_min,
         packing_fraction_max,
         total_ion_fraction_max,
@@ -2608,7 +3062,8 @@ ChemicalSolveResult solve_provider_reaction(
             initial_volume,
             ln_k_pressure_derivatives_per_pa,
             ln_k_parameter_derivatives,
-            admitted_volume_bounds
+            admitted_volume_bounds,
+            &volume_transform
         ),
         false
     );

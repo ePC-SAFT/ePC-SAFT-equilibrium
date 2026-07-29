@@ -24,6 +24,9 @@ constexpr std::size_t kNeutralReferenceDerivativeSdkTableSize =
 constexpr std::size_t kReactingPhaseParameterSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_reacting_phase_parameters)
     + sizeof(epcsaft_evaluate_reacting_phase_parameters_v1);
+constexpr std::size_t kInversePackingGeometrySdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, evaluate_inverse_packing_geometry)
+    + sizeof(epcsaft_evaluate_inverse_packing_geometry_v1);
 constexpr double kNeutralReferenceConvergenceErrorMax = 5.0e-5;
 constexpr double kNeutralReferenceRootResidualRelativeMax = 1.0e-9;
 constexpr double kNeutralReferenceRootBracketRelativeMax = 1.0e-8;
@@ -1061,6 +1064,161 @@ ParameterizedPhaseEvaluation ProviderContext::evaluate_reacting_phase_parameters
             );
         }
     }
+    return result;
+}
+
+InversePackingGeometryEvaluation ProviderContext::evaluate_inverse_packing_geometry(
+    double temperature_k,
+    const std::vector<double>& amounts_mol,
+    double log_packing_fraction,
+    const ProviderActiveParameterSet& active_parameters
+) const {
+    if (sdk_.table_size < kInversePackingGeometrySdkTableSize
+        || sdk_.inverse_packing_geometry_result_size
+            != sizeof(epcsaft_inverse_packing_geometry_result_v1)
+        || sdk_.evaluate_inverse_packing_geometry == nullptr
+        || amounts_mol.size() != sdk_.component_count) {
+        throw std::invalid_argument(
+            "Provider inverse-packing geometry ABI contract is incomplete"
+        );
+    }
+    require_finite(temperature_k, "inverse-packing temperature");
+    require_finite(log_packing_fraction, "log packing fraction");
+    if (temperature_k <= 0.0
+        || !std::all_of(amounts_mol.begin(), amounts_mol.end(), [](double value) {
+            return std::isfinite(value) && value > 0.0;
+        })) {
+        throw std::invalid_argument(
+            "inverse-packing geometry state must be finite and positive"
+        );
+    }
+    std::string topology = active_parameters.topology_fingerprint;
+    if (topology.empty()) {
+        if (sdk_.capability_count == 0 || sdk_.capabilities == nullptr
+            || sdk_.table_size < kCapabilitySdkTableSize) {
+            throw std::invalid_argument(
+                "Provider inverse-packing topology capability is incomplete"
+            );
+        }
+        for (std::size_t index = 0; index < sdk_.capability_count; ++index) {
+            const auto& descriptor = sdk_.capabilities[index];
+            if (descriptor.struct_size != sizeof(descriptor)
+                || descriptor.schema_version
+                    != EPCSAFT_NATIVE_CAPABILITY_SCHEMA_VERSION_V1
+                || descriptor.model_domain
+                    != EPCSAFT_NATIVE_MODEL_DOMAIN_REACTING_ELECTROLYTE_PHASE_V1
+                || descriptor.component_count != sdk_.component_count) {
+                continue;
+            }
+            const std::string descriptor_fingerprint = decode_provider_char_array(
+                descriptor.parameter_fingerprint,
+                sizeof(descriptor.parameter_fingerprint),
+                "Provider inverse-packing capability fingerprint"
+            );
+            if (descriptor_fingerprint != fingerprint_) {
+                continue;
+            }
+            const std::string descriptor_topology = decode_provider_char_array(
+                descriptor.topology_fingerprint,
+                sizeof(descriptor.topology_fingerprint),
+                "Provider inverse-packing capability topology"
+            );
+            if (descriptor_topology.empty()) {
+                continue;
+            }
+            if (topology.empty()) {
+                topology = descriptor_topology;
+            } else if (topology != descriptor_topology) {
+                throw std::invalid_argument(
+                    "Provider inverse-packing capability topologies disagree"
+                );
+            }
+        }
+        if (topology.empty()) {
+            throw std::invalid_argument(
+                "Provider inverse-packing topology capability is missing"
+            );
+        }
+    }
+    const std::size_t coordinate_count = amounts_mol.size() + 1
+        + active_parameters.parameters.size();
+    InversePackingGeometryEvaluation result;
+    result.gradient.resize(coordinate_count);
+    result.hessian.resize(coordinate_count * coordinate_count);
+    const std::vector<epcsaft_active_parameter_request_v1> native_requests =
+        native_active_requests(active_parameters);
+    epcsaft_inverse_packing_geometry_result_v1 native{};
+    native.struct_size = sizeof(native);
+    native.coordinate_count = coordinate_count;
+    native.active_parameter_count = active_parameters.parameters.size();
+    native.gradient_capacity = result.gradient.size();
+    native.hessian_capacity = result.hessian.size();
+    native.gradient = result.gradient.data();
+    native.hessian = result.hessian.data();
+    const int status = sdk_.evaluate_inverse_packing_geometry(
+        sdk_.model_context,
+        fingerprint_.c_str(),
+        topology.c_str(),
+        temperature_k,
+        amounts_mol.data(),
+        amounts_mol.size(),
+        log_packing_fraction,
+        native_requests.empty() ? nullptr : native_requests.data(),
+        native_requests.size(),
+        &native
+    );
+    if (status != native.status) {
+        throw std::runtime_error(
+            "Provider inverse-packing geometry returned inconsistent status values"
+        );
+    }
+    if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
+        throw std::domain_error(
+            "Provider inverse-packing geometry failed: "
+            + decode_provider_char_array(
+                native.error,
+                sizeof(native.error),
+                "Provider inverse-packing geometry error"
+            )
+        );
+    }
+    if (native.struct_size != sizeof(native)
+        || native.coordinate_count != coordinate_count
+        || native.active_parameter_count != active_parameters.parameters.size()
+        || native.gradient_capacity != result.gradient.size()
+        || native.hessian_capacity != result.hessian.size()
+        || native.gradient != result.gradient.data()
+        || native.hessian != result.hessian.data()) {
+        throw std::invalid_argument(
+            "Provider inverse-packing geometry result buffer contract changed"
+        );
+    }
+    const std::string returned_parameter_fingerprint = decode_provider_char_array(
+        native.parameter_fingerprint,
+        sizeof(native.parameter_fingerprint),
+        "Provider inverse-packing geometry fingerprint"
+    );
+    const std::string returned_topology = decode_provider_char_array(
+        native.topology_fingerprint,
+        sizeof(native.topology_fingerprint),
+        "Provider inverse-packing geometry topology"
+    );
+    if (returned_parameter_fingerprint != fingerprint_ || returned_topology != topology) {
+        throw std::invalid_argument(
+            "Provider inverse-packing geometry identity changed"
+        );
+    }
+    if (!std::isfinite(native.volume_m3) || native.volume_m3 <= 0.0
+        || !std::all_of(result.gradient.begin(), result.gradient.end(),
+            [](double value) { return std::isfinite(value); })
+        || !std::all_of(result.hessian.begin(), result.hessian.end(),
+            [](double value) { return std::isfinite(value); })) {
+        throw std::invalid_argument(
+            "Provider inverse-packing geometry tensors are invalid"
+        );
+    }
+    result.volume_m3 = native.volume_m3;
+    result.topology_fingerprint = returned_topology;
     return result;
 }
 

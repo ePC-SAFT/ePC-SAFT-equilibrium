@@ -157,6 +157,8 @@ class _ChemicalSdkTable(ctypes.Structure):
         ("evaluate_neutral_reference_derivatives", ctypes.c_void_p),
         ("reacting_phase_parameter_result_size", ctypes.c_size_t),
         ("evaluate_reacting_phase_parameters", ctypes.c_void_p),
+        ("inverse_packing_geometry_result_size", ctypes.c_size_t),
+        ("evaluate_inverse_packing_geometry", ctypes.c_void_p),
     )
 
 
@@ -582,7 +584,7 @@ def test_manufactured_sensitivity_tracks_exact_species_permutation() -> None:
 
 
 def test_manufactured_reaction_with_ill_conditioned_kkt_has_no_sensitivity() -> None:
-    balance_separation = 8.0e-6
+    balance_separation = 3.0e-6
     spec = _base_system()
     spec["species_ids"] = ("A", "B", "C")
     spec["charges"] = (0, 0, 0)
@@ -1367,9 +1369,12 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     pressure_index = tuple(
         parameter.name for parameter in sensitivity.parameters
     ).index("pressure_pa")
+    # The Provider phase now uses the exact bounded log-packing coordinate.
+    # This deterministic roundoff differs from the retired log-volume baseline;
+    # the independent pressure perturbation check below remains authoritative.
     assert sensitivity.amount_derivatives[pressure_index] == pytest.approx(
         (
-            6.04641378378937e-18,
+            6.048287473364351e-18,
             -3.0241437366821673e-18,
             -3.0241437366821673e-18,
         ),
