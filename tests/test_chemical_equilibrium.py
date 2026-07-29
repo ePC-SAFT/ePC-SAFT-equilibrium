@@ -157,6 +157,8 @@ class _ChemicalSdkTable(ctypes.Structure):
         ("evaluate_neutral_reference_derivatives", ctypes.c_void_p),
         ("reacting_phase_parameter_result_size", ctypes.c_size_t),
         ("evaluate_reacting_phase_parameters", ctypes.c_void_p),
+        ("inverse_packing_geometry_result_size", ctypes.c_size_t),
+        ("evaluate_inverse_packing_geometry", ctypes.c_void_p),
     )
 
 
@@ -582,7 +584,7 @@ def test_manufactured_sensitivity_tracks_exact_species_permutation() -> None:
 
 
 def test_manufactured_reaction_with_ill_conditioned_kkt_has_no_sensitivity() -> None:
-    balance_separation = 8.0e-6
+    balance_separation = 3.0e-6
     spec = _base_system()
     spec["species_ids"] = ("A", "B", "C")
     spec["charges"] = (0, 0, 0)
@@ -749,6 +751,62 @@ def test_manufactured_charged_reaction_uses_exact_electroneutral_chart() -> None
     assert result.diagnostics.charge_inf_norm <= 2.0e-15
 
 
+def test_manufactured_ultra_trace_charged_share_stays_differentiable() -> None:
+    """Both charged softmax references and explicit shares stay interior."""
+
+    temperature_k = 300.0
+    trace_floor = 1.0e-18
+    records = tuple(
+        {
+            "source_id": f"manufactured:reaction-{index}",
+            "reference_id": "provider-helmholtz-coordinate-basis",
+            "reaction_orientation": "products_positive",
+            "conversion_id": "already-provider-basis",
+            "dimensionless": True,
+            "temperature_k": temperature_k,
+            "pressure_pa": 8.31446261815324 * temperature_k,
+        }
+        for index in range(2)
+    )
+
+    def solve(log_ratio_constants: tuple[float, float], floor: float) -> dict[str, object]:
+        spec = {
+            **_base_system(),
+            "species_ids": ("C1+", "C2+", "D1-", "D2-"),
+            "charges": (1, 1, -1, -1),
+            "molar_masses_kg_per_mol": (1.0, 1.0, 1.0, 1.0),
+            "balance_matrix": ((1.0, 1.0, 1.0, 1.0), (1.0, 1.0, -1.0, -1.0)),
+            "reaction_matrix": ((1.0, -1.0, 0.0, 0.0), (0.0, 0.0, 1.0, -1.0)),
+            "feed_amounts": (1.0, 0.0, 1.0, 0.0),
+            "ln_k": log_ratio_constants,
+            "temperature_k": temperature_k,
+            "pressure_pa": 8.31446261815324 * temperature_k,
+            "equilibrium_constant_records": records,
+        }
+        spec["conserved_totals"] = (2.0, 0.0)
+        return _equilibrium._chemical_equilibrium(None, spec, None, None, floor)
+
+    explicit_trace = solve((-40.0, 0.0), trace_floor)
+    assert explicit_trace["amounts"][0] > trace_floor
+    assert explicit_trace["sensitivities"]["status"] == "available"
+    assert explicit_trace["sensitivities"]["active_lower_bounds"] == ()
+    assert explicit_trace["sensitivities"]["active_upper_bounds"] == ()
+
+    reference_trace = solve((40.0, 40.0), trace_floor)
+    assert reference_trace["amounts"][1] > trace_floor
+    assert reference_trace["amounts"][3] > trace_floor
+    assert reference_trace["sensitivities"]["status"] == "available"
+    assert reference_trace["sensitivities"]["active_lower_bounds"] == ()
+    assert reference_trace["sensitivities"]["active_upper_bounds"] == ()
+
+    rejected_trace = solve((40.0, 40.0), 1.0e-12)
+    assert rejected_trace["sensitivities"]["status"] == "unavailable"
+    assert rejected_trace["sensitivities"]["failure_reason"] == (
+        "active_set_change_not_differentiable"
+    )
+    assert rejected_trace["sensitivities"]["active_trace_species"] == (1, 3)
+
+
 def test_manufactured_equilibrium_is_gauge_scale_and_reaction_basis_invariant() -> None:
     base = _base_system()
     base["feed_amounts"] = (1.0, 0.0)
@@ -859,6 +917,94 @@ def test_manufactured_nlp_has_exact_directional_gradient_jacobian_and_hessian() 
             for column in range(dimension)
         )
         assert gradient_directional == pytest.approx(hessian_directional, rel=3.0e-9, abs=3.0e-10)
+
+
+def test_manufactured_inverse_log_packing_has_exact_directional_pullback() -> None:
+    spec = _base_system()
+    _bind_record(spec)
+    center = (math.log(0.3), math.log(0.7), 0.15)
+    direction = (0.2, -0.4, 0.3)
+    multipliers = (0.37,)
+    step = 2.0e-5
+
+    def evaluate(variables: tuple[float, ...]) -> dict[str, object]:
+        return _equilibrium._chemical_evaluate_manufactured_inverse_log_packing_nlp(
+            spec, variables, multipliers
+        )
+
+    lower = evaluate(
+        tuple(value - step * delta for value, delta in zip(center, direction, strict=True))
+    )
+    result = evaluate(center)
+    upper = evaluate(
+        tuple(value + step * delta for value, delta in zip(center, direction, strict=True))
+    )
+
+    objective_directional = (upper["objective"] - lower["objective"]) / (2.0 * step)
+    assert objective_directional == pytest.approx(
+        sum(
+            result["objective_gradient"][index] * direction[index]
+            for index in range(len(direction))
+        ),
+        rel=3.0e-9,
+        abs=3.0e-10,
+    )
+    constraint_directional = (upper["constraints"][0] - lower["constraints"][0]) / (2.0 * step)
+    assert constraint_directional == pytest.approx(
+        sum(
+            result["constraint_jacobian"][index] * direction[index]
+            for index in range(len(direction))
+        ),
+        rel=3.0e-10,
+        abs=3.0e-11,
+    )
+    dimension = len(direction)
+    for row in range(dimension):
+        gradient_directional = (
+            upper["lagrangian_gradient"][row]
+            - lower["lagrangian_gradient"][row]
+        ) / (2.0 * step)
+        hessian_directional = sum(
+            result["lagrangian_hessian"][row * dimension + column] * direction[column]
+            for column in range(dimension)
+        )
+        assert gradient_directional == pytest.approx(
+            hessian_directional, rel=5.0e-9, abs=5.0e-10
+        )
+    hessian = result["lagrangian_hessian"]
+    for row in range(dimension):
+        for column in range(dimension):
+            scale = max(1.0, abs(hessian[row * dimension + column]))
+            assert abs(
+                hessian[row * dimension + column]
+                - hessian[column * dimension + row]
+            ) <= 2.0e-13 * scale
+    assert result["volume_m3"] == pytest.approx(math.exp(-center[-1]), rel=2.0e-15)
+    kkt_rhs = result["kkt_backtransform_rhs"]
+    kkt_solution = result["kkt_backtransform_solution"]
+    kkt_dimension = len(kkt_solution)
+    assert kkt_dimension == dimension + 1
+    for row in range(dimension):
+        reconstructed = sum(
+            hessian[row * dimension + column] * kkt_solution[column]
+            for column in range(dimension)
+        ) + result["constraint_jacobian"][row] * kkt_solution[-1]
+        assert reconstructed == pytest.approx(kkt_rhs[row], rel=2.0e-12, abs=2.0e-13)
+    constraint_reconstructed = sum(
+        result["constraint_jacobian"][column] * kkt_solution[column]
+        for column in range(dimension)
+    )
+    assert constraint_reconstructed == pytest.approx(
+        kkt_rhs[-1], rel=2.0e-12, abs=2.0e-13
+    )
+    zero_rhs = _equilibrium._chemical_evaluate_manufactured_inverse_log_packing_nlp(
+        spec,
+        center,
+        multipliers,
+        zero_kkt_rhs=True,
+    )
+    assert zero_rhs["kkt_backtransform_rhs"] == [0.0] * kkt_dimension
+    assert zero_rhs["kkt_backtransform_solution"] == [0.0] * kkt_dimension
 
 
 def test_manufactured_solver_rejects_trace_false_success() -> None:
@@ -1311,9 +1457,12 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     pressure_index = tuple(
         parameter.name for parameter in sensitivity.parameters
     ).index("pressure_pa")
+    # The Provider phase now uses the exact bounded log-packing coordinate.
+    # This deterministic roundoff differs from the retired log-volume baseline;
+    # the independent pressure perturbation check below remains authoritative.
     assert sensitivity.amount_derivatives[pressure_index] == pytest.approx(
         (
-            6.04641378378937e-18,
+            6.048287473364351e-18,
             -3.0241437366821673e-18,
             -3.0241437366821673e-18,
         ),
@@ -1621,6 +1770,22 @@ def test_installed_generic_observation_handle_batches_rows_and_exact_columns() -
     assert len(exact["jacobian"]) == 2
     assert all(math.isfinite(value) for value in exact["jacobian"])
     assert [row["status"] for row in exact["row_results"]] == [0, 0]
+    assert [row["solver_status"] for row in exact["row_results"]] == [
+        "solve_succeeded",
+        "solve_succeeded",
+    ]
+    assert [row["numerical_status"] for row in exact["row_results"]] == [
+        "passed",
+        "passed",
+    ]
+    assert [row["physical_status"] for row in exact["row_results"]] == [
+        "passed",
+        "passed",
+    ]
+    assert [row["derivative_status"] for row in exact["row_results"]] == [
+        "available",
+        "available",
+    ]
     assert exact["parameter_ids"] == [
         "segment_diameter;component;hydronium-cation"
     ]

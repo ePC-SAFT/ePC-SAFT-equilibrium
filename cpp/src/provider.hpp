@@ -95,6 +95,13 @@ struct ParameterizedPhaseEvaluation {
     std::string topology_fingerprint;
 };
 
+struct InversePackingGeometryEvaluation {
+    double volume_m3 = 0.0;
+    std::vector<double> gradient;
+    std::vector<double> hessian;
+    std::string topology_fingerprint;
+};
+
 class ProviderContext {
 public:
     ProviderContext(const epcsaft_native_sdk_v1& sdk, std::string fingerprint);
@@ -158,6 +165,14 @@ public:
         double volume_m3,
         double packing_fraction_min,
         double packing_fraction_max,
+        const ProviderActiveParameterSet& active_parameters
+    ) const;
+
+    [[nodiscard]] InversePackingGeometryEvaluation
+    evaluate_inverse_packing_geometry(
+        double temperature_k,
+        const std::vector<double>& amounts_mol,
+        double log_packing_fraction,
         const ProviderActiveParameterSet& active_parameters
     ) const;
 

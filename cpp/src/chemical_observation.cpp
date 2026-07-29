@@ -133,6 +133,23 @@ constexpr char kChemicalObservationCapsuleName[] =
     "epcsaft.regression.evaluator.v1";
 constexpr double kUniversalGasConstant = 8.31446261815324;
 
+static_assert(
+    std::string_view(EPCSAFT_REGRESSION_EVALUATOR_V1_SOLVER_STATUS_SOLVE_SUCCEEDED)
+        == "solve_succeeded"
+);
+static_assert(
+    std::string_view(EPCSAFT_REGRESSION_EVALUATOR_V1_NUMERICAL_STATUS_PASSED)
+        == "passed"
+);
+static_assert(
+    std::string_view(EPCSAFT_REGRESSION_EVALUATOR_V1_PHYSICAL_STATUS_PASSED)
+        == "passed"
+);
+static_assert(
+    std::string_view(EPCSAFT_REGRESSION_EVALUATOR_V1_DERIVATIVE_STATUS_AVAILABLE)
+        == "available"
+);
+
 struct ChemicalObservationPrimitive {
     std::string kind;
     std::string component_id;

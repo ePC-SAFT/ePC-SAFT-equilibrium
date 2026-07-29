@@ -683,6 +683,38 @@ py::dict manufactured_nlp_evidence(
     return result;
 }
 
+py::dict manufactured_inverse_log_packing_nlp_evidence(
+    const py::dict& spec,
+    const std::vector<double>& variables,
+    const std::vector<double>& constraint_multipliers,
+    const std::vector<double>& gauge_coefficients,
+    bool zero_kkt_rhs
+) {
+    const ReactionSystemInput input = reaction_system_input(spec);
+    const ManufacturedNlpEvaluation evaluation =
+        evaluate_manufactured_inverse_log_packing_nlp(
+            compile_reaction_system(input),
+            input.temperature_k,
+            input.pressure_pa,
+            gauge_coefficients,
+            variables,
+            constraint_multipliers,
+            zero_kkt_rhs
+        );
+    py::dict result;
+    result["objective"] = evaluation.objective;
+    result["objective_gradient"] = evaluation.objective_gradient;
+    result["constraints"] = evaluation.constraints;
+    result["constraint_jacobian"] = evaluation.constraint_jacobian;
+    result["lagrangian_gradient"] = evaluation.lagrangian_gradient;
+    result["lagrangian_hessian"] = evaluation.lagrangian_hessian;
+    result["amounts"] = evaluation.amounts;
+    result["volume_m3"] = evaluation.volume_m3;
+    result["kkt_backtransform_rhs"] = evaluation.kkt_backtransform_rhs;
+    result["kkt_backtransform_solution"] = evaluation.kkt_backtransform_solution;
+    return result;
+}
+
 }  // namespace
 
 void bind_chemical_equilibrium(py::module_& module) {
@@ -719,6 +751,15 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("variables"),
         py::arg("constraint_multipliers"),
         py::arg("gauge_coefficients") = std::vector<double>{}
+    );
+    module.def(
+        "_chemical_evaluate_manufactured_inverse_log_packing_nlp",
+        &manufactured_inverse_log_packing_nlp_evidence,
+        py::arg("spec"),
+        py::arg("variables"),
+        py::arg("constraint_multipliers"),
+        py::arg("gauge_coefficients") = std::vector<double>{},
+        py::arg("zero_kkt_rhs") = false
     );
     bind_chemical_observation(module);
 }

@@ -215,7 +215,10 @@ active-model Helmholtz, packing, pressure, chemical-potential, and
 neutral-reference derivative blocks. Unsupported or incomplete requests fail
 closed; no derivative is approximated. Results bind species/parameter order, units, chart topology,
 Provider fingerprint, installed distribution RECORD fingerprints, and Provider
-SDK ABI identity. The operation has no predictive admission, coupled
+SDK ABI identity. The reported `condition_number_inf` is the deterministic
+infinity-norm condition number of the four-pass row/column-equilibrated KKT
+system and is the one numerical conditioning metric used by the sensitivity
+gate; no second or unscaled condition metric is reported. The operation has no predictive admission, coupled
 phase-equilibrium claim, or globality proof.
 Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
