@@ -19,7 +19,7 @@ The nonreactive implementation remains owned by the
 [HELD2 algorithm](2026-07-24-held2-paper-algorithm.md),
 [condition map](2026-07-28-held2-necessary-condition-map.md), and
 [validated baseline](2026-07-28-held2-validated-working-baseline.md).
-Reaction-free inputs continue to dispatch to the single
+Reaction-free strong-electrolyte inputs continue to dispatch to the single
 `run_held2_algorithm` controller with unchanged Steps 1--10, tolerances,
 budgets, Provider contract, and numerical gates.
 The condition map remains the sole owner of HELD2's outstanding Step-5 KKT
