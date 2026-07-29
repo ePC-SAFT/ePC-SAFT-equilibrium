@@ -31,6 +31,20 @@ The tracked-diff digest covers `cpp/src`, `cpp/tests`, and
 `tests/test_perdomo_held2_trace.py` relative to the validated integration base.
 The separate digest covers `tests/test_khudaida_held2_gate.py`.
 
+### Merged recovery anchor
+
+Commit `409d7464d8be98cd3e9d58b1458fa29111e5f8ff` is the immutable
+pre-GREPE recovery anchor. Compare or recover through a new branch or worktree,
+never by overwriting an active checkout. Immediately before the GREPE design
+work, that clean anchor passed:
+
+- native `held2-manufactured`: passed in 0.12 s; and
+- the unchanged Perdomo plus Khudaida public gates: `6 passed in 27.62s`.
+
+Together with the fixed values below, these are the behavior freeze. GREPE
+work may add equivalence evidence and design documentation, but may not change
+the protected results, tolerances, budgets, transitions, or evidence meanings.
+
 ## Working workflow invariants
 
 There is one production controller, `run_held2_algorithm`, implementing
