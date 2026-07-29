@@ -31,6 +31,7 @@ struct ReactionSystemInput {
     std::string provider_fingerprint;
     std::vector<double> molar_masses_kg_per_mol;
     DenseMatrix balance_matrix;
+    std::vector<double> conserved_totals;
     DenseMatrix reaction_matrix;
     std::vector<double> feed_amounts;
     std::vector<double> ln_k;

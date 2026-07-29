@@ -724,11 +724,13 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     }
     if (input.feed_amounts.size() != species_count
         || input.molar_masses_kg_per_mol.size() != species_count
+        || input.conserved_totals.size() != input.balance_matrix.rows
         || input.balance_matrix.columns != species_count
         || input.reaction_matrix.columns != species_count) {
         throw std::invalid_argument("reaction-system dimensions do not match species count");
     }
     require_finite_vector(input.feed_amounts, "feed amounts");
+    require_finite_vector(input.conserved_totals, "conserved totals");
     if (!std::all_of(input.feed_amounts.begin(), input.feed_amounts.end(), [](double value) {
             return value >= 0.0;
         })) {
@@ -741,6 +743,18 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     require_finite_vector(input.reaction_matrix.values, "reaction matrix");
     require_finite_vector(input.ln_k, "lnK");
     require_finite_vector(input.molar_masses_kg_per_mol, "molar masses");
+    for (std::size_t row = 0; row < input.balance_matrix.rows; ++row) {
+        double total = 0.0;
+        for (std::size_t species = 0; species < species_count; ++species) {
+            total += input.balance_matrix(row, species) * input.feed_amounts[species];
+        }
+        if (std::abs(total - input.conserved_totals[row])
+            > numerical_tolerance(std::abs(total), species_count)) {
+            throw std::invalid_argument(
+                "declared conserved totals do not match the feed basis"
+            );
+        }
+    }
     if (!std::all_of(
             input.molar_masses_kg_per_mol.begin(),
             input.molar_masses_kg_per_mol.end(),

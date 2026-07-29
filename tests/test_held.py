@@ -945,14 +945,23 @@ def test_public_surface_has_no_retired_routes_or_solver_controls() -> None:
     assert trace_parameter.kind is inspect.Parameter.KEYWORD_ONLY
     assert trace_parameter.default is False
     assert set(epcsaft_equilibrium.__all__) == {
+        "ChemicalEquilibriumConstant",
+        "ChemicalEquilibriumDiagnostics",
+        "ChemicalEquilibriumError",
+        "ChemicalEquilibriumProblem",
+        "ChemicalEquilibriumResult",
+        "ChemicalStandardState",
         "FlashError",
         "HeldDiagnostics",
+        "IdealGasPhase",
         "PhaseState",
+        "ProviderPhase",
         "SaturationDiagnostics",
         "SaturationError",
         "SaturationResult",
         "SolverAttemptDiagnostics",
         "TpFlashResult",
+        "chemical_equilibrium",
         "saturation",
         "tp_flash",
     }

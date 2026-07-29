@@ -37,3 +37,10 @@ def _solve_tp_flash(
     *,
     trace: bool = ...,
 ) -> dict[str, Any]: ...
+def _chemical_equilibrium(
+    capsule: object | None,
+    spec: dict[str, object],
+    source_standard_state: dict[str, object] | None,
+    packing_fraction_bounds: tuple[float, float] | None,
+    trace_floor: float,
+) -> dict[str, Any]: ...

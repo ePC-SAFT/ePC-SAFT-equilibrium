@@ -131,6 +131,121 @@ class FlashError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class ChemicalEquilibriumConstant:
+    """One dimensionless reaction constant and its immutable provenance."""
+
+    ln_value: float
+    source_id: str
+    reference_id: str
+    reaction_orientation: str
+    conversion_id: str
+    dimensionless: bool
+
+
+@dataclass(frozen=True)
+class ChemicalStandardState:
+    """Source activity convention transformed through Provider metadata."""
+
+    id: str
+    activity_scale_id: str
+    log_activity_scale_factors: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class IdealGasPhase:
+    """Source-bound ideal-gas restriction used for nonpredictive benchmarks."""
+
+    model_fingerprint: str
+    reference_id: str
+
+
+@dataclass(frozen=True)
+class ProviderPhase:
+    """Installed Provider model and application-admitted physical packing domain."""
+
+    model: epcsaft.EPCSAFT
+    expected_parameter_fingerprint: str
+    admissible_packing_fraction_interval: tuple[float, float]
+
+
+@dataclass(frozen=True)
+class ChemicalEquilibriumProblem:
+    """One reaction system with an explicit strict-interior admission boundary."""
+
+    species_ids: tuple[str, ...]
+    charges: tuple[int, ...]
+    molar_masses_kg_per_mol: tuple[float, ...]
+    balance_matrix: tuple[tuple[float, ...], ...]
+    conserved_totals: tuple[float, ...]
+    reaction_matrix: tuple[tuple[float, ...], ...]
+    feed_amounts_mol: tuple[float, ...]
+    equilibrium_constants: tuple[ChemicalEquilibriumConstant, ...]
+    strict_interior_amount_floor_mol: float
+    source_standard_state: ChemicalStandardState | None = None
+
+
+@dataclass(frozen=True)
+class ChemicalEquilibriumDiagnostics:
+    """Independent local chemical-equilibrium admission axes and residuals."""
+
+    solver_status: str
+    callback_error: str
+    failure_reason: str
+    chemical_certification_level: str
+    boundary_status: str
+    structural_zero_species_indices: tuple[int, ...]
+    numerical_status: str
+    physical_status: str
+    predictive_status: str
+    provider_domain_status: str
+    local_minimum_status: str
+    trace_status: str
+    globality_status: str
+    balance_inf_norm: float | None
+    charge_inf_norm: float | None
+    pressure_relative_residual: float | None
+    reaction_affinity_inf_norm: float | None
+    packing_fraction: float | None
+    kkt_stationarity_inf_norm: float | None
+    complementarity_inf_norm: float | None
+    reference_representation_residual_inf_norm: float | None
+    reference_convergence_error: float | None
+    reference_derivative_availability: int | None
+
+
+@dataclass(frozen=True)
+class ChemicalEquilibriumResult:
+    """Certified local fixed-T,P homogeneous chemical-equilibrium value."""
+
+    temperature_k: float
+    pressure_pa: float
+    species_ids: tuple[str, ...]
+    charges: tuple[int, ...]
+    amounts_mol: tuple[float, ...]
+    mole_fractions: tuple[float, ...]
+    volume_m3: float
+    thermodynamic_model: str
+    model_fingerprint: str
+    provider_component_ids: tuple[str, ...] | None
+    provider_parameter_fingerprint: str | None
+    equilibrium_constants: tuple[ChemicalEquilibriumConstant, ...]
+    source_standard_state: ChemicalStandardState | None
+    provider_reference_id: str | None
+    standard_offsets: tuple[float, ...] | None
+    ln_k_provider_basis: tuple[float, ...] | None
+    local_scope: str
+    diagnostics: ChemicalEquilibriumDiagnostics
+
+
+class ChemicalEquilibriumError(RuntimeError):
+    """Raised when no typed, certified local chemical state can be admitted."""
+
+    def __init__(self, message: str, diagnostics: ChemicalEquilibriumDiagnostics) -> None:
+        super().__init__(message)
+        self.diagnostics = diagnostics
+
+
+@dataclass(frozen=True)
 class _Scope:
     component: str
     temperature_min_k: float
@@ -259,15 +374,15 @@ def _phase(payload: Mapping[str, object]) -> PhaseState:
     )
 
 
-def _tp_flash_quantity(quantity: object, units: str, name: str) -> float:
+def _quantity(quantity: object, units: str, name: str, operation: str) -> float:
     if not isinstance(quantity, Quantity):
-        raise TypeError(f"tp_flash requires a Pint {name} quantity")
+        raise TypeError(f"{operation} requires a Pint {name} quantity")
     try:
         value = float(quantity.to(units).magnitude)
     except DimensionalityError as error:
         raise ValueError(f"{name} units must be convertible to {units}") from error
     except (TypeError, ValueError) as error:
-        raise TypeError(f"tp_flash requires one scalar Pint {name} quantity") from error
+        raise TypeError(f"{operation} requires one scalar Pint {name} quantity") from error
     if not math.isfinite(value) or value <= 0.0:
         raise ValueError(f"{name} must be positive and finite")
     return value
@@ -508,8 +623,8 @@ def tp_flash(
     try:
         if not isinstance(model, epcsaft.EPCSAFT):
             raise TypeError("tp_flash requires an epcsaft.EPCSAFT model")
-        temperature_k = _tp_flash_quantity(temperature, "kelvin", "temperature")
-        pressure_pa = _tp_flash_quantity(pressure, "pascal", "pressure")
+        temperature_k = _quantity(temperature, "kelvin", "temperature", "tp_flash")
+        pressure_pa = _quantity(pressure, "pascal", "pressure", "tp_flash")
         component_count = len(model.component_ids)
         feed = _tp_flash_feed(overall_mole_fractions, component_count)
         if model.parameter_fingerprint == _FLASH_FINGERPRINT and not (
@@ -596,6 +711,279 @@ def tp_flash(
         raise FlashError(
             "native HELD payload does not match the typed contract", diagnostics
         ) from error
+
+
+def _failed_chemical_diagnostics(
+    status: str, failure_reason: str
+) -> ChemicalEquilibriumDiagnostics:
+    return ChemicalEquilibriumDiagnostics(
+        solver_status=status,
+        callback_error="",
+        failure_reason=failure_reason,
+        chemical_certification_level="NOT_EVALUATED",
+        boundary_status="not_adjudicated",
+        structural_zero_species_indices=(),
+        numerical_status="not_adjudicated",
+        physical_status="not_adjudicated",
+        predictive_status="not_adjudicated",
+        provider_domain_status="not_adjudicated",
+        local_minimum_status="not_adjudicated",
+        trace_status="not_adjudicated",
+        globality_status="not_adjudicated",
+        balance_inf_norm=None,
+        charge_inf_norm=None,
+        pressure_relative_residual=None,
+        reaction_affinity_inf_norm=None,
+        packing_fraction=None,
+        kkt_stationarity_inf_norm=None,
+        complementarity_inf_norm=None,
+        reference_representation_residual_inf_norm=None,
+        reference_convergence_error=None,
+        reference_derivative_availability=None,
+    )
+
+
+def _chemical_diagnostics(
+    native: Mapping[str, object],
+) -> ChemicalEquilibriumDiagnostics:
+    return ChemicalEquilibriumDiagnostics(
+        solver_status=str(native["solver_status"]),
+        callback_error=str(native["callback_error"]),
+        failure_reason=(
+            str(native["callback_error"])
+            or f"not certified: {native['chemical_certification_level']}"
+        )
+        if not bool(native["accepted"])
+        else "",
+        chemical_certification_level=str(native["chemical_certification_level"]),
+        boundary_status=str(native["boundary_status"]),
+        structural_zero_species_indices=tuple(
+            int(index)
+            for index in cast(Sequence[int], native["structural_zero_species_indices"])
+        ),
+        numerical_status=str(native["numerical_status"]),
+        physical_status=str(native["physical_status"]),
+        predictive_status="not_adjudicated",
+        provider_domain_status=str(native["provider_domain_status"]),
+        local_minimum_status=str(native["local_minimum_status"]),
+        trace_status=str(native["trace_status"]),
+        globality_status=str(native["globality_certificate"]),
+        balance_inf_norm=float(cast(float, native["balance_inf_norm"])),
+        charge_inf_norm=float(cast(float, native["charge_inf_norm"])),
+        pressure_relative_residual=float(
+            cast(float, native["pressure_relative_residual"])
+        ),
+        reaction_affinity_inf_norm=float(
+            cast(float, native["reaction_affinity_inf_norm"])
+        ),
+        packing_fraction=float(cast(float, native["packing_fraction"])),
+        kkt_stationarity_inf_norm=float(
+            cast(float, native["kkt_stationarity_inf_norm"])
+        ),
+        complementarity_inf_norm=float(
+            cast(float, native["complementarity_inf_norm"])
+        ),
+        reference_representation_residual_inf_norm=_optional_float(
+            native, "reference_representation_residual_inf_norm"
+        )
+        if "reference_representation_residual_inf_norm" in native
+        else None,
+        reference_convergence_error=_optional_float(native, "reference_convergence_error")
+        if "reference_convergence_error" in native
+        else None,
+        reference_derivative_availability=int(
+            cast(int, native["reference_derivative_availability"])
+        )
+        if "reference_derivative_availability" in native
+        else None,
+    )
+
+
+def chemical_equilibrium(
+    phase: IdealGasPhase | ProviderPhase,
+    temperature: Quantity[Any],
+    pressure: Quantity[Any],
+    problem: ChemicalEquilibriumProblem,
+) -> ChemicalEquilibriumResult:
+    """Solve and certify one local fixed-T,P homogeneous reacting phase."""
+
+    try:
+        if not isinstance(problem, ChemicalEquilibriumProblem):
+            raise TypeError("chemical_equilibrium requires a typed problem")
+        temperature_k = _quantity(
+            temperature, "kelvin", "temperature", "chemical_equilibrium"
+        )
+        pressure_pa = _quantity(
+            pressure, "pascal", "pressure", "chemical_equilibrium"
+        )
+        if not math.isfinite(problem.strict_interior_amount_floor_mol) or (
+            problem.strict_interior_amount_floor_mol <= 0.0
+        ):
+            raise ValueError("minimum admitted amount must be positive and finite")
+        records = tuple(
+            {
+                "source_id": record.source_id,
+                "reference_id": record.reference_id,
+                "reaction_orientation": record.reaction_orientation,
+                "conversion_id": record.conversion_id,
+                "dimensionless": record.dimensionless,
+                "temperature_k": temperature_k,
+                "pressure_pa": pressure_pa,
+            }
+            for record in problem.equilibrium_constants
+        )
+        spec = {
+            "species_ids": problem.species_ids,
+            "charges": problem.charges,
+            "molar_masses_kg_per_mol": problem.molar_masses_kg_per_mol,
+            "balance_matrix": problem.balance_matrix,
+            "conserved_totals": problem.conserved_totals,
+            "reaction_matrix": problem.reaction_matrix,
+            "feed_amounts": problem.feed_amounts_mol,
+            "ln_k": tuple(
+                record.ln_value for record in problem.equilibrium_constants
+            ),
+            "equilibrium_constant_records": records,
+            "temperature_k": temperature_k,
+            "pressure_pa": pressure_pa,
+        }
+        packing_bounds: tuple[float, float] | None
+        if isinstance(phase, IdealGasPhase):
+            if problem.source_standard_state is not None:
+                raise ValueError("ideal-gas problems cannot request Provider reference transport")
+            if not phase.model_fingerprint or not phase.reference_id:
+                raise ValueError("ideal-gas model identity is incomplete")
+            if any(
+                record.reference_id != phase.reference_id
+                for record in problem.equilibrium_constants
+            ):
+                raise ValueError("reaction constants do not match the ideal-gas reference")
+            spec["provider_fingerprint"] = phase.model_fingerprint
+            capsule = None
+            packing_bounds = None
+            thermodynamic_model = "ideal_gas"
+            provider_ids = None
+            provider_fingerprint = None
+            model_fingerprint = phase.model_fingerprint
+        elif isinstance(phase, ProviderPhase):
+            if not isinstance(phase.model, epcsaft.EPCSAFT):
+                raise TypeError("ProviderPhase requires an epcsaft.EPCSAFT model")
+            if (
+                not phase.expected_parameter_fingerprint
+                or phase.expected_parameter_fingerprint
+                != phase.model.parameter_fingerprint
+            ):
+                raise ValueError("installed Provider fingerprint does not match the problem")
+            packing_bounds = (
+                float(phase.admissible_packing_fraction_interval[0]),
+                float(phase.admissible_packing_fraction_interval[1]),
+            )
+            if (
+                not all(math.isfinite(value) for value in packing_bounds)
+                or not 0.0 < packing_bounds[0] < packing_bounds[1]
+            ):
+                raise ValueError("packing-fraction bounds must be finite and increasing")
+            model_fingerprint = phase.expected_parameter_fingerprint
+            spec["provider_fingerprint"] = model_fingerprint
+            capsule = epcsaft.native_sdk(phase.model)
+            thermodynamic_model = "installed_provider"
+            provider_ids = tuple(phase.model.component_ids)
+            provider_fingerprint = model_fingerprint
+        else:
+            raise TypeError("chemical_equilibrium requires a typed phase model")
+        standard_state = problem.source_standard_state
+        native_standard_state: dict[str, object] | None = (
+            None
+            if standard_state is None
+            else {
+                "id": standard_state.id,
+                "activity_scale_id": standard_state.activity_scale_id,
+                "log_activity_scale_factors": standard_state.log_activity_scale_factors,
+            }
+        )
+        native = cast(
+            Mapping[str, object],
+            _equilibrium._chemical_equilibrium(
+                capsule,
+                spec,
+                native_standard_state,
+                packing_bounds,
+                problem.strict_interior_amount_floor_mol,
+            ),
+        )
+        diagnostics = _chemical_diagnostics(native)
+    except (
+        AttributeError,
+        IndexError,
+        KeyError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as error:
+        raise ChemicalEquilibriumError(
+            str(error),
+            _failed_chemical_diagnostics("input_or_native_error", str(error)),
+        ) from error
+
+    try:
+        if not bool(native["accepted"]):
+            reason = str(native["callback_error"]) or (
+                f"chemical equilibrium was not certified: "
+                f"{diagnostics.chemical_certification_level}"
+            )
+            raise ChemicalEquilibriumError(reason, diagnostics)
+        if provider_fingerprint is not None and (
+            str(native["parameter_fingerprint"]) != provider_fingerprint
+        ):
+            raise ValueError("native result has the wrong Provider fingerprint")
+        amounts = _vector(
+            native["amounts"], len(problem.species_ids), "chemical amounts"
+        )
+        total_amount = math.fsum(amounts)
+        if total_amount <= 0.0 or not math.isfinite(total_amount):
+            raise ValueError("native chemical amounts are invalid")
+        volume_m3 = float(cast(float, native["volume_m3"]))
+        provider_reference_id = (
+            str(native["provider_reference_id"])
+            if "provider_reference_id" in native
+            else None
+        )
+        standard_offsets = (
+            _float_tuple(native["standard_offsets"])
+            if "standard_offsets" in native
+            else None
+        )
+        ln_k_provider_basis = (
+            _float_tuple(native["ln_k_provider_basis"])
+            if "ln_k_provider_basis" in native
+            else None
+        )
+    except ChemicalEquilibriumError:
+        raise
+    except (KeyError, RuntimeError, TypeError, ValueError) as error:
+        raise ChemicalEquilibriumError(
+            str(error), _failed_chemical_diagnostics("payload_error", str(error))
+        ) from error
+    return ChemicalEquilibriumResult(
+        temperature_k=temperature_k,
+        pressure_pa=pressure_pa,
+        species_ids=problem.species_ids,
+        charges=problem.charges,
+        amounts_mol=amounts,
+        mole_fractions=tuple(amount / total_amount for amount in amounts),
+        volume_m3=volume_m3,
+        thermodynamic_model=thermodynamic_model,
+        model_fingerprint=model_fingerprint,
+        provider_component_ids=provider_ids,
+        provider_parameter_fingerprint=provider_fingerprint,
+        equilibrium_constants=problem.equilibrium_constants,
+        source_standard_state=standard_state,
+        provider_reference_id=provider_reference_id,
+        standard_offsets=standard_offsets,
+        ln_k_provider_basis=ln_k_provider_basis,
+        local_scope="fixed_TP_single_homogeneous_phase",
+        diagnostics=diagnostics,
+    )
 
 
 def saturation(model: epcsaft.EPCSAFT, temperature: Quantity[Any]) -> SaturationResult:

@@ -122,6 +122,7 @@ ReactionSystemInput reaction_system_input(const py::dict& spec) {
         spec["molar_masses_kg_per_mol"]
     );
     input.balance_matrix = dense_matrix(spec["balance_matrix"], "balance matrix");
+    input.conserved_totals = py::cast<std::vector<double>>(spec["conserved_totals"]);
     input.reaction_matrix = dense_matrix(spec["reaction_matrix"], "reaction matrix");
     input.feed_amounts = py::cast<std::vector<double>>(spec["feed_amounts"]);
     input.ln_k = py::cast<std::vector<double>>(spec["ln_k"]);
@@ -156,12 +157,8 @@ py::dict amount_chart_evidence(
     return result;
 }
 
-py::dict chemical_result(
-    const char* profile,
-    const ChemicalSolveResult& evaluation
-) {
+py::dict chemical_result(const ChemicalSolveResult& evaluation) {
     py::dict result;
-    result["profile"] = profile;
     result["accepted"] = evaluation.accepted;
     result["solver_status"] = evaluation.solver_status;
     result["callback_error"] = evaluation.callback_error;
@@ -188,27 +185,16 @@ py::dict chemical_result(
     return result;
 }
 
-py::dict solve_manufactured(const py::dict& spec, const py::dict& options) {
+py::dict solve_manufactured(const py::dict& spec, double trace_floor) {
     const ReactionSystemInput input = reaction_system_input(spec);
     const CompiledReactionSystem compiled = compile_reaction_system(input);
-    const std::vector<double> gauge_coefficients = options.contains("gauge_coefficients")
-        ? py::cast<std::vector<double>>(options["gauge_coefficients"])
-        : std::vector<double>{};
-    const double trace_floor = options.contains("trace_floor")
-        ? py::cast<double>(options["trace_floor"])
-        : 1.0e-12;
-    const int max_iterations = options.contains("test_max_iterations")
-        ? py::cast<int>(options["test_max_iterations"])
-        : 500;
     return chemical_result(
-        "manufactured_ideal_nonpredictive",
         solve_manufactured_ideal_reaction(
             compiled,
             input.temperature_k,
             input.pressure_pa,
-            gauge_coefficients,
-            trace_floor,
-            max_iterations
+            {},
+            trace_floor
         )
     );
 }
@@ -256,8 +242,8 @@ py::dict solve_provider_input(
     const ChemicalProviderMetadata& metadata,
     const ReactionSystemInput& input,
     const ProviderContext& provider,
-    const char* profile,
-    const py::dict& options
+    const std::vector<double>& packing_bounds,
+    double trace_floor
 ) {
     validate_provider_identity(metadata, input);
     if (input.temperature_k < sdk.source_temperature_min_k
@@ -278,23 +264,10 @@ py::dict solve_provider_input(
             || ionic_feed / total_feed > sdk.total_ion_mole_fraction_max)) {
         throw py::value_error("feed composition exceeds the Provider source domain");
     }
-    if (!options.contains("packing_fraction_bounds")) {
-        throw py::value_error("packing_fraction_bounds are required from the calling formulation");
-    }
-    const std::vector<double> packing_bounds = py::cast<std::vector<double>>(
-        options["packing_fraction_bounds"]
-    );
     if (packing_bounds.size() != 2) {
         throw py::value_error("packing_fraction_bounds must contain two values");
     }
-    const double trace_floor = options.contains("trace_floor")
-        ? py::cast<double>(options["trace_floor"])
-        : 1.0e-12;
-    const int max_iterations = options.contains("test_max_iterations")
-        ? py::cast<int>(options["test_max_iterations"])
-        : 500;
     py::dict result = chemical_result(
-        profile,
         solve_provider_reaction(
             compiled,
             provider,
@@ -303,8 +276,7 @@ py::dict solve_provider_input(
             packing_bounds[0],
             packing_bounds[1],
             sdk.total_ion_mole_fraction_max,
-            trace_floor,
-            max_iterations
+            trace_floor
         )
     );
     result["parameter_fingerprint"] = input.provider_fingerprint;
@@ -312,30 +284,12 @@ py::dict solve_provider_input(
     return result;
 }
 
-py::dict solve_provider_manufactured(
-    const py::capsule& capsule,
-    const py::dict& spec,
-    const py::dict& options
-) {
-    const epcsaft_native_sdk_v1& sdk = checked_chemical_sdk(capsule);
-    const ChemicalProviderMetadata metadata = chemical_provider_metadata(sdk);
-    const ReactionSystemInput input = reaction_system_input(spec);
-    const ProviderContext provider(sdk, input.provider_fingerprint);
-    return solve_provider_input(
-        sdk,
-        metadata,
-        input,
-        provider,
-        "installed_provider_manufactured_nonpredictive",
-        options
-    );
-}
-
 py::dict solve_provider_source(
     const py::capsule& capsule,
     const py::dict& spec,
     const py::dict& source_standard_state,
-    const py::dict& options
+    const std::vector<double>& packing_bounds,
+    double trace_floor
 ) {
     const epcsaft_native_sdk_v1& sdk = checked_chemical_sdk(capsule);
     const ChemicalProviderMetadata metadata = chemical_provider_metadata(sdk);
@@ -396,8 +350,8 @@ py::dict solve_provider_source(
         metadata,
         input,
         provider,
-        "installed_provider_source_bound",
-        options
+        packing_bounds,
+        trace_floor
     );
     result["standard_offsets"] = transformed.standard_offsets;
     result["ln_k_provider_basis"] = transformed.ln_k_provider_basis;
@@ -411,6 +365,52 @@ py::dict solve_provider_source(
     result["reference_convergence_error"] =
         reference.reference_convergence_error;
     return result;
+}
+
+py::dict solve_chemical_equilibrium(
+    const py::object& capsule,
+    const py::dict& spec,
+    const py::object& source_standard_state,
+    const py::object& packing_fraction_bounds,
+    double trace_floor
+) {
+    if (capsule.is_none()) {
+        if (!source_standard_state.is_none() || !packing_fraction_bounds.is_none()) {
+            throw py::value_error(
+                "ideal-gas chemical equilibrium cannot consume Provider metadata"
+            );
+        }
+        return solve_manufactured(spec, trace_floor);
+    }
+    if (packing_fraction_bounds.is_none()) {
+        throw py::value_error(
+            "packing_fraction_bounds are required from the calling formulation"
+        );
+    }
+    const std::vector<double> packing_bounds =
+        py::cast<std::vector<double>>(packing_fraction_bounds);
+    const py::capsule provider_capsule = py::cast<py::capsule>(capsule);
+    if (source_standard_state.is_none()) {
+        const epcsaft_native_sdk_v1& sdk = checked_chemical_sdk(provider_capsule);
+        const ChemicalProviderMetadata metadata = chemical_provider_metadata(sdk);
+        const ReactionSystemInput input = reaction_system_input(spec);
+        const ProviderContext provider(sdk, input.provider_fingerprint);
+        return solve_provider_input(
+            sdk,
+            metadata,
+            input,
+            provider,
+            packing_bounds,
+            trace_floor
+        );
+    }
+    return solve_provider_source(
+        provider_capsule,
+        spec,
+        py::cast<py::dict>(source_standard_state),
+        packing_bounds,
+        trace_floor
+    );
 }
 
 py::dict manufactured_nlp_evidence(
@@ -451,10 +451,13 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("trace_floor")
     );
     module.def(
-        "_chemical_solve_manufactured",
-        &solve_manufactured,
+        "_chemical_equilibrium",
+        &solve_chemical_equilibrium,
+        py::arg("capsule"),
         py::arg("spec"),
-        py::arg("options")
+        py::arg("source_standard_state"),
+        py::arg("packing_fraction_bounds"),
+        py::arg("trace_floor")
     );
     module.def(
         "_chemical_evaluate_provider_block",
@@ -464,21 +467,6 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("amounts"),
         py::arg("volume_m3"),
         py::arg("expected_fingerprint")
-    );
-    module.def(
-        "_chemical_solve_provider_manufactured",
-        &solve_provider_manufactured,
-        py::arg("capsule"),
-        py::arg("spec"),
-        py::arg("options")
-    );
-    module.def(
-        "_chemical_solve_provider_source",
-        &solve_provider_source,
-        py::arg("capsule"),
-        py::arg("spec"),
-        py::arg("source_standard_state"),
-        py::arg("options")
     );
     module.def(
         "_chemical_evaluate_manufactured_nlp",
