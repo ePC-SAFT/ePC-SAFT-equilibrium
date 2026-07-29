@@ -687,7 +687,8 @@ py::dict manufactured_inverse_log_packing_nlp_evidence(
     const py::dict& spec,
     const std::vector<double>& variables,
     const std::vector<double>& constraint_multipliers,
-    const std::vector<double>& gauge_coefficients
+    const std::vector<double>& gauge_coefficients,
+    bool zero_kkt_rhs
 ) {
     const ReactionSystemInput input = reaction_system_input(spec);
     const ManufacturedNlpEvaluation evaluation =
@@ -697,7 +698,8 @@ py::dict manufactured_inverse_log_packing_nlp_evidence(
             input.pressure_pa,
             gauge_coefficients,
             variables,
-            constraint_multipliers
+            constraint_multipliers,
+            zero_kkt_rhs
         );
     py::dict result;
     result["objective"] = evaluation.objective;
@@ -756,7 +758,8 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("spec"),
         py::arg("variables"),
         py::arg("constraint_multipliers"),
-        py::arg("gauge_coefficients") = std::vector<double>{}
+        py::arg("gauge_coefficients") = std::vector<double>{},
+        py::arg("zero_kkt_rhs") = false
     );
     bind_chemical_observation(module);
 }

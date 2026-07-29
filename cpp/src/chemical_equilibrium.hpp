@@ -225,7 +225,8 @@ evaluate_manufactured_inverse_log_packing_nlp(
     double pressure_pa,
     const std::vector<double>& gauge_coefficients,
     const std::vector<double>& variables,
-    const std::vector<double>& constraint_multipliers
+    const std::vector<double>& constraint_multipliers,
+    bool zero_kkt_rhs = false
 );
 
 [[nodiscard]] ProviderPhaseBlockEvidence evaluate_provider_phase_block(

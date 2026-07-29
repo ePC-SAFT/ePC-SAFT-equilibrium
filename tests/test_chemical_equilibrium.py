@@ -997,6 +997,14 @@ def test_manufactured_inverse_log_packing_has_exact_directional_pullback() -> No
     assert constraint_reconstructed == pytest.approx(
         kkt_rhs[-1], rel=2.0e-12, abs=2.0e-13
     )
+    zero_rhs = _equilibrium._chemical_evaluate_manufactured_inverse_log_packing_nlp(
+        spec,
+        center,
+        multipliers,
+        zero_kkt_rhs=True,
+    )
+    assert zero_rhs["kkt_backtransform_rhs"] == [0.0] * kkt_dimension
+    assert zero_rhs["kkt_backtransform_solution"] == [0.0] * kkt_dimension
 
 
 def test_manufactured_solver_rejects_trace_false_success() -> None:

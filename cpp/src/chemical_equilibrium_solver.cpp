@@ -1130,13 +1130,20 @@ bool solve_equilibrated_square_system(
     const double denominator_unclamped =
         matrix_solution_product + right_hand_side_norm_inf;
     if (!std::isfinite(denominator_unclamped)
-        || denominator_unclamped <= 0.0) {
+        || denominator_unclamped < 0.0) {
         return false;
     }
-    const double denominator = std::max(
-        std::numeric_limits<double>::min(), denominator_unclamped
-    );
-    const double backward_error = residual_norm_inf / denominator;
+    double backward_error = 0.0;
+    if (denominator_unclamped == 0.0) {
+        if (residual_norm_inf != 0.0) {
+            return false;
+        }
+    } else {
+        const double denominator = std::max(
+            std::numeric_limits<double>::min(), denominator_unclamped
+        );
+        backward_error = residual_norm_inf / denominator;
+    }
     const double tolerance = 2048.0
         * std::numeric_limits<double>::epsilon()
         * static_cast<double>(std::max<std::size_t>(1, dimension));
@@ -3139,7 +3146,8 @@ ManufacturedNlpEvaluation evaluate_manufactured_inverse_log_packing_nlp(
     double pressure_pa,
     const std::vector<double>& gauge_coefficients,
     const std::vector<double>& variables,
-    const std::vector<double>& constraint_multipliers
+    const std::vector<double>& constraint_multipliers,
+    bool zero_kkt_rhs
 ) {
     std::vector<double> g_ref = system.g_ref;
     if (!gauge_coefficients.empty()) {
@@ -3236,7 +3244,7 @@ ManufacturedNlpEvaluation evaluate_manufactured_inverse_log_packing_nlp(
     result.kkt_backtransform_rhs.resize(kkt_dimension);
     for (std::size_t index = 0; index < kkt_dimension; ++index) {
         result.kkt_backtransform_rhs[index] =
-            0.125 * static_cast<double>(index + 1);
+            zero_kkt_rhs ? 0.0 : 0.125 * static_cast<double>(index + 1);
     }
     const EquilibratedSquareSystem equilibrated =
         equilibrate_square_system(kkt_matrix);
