@@ -130,6 +130,10 @@ pybind11_add_module(
   _equilibrium MODULE
   cpp/src/module.cpp
   cpp/src/chemical_equilibrium_bindings.cpp
+  cpp/src/chemical_observation.cpp
+)
+target_include_directories(
+  _equilibrium PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 target_link_libraries(_equilibrium PRIVATE epcsaft_equilibrium_core)
 set(epcsaft_equilibrium_native_targets epcsaft_equilibrium_core _equilibrium)
@@ -187,3 +191,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 install(TARGETS _equilibrium LIBRARY DESTINATION epcsaft_equilibrium)
+install(
+  FILES include/epcsaft/regression/evaluator_v1.h
+  DESTINATION epcsaft_equilibrium/include/epcsaft/regression
+)

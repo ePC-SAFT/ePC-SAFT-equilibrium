@@ -1554,6 +1554,124 @@ def test_installed_provider_active_request_is_atomic_exact_and_ordered() -> None
     )
 
 
+def test_installed_generic_observation_handle_batches_rows_and_exact_columns() -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    standard_state = epcsaft_equilibrium.ChemicalStandardState(
+        id=source_standard_state["id"],
+        activity_scale_id=source_standard_state["activity_scale_id"],
+        log_activity_scale_factors=tuple(
+            source_standard_state["log_activity_scale_factors"]
+        ),
+        reference_pressure_pa=source_standard_state["reference_pressure_pa"],
+    )
+    problem = _typed_problem(spec, source_standard_state=standard_state)
+    phase = epcsaft_equilibrium.ProviderPhase(
+        model=model,
+        expected_parameter_fingerprint=model.parameter_fingerprint,
+        admissible_packing_fraction_interval=(1.0e-6, 0.74),
+    )
+    state_schema = "fixed_TP_homogeneous_liquid_v1"
+    rows = (
+        epcsaft_equilibrium.ChemicalObservationRow(
+            row_id="held-water-fugacity",
+            state_id="held-water-ionization",
+            state_schema_id=state_schema,
+            source_id="Held2008",
+            transform_id="natural_log",
+            temperature=spec["temperature_k"] * epcsaft.unit_registry.kelvin,
+            pressure=spec["pressure_pa"] * epcsaft.unit_registry.pascal,
+            problem=problem,
+            primitive=epcsaft_equilibrium.ChemicalObservationPrimitive(
+                kind="neutral_component_fugacity_pa",
+                component_id="water",
+            ),
+        ),
+        epcsaft_equilibrium.ChemicalObservationRow(
+            row_id="held-hydronium-mole-fraction",
+            state_id="held-water-ionization",
+            state_schema_id=state_schema,
+            source_id="Held2008",
+            transform_id="natural_log",
+            temperature=spec["temperature_k"] * epcsaft.unit_registry.kelvin,
+            pressure=spec["pressure_pa"] * epcsaft.unit_registry.pascal,
+            problem=problem,
+            primitive=epcsaft_equilibrium.ChemicalObservationPrimitive(
+                kind="species_mole_fraction",
+                component_id="hydronium-cation",
+            ),
+        ),
+    )
+    parameter = _held_active_parameter()
+    context = epcsaft_equilibrium.chemical_observation_context(
+        phase,
+        rows=rows,
+        active_parameters=(parameter,),
+    )
+
+    value_only = context.evaluate((parameter.value,), with_jacobian=False)
+    exact = context.evaluate((parameter.value,), with_jacobian=True)
+
+    assert context.row_ids == tuple(row.row_id for row in rows)
+    assert value_only["status"] == 0
+    assert value_only["values"] == pytest.approx(exact["values"], rel=2.0e-13)
+    assert value_only["jacobian"] == []
+    assert exact["status"] == 0
+    assert len(exact["values"]) == 2
+    assert all(math.isfinite(value) and value > 0.0 for value in exact["values"])
+    assert len(exact["jacobian"]) == 2
+    assert all(math.isfinite(value) for value in exact["jacobian"])
+    assert [row["status"] for row in exact["row_results"]] == [0, 0]
+    assert exact["parameter_ids"] == [
+        "segment_diameter;component;hydronium-cation"
+    ]
+    assert exact["value_only_avoids_derivative_work"] is False
+    assert exact["provider_artifact_identity"].startswith("epcsaft==")
+    assert exact["owner_artifact_identity"].startswith("epcsaft-equilibrium==")
+    assert ";HEADER=sha256:" in exact["provider_artifact_identity"]
+    assert ";HEADER=sha256:" in exact["owner_artifact_identity"]
+    assert exact["contract_fingerprint"].startswith("sha256:")
+    assert exact["capability_fingerprint"].startswith("sha256:")
+    assert exact["expected_provider_topology_fingerprint"].startswith("sha256:")
+    assert exact["transform_ids"] == ["natural_log", "natural_log"]
+    assert all(
+        fingerprint.startswith("sha256:")
+        for fingerprint in exact["reference_fingerprints"]
+    )
+    assert exact["artifact_identity"].startswith("sha256:")
+
+    step = 2.0e-3
+    shifted = tuple(
+        context.evaluate((parameter.value + direction * step,), with_jacobian=False)
+        for direction in (-1.0, 1.0)
+    )
+    finite_difference_log = tuple(
+        (
+            math.log(shifted[1]["values"][index])
+            - math.log(shifted[0]["values"][index])
+        )
+        / (2.0 * step)
+        for index in range(2)
+    )
+    exact_log = tuple(
+        exact["jacobian"][index] / exact["values"][index] for index in range(2)
+    )
+    assert exact_log == pytest.approx(
+        finite_difference_log,
+        rel=5.0e-4,
+        abs=1.0e-12,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="descriptor is missing or incompatible",
+    ):
+        epcsaft_equilibrium.chemical_observation_context(
+            phase,
+            rows=rows,
+            active_parameters=(_held_active_parameter(unit="meter"),),
+        )
+
+
 def test_installed_provider_basis_active_request_has_zero_lnk_cross_block() -> None:
     model, source_spec, source_standard_state = _held_water_ionization_problem()
     transformed = _provider_solve(
