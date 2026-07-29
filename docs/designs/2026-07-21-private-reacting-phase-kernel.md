@@ -177,10 +177,15 @@ singular or unacceptably conditioned, the active set can change, or the primal
 result is not certified.
 
 The local-minimum check is independent of that conditioning gate. `Z` is the
-null-space basis of the actual transformed equality Jacobian, and the check
-uses the exact symmetric Lagrangian Hessian restricted to `Z`, followed by
-the normalized Cholesky pivot threshold. Solver termination, KKT conditioning,
-and reduced-curvature status remain separate result axes.
+null-space basis of the actual transformed equality Jacobian; its RREF uses
+the implemented absolute pivot threshold `1e-10`. Production evaluations use
+the exact Lagrangian Hessian assembled symmetrically from the Provider/state
+blocks and the chart pullback. The reduced check applies the normalized
+Cholesky factorization with its implemented pivot threshold `1e-10`.
+The private manufactured inverse-log-packing evidence checks Hessian symmetry
+at `2e-13 * max(1, |H_ij|)`; that is evidence coverage, not a production
+runtime symmetry gate. Solver termination, KKT conditioning, and
+reduced-curvature status remain separate result axes.
 
 Provider parameters require typed phase-KKT cross derivatives and the
 corresponding derivative of the transformed Provider reference vector. The
