@@ -1,4 +1,5 @@
 #include "chemical_equilibrium.hpp"
+#include "chemical_observation.hpp"
 #include "provider.hpp"
 
 #include <cmath>
@@ -719,6 +720,7 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("constraint_multipliers"),
         py::arg("gauge_coefficients") = std::vector<double>{}
     );
+    bind_chemical_observation(module);
 }
 
 }  // namespace epcsaft_equilibrium

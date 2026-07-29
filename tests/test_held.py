@@ -959,6 +959,9 @@ def test_public_surface_has_no_retired_routes_or_solver_controls() -> None:
         "ChemicalEquilibriumSensitivity",
         "ChemicalEquilibriumSensitivityParameter",
         "ChemicalEquilibriumSensitivityRequest",
+        "ChemicalObservationContext",
+        "ChemicalObservationPrimitive",
+        "ChemicalObservationRow",
         "ChemicalStandardState",
         "FlashError",
         "HeldDiagnostics",
@@ -971,6 +974,7 @@ def test_public_surface_has_no_retired_routes_or_solver_controls() -> None:
         "SolverAttemptDiagnostics",
         "TpFlashResult",
         "chemical_equilibrium",
+        "chemical_observation_context",
         "saturation",
         "tp_flash",
     }

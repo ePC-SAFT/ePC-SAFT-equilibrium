@@ -45,3 +45,23 @@ def _chemical_equilibrium(
     trace_floor: float,
     active_parameters: tuple[dict[str, object], ...] | None = ...,
 ) -> dict[str, Any]: ...
+
+def _chemical_observation_context(
+    provider_capsule: object,
+    rows: tuple[dict[str, object], ...],
+    packing_fraction_bounds: tuple[float, float],
+    trace_floor: float,
+    parameter_templates: tuple[dict[str, object], ...],
+    evaluator_identity: str,
+    capability_id: str,
+    capability_fingerprint: str,
+    provider_artifact_identity: str,
+    owner_artifact_identity: str,
+    contract_fingerprint: str,
+    artifact_identity: str,
+) -> object: ...
+def _chemical_observation_evaluate(
+    context: object,
+    parameter_values: tuple[float, ...],
+    with_jacobian: bool = ...,
+) -> dict[str, Any]: ...

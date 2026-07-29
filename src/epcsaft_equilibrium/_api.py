@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -233,6 +234,78 @@ class ChemicalEquilibriumSensitivityRequest:
     """Request exact operation columns and ordered installed-Provider coordinates."""
 
     active_parameters: tuple[ChemicalEquilibriumActiveParameter, ...] = ()
+
+
+@dataclass(frozen=True)
+class ChemicalObservationPrimitive:
+    """One generic homogeneous-liquid observable evaluated by the installed artifacts."""
+
+    kind: str
+    component_id: str
+
+
+@dataclass(frozen=True)
+class ChemicalObservationRow:
+    """One source-bound row and immutable homogeneous-liquid state."""
+
+    row_id: str
+    state_id: str
+    state_schema_id: str
+    source_id: str
+    transform_id: str
+    temperature: Quantity[Any]
+    pressure: Quantity[Any]
+    problem: ChemicalEquilibriumProblem
+    primitive: ChemicalObservationPrimitive
+
+
+@dataclass(frozen=True)
+class ChemicalObservationContext:
+    """Process-local C evaluator handle with value and exact-Jacobian transport."""
+
+    _native_capsule: object
+    row_ids: tuple[str, ...]
+    state_ids: tuple[str, ...]
+    state_schema_ids: tuple[str, ...]
+    source_ids: tuple[str, ...]
+    primitive_ids: tuple[str, ...]
+    parameter_ids: tuple[str, ...]
+    primitive_units: tuple[str, ...]
+    transform_ids: tuple[str, ...]
+    reference_ids: tuple[str, ...]
+    reference_fingerprints: tuple[str, ...]
+    parameter_units: tuple[str, ...]
+    evaluator_identity: str
+    capability_id: str
+    capability_fingerprint: str
+    provider_artifact_identity: str
+    owner_artifact_identity: str
+    contract_fingerprint: str
+    artifact_identity: str
+
+    @property
+    def native_capsule(self) -> object:
+        """Return the installed generic evaluator capsule for C/C++ consumers."""
+
+        return self._native_capsule
+
+    def evaluate(
+        self,
+        parameter_values: Sequence[float],
+        *,
+        with_jacobian: bool = True,
+    ) -> Mapping[str, object]:
+        """Replay the same native callback for diagnostics or installed-artifact tests."""
+
+        values = tuple(float(value) for value in parameter_values)
+        return cast(
+            Mapping[str, object],
+            _equilibrium._chemical_observation_evaluate(
+                self._native_capsule,
+                values,
+                with_jacobian,
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -879,6 +952,19 @@ def _distribution_identity(distribution_name: str) -> tuple[str, str]:
     return distribution.version, f"sha256:{digest}"
 
 
+def _distribution_file_identity(
+    distribution_name: str,
+    relative_path: str,
+) -> str:
+    path = metadata.distribution(distribution_name).locate_file(relative_path)
+    payload = path.read_bytes()
+    if not payload:
+        raise ValueError(
+            f"installed {distribution_name} file identity is unavailable"
+        )
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
 def _chemical_artifact_identity(
     native: Mapping[str, object],
     *,
@@ -1387,6 +1473,276 @@ def chemical_equilibrium(
         ),
         artifact_identity=artifact_identity,
         sensitivity=sensitivity,
+    )
+
+
+def chemical_observation_context(
+    phase: ProviderPhase,
+    *,
+    rows: Sequence[ChemicalObservationRow],
+    active_parameters: Sequence[ChemicalEquilibriumActiveParameter],
+) -> ChemicalObservationContext:
+    """Create one source-bound batch evaluator over immutable liquid states.
+
+    The returned handle owns no chemistry defaults and does not run a Python
+    callback. Its native callback re-solves every declared homogeneous state
+    and returns ordered values, exact total Jacobian columns, and row status.
+    """
+
+    if not isinstance(phase, ProviderPhase):
+        raise TypeError("chemical_observation_context requires a ProviderPhase")
+    row_records = tuple(rows)
+    parameter_records = tuple(active_parameters)
+    if not row_records or not parameter_records:
+        raise ValueError("chemical-observation context requires rows and parameters")
+    if any(not isinstance(item, ChemicalObservationRow) for item in row_records):
+        raise TypeError("chemical-observation rows use the typed row record")
+    if any(
+        not isinstance(item, ChemicalEquilibriumActiveParameter)
+        for item in parameter_records
+    ):
+        raise TypeError("active parameters use the typed request record")
+    if not isinstance(phase.model, epcsaft.Mixture):
+        raise TypeError("ProviderPhase requires an epcsaft.Mixture")
+    if (
+        not phase.expected_parameter_fingerprint
+        or phase.expected_parameter_fingerprint != phase.model.parameter_fingerprint
+    ):
+        raise ValueError("installed Provider fingerprint does not match the problem")
+    if len({item.row_id for item in row_records}) != len(row_records):
+        raise ValueError("chemical-observation row identities must be unique")
+    packing_bounds = tuple(float(value) for value in phase.admissible_packing_fraction_interval)
+    if len(packing_bounds) != 2 or not 0.0 < packing_bounds[0] < packing_bounds[1]:
+        raise ValueError("packing-fraction bounds must be finite and increasing")
+    native_rows: list[dict[str, object]] = []
+    for row in row_records:
+        problem = row.problem
+        if not isinstance(problem, ChemicalEquilibriumProblem):
+            raise TypeError("chemical-observation row requires a typed problem")
+        if not isinstance(row.primitive, ChemicalObservationPrimitive):
+            raise TypeError("chemical-observation row requires a typed primitive")
+        if not row.row_id or not row.state_id or not row.state_schema_id or not row.source_id:
+            raise ValueError("chemical-observation row identity is incomplete")
+        if row.transform_id not in {"identity", "natural_log"}:
+            raise ValueError("unsupported chemical-observation transform")
+        temperature_k = _quantity(
+            row.temperature,
+            "kelvin",
+            "temperature",
+            "chemical_observation_context",
+        )
+        pressure_pa = _quantity(
+            row.pressure,
+            "pascal",
+            "pressure",
+            "chemical_observation_context",
+        )
+        if (
+            not math.isfinite(problem.strict_interior_amount_floor_mol)
+            or problem.strict_interior_amount_floor_mol <= 0.0
+        ):
+            raise ValueError("minimum admitted amount must be positive and finite")
+        constants = tuple(
+            {
+                "source_id": record.source_id,
+                "reference_id": record.reference_id,
+                "reaction_orientation": record.reaction_orientation,
+                "conversion_id": record.conversion_id,
+                "dimensionless": record.dimensionless,
+                "temperature_k": temperature_k,
+                "pressure_pa": (
+                    problem.source_standard_state.reference_pressure_pa
+                    if problem.source_standard_state is not None
+                    else pressure_pa
+                ),
+            }
+            for record in problem.equilibrium_constants
+        )
+        problem_record: dict[str, object] = {
+            "species_ids": problem.species_ids,
+            "charges": problem.charges,
+            "provider_fingerprint": phase.expected_parameter_fingerprint,
+            "molar_masses_kg_per_mol": problem.molar_masses_kg_per_mol,
+            "balance_matrix": problem.balance_matrix,
+            "conserved_totals": problem.conserved_totals,
+            "reaction_matrix": problem.reaction_matrix,
+            "feed_amounts": problem.feed_amounts_mol,
+            "ln_k": tuple(record.ln_value for record in problem.equilibrium_constants),
+            "equilibrium_constant_records": constants,
+            "temperature_k": temperature_k,
+            "pressure_pa": pressure_pa,
+        }
+        standard_state: dict[str, object] | None = None
+        if problem.source_standard_state is not None:
+            standard_state = {
+                "id": problem.source_standard_state.id,
+                "activity_scale_id": problem.source_standard_state.activity_scale_id,
+                "log_activity_scale_factors": (
+                    problem.source_standard_state.log_activity_scale_factors
+                ),
+                "reference_pressure_pa": (
+                    problem.source_standard_state.reference_pressure_pa
+                ),
+            }
+        reference_id = (
+            problem.source_standard_state.id
+            if problem.source_standard_state is not None
+            else "provider-helmholtz-coordinate-basis"
+        )
+        reference_fingerprint = "sha256:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "reference_id": reference_id,
+                    "source_standard_state": standard_state,
+                    "equilibrium_constants": constants,
+                },
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        native_rows.append(
+            {
+                "row_id": row.row_id,
+                "state_id": row.state_id,
+                "state_schema_id": row.state_schema_id,
+                "source_id": row.source_id,
+                "transform_id": row.transform_id,
+                "reference_id": reference_id,
+                "reference_fingerprint": reference_fingerprint,
+                "problem": problem_record,
+                "source_standard_state": standard_state,
+                "primitive": {
+                    "kind": row.primitive.kind,
+                    "component_id": row.primitive.component_id,
+                },
+            }
+        )
+    native_parameters = tuple(
+        {
+            "family": item.family,
+            "identity": item.identity,
+            "component_ids": item.component_ids,
+            "value": item.value,
+            "unit": item.unit,
+        }
+        for item in parameter_records
+    )
+    provider_version, provider_record = _distribution_identity("epcsaft")
+    owner_version, owner_record = _distribution_identity("epcsaft-equilibrium")
+    provider_header = _distribution_file_identity(
+        "epcsaft",
+        "epcsaft/include/epcsaft/native_sdk_v1.h",
+    )
+    owner_header = _distribution_file_identity(
+        "epcsaft-equilibrium",
+        "epcsaft_equilibrium/include/epcsaft/regression/evaluator_v1.h",
+    )
+    provider_artifact_identity = (
+        f"epcsaft=={provider_version};RECORD={provider_record};"
+        f"HEADER={provider_header}"
+    )
+    owner_artifact_identity = (
+        f"epcsaft-equilibrium=={owner_version};RECORD={owner_record};"
+        f"HEADER={owner_header}"
+    )
+    evaluator_identity = "epcsaft-equilibrium.homogeneous-liquid-observation.v1"
+    capability_id = "homogeneous-liquid-positive-scalars-v1"
+    capability_fingerprint = "sha256:" + hashlib.sha256(
+        (
+            capability_id
+            + "\nneutral_component_fugacity_pa:Pa"
+            + "\nspecies_mole_fraction:dimensionless"
+            + "\nidentity\nnatural_log"
+        ).encode("utf-8")
+    ).hexdigest()
+    contract_fingerprint = "sha256:" + hashlib.sha256(
+        json.dumps(
+            {
+                "rows": native_rows,
+                "parameters": native_parameters,
+            },
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    artifact_identity = "sha256:" + hashlib.sha256(
+        (
+            evaluator_identity
+            + "\n"
+            + capability_fingerprint
+            + "\n"
+            + provider_artifact_identity
+            + "\n"
+            + owner_artifact_identity
+            + "\n"
+            + contract_fingerprint
+            + "\n"
+            + phase.expected_parameter_fingerprint
+        ).encode("utf-8")
+    ).hexdigest()
+    trace_floors = {
+        float(item.problem.strict_interior_amount_floor_mol) for item in row_records
+    }
+    if len(trace_floors) != 1:
+        raise ValueError("chemical-observation rows require one trace-floor contract")
+    capsule = _equilibrium._chemical_observation_context(
+        epcsaft.native_sdk(phase.model),
+        tuple(native_rows),
+        packing_bounds,
+        trace_floors.pop(),
+        native_parameters,
+        evaluator_identity,
+        capability_id,
+        capability_fingerprint,
+        provider_artifact_identity,
+        owner_artifact_identity,
+        contract_fingerprint,
+        artifact_identity,
+    )
+    return ChemicalObservationContext(
+        _native_capsule=capsule,
+        row_ids=tuple(item.row_id for item in row_records),
+        state_ids=tuple(item.state_id for item in row_records),
+        state_schema_ids=tuple(item.state_schema_id for item in row_records),
+        source_ids=tuple(item.source_id for item in row_records),
+        primitive_ids=tuple(
+            f"{item.primitive.kind};{item.primitive.component_id}"
+            for item in row_records
+        ),
+        parameter_ids=tuple(
+            f"{item.family};{item.identity};{','.join(item.component_ids)}"
+            for item in parameter_records
+        ),
+        primitive_units=tuple(
+            (
+                "Pa"
+                if item.primitive.kind == "neutral_component_fugacity_pa"
+                else "dimensionless"
+            )
+            for item in row_records
+        ),
+        transform_ids=tuple(item.transform_id for item in row_records),
+        reference_ids=tuple(
+            (
+                item.problem.source_standard_state.id
+                if item.problem.source_standard_state is not None
+                else "provider-helmholtz-coordinate-basis"
+            )
+            for item in row_records
+        ),
+        reference_fingerprints=tuple(
+            str(record["reference_fingerprint"]) for record in native_rows
+        ),
+        parameter_units=tuple(item.unit for item in parameter_records),
+        evaluator_identity=evaluator_identity,
+        capability_id=capability_id,
+        capability_fingerprint=capability_fingerprint,
+        provider_artifact_identity=provider_artifact_identity,
+        owner_artifact_identity=owner_artifact_identity,
+        contract_fingerprint=contract_fingerprint,
+        artifact_identity=artifact_identity,
     )
 
 
