@@ -11,12 +11,12 @@ neutral methane/ethane HELD `T,P,z` calculation.
 import epcsaft
 from epcsaft_equilibrium import saturation
 
-parameters = epcsaft.ParameterBundle.from_catalog(
-    "gross-2001-methane-ethane", version=1
-).select(("methane",))
-model = epcsaft.EPCSAFT(parameters)
+parameters = epcsaft.Parameters.from_catalog(
+    "gross-2001-methane-ethane", components=("methane",), version=1
+)
+mixture = epcsaft.Mixture(parameters)
 
-result = saturation(model, 150 * epcsaft.unit_registry.kelvin)
+result = saturation(mixture, 150 * epcsaft.unit_registry.kelvin)
 print(result.saturation_pressure_pa)
 print(result.vapor.molar_density_mol_m3, result.liquid.molar_density_mol_m3)
 ```
@@ -39,13 +39,15 @@ discovery certificate.
 import epcsaft
 from epcsaft_equilibrium import tp_flash
 
-parameters = epcsaft.ParameterBundle.from_catalog(
-    "gross-2001-methane-ethane", version=1
-).select(("methane", "ethane"))
-model = epcsaft.EPCSAFT(parameters)
+parameters = epcsaft.Parameters.from_catalog(
+    "gross-2001-methane-ethane",
+    components=("methane", "ethane"),
+    version=1,
+)
+mixture = epcsaft.Mixture(parameters)
 
 result = tp_flash(
-    model,
+    mixture,
     243.61 * epcsaft.unit_registry.kelvin,
     6.691 * epcsaft.unit_registry.megapascal,
     (0.5627, 0.4373),
@@ -65,7 +67,7 @@ classify solver, numerical, and physical evidence independently as `passed`,
 `failed`, or `not_adjudicated`; those axes do not change the globality claim.
 
 The candidate fingerprint is
-`sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286`.
+`sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195`.
 The retained Pereira source is the permanent-lab Markdown at commit
 `13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b`, blob
 `dde7f02d4c93cce86804a8e6b62d37602990ac21`; it is provenance, not a build,
@@ -160,8 +162,8 @@ import private provider modules.
 
 Source builds require Python 3.13, CMake, a C++17 compiler, pkg-config, Ipopt,
 network or populated FetchContent caches for the pinned NLopt 2.11.0 and
-HiGHS 1.15.1 archives, and the non-editable provider wheel installed in the
-build environment. The
+HiGHS 1.15.1 archives and the header-only Boost 1.88.0 archive, and the
+non-editable provider wheel installed in the build environment. The
 local candidate gate hashes the exact provider wheel before creating an
 isolated build environment. Candidate wheels are retained as read-only files
 under a commit-bound `artifacts/equilibrium-neutral-held-v1/<commit>/`
@@ -193,7 +195,15 @@ formulation owners are
 `docs/designs/2026-07-17-neutral-held-v1.md`, and
 `docs/designs/2026-07-24-held2-paper-algorithm.md`; the canonical HELD2 execution plan
 and landed task record is
-`docs/plans/2026-07-24-held2-paper-rewrite.md`. Migration receipt
+`docs/plans/2026-07-24-held2-paper-rewrite.md`. The D-028 homogeneous
+reacting-phase foundation is documented separately in
+`docs/designs/2026-07-21-private-reacting-phase-kernel.md`. It currently has
+Belov trace evidence, installed-Provider-manufactured evidence, and one
+source-complete Held/IAPWS water self-ionization value case. The public typed
+`chemical_equilibrium` operation reports only a local fixed-`T,P` homogeneous
+value result. It has no sensitivity contract, predictive admission, coupled
+phase-equilibrium claim, or globality proof.
+Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
 solve is not a phase-discovery or global-stability proof. The local HELD

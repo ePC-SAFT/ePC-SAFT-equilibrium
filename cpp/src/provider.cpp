@@ -2,12 +2,18 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <stdexcept>
 #include <utility>
 
 namespace epcsaft_equilibrium {
 namespace {
+
+constexpr std::size_t kNeutralReferenceSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, evaluate_neutral_reference)
+    + sizeof(epcsaft_evaluate_neutral_reference_v1);
+constexpr double kNeutralReferenceConvergenceErrorMax = 5.0e-5;
 
 std::string decode_provider_char_array(
     const char* value,
@@ -281,7 +287,7 @@ std::array<double, 2> ProviderContext::evaluate_molar_volume_bounds(
     );
     if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
         throw std::domain_error(
-            "provider molar-volume domain evaluation failed with status "
+            "provider molar-volume domain/fingerprint evaluation failed with status "
             + std::to_string(status)
         );
     }
@@ -292,6 +298,206 @@ std::array<double, 2> ProviderContext::evaluate_molar_volume_bounds(
         );
     }
     return bounds;
+}
+
+PackingFractionEvaluation ProviderContext::evaluate_packing_fraction(
+    double temperature_k,
+    const std::vector<double>& amounts_mol,
+    double volume_m3
+) const {
+    if (sdk_.evaluate_packing_fraction == nullptr
+        || amounts_mol.size() != sdk_.component_count) {
+        throw std::invalid_argument("provider capsule is missing the packing-fraction contract");
+    }
+    require_finite(temperature_k, "temperature");
+    require_finite(volume_m3, "volume");
+    if (temperature_k <= 0.0 || volume_m3 <= 0.0
+        || !std::all_of(amounts_mol.begin(), amounts_mol.end(), [](double value) {
+            return std::isfinite(value) && value >= 0.0;
+        })) {
+        throw std::invalid_argument(
+            "packing-fraction state must be finite, nonnegative, and positive-volume"
+        );
+    }
+
+    const std::size_t coordinate_count = amounts_mol.size() + 1;
+    PackingFractionEvaluation result;
+    result.gradient.resize(coordinate_count);
+    result.hessian.resize(coordinate_count * coordinate_count);
+    const int status = sdk_.evaluate_packing_fraction(
+        sdk_.model_context,
+        fingerprint_.c_str(),
+        temperature_k,
+        amounts_mol.data(),
+        amounts_mol.size(),
+        volume_m3,
+        &result.value,
+        result.gradient.data(),
+        result.gradient.size(),
+        result.hessian.data(),
+        result.hessian.size()
+    );
+    if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
+        throw std::domain_error(
+            "provider packing-fraction evaluation failed with status "
+            + std::to_string(status)
+        );
+    }
+    require_finite(result.value, "provider packing fraction");
+    if (!std::all_of(result.gradient.begin(), result.gradient.end(), [](double value) {
+            return std::isfinite(value);
+        })
+        || !std::all_of(result.hessian.begin(), result.hessian.end(), [](double value) {
+            return std::isfinite(value);
+        })) {
+        throw std::invalid_argument("provider packing-fraction tensors must be finite");
+    }
+    return result;
+}
+
+NeutralReferenceEvaluation ProviderContext::evaluate_neutral_reference(
+    double temperature_k,
+    double pressure_pa
+) const {
+    if (sdk_.table_size < kNeutralReferenceSdkTableSize
+        || sdk_.neutral_reference_result_size
+            != sizeof(epcsaft_neutral_reference_result_v1)
+        || sdk_.evaluate_neutral_reference == nullptr
+        || sdk_.neutral_reference_basis_row_count == 0
+        || sdk_.neutral_reference_basis_row_count + 1 != sdk_.component_count) {
+        throw std::invalid_argument("Provider neutral-reference ABI contract is incomplete");
+    }
+    require_finite(temperature_k, "neutral-reference temperature");
+    require_finite(pressure_pa, "neutral-reference pressure");
+    if (temperature_k <= 0.0 || pressure_pa <= 0.0
+        || temperature_k < sdk_.source_temperature_min_k
+        || temperature_k > sdk_.source_temperature_max_k) {
+        throw std::invalid_argument("Provider neutral-reference source domain is incompatible");
+    }
+
+    NeutralReferenceEvaluation result;
+    result.component_count = sdk_.component_count;
+    result.neutral_basis_row_count = sdk_.neutral_reference_basis_row_count;
+    result.neutral_basis.resize(
+        result.component_count * result.neutral_basis_row_count
+    );
+    result.log_fugacity_contractions.resize(result.neutral_basis_row_count);
+    std::vector<double> reference_composition(result.component_count, 0.0);
+
+    epcsaft_neutral_reference_result_v1 native{};
+    native.struct_size = sizeof(native);
+    native.component_count = result.component_count;
+    native.neutral_basis_row_count = result.neutral_basis_row_count;
+    native.neutral_basis_capacity = result.neutral_basis.size();
+    native.contraction_capacity = result.log_fugacity_contractions.size();
+    native.reference_composition_capacity = reference_composition.size();
+    native.neutral_basis = result.neutral_basis.data();
+    native.log_fugacity_contractions = result.log_fugacity_contractions.data();
+    native.reference_composition = reference_composition.data();
+    const int status = sdk_.evaluate_neutral_reference(
+        sdk_.model_context,
+        fingerprint_.c_str(),
+        temperature_k,
+        pressure_pa,
+        &native
+    );
+    if (status != native.status) {
+        throw std::runtime_error(
+            "Provider neutral-reference evaluation returned inconsistent status values"
+        );
+    }
+    if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
+        throw std::domain_error(
+            "Provider neutral-reference evaluation failed: "
+            + decode_provider_char_array(
+                native.error,
+                sizeof(native.error),
+                "Provider neutral-reference error"
+            )
+        );
+    }
+    if (native.struct_size != sizeof(native)
+        || native.component_count != result.component_count
+        || native.neutral_basis_row_count != result.neutral_basis_row_count
+        || native.neutral_basis_capacity != result.neutral_basis.size()
+        || native.contraction_capacity != result.log_fugacity_contractions.size()
+        || native.reference_composition_capacity != reference_composition.size()
+        || native.neutral_basis != result.neutral_basis.data()
+        || native.log_fugacity_contractions != result.log_fugacity_contractions.data()
+        || native.reference_composition != reference_composition.data()) {
+        throw std::invalid_argument("Provider neutral-reference result contract changed");
+    }
+    if (native.derivative_availability
+        != EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_NONE_V1) {
+        throw std::invalid_argument(
+            "Provider neutral-reference derivative availability is unsupported"
+        );
+    }
+    if (!std::all_of(result.neutral_basis.begin(), result.neutral_basis.end(),
+            [](double value) { return std::isfinite(value); })
+        || !std::all_of(
+            result.log_fugacity_contractions.begin(),
+            result.log_fugacity_contractions.end(),
+            [](double value) { return std::isfinite(value); }
+        )) {
+        throw std::invalid_argument("Provider neutral-reference values must be finite");
+    }
+    double composition_sum = 0.0;
+    for (std::size_t component = 0; component < result.component_count; ++component) {
+        const double value = reference_composition[component];
+        if (!std::isfinite(value) || value < 0.0
+            || (sdk_.component_charges[component] != 0 && value != 0.0)) {
+            throw std::invalid_argument(
+                "Provider neutral-reference composition must be salt-free"
+            );
+        }
+        composition_sum += value;
+    }
+    for (std::size_t row = 0; row < result.neutral_basis_row_count; ++row) {
+        double charge = 0.0;
+        for (std::size_t component = 0; component < result.component_count; ++component) {
+            charge += result.neutral_basis[row * result.component_count + component]
+                * static_cast<double>(sdk_.component_charges[component]);
+        }
+        if (std::abs(charge) > 1.0e-12) {
+            throw std::invalid_argument(
+                "Provider neutral-reference basis row is not charge neutral"
+            );
+        }
+    }
+    if (std::abs(composition_sum - 1.0) > 1.0e-12
+        || native.temperature_k != temperature_k
+        || native.pressure_pa != pressure_pa
+        || native.reference_amount_mol != 1.0
+        || native.reference_number_density_mol_per_m3 != 1.0
+        || !std::isfinite(native.solvent_molar_mass_kg_per_mol)
+        || native.solvent_molar_mass_kg_per_mol <= 0.0
+        || !std::isfinite(native.reference_molality_mol_per_kg)
+        || native.reference_molality_mol_per_kg <= 0.0
+        || !std::isfinite(native.reference_convergence_error)
+        || native.reference_convergence_error < 0.0
+        || native.reference_convergence_error > kNeutralReferenceConvergenceErrorMax) {
+        throw std::invalid_argument("Provider neutral-reference scalar identity is invalid");
+    }
+    result.basis_id = decode_provider_char_array(
+        native.helmholtz_basis_id,
+        sizeof(native.helmholtz_basis_id),
+        "Provider neutral-reference basis"
+    );
+    result.parameter_fingerprint = decode_provider_char_array(
+        native.parameter_fingerprint,
+        sizeof(native.parameter_fingerprint),
+        "Provider neutral-reference fingerprint"
+    );
+    if (result.basis_id != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1
+        || result.parameter_fingerprint != fingerprint_) {
+        throw std::invalid_argument("Provider neutral-reference identity mismatch");
+    }
+    result.derivative_availability = native.derivative_availability;
+    result.temperature_k = native.temperature_k;
+    result.pressure_pa = native.pressure_pa;
+    result.reference_convergence_error = native.reference_convergence_error;
+    return result;
 }
 
 const std::string& ProviderContext::fingerprint() const {

@@ -12,7 +12,7 @@ accept a promotion receipt.
 The package will expose one operation:
 
 ```python
-saturation(model: epcsaft.EPCSAFT, temperature: pint.Quantity) -> SaturationResult
+saturation(model: epcsaft.Mixture, temperature: pint.Quantity) -> SaturationResult
 ```
 
 It will accept the provider-approved pure methane, ethane, and propane

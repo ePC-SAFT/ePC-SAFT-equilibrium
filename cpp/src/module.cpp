@@ -23,10 +23,14 @@
 
 namespace py = pybind11;
 
+namespace epcsaft_equilibrium {
+void bind_chemical_equilibrium(py::module_& module);
+}
+
 namespace {
 
 constexpr std::string_view kFlashFingerprint =
-    "sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286";
+    "sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195";
 constexpr std::size_t kPureSdkTableSize = offsetof(epcsaft_native_sdk_v1, component_count);
 constexpr std::size_t kMixtureSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_mixture_phase)
@@ -1070,6 +1074,7 @@ py::dict solve_tp_flash(
 
 PYBIND11_MODULE(_equilibrium, module) {
     module.doc() = "Native local equilibrium formulation over epcsaft.native_sdk.v1";
+    epcsaft_equilibrium::bind_chemical_equilibrium(module);
     module.def("sdk_info", &sdk_info, py::arg("capsule"));
     module.def(
         "evaluate_mixture_phase",

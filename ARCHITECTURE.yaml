@@ -18,6 +18,7 @@ documentation:
   perdomo_held2_design: docs/designs/2026-07-24-held2-paper-algorithm.md
   perdomo_held2_prior_design: docs/designs/2026-07-21-perdomo-held2.md
   perdomo_held2_implementation_plan: docs/plans/2026-07-24-held2-paper-rewrite.md
+  homogeneous_reacting_phase_design: docs/designs/2026-07-21-private-reacting-phase-kernel.md
   historical_lab_m4_role: scientific-and-migration-provenance
 
 accepted_capability:
@@ -50,13 +51,13 @@ accepted_capability:
     nist_liquid_density_relative_error_max: 1.0e-2
   admitted_inputs:
     - component: methane
-      parameter_fingerprint: sha256:5f836aa84935df70be2e5cffae51b178a7b797c2cee036e9ff47d8097ca94bbf
+      parameter_fingerprint: sha256:905e7a6e22eb1073347575bf833d5aa059d9ccf562e4408cb186d74f580ba36f
       temperature_domain_k: [97.0, 300.0]
     - component: ethane
-      parameter_fingerprint: sha256:288fbcaa1304881c16f64c3a784eeed19b75c58cca4558f92a21268e5e91258a
+      parameter_fingerprint: sha256:b81f32e44adb46080dfa91026c6428045e04a219900305767672d0547f9a9fb9
       temperature_domain_k: [90.0, 305.0]
     - component: propane
-      parameter_fingerprint: sha256:9bfbc8d7789e51609945e61dbdf7a020decc8f9e31b408b0977724c7cb3e1551
+      parameter_fingerprint: sha256:1194db349d0608c89419e70c56ccec9ada2ae0884dd8e64e519e9560e7e8ae42
       temperature_domain_k: [85.0, 523.0]
 
 local_candidate:
@@ -73,7 +74,7 @@ local_candidate:
     complete Pereira HELD Stage-I/II/III controller inside the audited May et
     al. (2015), Table 5 rectangular temperature, pressure, and methane-feed
     domain, with one- or two-phase outcomes and no caller-supplied phase count.
-  parameter_fingerprint: sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286
+  parameter_fingerprint: sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195
   temperature_domain_k: [203.22, 243.61]
   pressure_domain_pa: [2124000.0, 6885000.0]
   methane_feed_domain: [0.4661, 0.66705]
@@ -307,6 +308,10 @@ owners:
     Stage-II multistart; HiGHS Stage-II upper LP; Ipopt Stage-II local
     refinement and Stage III; Equilibrium independent certificates and
     fail-closed integrated controller
+  homogeneous_reacting_phase_compiler_and_ipopt: >-
+    cpp/src/chemical_equilibrium.cpp, cpp/src/chemical_equilibrium_compiler.cpp,
+    cpp/src/chemical_equilibrium_support.cpp, and
+    cpp/src/chemical_equilibrium_solver.cpp
   input_validation_and_typed_results: src/epcsaft_equilibrium/_api.py
   pure_scientific_anchors: data/reference/pure_saturation_anchors.csv
   flash_predictive_validation: ePC-SAFT-validation
@@ -315,19 +320,28 @@ public_surface:
   distribution: epcsaft-equilibrium
   package: epcsaft_equilibrium
   exports:
+    - ChemicalEquilibriumConstant
+    - ChemicalEquilibriumDiagnostics
+    - ChemicalEquilibriumError
+    - ChemicalEquilibriumProblem
+    - ChemicalEquilibriumResult
+    - ChemicalStandardState
     - FlashError
     - HeldDiagnostics
+    - IdealGasPhase
     - PhaseState
+    - ProviderPhase
     - SaturationDiagnostics
     - SaturationError
     - SaturationResult
     - SolverAttemptDiagnostics
     - TpFlashResult
+    - chemical_equilibrium
     - saturation
     - tp_flash
   native_modules: [epcsaft_equilibrium._equilibrium]
   native_targets: 1
-  runtime_dependencies: [epcsaft==0.1.0.dev0, Pint>=0.25]
+  runtime_dependencies: [epcsaft==0.2.0.dev0, Pint>=0.25]
   build_dependencies:
     - scikit-build-core
     - pybind11
@@ -337,11 +351,59 @@ public_surface:
     - NLopt 2.11.0 pinned source archive
     - HiGHS 1.15.1 pinned source archive
 
+homogeneous_reacting_phase:
+  binding_decision: D-028
+  status: public-local-value-source-complete-evidence
+  authority_effect: none
+  public_operation: chemical_equilibrium
+  scope: one homogeneous fixed-temperature fixed-pressure reacting phase
+  standard_reference_equation: nu_g_ref_equals_negative_lnK
+  amount_coordinates: positive-electroneutral-charge-equivalents-and-simplex-shares
+  objective: provider_total_helmholtz_over_rt_plus_PV_over_RT_plus_g_ref_dot_n
+  solver: deterministic-HiGHS-interior-LP-then-one-native-Ipopt-Provider-NLP
+  provider_contracts:
+    - exact component order, charges, and fingerprint
+    - electrolyte Helmholtz value, gradient, Hessian, and pressure
+    - molar-volume domain bounds
+    - packing-fraction value, gradient, and Hessian
+    - source temperature and total-ion composition bounds
+    - Provider-basis lnK or explicit source activity-scale shifts plus the neutral-reference callback
+  evidence_profiles:
+    - installed_provider_manufactured_nonpredictive
+    - installed_provider_source_bound_water_self_ionization
+  globality_certificate: not_guaranteed
+  public_cutover_verification:
+    source_suite: 124 passed, 4 skipped
+    focused_chemical_suite: 44 passed
+    installed_wheel_sha256: 82190af691d217e600c4c519b106147085649f0d217e3eacb074d769f19d1d7a
+    installed_provider_wheel_sha256: 9b05f4d202424f3db570dfaa80210e5aa54c9ee3586a4cbef4309f5881648d08
+    sibling_source_imported: false
+    private_baseline_commit: 659f454
+    held_amounts_mol:
+      - 0.9999999999956604
+      - 2.1697889642857363e-12
+      - 2.1697889642857363e-12
+    provider_basis_ln_k: -53.423919749357395
+    reaction_affinity_inf_norm: 1.450389285877886e-15
+    kkt_stationarity_inf_norm: 4.9960036108132044e-15
+    public_private_value_and_certificate_parity: passed
+  downstream_blockers:
+    - typed Provider parameter derivatives for implicit sensitivities
+    - coupled phase incidence and HELD-owned phase discovery
+
 evidence:
   implementation_commit: 8318e755d4a8e490822fdf7bb2685d8c5af6436c
   implementation_tree: 3e8c98a13f1daca975b33c26fce3d143a1f34493
   candidate_receipt: receipts/promotion/promotion-0002-neutral-held-v1-candidate.yaml
   artifact:
+    status: pre-migration-provenance
+    runtime_authority: none
+    provider_dependency: epcsaft==0.1.0.dev0
+    note: >-
+      This immutable Equilibrium 0.1 artifact and the evidence hashes below
+      predate the Provider 0.2 frontend migration. They are retained as
+      historical provenance and are not the artifact under current runtime or
+      validation.
     path: artifacts/equilibrium-neutral-held-v1/8318e75/epcsaft_equilibrium-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
     sha256: 8ecd70e0192b76b3a107629201c3e8bf34f2d945ca7c8192f824a0df7c9dde12
     source_date_epoch: 1784573453
@@ -398,8 +460,9 @@ excluded:
   - guaranteed arbitrary phase counts or a phase-completeness certificate
   - density closure and density-root derivatives
   - third derivatives for neutral HELD
-  - association and reactive equilibrium
+  - association models
   - admitted electrolyte or ionic equilibrium capability; HELD2 remains development behavior
+  - public coupled reactive phase equilibrium
   - bubble-pressure and dew-pressure routes
   - critical completion and continuation
   - generic route registries, solver selectors, and fallback solvers

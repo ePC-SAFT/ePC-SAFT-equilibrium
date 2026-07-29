@@ -44,3 +44,20 @@ solve with no phase-discovery or
 global-stability certificate. Do not broaden it to mixtures, association,
 electrolytes, flash, critical continuation, regression, workflows, or releases
 without a separately admitted slice.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in this repository's GitHub Issues using `gh`.
+See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the canonical Matt triage labels without aliases.
+See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use the single-context layout: root `CONTEXT.md` plus repository-wide ADRs
+under `docs/adr/`. See `docs/agents/domain.md`.

@@ -33,7 +33,7 @@ The repository now also contains the corrected complete local
 `8318e755d4a8e490822fdf7bb2685d8c5af6436c`, tree
 `3e8c98a13f1daca975b33c26fce3d143a1f34493`. It is limited to the reviewed
 Gross--Sadowski methane/ethane fingerprint
-`sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286`
+`sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195`
 and the audited May et al. (2015), Table 5 rectangle: 203.22--243.61 K,
 2.124--6.885 MPa, and methane feed 0.4661--0.66705.
 
@@ -84,6 +84,35 @@ two-liquid subject, Validation, and public admission require separate
 authority. No case-specific constants or caller-selectable solver route is
 active.
 
+D-028 separately binds a private, non-production homogeneous reacting-phase
+foundation, now deepened by the private GREPE homogeneous chemical layer. The
+implementation is intentionally reachable only through underscored native test
+seams. It compiles redundant supplied reactions only after Provider-basis
+provenance, mass, charge, span, and converted-cycle checks; classifies
+homogeneous species support using HiGHS candidates plus independent exact
+binary-rational primal or dual certificates; and recompiles reaction
+combinations on the accessible species face. The existing positive
+electroneutral chart, fixed-`T,P` exact-Hessian Ipopt minimization, and generic
+strictly-interior KKT polish remain the only optimization path. Manufactured
+ideal structural faces restore certified zeros exactly and can emit
+`LOCAL_EQUILIBRIUM`. Installed Provider structural faces fail before any
+reduced-component callback with `BOUNDARY_DIRECTION_UNRESOLVED`, because SDK
+v1 has no reduced-topology or boundary-direction contract.
+
+Final equality multipliers and certificates are rebuilt from the accepted
+physical state. The public typed `chemical_equilibrium` value operation routes
+through one underscored native bridge to this same owner. The Provider path
+consumes only the installed
+Provider's Helmholtz, pressure, volume-domain, packing, and derivative
+callbacks. A source-derived Belov-Aristova gas restriction supplies algorithm
+and trace-range evidence through the seam and remains
+`manufactured_nonpredictive`. A source-complete Held-2008/IAPWS
+R11-07(2019) water self-ionization sentinel exercises the installed Provider
+neutral-reference transport through the same solver at 298.15 K and
+1 bar. It establishes one local fixed-state value result, not application
+chemistry, sensitivity, predictive, phase-stability, coupled-equilibrium, or
+globality. D-026 remains the public HELD2 admission gate.
+
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD
 `5a678beff38717478fd333c65e77f005cc2f6b15` and record SHA-256
@@ -132,6 +161,12 @@ candidate source and a public route do not accept their own promotion.
 `promotion_status: accepted`
 
 `local_candidate: neutral-held-v1`
+
+`private_development_foundation: homogeneous-reacting-phase-d028`
+
+`private_development_layer: grepe-homogeneous-chemical-local`
+
+`private_development_foundation_authority_effect: none`
 
 `local_candidate_authority_effect: none`
 

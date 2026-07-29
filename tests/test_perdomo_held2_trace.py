@@ -32,11 +32,13 @@ _source_amounts = (
 PERDOMO_TABLE3_FEED = _nacl_feed(PERDOMO_TABLE3_NACL_MOL_PER_KG_WATER)
 
 
-def _perdomo_table3_model() -> epcsaft.EPCSAFT:
-    parameters = epcsaft.ParameterBundle.from_catalog(
-        "figiel-2025-reference-electrolytes", version=1
-    ).select(("water", "sodium-cation", "chloride-anion"))
-    return epcsaft.EPCSAFT(parameters)
+def _perdomo_table3_model() -> epcsaft.Mixture:
+    parameters = epcsaft.Parameters.from_catalog(
+        "figiel-2025-reference-electrolytes",
+        components=("water", "sodium-cation", "chloride-anion"),
+        version=1,
+    )
+    return epcsaft.Mixture(parameters)
 
 
 def _without_times(value: object) -> object:

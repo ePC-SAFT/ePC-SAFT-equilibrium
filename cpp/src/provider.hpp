@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -20,6 +22,25 @@ struct MixturePhaseEvaluation {
     std::vector<double> gradient;
     std::vector<double> hessian;
     double pressure_pa = 0.0;
+    std::string parameter_fingerprint;
+};
+
+struct PackingFractionEvaluation {
+    double value = 0.0;
+    std::vector<double> gradient;
+    std::vector<double> hessian;
+};
+
+struct NeutralReferenceEvaluation {
+    std::size_t component_count = 0;
+    std::size_t neutral_basis_row_count = 0;
+    std::vector<double> neutral_basis;
+    std::vector<double> log_fugacity_contractions;
+    std::uint32_t derivative_availability = 0;
+    double temperature_k = 0.0;
+    double pressure_pa = 0.0;
+    double reference_convergence_error = 0.0;
+    std::string basis_id;
     std::string parameter_fingerprint;
 };
 
@@ -56,6 +77,17 @@ public:
         const std::vector<double>& mole_fractions,
         double packing_fraction_min,
         double packing_fraction_max
+    ) const;
+
+    [[nodiscard]] PackingFractionEvaluation evaluate_packing_fraction(
+        double temperature_k,
+        const std::vector<double>& amounts_mol,
+        double volume_m3
+    ) const;
+
+    [[nodiscard]] NeutralReferenceEvaluation evaluate_neutral_reference(
+        double temperature_k,
+        double pressure_pa
     ) const;
 
     [[nodiscard]] const std::string& fingerprint() const;
