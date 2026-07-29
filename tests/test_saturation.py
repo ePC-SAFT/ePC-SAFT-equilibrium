@@ -286,6 +286,9 @@ def test_saturation_nlp_exact_derivatives_match_independent_directional_differen
 
 
 def test_public_saturation_rejects_noncanonical_or_out_of_scope_inputs() -> None:
+    with pytest.raises(TypeError, match=r"saturation requires an epcsaft\.Mixture"):
+        epcsaft_equilibrium.saturation(object(), 150.0 * epcsaft.unit_registry.kelvin)
+
     methane = _model("methane")
 
     with pytest.raises(TypeError, match="Pint temperature quantity"):

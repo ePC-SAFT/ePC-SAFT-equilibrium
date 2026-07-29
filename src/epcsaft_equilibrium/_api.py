@@ -959,6 +959,8 @@ def chemical_equilibrium(
 def saturation(model: epcsaft.Mixture, temperature: Quantity[Any]) -> SaturationResult:
     """Solve and certify one local pure-component saturation boundary."""
 
+    if not isinstance(model, epcsaft.Mixture):
+        raise TypeError("saturation requires an epcsaft.Mixture")
     temperature_k = _temperature_in_kelvin(temperature)
     fingerprint = model.parameter_fingerprint
     scope = _SCOPES.get(fingerprint)

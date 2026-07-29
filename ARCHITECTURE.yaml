@@ -396,6 +396,14 @@ evidence:
   implementation_tree: 3e8c98a13f1daca975b33c26fce3d143a1f34493
   candidate_receipt: receipts/promotion/promotion-0002-neutral-held-v1-candidate.yaml
   artifact:
+    status: pre-migration-provenance
+    runtime_authority: none
+    provider_dependency: epcsaft==0.1.0.dev0
+    note: >-
+      This immutable Equilibrium 0.1 artifact and the evidence hashes below
+      predate the Provider 0.2 frontend migration. They are retained as
+      historical provenance and are not the artifact under current runtime or
+      validation.
     path: artifacts/equilibrium-neutral-held-v1/8318e75/epcsaft_equilibrium-0.1.0.dev0-cp313-cp313-linux_x86_64.whl
     sha256: 8ecd70e0192b76b3a107629201c3e8bf34f2d945ca7c8192f824a0df7c9dde12
     source_date_epoch: 1784573453
