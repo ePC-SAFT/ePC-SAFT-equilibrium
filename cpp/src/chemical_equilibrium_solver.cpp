@@ -1273,6 +1273,10 @@ public:
             objective = evaluate(x, std::vector<double>(constraint_multipliers_.size(), 0.0)).objective;
             return true;
         } catch (const std::exception& error) {
+            if (is_recoverable_provider_domain_error(error)) {
+                objective = domain_containment().objective;
+                return true;
+            }
             callback_error_ = error.what();
             objective = 0.0;
             return true;
@@ -1297,6 +1301,11 @@ public:
             std::copy(evaluation.gradient.begin(), evaluation.gradient.end(), gradient);
             return true;
         } catch (const std::exception& error) {
+            if (is_recoverable_provider_domain_error(error)) {
+                const auto containment = domain_containment();
+                std::copy(containment.gradient.begin(), containment.gradient.end(), gradient);
+                return true;
+            }
             callback_error_ = error.what();
             std::fill(gradient, gradient + n, 0.0);
             return true;
@@ -1323,6 +1332,11 @@ public:
             std::copy(evaluation.constraints.begin(), evaluation.constraints.end(), constraints);
             return true;
         } catch (const std::exception& error) {
+            if (is_recoverable_provider_domain_error(error)) {
+                const auto containment = domain_containment();
+                std::copy(containment.constraints.begin(), containment.constraints.end(), constraints);
+                return true;
+            }
             callback_error_ = error.what();
             std::fill(constraints, constraints + m, 0.0);
             return true;
@@ -1366,6 +1380,11 @@ public:
             std::copy(evaluation.jacobian.begin(), evaluation.jacobian.end(), values);
             return true;
         } catch (const std::exception& error) {
+            if (is_recoverable_provider_domain_error(error)) {
+                const auto containment = domain_containment();
+                std::copy(containment.jacobian.begin(), containment.jacobian.end(), values);
+                return true;
+            }
             callback_error_ = error.what();
             std::fill(values, values + nonzero_count, 0.0);
             return true;
@@ -1424,6 +1443,15 @@ public:
             }
             return true;
         } catch (const std::exception& error) {
+            if (is_recoverable_provider_domain_error(error)) {
+                const auto containment = domain_containment();
+                std::copy(
+                    containment.lagrangian_hessian.begin(),
+                    containment.lagrangian_hessian.end(),
+                    values
+                );
+                return true;
+            }
             callback_error_ = error.what();
             std::fill(values, values + nonzero_count, 0.0);
             return true;
@@ -1445,10 +1473,10 @@ public:
         const Ipopt::IpoptData*,
         Ipopt::IpoptCalculatedQuantities*
     ) override {
-        // Ipopt 3.11 may read callback buffers after a false return. Every
-        // caught Provider failure writes finite containment values instead;
-        // this callback stops the solve and the recorded error rejects the
-        // result, so the containment values can never become scientific data.
+        // Ipopt 3.11 may read callback buffers after a false return. Packing
+        // domain trials are represented by finite containment values and do
+        // not set callback_error_; any other callback failure remains
+        // fail-closed and stops the solve.
         return callback_error_.empty();
     }
 
@@ -1492,6 +1520,47 @@ public:
     [[nodiscard]] const std::string& callback_error() const { return callback_error_; }
 
 private:
+    [[nodiscard]] static bool is_recoverable_provider_domain_error(
+        const std::exception& error
+    ) {
+        const std::string message = error.what();
+        return message.find("packing fraction") != std::string::npos
+            && message.find("domain") != std::string::npos;
+    }
+
+    [[nodiscard]] ReactionNlpEvaluation domain_containment() const {
+        constexpr double kContainmentObjective = 1.0e12;
+        constexpr double kContainmentGradient = 1.0e6;
+        const std::size_t variable_count = initial_.size();
+        const std::size_t constraint_count = constraint_multipliers_.size();
+        ReactionNlpEvaluation result;
+        result.objective = kContainmentObjective;
+        result.gradient.assign(variable_count, 0.0);
+        result.jacobian.assign(variable_count * constraint_count, 0.0);
+        result.lagrangian_hessian.assign(variable_count * variable_count, 0.0);
+        result.constraints.assign(constraint_count, 0.0);
+        result.constraint_lower.assign(constraint_count, 0.0);
+        result.constraint_upper.assign(constraint_count, 0.0);
+        std::size_t constraint = balances_.matrix.rows;
+        if (domain_.enforce_packing) {
+            result.constraint_lower[constraint] = domain_.packing_min;
+            result.constraint_upper[constraint] = domain_.packing_max;
+            // A Provider packing-domain failure is conservatively treated as
+            // an overpacked trial.  The finite sentinel and its volume
+            // direction let Ipopt backtrack; final certification re-evaluates
+            // the true Provider block and remains fail-closed.
+            result.constraints[constraint] = domain_.packing_max + 1.0;
+            result.jacobian[constraint * variable_count + variable_count - 1] = -1.0;
+            result.gradient.back() = -kContainmentGradient;
+            ++constraint;
+        }
+        if (std::isfinite(domain_.total_ion_fraction_max)) {
+            result.constraint_lower[constraint] = -kInfinity;
+            result.constraint_upper[constraint] = 0.0;
+        }
+        return result;
+    }
+
     ReactionNlpEvaluation evaluate(
         const Ipopt::Number* values,
         const std::vector<double>& multipliers
@@ -1854,12 +1923,26 @@ ChemicalSolveResult solve_reaction(
         // is bounded above, these conservative bounds keep any species above
         // trace_floor away from the coordinate bounds while retaining the
         // neutral coordinates' ten-fold numerical margin.
-        const double log_trace_share_floor = std::log(0.1 * trace_floor)
-            - std::log(charge_equivalent_upper);
+        constexpr double kLegacyIonicCoordinateBound = 40.0;
+        // Keep the established finite provider-safe envelope and add only
+        // the same ten-fold margin used by the trace-floor bounds.  Without
+        // this cap an extremely small reference share can send Ipopt into
+        // compositions for which Provider cannot evaluate its packing block.
+        const double coordinate_envelope =
+            kLegacyIonicCoordinateBound + std::log(10.0);
+        const double log_trace_share_floor = std::max(
+            -coordinate_envelope,
+            std::log(0.1 * trace_floor) - std::log(charge_equivalent_upper)
+        );
         const auto share_upper = [&](std::size_t reference_species) {
-            return std::log(10.0 * charge_equivalent_upper)
-                - std::log(trace_floor)
-                - std::log(static_cast<double>(std::abs(system.charges[reference_species])));
+            return std::min(
+                coordinate_envelope,
+                std::log(10.0 * charge_equivalent_upper)
+                    - std::log(trace_floor)
+                    - std::log(static_cast<double>(
+                        std::abs(system.charges[reference_species])
+                    ))
+            );
         };
         std::size_t cation_offset = 1;
         for (std::size_t category = 0; category + 1 < chart.cation_indices.size(); ++category) {
