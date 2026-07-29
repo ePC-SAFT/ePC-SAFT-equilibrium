@@ -163,7 +163,7 @@ class IdealGasPhase:
 class ProviderPhase:
     """Installed Provider model and application-admitted physical packing domain."""
 
-    model: epcsaft.EPCSAFT
+    model: epcsaft.Mixture
     expected_parameter_fingerprint: str
     admissible_packing_fraction_interval: tuple[float, float]
 
@@ -255,19 +255,19 @@ class _Scope:
 
 _SCOPES = MappingProxyType(
     {
-        "sha256:5f836aa84935df70be2e5cffae51b178a7b797c2cee036e9ff47d8097ca94bbf": _Scope(
+        "sha256:905e7a6e22eb1073347575bf833d5aa059d9ccf562e4408cb186d74f580ba36f": _Scope(
             component="methane",
             temperature_min_k=97.0,
             temperature_max_k=300.0,
             liquid_density_upper_mol_m3=40_000.0,
         ),
-        "sha256:288fbcaa1304881c16f64c3a784eeed19b75c58cca4558f92a21268e5e91258a": _Scope(
+        "sha256:b81f32e44adb46080dfa91026c6428045e04a219900305767672d0547f9a9fb9": _Scope(
             component="ethane",
             temperature_min_k=90.0,
             temperature_max_k=305.0,
             liquid_density_upper_mol_m3=40_000.0,
         ),
-        "sha256:9bfbc8d7789e51609945e61dbdf7a020decc8f9e31b408b0977724c7cb3e1551": _Scope(
+        "sha256:1194db349d0608c89419e70c56ccec9ada2ae0884dd8e64e519e9560e7e8ae42": _Scope(
             component="propane",
             temperature_min_k=85.0,
             temperature_max_k=523.0,
@@ -276,7 +276,7 @@ _SCOPES = MappingProxyType(
     }
 )
 
-_FLASH_FINGERPRINT = "sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286"
+_FLASH_FINGERPRINT = "sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195"
 _FLASH_TEMPERATURE_DOMAIN_K = (203.22, 243.61)
 _FLASH_PRESSURE_DOMAIN_PA = (2_124_000.0, 6_885_000.0)
 _FLASH_METHANE_FEED_DOMAIN = (0.4661, 0.66705)
@@ -481,11 +481,7 @@ def _held2_diagnostics(payload: Mapping[str, object]) -> HeldDiagnostics:
     step2 = cast(Mapping[str, object], payload["step2"])
     step9_history = cast(Sequence[Mapping[str, object]], payload["step9_history"])
     step10_value = payload.get("step10")
-    step10 = (
-        cast(Mapping[str, object], step10_value)
-        if isinstance(step10_value, Mapping)
-        else None
-    )
+    step10 = cast(Mapping[str, object], step10_value) if isinstance(step10_value, Mapping) else None
     certificate_value = step10.get("final_certificate") if step10 else None
     certificate = (
         cast(Mapping[str, object], certificate_value)
@@ -521,9 +517,7 @@ def _held2_diagnostics(payload: Mapping[str, object]) -> HeldDiagnostics:
             else float(cast(float, certificate["pressure_residual_inf"]))
         ),
         kkt_stationarity_max_abs=(
-            None
-            if certificate is None
-            else float(cast(float, certificate["kkt_residual_inf"]))
+            None if certificate is None else float(cast(float, certificate["kkt_residual_inf"]))
         ),
         chemical_potential_max_relative=None,
         confirmation_succeeded=bool(step10 and step10["status"] == "complete"),
@@ -611,7 +605,7 @@ def _held2_result(
 
 
 def tp_flash(
-    model: epcsaft.EPCSAFT,
+    model: epcsaft.Mixture,
     temperature: Quantity[Any],
     pressure: Quantity[Any],
     overall_mole_fractions: Sequence[float],
@@ -621,8 +615,8 @@ def tp_flash(
     """Run the bounded HELD or strong-electrolyte HELD2 controller."""
 
     try:
-        if not isinstance(model, epcsaft.EPCSAFT):
-            raise TypeError("tp_flash requires an epcsaft.EPCSAFT model")
+        if not isinstance(model, epcsaft.Mixture):
+            raise TypeError("tp_flash requires an epcsaft.Mixture")
         temperature_k = _quantity(temperature, "kelvin", "temperature", "tp_flash")
         pressure_pa = _quantity(pressure, "pascal", "pressure", "tp_flash")
         component_count = len(model.component_ids)
@@ -758,8 +752,7 @@ def _chemical_diagnostics(
         chemical_certification_level=str(native["chemical_certification_level"]),
         boundary_status=str(native["boundary_status"]),
         structural_zero_species_indices=tuple(
-            int(index)
-            for index in cast(Sequence[int], native["structural_zero_species_indices"])
+            int(index) for index in cast(Sequence[int], native["structural_zero_species_indices"])
         ),
         numerical_status=str(native["numerical_status"]),
         physical_status=str(native["physical_status"]),
@@ -770,19 +763,11 @@ def _chemical_diagnostics(
         globality_status=str(native["globality_certificate"]),
         balance_inf_norm=float(cast(float, native["balance_inf_norm"])),
         charge_inf_norm=float(cast(float, native["charge_inf_norm"])),
-        pressure_relative_residual=float(
-            cast(float, native["pressure_relative_residual"])
-        ),
-        reaction_affinity_inf_norm=float(
-            cast(float, native["reaction_affinity_inf_norm"])
-        ),
+        pressure_relative_residual=float(cast(float, native["pressure_relative_residual"])),
+        reaction_affinity_inf_norm=float(cast(float, native["reaction_affinity_inf_norm"])),
         packing_fraction=float(cast(float, native["packing_fraction"])),
-        kkt_stationarity_inf_norm=float(
-            cast(float, native["kkt_stationarity_inf_norm"])
-        ),
-        complementarity_inf_norm=float(
-            cast(float, native["complementarity_inf_norm"])
-        ),
+        kkt_stationarity_inf_norm=float(cast(float, native["kkt_stationarity_inf_norm"])),
+        complementarity_inf_norm=float(cast(float, native["complementarity_inf_norm"])),
         reference_representation_residual_inf_norm=_optional_float(
             native, "reference_representation_residual_inf_norm"
         )
@@ -810,12 +795,8 @@ def chemical_equilibrium(
     try:
         if not isinstance(problem, ChemicalEquilibriumProblem):
             raise TypeError("chemical_equilibrium requires a typed problem")
-        temperature_k = _quantity(
-            temperature, "kelvin", "temperature", "chemical_equilibrium"
-        )
-        pressure_pa = _quantity(
-            pressure, "pascal", "pressure", "chemical_equilibrium"
-        )
+        temperature_k = _quantity(temperature, "kelvin", "temperature", "chemical_equilibrium")
+        pressure_pa = _quantity(pressure, "pascal", "pressure", "chemical_equilibrium")
         if not math.isfinite(problem.strict_interior_amount_floor_mol) or (
             problem.strict_interior_amount_floor_mol <= 0.0
         ):
@@ -840,9 +821,7 @@ def chemical_equilibrium(
             "conserved_totals": problem.conserved_totals,
             "reaction_matrix": problem.reaction_matrix,
             "feed_amounts": problem.feed_amounts_mol,
-            "ln_k": tuple(
-                record.ln_value for record in problem.equilibrium_constants
-            ),
+            "ln_k": tuple(record.ln_value for record in problem.equilibrium_constants),
             "equilibrium_constant_records": records,
             "temperature_k": temperature_k,
             "pressure_pa": pressure_pa,
@@ -866,12 +845,11 @@ def chemical_equilibrium(
             provider_fingerprint = None
             model_fingerprint = phase.model_fingerprint
         elif isinstance(phase, ProviderPhase):
-            if not isinstance(phase.model, epcsaft.EPCSAFT):
-                raise TypeError("ProviderPhase requires an epcsaft.EPCSAFT model")
+            if not isinstance(phase.model, epcsaft.Mixture):
+                raise TypeError("ProviderPhase requires an epcsaft.Mixture")
             if (
                 not phase.expected_parameter_fingerprint
-                or phase.expected_parameter_fingerprint
-                != phase.model.parameter_fingerprint
+                or phase.expected_parameter_fingerprint != phase.model.parameter_fingerprint
             ):
                 raise ValueError("installed Provider fingerprint does not match the problem")
             packing_bounds = (
@@ -936,27 +914,19 @@ def chemical_equilibrium(
             str(native["parameter_fingerprint"]) != provider_fingerprint
         ):
             raise ValueError("native result has the wrong Provider fingerprint")
-        amounts = _vector(
-            native["amounts"], len(problem.species_ids), "chemical amounts"
-        )
+        amounts = _vector(native["amounts"], len(problem.species_ids), "chemical amounts")
         total_amount = math.fsum(amounts)
         if total_amount <= 0.0 or not math.isfinite(total_amount):
             raise ValueError("native chemical amounts are invalid")
         volume_m3 = float(cast(float, native["volume_m3"]))
         provider_reference_id = (
-            str(native["provider_reference_id"])
-            if "provider_reference_id" in native
-            else None
+            str(native["provider_reference_id"]) if "provider_reference_id" in native else None
         )
         standard_offsets = (
-            _float_tuple(native["standard_offsets"])
-            if "standard_offsets" in native
-            else None
+            _float_tuple(native["standard_offsets"]) if "standard_offsets" in native else None
         )
         ln_k_provider_basis = (
-            _float_tuple(native["ln_k_provider_basis"])
-            if "ln_k_provider_basis" in native
-            else None
+            _float_tuple(native["ln_k_provider_basis"]) if "ln_k_provider_basis" in native else None
         )
     except ChemicalEquilibriumError:
         raise
@@ -986,7 +956,7 @@ def chemical_equilibrium(
     )
 
 
-def saturation(model: epcsaft.EPCSAFT, temperature: Quantity[Any]) -> SaturationResult:
+def saturation(model: epcsaft.Mixture, temperature: Quantity[Any]) -> SaturationResult:
     """Solve and certify one local pure-component saturation boundary."""
 
     temperature_k = _temperature_in_kelvin(temperature)

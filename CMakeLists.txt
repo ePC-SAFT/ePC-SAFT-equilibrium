@@ -72,14 +72,14 @@ endif()
 execute_process(
   COMMAND
     "${Python_EXECUTABLE}" -c
-    "import importlib.metadata as m, json, sys; d=m.distribution('epcsaft'); u=json.loads(d.read_text('direct_url.json') or '{}'); sys.exit('epcsaft version mismatch') if d.version != '0.1.0.dev0' else None; sys.exit('editable epcsaft provider is forbidden') if u.get('dir_info', {}).get('editable', False) else None; print(d.locate_file('epcsaft/cmake'))"
+    "import importlib.metadata as m, json, sys; d=m.distribution('epcsaft'); u=json.loads(d.read_text('direct_url.json') or '{}'); sys.exit('epcsaft version mismatch') if d.version != '0.2.0.dev0' else None; sys.exit('editable epcsaft provider is forbidden') if u.get('dir_info', {}).get('editable', False) else None; print(d.locate_file('epcsaft/cmake'))"
   RESULT_VARIABLE epcsaft_header_status
   OUTPUT_VARIABLE epcsaft_cmake_dir
   OUTPUT_STRIP_TRAILING_WHITESPACE
   ERROR_QUIET
 )
 if(NOT epcsaft_header_status EQUAL 0)
-  message(FATAL_ERROR "Build requires the non-editable epcsaft 0.1.0.dev0 provider distribution")
+  message(FATAL_ERROR "Build requires the non-editable epcsaft 0.2.0.dev0 provider distribution")
 endif()
 find_package(epcsaft CONFIG REQUIRED PATHS "${epcsaft_cmake_dir}" NO_DEFAULT_PATH)
 

@@ -51,13 +51,13 @@ accepted_capability:
     nist_liquid_density_relative_error_max: 1.0e-2
   admitted_inputs:
     - component: methane
-      parameter_fingerprint: sha256:5f836aa84935df70be2e5cffae51b178a7b797c2cee036e9ff47d8097ca94bbf
+      parameter_fingerprint: sha256:905e7a6e22eb1073347575bf833d5aa059d9ccf562e4408cb186d74f580ba36f
       temperature_domain_k: [97.0, 300.0]
     - component: ethane
-      parameter_fingerprint: sha256:288fbcaa1304881c16f64c3a784eeed19b75c58cca4558f92a21268e5e91258a
+      parameter_fingerprint: sha256:b81f32e44adb46080dfa91026c6428045e04a219900305767672d0547f9a9fb9
       temperature_domain_k: [90.0, 305.0]
     - component: propane
-      parameter_fingerprint: sha256:9bfbc8d7789e51609945e61dbdf7a020decc8f9e31b408b0977724c7cb3e1551
+      parameter_fingerprint: sha256:1194db349d0608c89419e70c56ccec9ada2ae0884dd8e64e519e9560e7e8ae42
       temperature_domain_k: [85.0, 523.0]
 
 local_candidate:
@@ -74,7 +74,7 @@ local_candidate:
     complete Pereira HELD Stage-I/II/III controller inside the audited May et
     al. (2015), Table 5 rectangular temperature, pressure, and methane-feed
     domain, with one- or two-phase outcomes and no caller-supplied phase count.
-  parameter_fingerprint: sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286
+  parameter_fingerprint: sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195
   temperature_domain_k: [203.22, 243.61]
   pressure_domain_pa: [2124000.0, 6885000.0]
   methane_feed_domain: [0.4661, 0.66705]
@@ -341,7 +341,7 @@ public_surface:
     - tp_flash
   native_modules: [epcsaft_equilibrium._equilibrium]
   native_targets: 1
-  runtime_dependencies: [epcsaft==0.1.0.dev0, Pint>=0.25]
+  runtime_dependencies: [epcsaft==0.2.0.dev0, Pint>=0.25]
   build_dependencies:
     - scikit-build-core
     - pybind11

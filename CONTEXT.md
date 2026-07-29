@@ -33,7 +33,7 @@ The repository now also contains the corrected complete local
 `8318e755d4a8e490822fdf7bb2685d8c5af6436c`, tree
 `3e8c98a13f1daca975b33c26fce3d143a1f34493`. It is limited to the reviewed
 Gross--Sadowski methane/ethane fingerprint
-`sha256:307fcb28d535b94782f3e3caf4012c0c8c0dc87ee4239d6c316de56553543286`
+`sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195`
 and the audited May et al. (2015), Table 5 rectangle: 203.22--243.61 K,
 2.124--6.885 MPa, and methane feed 0.4661--0.66705.
 
