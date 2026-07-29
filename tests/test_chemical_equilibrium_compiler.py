@@ -4,15 +4,27 @@ import copy
 import math
 from collections.abc import Callable
 
+import epcsaft
 import pytest
 from chemical_equilibrium_cases import base_system as _base_system
 from chemical_equilibrium_cases import bind_records as _bind_record
+from chemical_equilibrium_cases import typed_problem as _typed_problem
 
-from epcsaft_equilibrium import _equilibrium
+import epcsaft_equilibrium
 
 
-def _solve(spec: dict[str, object]) -> dict[str, object]:
-    return _equilibrium._chemical_solve_manufactured(spec, {})
+def _solve(
+    spec: dict[str, object],
+) -> epcsaft_equilibrium.ChemicalEquilibriumResult:
+    return epcsaft_equilibrium.chemical_equilibrium(
+        epcsaft_equilibrium.IdealGasPhase(
+            model_fingerprint=spec["provider_fingerprint"],
+            reference_id="provider-helmholtz-coordinate-basis",
+        ),
+        spec["temperature_k"] * epcsaft.unit_registry.kelvin,
+        spec["pressure_pa"] * epcsaft.unit_registry.pascal,
+        _typed_problem(spec),
+    )
 
 
 @pytest.mark.parametrize("inconsistent", (False, True))
@@ -40,14 +52,16 @@ def test_redundant_reactions_preserve_equilibrium_or_reject_bad_cycles(
     _bind_record(spec)
 
     if inconsistent:
-        with pytest.raises(ValueError, match="reaction constant cycle"):
+        with pytest.raises(
+            epcsaft_equilibrium.ChemicalEquilibriumError,
+            match="reaction constant cycle",
+        ):
             _solve(spec)
         return
 
     result = _solve(spec)
-    assert result["accepted"] is True
-    assert result["amounts"] == pytest.approx((1.0 / 9.0, 2.0 / 9.0, 2.0 / 3.0))
-    assert result["reaction_affinity_inf_norm"] <= 1.0e-7
+    assert result.amounts_mol == pytest.approx((1.0 / 9.0, 2.0 / 9.0, 2.0 / 3.0))
+    assert result.diagnostics.reaction_affinity_inf_norm <= 1.0e-7
 
 
 def _nearly_dependent_system(
@@ -99,10 +113,11 @@ def test_scaled_nearly_dependent_reactions_are_stable_until_rank_is_lost() -> No
         result = _solve(
             _nearly_dependent_system(scale, 1.0e-6, reverse_order=reverse_order)
         )
-        assert result["accepted"] is True
-        assert result["amounts"] == pytest.approx(expected, rel=2.0e-8)
+        assert result.amounts_mol == pytest.approx(expected, rel=2.0e-8)
 
-    with pytest.raises(ValueError, match="reaction matrix rank"):
+    with pytest.raises(
+        epcsaft_equilibrium.ChemicalEquilibriumError, match="reaction matrix rank"
+    ):
         _solve(_nearly_dependent_system(1.0, 1.0e-14))
 
 
@@ -123,6 +138,7 @@ def _change(path: str, value: object) -> Callable[[dict[str, object]], None]:
     ("mutate", "message"),
     (
         (_change("molar_masses_kg_per_mol", (1.0, 0.0)), "molar mass"),
+        (_change("conserved_totals", (2.0,)), "conserved totals"),
         (_change("reaction_matrix", ((-1.0, 2.0),)), "conserve"),
         (_change("equilibrium_constant_records.dimensionless", False), "dimensionless"),
         (
@@ -146,18 +162,20 @@ def test_reaction_system_rejects_inconsistent_contracts(
 ) -> None:
     spec = copy.deepcopy(_base_system())
     mutate(spec)
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError, match=message):
         _solve(spec)
 
 
 def test_reaction_system_rejects_charge_inconsistency() -> None:
     spec = _base_system()
     spec.update({"charges": (1, -1), "feed_amounts": (1.0, 0.0)})
-    with pytest.raises(ValueError, match="electroneutral"):
+    with pytest.raises(
+        epcsaft_equilibrium.ChemicalEquilibriumError, match="electroneutral"
+    ):
         _solve(spec)
 
     spec["feed_amounts"] = (1.0, 1.0)
-    with pytest.raises(ValueError, match="charge"):
+    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError, match="charge"):
         _solve(spec)
 
 
@@ -182,10 +200,9 @@ def test_accessible_face_preserves_reaction_combinations_and_exact_zeros() -> No
 
     result = _solve(spec)
 
-    assert result["accepted"] is True
-    assert result["amounts"] == pytest.approx(
+    assert result.amounts_mol == pytest.approx(
         (1.0 / 7.0, 0.0, 6.0 / 7.0, 0.0), rel=3.0e-8, abs=0.0
     )
-    assert result["structural_zero_species_indices"] == [1, 3]
-    assert result["boundary_status"] == "structural_face"
-    assert result["chemical_certification_level"] == "LOCAL_EQUILIBRIUM"
+    assert result.diagnostics.structural_zero_species_indices == (1, 3)
+    assert result.diagnostics.boundary_status == "structural_face"
+    assert result.diagnostics.chemical_certification_level == "LOCAL_EQUILIBRIUM"

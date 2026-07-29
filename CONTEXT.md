@@ -100,13 +100,15 @@ reduced-component callback with `BOUNDARY_DIRECTION_UNRESOLVED`, because SDK
 v1 has no reduced-topology or boundary-direction contract.
 
 Final equality multipliers and certificates are rebuilt from the accepted
-physical state. The private Provider path consumes only the installed
+physical state. The public typed `chemical_equilibrium` value operation routes
+through one underscored native bridge to this same owner. The Provider path
+consumes only the installed
 Provider's Helmholtz, pressure, volume-domain, packing, and derivative
 callbacks. A source-derived Belov-Aristova gas restriction supplies algorithm
 and trace-range evidence through the seam and remains
 `manufactured_nonpredictive`. A source-complete Held-2008/IAPWS
 R11-07(2019) water self-ionization sentinel exercises the installed Provider
-neutral-reference transport through the same private solver at 298.15 K and
+neutral-reference transport through the same solver at 298.15 K and
 1 bar. It establishes one local fixed-state value result, not application
 chemistry, sensitivity, predictive, phase-stability, coupled-equilibrium, or
 globality. D-026 remains the public HELD2 admission gate.

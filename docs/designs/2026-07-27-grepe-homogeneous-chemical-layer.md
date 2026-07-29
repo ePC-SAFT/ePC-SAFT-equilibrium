@@ -1,6 +1,6 @@
 # GREPE Homogeneous Chemical Layer
 
-**Status:** implemented private non-production design
+**Status:** implemented public local-value design
 
 **Date:** 2026-07-27
 
@@ -13,8 +13,9 @@ chemical-certification concepts deepen the existing private homogeneous
 module. `solve_provider_reaction` remains the sole Provider-backed chemical
 optimization owner.
 
-There is no parallel GREPE solver, public chemical route, or sequential
-chemistry-then-flash result. The homogeneous module can emit
+There is no parallel GREPE solver or sequential chemistry-then-flash result.
+The public `chemical_equilibrium` operation is a typed cutover to this same
+owner. The homogeneous module can emit
 `LOCAL_EQUILIBRIUM`; phase pricing and global lower bounds are required before
 any `SEARCH_STABLE` or `CERTIFIED_EPS_GLOBAL` claim.
 
@@ -25,7 +26,7 @@ installed Provider ownership in
 
 ## Implemented claim
 
-For one declared homogeneous fluid family, the private module:
+For one declared homogeneous fluid family, the homogeneous module:
 
 1. validates and reduces a possibly redundant reaction set;
 2. checks converted equilibrium-constant cycles before reduction;
@@ -38,21 +39,22 @@ For one declared homogeneous fluid family, the private module:
 7. returns local, boundary, or unresolved evidence without a phase-stability
    claim.
 
-The implementation adds no source-reference transport, sensitivity, public
-export, promotion, receipt, or authority change.
+The public value cutover adds generic source-reference transport through
+Provider-owned neutral-reference metadata. It adds no sensitivity, promotion,
+receipt, or authority change.
 
 ## Input and reaction compilation
 
-The private input is an ordered true-species specification with positive molar
+The typed public input is an ordered true-species specification with positive molar
 masses. Supplied reaction rows and equilibrium constants are unreduced source
 data. Every constant record identifies its immutable source, orientation,
 dimensionless converted value, common Provider reference convention, fixed
 temperature and pressure, and conversion provenance.
 
-Values must already use the declared Provider convention. Generic molality,
-fugacity, or single-ion conversion is not inferred. Source-reference transport
-remains deferred until a source-complete, non-MEA installed-artifact consumer
-exists.
+Values either use the declared Provider convention or carry the explicit
+source standard-state identity and activity-scale factors consumed by the
+generic Provider neutral-reference transform. No chemistry-specific molality,
+fugacity, or single-ion convention is inferred.
 
 The caller supplies the conserved-component matrix. The compiler preserves
 molar-mass conservation, treats charge as a separate homogeneous
@@ -83,7 +85,7 @@ B\\z^T
 \operatorname{row}(\nu).
 \]
 
-Only evidence required by the private compiler tests or downstream solve is
+Only evidence required by the compiler tests, public result, or downstream solve is
 retained: species maps, ranks, selected basis rows, reaction transforms,
 compiled reactions and constants, support classifications, and the
 minimum-norm reference vector. Validation-only residuals remain local.
@@ -178,10 +180,11 @@ The module does not emit phase-family or globality levels.
   certificate reconstruction.
 - `chemical_equilibrium_solver.cpp` owns initialization, Ipopt, KKT polish,
   Provider evaluation, and local certification.
-- `chemical_equilibrium_bindings.cpp` exposes only underscored test seams.
+- `chemical_equilibrium_bindings.cpp` exposes one underscored native bridge
+  consumed by the typed Python operation, plus derivative evidence seams.
 
-No solver registry, chemistry database, second result hierarchy, or public
-Python export is introduced.
+No solver registry, chemistry database, backend selector, or second result
+hierarchy is introduced.
 
 Persistent scientific evidence covers:
 
@@ -196,10 +199,9 @@ chemistry.
 
 ## Deferred
 
-- source-standard-state transport without a source-complete non-MEA consumer;
 - application chemistry databases;
 - Provider physical-boundary certification without Provider-owned oracles;
 - phase occurrence matrices, generation, master LPs, and pricing;
 - simultaneous reactive multiphase equilibrium and final repricing;
 - equilibrium sensitivities requiring absent Provider derivatives; and
-- public exports, release, promotion, receipt, or authority changes.
+- release, promotion, receipt, or authority changes.

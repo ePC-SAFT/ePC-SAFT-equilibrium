@@ -19,7 +19,7 @@ replace a formulation owner.
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
 | Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Public development dispatch over one native core with fail-closed installed evidence; no admitted electrolyte LLE capability |
-| Private homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) | D-028-bound non-production foundation; underscored test seam only; Belov trace evidence plus one source-complete Held/IAPWS installed-Provider value case |
+| Homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) and [GREPE homogeneous layer](designs/2026-07-27-grepe-homogeneous-chemical-layer.md) | Public typed local value operation; Belov trace evidence plus one source-complete Held/IAPWS installed-Provider value case; no predictive or global admission |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Coupled multiphase chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
@@ -30,7 +30,7 @@ not an authority receipt.
 
 ## Public operations
 
-The package exports two equilibrium operations:
+The package exports three equilibrium operations:
 
 - `saturation` owns the accepted, bounded, pure-component local saturation
   boundary.
@@ -38,6 +38,16 @@ The package exports two equilibrium operations:
   neutral binary fingerprint to neutral HELD and qualifying installed strong-
   electrolyte Provider capability tables to the non-admitted HELD2
   development route.
+- `chemical_equilibrium` is the sole fixed-`T,P`, single-homogeneous-phase
+  reaction-equilibrium value surface. Typed ideal-gas and installed-Provider
+  phase inputs route to the same compiler, Ipopt owner, and certificate model.
+  `ChemicalEquilibriumProblem`, `ChemicalEquilibriumConstant`, and
+  `ChemicalStandardState` carry physical inputs and provenance;
+  `ChemicalEquilibriumResult`, `ChemicalEquilibriumDiagnostics`, and
+  `ChemicalEquilibriumError` carry the admitted value or typed failure.
+  The declared strict-interior amount floor and admissible packing-fraction
+  interval are application-owned formulation/domain bounds; neither exposes
+  an optimizer backend, start, iteration limit, or Ipopt option.
 
 `tp_flash` does not accept a phase count, caller seeds, solver settings,
 backend selection, or a case-specific mode. Its public result owners are
@@ -169,9 +179,9 @@ detected under the completed finite search. This is not a stability proof, a
 reproduction of Perdomo's SAFT-gamma-Mie endpoint, or an admitted electrolyte-
 LLE result.
 
-### Private homogeneous reacting phase
+### Homogeneous reacting phase
 
-The D-028 design owns one private homogeneous fixed-`T,P` reacting-phase
+The D-028 design owns one homogeneous fixed-`T,P` reacting-phase
 foundation. It validates ordered species, conservation and independent
 reaction ranks, dimensionless source/reference-bound `lnK`, and the exact
 Provider identity before solving. It constructs `g_ref` in the Provider
@@ -179,18 +189,20 @@ Helmholtz coordinate basis, uses a general positive electroneutral amount
 chart, performs max-min initialization, attempts the true Provider objective
 once, and treats a failed direct solve as failed.
 
-Its certificate axes keep artifact/input completeness, Ipopt status, numerical
-and physical checks, reduced-Hessian local status, predictive status, finite
-search, and globality separate. The manufactured installed-Provider seam
-remains labeled manufactured/nonpredictive. A second private path consumes
-explicit source activity-scale shifts and the installed Provider
+The public `chemical_equilibrium` operation exposes that owner without solver
+settings, chemistry data, aliases, or a second implementation. Its certificate
+axes keep artifact/input completeness, Ipopt status, numerical and physical
+checks, reduced-Hessian local status, predictive status, finite search, and
+globality separate. The manufactured installed-Provider evidence remains
+labeled manufactured/nonpredictive. Source-bound input consumes explicit
+source activity-scale shifts and the installed Provider
 neutral-reference callback, then passes transformed constants directly to the
 same compiler and `solve_provider_reaction` owner. Its source-complete sentinel
 is `2 H2O <=> H3O+ + OH-` at 298.15 K and 1 bar using frozen IAPWS
 R11-07(2019) reaction data and the immutable Held-2008 Provider catalog. This
 establishes one local, strictly interior, fixed-`T,P` value result only. The
-callback supplies no derivatives, and there is still no public solve route,
-chemistry registry, sensitivity, predictive admission, or globality claim.
+callback supplies no derivatives. There is no chemistry registry, sensitivity,
+predictive admission, coupled-equilibrium result, or globality claim.
 
 ## Shared package contract
 
@@ -301,13 +313,13 @@ its own package-local design and bounded capability gate.
 
 ### Reactive and coupled equilibrium
 
-The private homogeneous foundation does not complete simultaneous
+The homogeneous value operation does not complete simultaneous
 phase-chemical equilibrium. A coupled formulation still requires explicit
 phase incidence, global conservation, phase-specific electroneutrality,
 source-complete standard-state transformations, phase discovery, and distinct
 reaction/transfer/pressure certificates. Staged chemistry followed by a
 phase-only solve is initialization evidence, not a coupled equilibrium result.
-No public reactive schema or runtime route is admitted.
+No public coupled reactive-phase schema or runtime route is admitted.
 
 ## Historical and scientific provenance
 
