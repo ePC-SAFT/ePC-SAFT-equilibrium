@@ -46,6 +46,33 @@ Step5Assessment assess_step5(
     return result;
 }
 
+bool representation_equivalent(
+    const Held2MPoint& left,
+    const Held2MPoint& right
+) {
+    if (left.independent_modified_fractions.size()
+        != right.independent_modified_fractions.size()
+        || !std::isfinite(left.volume) || left.volume <= 0.0
+        || !std::isfinite(right.volume) || right.volume <= 0.0
+        || !audit_held2_tolerance(
+            kHeld2MRepresentationEquivalent,
+            std::log(left.volume) - std::log(right.volume)
+        ).passed) {
+        return false;
+    }
+    return std::equal(
+        left.independent_modified_fractions.begin(),
+        left.independent_modified_fractions.end(),
+        right.independent_modified_fractions.begin(),
+        [](double left_value, double right_value) {
+            return audit_held2_tolerance(
+                kHeld2MRepresentationEquivalent,
+                left_value - right_value
+            ).passed;
+        }
+    );
+}
+
 struct Step5LocalRun {
     bool converged = false;
     std::string status = "not_run";
@@ -371,6 +398,9 @@ Step5LocalRun solve_step5_local(
     application->Options()->SetNumericValue(
         "constr_viol_tol", kHeld2IpoptConstraint.atol
     );
+    application->Options()->SetStringValue(
+        "nlp_scaling_method", "gradient-based"
+    );
     application->Options()->SetNumericValue("bound_relax_factor", 0.0);
     if (application->Initialize() != Ipopt::Solve_Succeeded) {
         return {};
@@ -381,19 +411,38 @@ Step5LocalRun solve_step5_local(
 
 }  // namespace
 
+bool retain_held2_m_point(
+    Held2PersistentState& state,
+    Held2MPoint& point
+) {
+    const auto equivalent = std::find_if(
+        state.M.begin(),
+        state.M.end(),
+        [&point](const Held2MPoint& member) {
+            return representation_equivalent(member, point);
+        }
+    );
+    if (equivalent != state.M.end()) {
+        point.insertion_id = equivalent->insertion_id;
+        return false;
+    }
+    point.insertion_id = static_cast<std::uint64_t>(state.M.size());
+    state.M.push_back(point);
+    return true;
+}
+
 Held2Step5Result run_held2_step5(
     const Held2Step1Result& step1,
     const Held2Step4Result& step4,
     Held2PersistentState& state,
     const Held2StateEvaluator& evaluator,
-    const Held2PackingFractionEvaluator& packing_fraction,
     const Held2ResourceProfile& resources,
     Held2ProgressObserver* observer
 ) {
     Held2Step5Result result;
     result.timing.invocation_count = 1;
     if (step4.status != "complete" || !step1.coordinates
-        || !step1.volume_bounds || !evaluator || !packing_fraction
+        || !step1.volume_bounds || !evaluator
         || resources.step5_start_cap < 1) {
         result.reason = "invalid_step5_input";
         return result;
@@ -556,18 +605,15 @@ Held2Step5Result run_held2_step5(
         observe_held2(observer, progress);
         if (!assess_step5(
                 state.upper_bound, value, certificate.accepted
-            ).qualified || value >= best) {
+            ).qualified) {
             continue;
         }
         best = value;
-        ++result.timing.provider_evaluations;
-        const double best_packing_fraction =
-            packing_fraction(independent, terminal.volume);
         best_point = {
             static_cast<std::uint64_t>(state.M.size()),
             independent,
             terminal.volume,
-            best_packing_fraction,
+            std::numeric_limits<double>::quiet_NaN(),
             terminal.objective,
             terminal.gradient,
             "step5_local",
@@ -580,10 +626,14 @@ Held2Step5Result run_held2_step5(
     }
     state.lower_value = best;
     result.lower_value = best;
+    if (!retain_held2_m_point(state, best_point)) {
+        best_point.origin = "step5_equivalent_member";
+        result.reason = "equivalent_member";
+    } else {
+        result.reason = "step5_complete";
+    }
     result.terminal = best_point;
-    state.M.push_back(best_point);
     result.status = "complete";
-    result.reason = "step5_complete";
     result.timing.terminal_status = result.status;
     result.timing.terminal_reason = result.reason;
     result.timing.next_step = 6;

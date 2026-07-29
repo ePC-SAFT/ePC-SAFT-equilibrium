@@ -73,6 +73,11 @@ inline constexpr Held2Tolerance kHeld2RootDuplicate{
     "root_duplicate", "root", "root identity is numerically unresolved",
     Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
 };
+inline constexpr Held2Tolerance kHeld2JointVolumeConsistency{
+    "joint_volume_consistency", "representation",
+    "Provider state does not match the requested joint-search molar volume",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-10, 0.0,
+};
 inline constexpr Held2Tolerance kHeld2MechanicalMargin{
     "mechanical_margin", "topology", "mechanical stability is marginal",
     Held2ToleranceRelation::GreaterThan, 1.0e-6, 0.0,
@@ -128,6 +133,11 @@ inline constexpr Held2Tolerance kHeld2PaperStep6CompositionDistinct{
     "paper_step6_composition_distinct", "phase_identity",
     "Perdomo Eq. (66) modified compositions are not distinct",
     Held2ToleranceRelation::AtLeast, 1.0e-3, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2MRepresentationEquivalent{
+    "m_representation_equivalent", "phase_identity",
+    "Step-5 terminal differs in modified composition or relative molar volume",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
 };
 inline constexpr Held2Tolerance kHeld2Stage3ModifiedBalance{
     "stage3_modified_balance", "stage_iii_physical", "modified material balance failed",

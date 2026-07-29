@@ -125,6 +125,43 @@ Held2Step3Result run_held2_step3(
             });
         }
     }
+    if (dimension > 1) {
+        if (!step2.negative_witness
+            || step2.negative_witness->modified_fractions.size()
+                != coordinates.retained_indices.size()
+            || step2.negative_witness->reduced_gibbs_gradient.size()
+                < dimension) {
+            return fail("negative_witness_state_incomplete");
+        }
+        std::vector<double> witness_independent;
+        witness_independent.reserve(dimension);
+        for (std::size_t provider : coordinates.independent_indices) {
+            const auto position = std::find(
+                coordinates.retained_indices.begin(),
+                coordinates.retained_indices.end(),
+                provider
+            );
+            if (position == coordinates.retained_indices.end()) {
+                return fail("negative_witness_coordinate_missing");
+            }
+            witness_independent.push_back(
+                step2.negative_witness->modified_fractions[
+                    static_cast<std::size_t>(
+                        position - coordinates.retained_indices.begin()
+                    )
+                ]
+            );
+        }
+        state.M.push_back({
+            static_cast<std::uint64_t>(state.M.size()),
+            std::move(witness_independent),
+            step2.negative_witness->volume,
+            std::numeric_limits<double>::quiet_NaN(),
+            step2.negative_witness->reduced_gibbs,
+            step2.negative_witness->reduced_gibbs_gradient,
+            "stage_i_negative_witness",
+        });
+    }
     result.status = "complete";
     result.reason = "step3_complete";
     result.timing.terminal_status = result.status;

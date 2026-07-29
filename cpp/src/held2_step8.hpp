@@ -21,6 +21,8 @@ struct Held2Phase {
     double helmholtz_over_rt_reference_amount = 0.0;
     double pressure_pa = 0.0;
     std::vector<double> chemical_potentials_over_rt;
+    double reduced_gibbs = 0.0;
+    std::vector<double> reduced_gibbs_gradient;
 };
 
 struct Held2NlpCertificate {

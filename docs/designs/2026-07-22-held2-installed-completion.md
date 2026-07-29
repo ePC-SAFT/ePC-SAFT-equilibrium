@@ -2,6 +2,13 @@
 
 ## Status and authority
 
+**Superseded scientific and controller provenance.** The normative Steps
+1--10 workflow is now
+[`2026-07-24-held2-paper-algorithm.md`](2026-07-24-held2-paper-algorithm.md).
+This document records the earlier installed-completion investigation only.
+Its same-major multi-candidate search, fixed campaign, and recovery behavior
+must not be treated as current implementation requirements.
+
 This specification defines the remaining private Equilibrium work after the
 integrated HELD2 candidate recorded by issue #22. It does not admit an
 electrolyte capability, authorize Validation mutation, alter Provider
