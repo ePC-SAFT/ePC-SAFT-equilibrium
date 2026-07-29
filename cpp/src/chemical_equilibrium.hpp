@@ -54,6 +54,7 @@ struct CompiledReactionSystem {
     std::vector<std::size_t> removed_species_indices;
     DenseMatrix balance_matrix;
     DenseMatrix reaction_matrix;
+    DenseMatrix supplied_reaction_transform;
     std::vector<double> balance_totals;
     std::vector<double> feed_amounts;
     std::vector<double> g_ref;

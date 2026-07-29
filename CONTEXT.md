@@ -111,10 +111,15 @@ R11-07(2019) water self-ionization sentinel exercises the installed Provider
 neutral-reference transport through the same solver at 298.15 K and
 1 bar. It establishes one local fixed-state value result, not application
 chemistry, predictive, phase-stability, coupled-equilibrium, or globality.
-The native owner retains exact conditioned derivatives for compiled totals,
-final Provider-basis reaction constants, and pressure. Source-reference and
-Provider-parameter sensitivities fail closed while their typed SDK tensors are
-absent, and the public value operation exposes no sensitivity contract. D-026
+The public operation optionally returns exact conditioned derivatives for
+compiled totals, final Provider-basis reaction constants, and pressure. A
+source standard state's declared reference pressure remains provenance; the
+neutral reference and transformed Provider-basis records are evaluated and
+bound at the actual system pressure. The pressure column includes exact
+source-reference pressure derivatives when the installed derivative tail and
+branch certificates are available. The typed active-parameter schema is
+reserved, but Provider-parameter sensitivities remain fail-closed pending one
+atomic active-model callback with Helmholtz and packing state tensors. D-026
 remains the public HELD2 admission gate.
 
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical

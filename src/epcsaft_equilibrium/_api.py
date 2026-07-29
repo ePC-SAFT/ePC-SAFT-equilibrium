@@ -147,7 +147,7 @@ class ChemicalEquilibriumConstant:
 
 @dataclass(frozen=True)
 class ChemicalStandardState:
-    """Source activity convention transformed through Provider metadata."""
+    """Source activity convention and p° provenance transformed at each trial P."""
 
     id: str
     activity_scale_id: str
@@ -219,7 +219,7 @@ class ChemicalEquilibriumDiagnostics:
 
 @dataclass(frozen=True)
 class ChemicalEquilibriumActiveParameter:
-    """One caller-selected Provider coordinate resolved against the installed schema."""
+    """Reserved Provider coordinate request; unavailable without atomic packing tensors."""
 
     family: str
     identity: str
@@ -230,7 +230,7 @@ class ChemicalEquilibriumActiveParameter:
 
 @dataclass(frozen=True)
 class ChemicalEquilibriumSensitivityRequest:
-    """Request operation-owned columns plus ordered installed-Provider coordinates."""
+    """Request exact operation columns and optionally reserved Provider coordinates."""
 
     active_parameters: tuple[ChemicalEquilibriumActiveParameter, ...] = ()
 

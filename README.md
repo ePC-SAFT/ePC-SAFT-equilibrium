@@ -204,8 +204,14 @@ source-complete Held/IAPWS water self-ionization value case. The public typed
 and optionally returns exact conditioned derivatives with respect to compiled
 balance totals, final Provider-basis `ln(K)`, and pressure. Value-only and
 value-plus-Jacobian responses are explicit. Requested unsupported columns fail
-closed with typed evidence; Provider active-parameter and source-reference
-derivatives remain unavailable under the current SDK and are never
+closed. A source standard state's reference pressure remains immutable
+provenance, while the Provider reference is re-evaluated and the transformed
+Provider-basis record is bound at each actual trial pressure. Exact
+source-reference pressure derivatives are included in the returned pressure
+column when the installed derivative tail and its branch certificates are
+available. The typed active-parameter request schema is reserved, but active
+Provider coordinates remain fail-closed until one atomic callback supplies the
+active-model Helmholtz and packing state tensors; no derivative is
 approximated. Results bind species/parameter order, units, chart topology,
 Provider fingerprint, installed distribution RECORD fingerprints, and Provider
 SDK ABI identity. The operation has no predictive admission, coupled

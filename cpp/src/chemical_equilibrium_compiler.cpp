@@ -596,6 +596,9 @@ CompiledReactionSystem compile_accessible_face(
     const DenseMatrix accessible_full_reactions = multiply_matrices(
         accessible_transform, system.reaction_matrix
     );
+    system.supplied_reaction_transform = multiply_matrices(
+        accessible_transform, system.supplied_reaction_transform
+    );
     const double removed_residual = removed_species_residual(
         accessible_full_reactions, system.removed_species_indices
     );
@@ -896,6 +899,16 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     result.supplied_balance_matrix = input.balance_matrix;
     result.balance_matrix = balance_matrix;
     result.reaction_matrix = reaction_matrix;
+    result.supplied_reaction_transform = {
+        reaction_basis_rows.size(),
+        input.reaction_matrix.rows,
+        std::vector<double>(
+            reaction_basis_rows.size() * input.reaction_matrix.rows, 0.0
+        ),
+    };
+    for (std::size_t row = 0; row < reaction_basis_rows.size(); ++row) {
+        result.supplied_reaction_transform(row, reaction_basis_rows[row]) = 1.0;
+    }
     result.balance_totals = std::move(balance_totals);
     result.feed_amounts = input.feed_amounts;
     result.g_ref = std::move(reconstruction.values);

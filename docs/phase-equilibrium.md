@@ -198,12 +198,15 @@ axes keep artifact/input completeness, Ipopt status, numerical and physical
 checks, reduced-Hessian local status, predictive status, finite search, and
 globality separate. The manufactured installed-Provider evidence remains
 labeled manufactured/nonpredictive. Source-bound input consumes explicit
-source activity-scale shifts and the installed Provider
-neutral-reference callback, then passes transformed constants directly to the
-same compiler and `solve_provider_reaction` owner. Its source-complete sentinel
-is `2 H2O <=> H3O+ + OH-` at 298.15 K and 1 bar using frozen IAPWS
-R11-07(2019) reaction data and the immutable Held-2008 Provider catalog. This
-establishes one local, strictly interior, fixed-`T,P` value result only.
+source activity-scale shifts and the installed Provider neutral-reference
+callback at the actual system pressure, then passes Provider-basis constants
+and private transformed records bound to that trial pressure directly to the
+same compiler and `solve_provider_reaction` owner. The source standard state's
+declared reference pressure is retained separately as immutable provenance.
+Its source-complete sentinel is `2 H2O <=> H3O+ + OH-` at 298.15 K and 1 bar
+using frozen IAPWS R11-07(2019) reaction data and the immutable Held-2008
+Provider catalog. This establishes one local, strictly interior, fixed-`T,P`
+value result only.
 
 The operation accepts an optional typed sensitivity request. Without it the
 response is explicitly `value_only`; the internal solve still uses its exact
@@ -220,14 +223,19 @@ The typed sensitivity receipt reports rank, condition number, active bounds,
 amount-chart topology, and the immutable Provider parameter fingerprint. The
 result also binds installed Equilibrium and Provider distribution versions and
 RECORD fingerprints plus the Provider capsule name, ABI version, table size,
-and result-structure sizes. Provider-parameter sensitivity remains explicitly
-unavailable because SDK v1 has no typed reacting-phase KKT cross derivatives.
-Source/reference sensitivity likewise remains unavailable because the
-neutral-reference callback advertises no derivatives; a requested source-bound
-Jacobian therefore returns an accepted value with typed unavailable evidence
-and no columns. Neither gap is filled numerically. There is no chemistry
-registry, predictive admission, coupled-equilibrium result, or globality
-claim.
+and result-structure sizes. The pressure column includes the exact transformed
+source-reference pressure contribution when the installed neutral-reference
+derivative tail passes its pressure-domain, root-branch, topology,
+conditioning, ordering, and fingerprint certificates. Redundant source
+reaction rows are reduced through the compiler's exact reaction transformation
+before entering the KKT column. Provider active-parameter coordinates remain
+explicitly unavailable: the public typed request schema is reserved, but a
+nonempty request fails before solving until one atomic Provider callback
+supplies the active-model Helmholtz state derivatives, state-parameter block,
+pressure and chemical-potential projections, reference derivative, and packing
+state gradient/Hessian. No missing column is filled numerically. There is no
+chemistry registry, predictive admission, coupled-equilibrium result, or
+globality claim.
 
 ## Shared package contract
 

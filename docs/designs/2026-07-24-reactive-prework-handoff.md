@@ -263,10 +263,17 @@ source conversion is representable by such a state-bound linear shift.
 Composition-dependent or otherwise nonrepresentable reference changes fail
 closed rather than being frozen into constants.
 
-The current installed SDK reports no neutral-reference temperature, pressure,
-composition, or parameter derivatives. That is sufficient for the present
-fixed-\(T,P\) value transformation. It does not support caloric derivatives,
-implicit equilibrium sensitivities, or Regression parameter derivatives.
+The installed SDK consumed by the current sensitivity checkpoint appends an
+exact neutral-reference pressure derivative with immutable pressure-domain,
+root-branch, topology, conditioning, basis, and fingerprint evidence. The
+source reference pressure remains provenance while the reference is
+re-evaluated and transformed at each actual trial pressure; that contribution
+is included in the conditioned implicit pressure column. Temperature,
+composition, and active-parameter reference derivatives are not thereby
+admitted. Active Provider coordinates remain fail-closed until the same
+active-model evaluation supplies complete Helmholtz and packing state tensors;
+no caloric or Regression parameter capability follows from this pressure
+slice.
 
 The reaction compiler then constructs a minimum-norm chemical reference vector
 

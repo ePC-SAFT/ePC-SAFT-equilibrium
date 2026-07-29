@@ -342,6 +342,33 @@ py::dict solve_provider_input(
     if (packing_bounds.size() != 2) {
         throw py::value_error("packing_fraction_bounds must contain two values");
     }
+    std::vector<double> compiled_ln_k_pressure_derivatives_per_pa;
+    if (!ln_k_pressure_derivatives_per_pa.empty()) {
+        if (ln_k_pressure_derivatives_per_pa.size()
+                != input.reaction_matrix.rows
+            || compiled.supplied_reaction_transform.rows
+                != compiled.reaction_matrix.rows
+            || compiled.supplied_reaction_transform.columns
+                != input.reaction_matrix.rows) {
+            throw py::value_error(
+                "source pressure derivatives do not match the compiled reaction basis"
+            );
+        }
+        compiled_ln_k_pressure_derivatives_per_pa.assign(
+            compiled.reaction_matrix.rows, 0.0
+        );
+        for (std::size_t reaction = 0;
+             reaction < compiled.reaction_matrix.rows;
+             ++reaction) {
+            for (std::size_t supplied = 0;
+                 supplied < input.reaction_matrix.rows;
+                 ++supplied) {
+                compiled_ln_k_pressure_derivatives_per_pa[reaction] +=
+                    compiled.supplied_reaction_transform(reaction, supplied)
+                    * ln_k_pressure_derivatives_per_pa[supplied];
+            }
+        }
+    }
     ChemicalSolveResult evaluation = solve_provider_reaction(
         compiled,
         provider,
@@ -351,7 +378,7 @@ py::dict solve_provider_input(
         packing_bounds[1],
         sdk.total_ion_mole_fraction_max,
         trace_floor,
-        ln_k_pressure_derivatives_per_pa
+        compiled_ln_k_pressure_derivatives_per_pa
     );
     evaluation.sensitivities.provider_parameter_status = "not_applicable";
     evaluation.sensitivities.provider_parameter_failure_reason.clear();
@@ -452,6 +479,7 @@ py::dict solve_provider_source(
     for (EquilibriumConstantRecord& record : input.equilibrium_constant_records) {
         record.reference_id = "provider-helmholtz-coordinate-basis";
         record.conversion_id = "already-provider-basis";
+        record.pressure_pa = input.pressure_pa;
     }
     py::dict result = solve_provider_input(
         sdk,
