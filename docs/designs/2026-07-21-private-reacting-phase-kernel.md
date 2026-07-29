@@ -163,9 +163,23 @@ status, missing candidate, callback/domain failure, failed independent
 recomputation, or certificate failure cannot return a successful kernel result.
 
 The implementation assembles the exact equality-constrained KKT residual and
-Jacobian internally. It exposes no parameter sensitivity until Provider owns
-the required typed parameter derivatives and the KKT system is demonstrated
-nonsingular and acceptably conditioned.
+Jacobian internally. For a certified strict-interior solution it solves that
+system for the deterministic parameter order of compiled balance totals,
+Provider-basis reaction constants, and pressure, then maps the result through
+the exact amount-chart Jacobian and logarithmic volume coordinate. The private
+result records the KKT rank, infinity-norm condition number, active variable,
+domain-constraint, and trace bounds, chart topology, and immutable Provider
+parameter fingerprint. It returns no derivative when the KKT matrix is
+singular or unacceptably conditioned, the active set can change, or the primal
+result is not certified.
+
+Provider parameters require typed phase-KKT cross derivatives, and a
+source-standard-state parameter requires the corresponding derivative of the
+transformed Provider reference vector. SDK v1 supplies neither contract for
+the reacting electrolyte phase. Those parameter families therefore remain
+explicitly unavailable; Equilibrium does not synthesize them with finite
+differences. The public `chemical_equilibrium` value result does not expose
+this private sensitivity payload.
 
 ## Later reuse and explicit deferrals
 

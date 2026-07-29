@@ -284,6 +284,191 @@ def test_manufactured_ideal_reactions_match_independent_analytic_states(
     assert diagnostics.complementarity_inf_norm <= 1.0e-7
 
 
+def test_manufactured_reaction_reports_exact_conditioned_implicit_sensitivities() -> None:
+    spec = _base_system()
+    _bind_record(spec)
+    native = _equilibrium._chemical_equilibrium(None, spec, None, None, 1.0e-12)
+
+    sensitivities = native["sensitivities"]
+    assert sensitivities["status"] == "available"
+    assert sensitivities["parameter_order"] == (
+        "balance_total[0]",
+        "ln_k_provider_basis[0]",
+        "pressure_pa",
+    )
+    assert sensitivities["parameter_fingerprint"] == "sha256:manufactured"
+    assert sensitivities["chart_topology"] == "neutral_log_amounts[2]+log_volume"
+    assert sensitivities["kkt_rank"] == sensitivities["kkt_dimension"] == 3
+    assert sensitivities["condition_number_inf"] < 1.0e6
+    assert sensitivities["active_lower_bounds"] == ()
+    assert sensitivities["active_upper_bounds"] == ()
+    assert sensitivities["active_constraint_bounds"] == ()
+
+    amount_derivatives = sensitivities["amount_derivatives"]
+    assert amount_derivatives[0] == pytest.approx((0.2, 0.8), abs=2.0e-9)
+    assert amount_derivatives[1] == pytest.approx((-0.16, 0.16), abs=2.0e-9)
+    assert amount_derivatives[2] == pytest.approx((0.0, 0.0), abs=2.0e-12)
+
+    expected_volume = 8.31446261815324 * 350.0 / 200_000.0
+    assert sensitivities["volume_derivatives"] == pytest.approx(
+        (
+            expected_volume,
+            0.0,
+            -expected_volume / 200_000.0,
+        ),
+        rel=2.0e-8,
+        abs=2.0e-13,
+    )
+
+    steps = (1.0e-5, 1.0e-5, 5.0)
+    for parameter, step in enumerate(steps):
+        perturbed: list[dict[str, object]] = []
+        for direction in (-1.0, 1.0):
+            trial = copy.deepcopy(spec)
+            if parameter == 0:
+                trial["feed_amounts"] = (
+                    1.0 + direction * step,
+                    0.0,
+                )
+            elif parameter == 1:
+                trial["ln_k"] = (
+                    spec["ln_k"][0] + direction * step,  # type: ignore[index]
+                )
+            else:
+                trial["pressure_pa"] = spec["pressure_pa"] + direction * step
+            _bind_record(trial)
+            perturbed.append(
+                _equilibrium._chemical_equilibrium(
+                    None, trial, None, None, 1.0e-12
+                )
+            )
+        finite_difference_amounts = tuple(
+            (
+                perturbed[1]["amounts"][species]
+                - perturbed[0]["amounts"][species]
+            )
+            / (2.0 * step)
+            for species in range(2)
+        )
+        finite_difference_volume = (
+            perturbed[1]["volume_m3"] - perturbed[0]["volume_m3"]
+        ) / (2.0 * step)
+        assert amount_derivatives[parameter] == pytest.approx(
+            finite_difference_amounts,
+            rel=2.0e-6,
+            abs=2.0e-10,
+        )
+        assert sensitivities["volume_derivatives"][parameter] == pytest.approx(
+            finite_difference_volume,
+            rel=2.0e-6,
+            abs=2.0e-12,
+        )
+
+
+def test_manufactured_sensitivity_is_invariant_to_reaction_scaling() -> None:
+    reaction_scale = 1.0e-11
+    base = _base_system()
+    _bind_record(base)
+    scaled = copy.deepcopy(base)
+    scaled["reaction_matrix"] = ((-reaction_scale, reaction_scale),)
+    scaled["ln_k"] = (reaction_scale * math.log(4.0),)
+    _bind_record(scaled)
+
+    base_result = _equilibrium._chemical_equilibrium(
+        None, base, None, None, 1.0e-12
+    )["sensitivities"]
+    scaled_result = _equilibrium._chemical_equilibrium(
+        None, scaled, None, None, 1.0e-12
+    )["sensitivities"]
+
+    assert base_result["status"] == scaled_result["status"] == "available"
+    assert scaled_result["condition_number_inf"] == pytest.approx(
+        base_result["condition_number_inf"], rel=2.0e-10
+    )
+    assert scaled_result["amount_derivatives"][0] == pytest.approx(
+        base_result["amount_derivatives"][0], abs=2.0e-9
+    )
+    assert tuple(
+        reaction_scale * value
+        for value in scaled_result["amount_derivatives"][1]
+    ) == pytest.approx(base_result["amount_derivatives"][1], abs=2.0e-9)
+    assert scaled_result["amount_derivatives"][2] == pytest.approx(
+        base_result["amount_derivatives"][2], abs=2.0e-12
+    )
+
+
+def test_manufactured_sensitivity_tracks_exact_species_permutation() -> None:
+    base = _base_system()
+    _bind_record(base)
+    permutation = (1, 0)
+    permuted = copy.deepcopy(base)
+    for field in (
+        "species_ids",
+        "charges",
+        "molar_masses_kg_per_mol",
+        "feed_amounts",
+    ):
+        values = base[field]
+        permuted[field] = tuple(values[index] for index in permutation)
+    permuted["balance_matrix"] = tuple(
+        tuple(row[index] for index in permutation)
+        for row in base["balance_matrix"]  # type: ignore[union-attr]
+    )
+    permuted["reaction_matrix"] = tuple(
+        tuple(row[index] for index in permutation)
+        for row in base["reaction_matrix"]  # type: ignore[union-attr]
+    )
+    _bind_record(permuted)
+
+    base_result = _equilibrium._chemical_equilibrium(
+        None, base, None, None, 1.0e-12
+    )["sensitivities"]
+    permuted_result = _equilibrium._chemical_equilibrium(
+        None, permuted, None, None, 1.0e-12
+    )["sensitivities"]
+
+    assert permuted_result["parameter_order"] == base_result["parameter_order"]
+    assert permuted_result["condition_number_inf"] == pytest.approx(
+        base_result["condition_number_inf"], rel=2.0e-10
+    )
+    for parameter in range(3):
+        assert permuted_result["amount_derivatives"][parameter] == pytest.approx(
+            tuple(
+                base_result["amount_derivatives"][parameter][index]
+                for index in permutation
+            ),
+            abs=2.0e-9,
+        )
+
+
+def test_manufactured_reaction_with_ill_conditioned_kkt_has_no_sensitivity() -> None:
+    balance_separation = 8.0e-6
+    spec = _base_system()
+    spec["species_ids"] = ("A", "B", "C")
+    spec["charges"] = (0, 0, 0)
+    spec["molar_masses_kg_per_mol"] = (1.0, 1.0, 1.0)
+    spec["balance_matrix"] = (
+        (1.0, 1.0, 1.0 + balance_separation),
+    )
+    spec["reaction_matrix"] = ((-1.0, 1.0, 0.0),)
+    spec["feed_amounts"] = (0.5, 0.5, 1.0)
+    spec["ln_k"] = (0.0,)
+    spec["temperature_k"] = 300.0
+    spec["pressure_pa"] = 8.31446261815324 * 300.0
+    _bind_record(spec)
+
+    native = _equilibrium._chemical_equilibrium(None, spec, None, None, 1.0e-12)
+
+    sensitivities = native["sensitivities"]
+    assert sensitivities["status"] == "unavailable"
+    assert sensitivities["failure_reason"] == "ill_conditioned_kkt_jacobian"
+    assert sensitivities["kkt_rank"] == sensitivities["kkt_dimension"] == 4
+    assert sensitivities["condition_number_inf"] > 1.0e6
+    assert sensitivities["parameter_order"] == ()
+    assert sensitivities["amount_derivatives"] == ()
+    assert sensitivities["volume_derivatives"] == ()
+
+
 @pytest.mark.parametrize("trace_floor", (1.0e-50, 1.0e-55))
 def test_belov_aristova_gas_restriction_resolves_extreme_positive_traces(
     trace_floor: float,
@@ -548,6 +733,14 @@ def test_manufactured_solver_rejects_trace_false_success() -> None:
     assert diagnostics.trace_status == "at_or_below_floor"
     assert diagnostics.chemical_certification_level == "FEASIBLE_ONLY"
     assert diagnostics.globality_status == "not_guaranteed"
+    native = _equilibrium._chemical_equilibrium(
+        None, trace, None, None, 1.0e-8
+    )
+    sensitivities = native["sensitivities"]
+    assert sensitivities["status"] == "unavailable"
+    assert sensitivities["failure_reason"] == "active_set_change_not_differentiable"
+    assert sensitivities["active_trace_species"] == (1,)
+    assert sensitivities["parameter_order"] == ()
 
 
 def test_manufactured_charged_solution_is_species_order_invariant() -> None:
@@ -683,6 +876,31 @@ def _provider_solve(
     )
 
 
+def _provider_native(
+    model: epcsaft.Mixture,
+    spec: dict[str, object],
+    source_standard_state: dict[str, object] | None = None,
+) -> dict[str, object]:
+    native_spec = copy.deepcopy(spec)
+    if "conserved_totals" not in native_spec:
+        balances = native_spec["balance_matrix"]
+        feed = native_spec["feed_amounts"]
+        native_spec["conserved_totals"] = tuple(
+            math.fsum(
+                row[index] * feed[index]  # type: ignore[index]
+                for index in range(len(feed))  # type: ignore[arg-type]
+            )
+            for row in balances  # type: ignore[union-attr]
+        )
+    return _equilibrium._chemical_equilibrium(
+        epcsaft.native_sdk(model),
+        native_spec,
+        source_standard_state,
+        (1.0e-6, 0.74),
+        1.0e-12,
+    )
+
+
 def test_iapws_2019_source_record_reproduces_release_equations() -> None:
     source = _water_ionization_source()
     state = source["state"]
@@ -742,6 +960,14 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     assert diagnostics.reaction_affinity_inf_norm <= 1.0e-12
     assert diagnostics.kkt_stationarity_inf_norm <= 1.0e-12
     assert diagnostics.globality_status == "not_guaranteed"
+    native = _provider_native(model, spec, source_standard_state)
+    sensitivities = native["sensitivities"]
+    assert sensitivities["status"] == "unavailable"
+    assert sensitivities["failure_reason"] == "missing_transformed_reference_derivatives"
+    assert sensitivities["reference_parameter_status"] == "unavailable"
+    assert sensitivities["parameter_order"] == ()
+    assert sensitivities["amount_derivatives"] == ()
+    assert sensitivities["volume_derivatives"] == ()
 
 
 @pytest.mark.parametrize("variant", ("species_order", "reaction_orientation"))
@@ -914,6 +1140,75 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
     assert result.diagnostics.boundary_status == "strict_interior"
     assert 1.0e-6 < result.diagnostics.packing_fraction < 0.74
     assert result.diagnostics.globality_status == "not_guaranteed"
+
+
+def test_installed_provider_pressure_sensitivity_matches_independent_resolves() -> None:
+    model = _figiel_provider_model()
+    capsule = epcsaft.native_sdk(model)
+    temperature_k = 298.15
+    target_amounts = (0.82, 0.08, 0.08)
+    target_volume = 1.0e-3
+    target = _equilibrium._chemical_evaluate_provider_block(
+        capsule,
+        temperature_k,
+        target_amounts,
+        target_volume,
+        model.parameter_fingerprint,
+    )
+    spec = {
+        "species_ids": ("water", "sodium-cation", "chloride-anion"),
+        "charges": (0, 1, -1),
+        "molar_masses_kg_per_mol": (2.0, 1.0, 1.0),
+        "provider_fingerprint": model.parameter_fingerprint,
+        "balance_matrix": ((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
+        "reaction_matrix": ((-1.0, 1.0, 1.0),),
+        "feed_amounts": (0.8, 0.1, 0.1),
+        "ln_k": (
+            -target["gradient"][0] + target["gradient"][1] + target["gradient"][2],
+        ),
+        "temperature_k": temperature_k,
+        "pressure_pa": target["pressure_pa"],
+    }
+    _bind_record(spec)
+    native = _provider_native(model, spec)
+    sensitivities = native["sensitivities"]
+    assert sensitivities["status"] == "available"
+    assert sensitivities["parameter_fingerprint"] == model.parameter_fingerprint
+    assert sensitivities["provider_parameter_status"] == "unavailable"
+    assert (
+        sensitivities["provider_parameter_failure_reason"]
+        == "missing_typed_provider_kkt_cross_derivatives"
+    )
+    pressure_index = sensitivities["parameter_order"].index("pressure_pa")
+
+    step_pa = 5.0
+    perturbed: list[dict[str, object]] = []
+    for direction in (-1.0, 1.0):
+        trial = copy.deepcopy(spec)
+        trial["pressure_pa"] = spec["pressure_pa"] + direction * step_pa
+        _bind_record(trial)
+        perturbed.append(_provider_native(model, trial))
+    finite_difference_amounts = tuple(
+        (
+            perturbed[1]["amounts"][species]
+            - perturbed[0]["amounts"][species]
+        )
+        / (2.0 * step_pa)
+        for species in range(3)
+    )
+    finite_difference_volume = (
+        perturbed[1]["volume_m3"] - perturbed[0]["volume_m3"]
+    ) / (2.0 * step_pa)
+    assert sensitivities["amount_derivatives"][pressure_index] == pytest.approx(
+        finite_difference_amounts,
+        rel=2.0e-5,
+        abs=2.0e-12,
+    )
+    assert sensitivities["volume_derivatives"][pressure_index] == pytest.approx(
+        finite_difference_volume,
+        rel=2.0e-5,
+        abs=2.0e-13,
+    )
 
 
 def test_provider_manufactured_reaction_rejects_capsule_identity_and_source_domain() -> None:

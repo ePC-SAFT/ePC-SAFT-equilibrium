@@ -19,7 +19,7 @@ replace a formulation owner.
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
 | Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Public development dispatch over one native core with fail-closed installed evidence; no admitted electrolyte LLE capability |
-| Homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) and [GREPE homogeneous layer](designs/2026-07-27-grepe-homogeneous-chemical-layer.md) | Public typed local value operation; Belov trace evidence plus one source-complete Held/IAPWS installed-Provider value case; no predictive or global admission |
+| Homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) and [GREPE homogeneous layer](designs/2026-07-27-grepe-homogeneous-chemical-layer.md) | Public typed local value operation plus private conditioned state-input sensitivities; Belov trace evidence plus one source-complete Held/IAPWS installed-Provider value case; no predictive or global admission |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Coupled multiphase chemical equilibrium | [GREPE reactive phase equilibrium](designs/2026-07-28-grepe-reactive-phase-equilibrium.md) | Package-local design only; no public schema or runtime route |
@@ -204,8 +204,17 @@ same compiler and `solve_provider_reaction` owner. Its source-complete sentinel
 is `2 H2O <=> H3O+ + OH-` at 298.15 K and 1 bar using frozen IAPWS
 R11-07(2019) reaction data and the immutable Held-2008 Provider catalog. This
 establishes one local, strictly interior, fixed-`T,P` value result only. The
-callback supplies no derivatives. There is no chemistry registry, sensitivity,
-predictive admission, coupled-equilibrium result, or globality claim.
+private native result also owns exact implicit derivatives with respect to its
+compiled balance totals, final Provider-basis reaction constants, and pressure
+when the active-set residual Jacobian is full-rank and acceptably conditioned.
+It reports rank, condition number, active bounds, amount-chart topology, and
+the immutable Provider parameter fingerprint. Provider-parameter sensitivity
+remains unavailable because SDK v1 has no typed reacting-phase KKT cross
+derivatives. Source/reference parameter sensitivity likewise remains
+unavailable because the neutral-reference callback advertises no derivatives;
+neither gap is filled numerically. There is no public sensitivity contract,
+chemistry registry, predictive admission, coupled-equilibrium result, or
+globality claim.
 
 ## Shared package contract
 

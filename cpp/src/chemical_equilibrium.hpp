@@ -41,6 +41,7 @@ struct ReactionSystemInput {
 };
 
 struct CompiledReactionSystem {
+    std::string provider_fingerprint;
     std::size_t original_species_count = 0;
     std::vector<int> original_charges;
     std::vector<double> original_molar_masses_kg_per_mol;
@@ -83,6 +84,27 @@ struct MaxMinInitializationResult {
     bool strict_positive_feasible = false;
 };
 
+struct ChemicalSensitivityResult {
+    std::string status = "unavailable";
+    std::string failure_reason = "primal_solution_unavailable";
+    std::vector<std::string> parameter_order;
+    std::vector<double> amount_derivatives;
+    std::vector<double> volume_derivatives;
+    std::size_t kkt_dimension = 0;
+    std::size_t kkt_rank = 0;
+    double condition_number_inf = 0.0;
+    std::vector<std::size_t> active_lower_bounds;
+    std::vector<std::size_t> active_upper_bounds;
+    std::vector<std::size_t> active_constraint_bounds;
+    std::vector<std::size_t> active_trace_species;
+    std::string chart_topology;
+    std::string parameter_fingerprint;
+    std::string provider_parameter_status = "not_applicable";
+    std::string provider_parameter_failure_reason;
+    std::string reference_parameter_status = "not_applicable";
+    std::string reference_parameter_failure_reason;
+};
+
 struct ChemicalSolveResult {
     bool accepted = false;
     std::string solver_status;
@@ -104,6 +126,7 @@ struct ChemicalSolveResult {
     double packing_fraction = 0.0;
     double kkt_stationarity_inf_norm = 0.0;
     double complementarity_inf_norm = 0.0;
+    ChemicalSensitivityResult sensitivities;
 };
 
 struct ManufacturedNlpEvaluation {

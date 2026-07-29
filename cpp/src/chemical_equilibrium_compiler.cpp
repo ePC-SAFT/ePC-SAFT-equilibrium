@@ -889,6 +889,7 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
         }
     }
     CompiledReactionSystem result;
+    result.provider_fingerprint = input.provider_fingerprint;
     result.species_count = species_count;
     result.charges = input.charges;
     result.molar_masses_kg_per_mol = input.molar_masses_kg_per_mol;
