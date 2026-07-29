@@ -138,6 +138,7 @@ def test_public_chemical_equilibrium_rejects_incomplete_jacobian_payload(
 def test_public_chemical_equilibrium_exports_typed_value_and_jacobian_contract() -> None:
     expected = {
         "ChemicalArtifactIdentity",
+        "ChemicalEquilibriumActiveParameter",
         "ChemicalEquilibriumConstant",
         "ChemicalEquilibriumDiagnostics",
         "ChemicalEquilibriumError",

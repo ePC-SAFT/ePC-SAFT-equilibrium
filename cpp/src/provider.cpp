@@ -13,7 +13,16 @@ namespace {
 constexpr std::size_t kNeutralReferenceSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_neutral_reference)
     + sizeof(epcsaft_evaluate_neutral_reference_v1);
+constexpr std::size_t kCapabilitySdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, capabilities)
+    + sizeof(const epcsaft_native_capability_descriptor_v1*);
+constexpr std::size_t kNeutralReferenceDerivativeSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, evaluate_neutral_reference_derivatives)
+    + sizeof(epcsaft_evaluate_neutral_reference_derivatives_v1);
 constexpr double kNeutralReferenceConvergenceErrorMax = 5.0e-5;
+constexpr double kNeutralReferenceRootResidualRelativeMax = 1.0e-9;
+constexpr double kNeutralReferenceRootBracketRelativeMax = 1.0e-8;
+constexpr double kNeutralReferenceRootDensityStepRelativeMax = 1.0e-3;
 
 std::string decode_provider_char_array(
     const char* value,
@@ -115,6 +124,105 @@ MixturePhaseEvaluation evaluate_mixture_callback(
         phase.pressure_pa,
         std::move(parameter_fingerprint),
     };
+}
+
+NeutralReferenceEvaluation checked_neutral_reference_value(
+    const epcsaft_native_sdk_v1& sdk,
+    const std::string& fingerprint,
+    double temperature_k,
+    double pressure_pa,
+    epcsaft_neutral_reference_result_v1& native,
+    std::vector<double> neutral_basis,
+    std::vector<double> contractions,
+    const std::vector<double>& reference_composition
+) {
+    NeutralReferenceEvaluation result;
+    result.component_count = sdk.component_count;
+    result.neutral_basis_row_count = sdk.neutral_reference_basis_row_count;
+    if (native.struct_size != sizeof(native)
+        || native.component_count != result.component_count
+        || native.neutral_basis_row_count != result.neutral_basis_row_count
+        || native.neutral_basis_capacity != neutral_basis.size()
+        || native.contraction_capacity != contractions.size()
+        || native.reference_composition_capacity != reference_composition.size()
+        || native.neutral_basis != neutral_basis.data()
+        || native.log_fugacity_contractions != contractions.data()
+        || native.reference_composition != reference_composition.data()) {
+        throw std::invalid_argument("Provider neutral-reference result contract changed");
+    }
+    if (native.derivative_availability
+        != EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_NONE_V1) {
+        throw std::invalid_argument(
+            "Provider neutral-reference value derivative availability is invalid"
+        );
+    }
+    if (!std::all_of(neutral_basis.begin(), neutral_basis.end(),
+            [](double value) { return std::isfinite(value); })
+        || !std::all_of(
+            contractions.begin(),
+            contractions.end(),
+            [](double value) { return std::isfinite(value); }
+        )) {
+        throw std::invalid_argument("Provider neutral-reference values must be finite");
+    }
+    double composition_sum = 0.0;
+    for (std::size_t component = 0; component < result.component_count; ++component) {
+        const double value = reference_composition[component];
+        if (!std::isfinite(value) || value < 0.0
+            || (sdk.component_charges[component] != 0 && value != 0.0)) {
+            throw std::invalid_argument(
+                "Provider neutral-reference composition must be salt-free"
+            );
+        }
+        composition_sum += value;
+    }
+    for (std::size_t row = 0; row < result.neutral_basis_row_count; ++row) {
+        double charge = 0.0;
+        for (std::size_t component = 0; component < result.component_count; ++component) {
+            charge += neutral_basis[row * result.component_count + component]
+                * static_cast<double>(sdk.component_charges[component]);
+        }
+        if (std::abs(charge) > 1.0e-12) {
+            throw std::invalid_argument(
+                "Provider neutral-reference basis row is not charge neutral"
+            );
+        }
+    }
+    if (std::abs(composition_sum - 1.0) > 1.0e-12
+        || native.temperature_k != temperature_k
+        || native.pressure_pa != pressure_pa
+        || native.reference_amount_mol != 1.0
+        || native.reference_number_density_mol_per_m3 != 1.0
+        || !std::isfinite(native.solvent_molar_mass_kg_per_mol)
+        || native.solvent_molar_mass_kg_per_mol <= 0.0
+        || !std::isfinite(native.reference_molality_mol_per_kg)
+        || native.reference_molality_mol_per_kg <= 0.0
+        || !std::isfinite(native.reference_convergence_error)
+        || native.reference_convergence_error < 0.0
+        || native.reference_convergence_error > kNeutralReferenceConvergenceErrorMax) {
+        throw std::invalid_argument("Provider neutral-reference scalar identity is invalid");
+    }
+    result.basis_id = decode_provider_char_array(
+        native.helmholtz_basis_id,
+        sizeof(native.helmholtz_basis_id),
+        "Provider neutral-reference basis"
+    );
+    result.parameter_fingerprint = decode_provider_char_array(
+        native.parameter_fingerprint,
+        sizeof(native.parameter_fingerprint),
+        "Provider neutral-reference fingerprint"
+    );
+    if (result.basis_id != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1
+        || result.parameter_fingerprint != fingerprint) {
+        throw std::invalid_argument("Provider neutral-reference identity mismatch");
+    }
+    result.neutral_basis = std::move(neutral_basis);
+    result.log_fugacity_contractions = std::move(contractions);
+    result.derivative_availability = native.derivative_availability;
+    result.temperature_k = native.temperature_k;
+    result.pressure_pa = native.pressure_pa;
+    result.reference_convergence_error = native.reference_convergence_error;
+    return result;
 }
 
 }  // namespace
@@ -416,87 +524,227 @@ NeutralReferenceEvaluation ProviderContext::evaluate_neutral_reference(
             )
         );
     }
-    if (native.struct_size != sizeof(native)
-        || native.component_count != result.component_count
-        || native.neutral_basis_row_count != result.neutral_basis_row_count
-        || native.neutral_basis_capacity != result.neutral_basis.size()
-        || native.contraction_capacity != result.log_fugacity_contractions.size()
-        || native.reference_composition_capacity != reference_composition.size()
-        || native.neutral_basis != result.neutral_basis.data()
-        || native.log_fugacity_contractions != result.log_fugacity_contractions.data()
-        || native.reference_composition != reference_composition.data()) {
-        throw std::invalid_argument("Provider neutral-reference result contract changed");
-    }
-    if (native.derivative_availability
-        != EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_NONE_V1) {
+    return checked_neutral_reference_value(
+        sdk_,
+        fingerprint_,
+        temperature_k,
+        pressure_pa,
+        native,
+        std::move(result.neutral_basis),
+        std::move(result.log_fugacity_contractions),
+        reference_composition
+    );
+}
+
+NeutralReferenceEvaluation ProviderContext::evaluate_neutral_reference_derivatives(
+    double temperature_k,
+    double pressure_pa
+) const {
+    if (sdk_.table_size < kCapabilitySdkTableSize
+        || sdk_.table_size < kNeutralReferenceDerivativeSdkTableSize
+        || sdk_.capability_count == 0
+        || sdk_.capabilities == nullptr
+        || sdk_.neutral_reference_derivative_result_size
+            != sizeof(epcsaft_neutral_reference_derivative_result_v1)
+        || sdk_.evaluate_neutral_reference_derivatives == nullptr) {
         throw std::invalid_argument(
-            "Provider neutral-reference derivative availability is unsupported"
+            "Provider neutral-reference derivative ABI contract is incomplete"
         );
     }
-    if (!std::all_of(result.neutral_basis.begin(), result.neutral_basis.end(),
-            [](double value) { return std::isfinite(value); })
-        || !std::all_of(
-            result.log_fugacity_contractions.begin(),
-            result.log_fugacity_contractions.end(),
-            [](double value) { return std::isfinite(value); }
-        )) {
-        throw std::invalid_argument("Provider neutral-reference values must be finite");
-    }
-    double composition_sum = 0.0;
-    for (std::size_t component = 0; component < result.component_count; ++component) {
-        const double value = reference_composition[component];
-        if (!std::isfinite(value) || value < 0.0
-            || (sdk_.component_charges[component] != 0 && value != 0.0)) {
-            throw std::invalid_argument(
-                "Provider neutral-reference composition must be salt-free"
-            );
-        }
-        composition_sum += value;
-    }
-    for (std::size_t row = 0; row < result.neutral_basis_row_count; ++row) {
-        double charge = 0.0;
-        for (std::size_t component = 0; component < result.component_count; ++component) {
-            charge += result.neutral_basis[row * result.component_count + component]
-                * static_cast<double>(sdk_.component_charges[component]);
-        }
-        if (std::abs(charge) > 1.0e-12) {
-            throw std::invalid_argument(
-                "Provider neutral-reference basis row is not charge neutral"
-            );
+    const epcsaft_native_capability_descriptor_v1* topology_descriptor = nullptr;
+    for (std::size_t index = 0; index < sdk_.capability_count; ++index) {
+        const auto& descriptor = sdk_.capabilities[index];
+        if (descriptor.struct_size == sizeof(descriptor)
+            && descriptor.schema_version == EPCSAFT_NATIVE_CAPABILITY_SCHEMA_VERSION_V1
+            && descriptor.model_domain
+                == EPCSAFT_NATIVE_MODEL_DOMAIN_REACTING_ELECTROLYTE_PHASE_V1
+            && descriptor.maturity
+                == EPCSAFT_NATIVE_CAPABILITY_DERIVATIVE_READY_V1
+            && descriptor.authority_effect
+                == EPCSAFT_NATIVE_AUTHORITY_EFFECT_NONE_V1) {
+            topology_descriptor = &descriptor;
+            break;
         }
     }
-    if (std::abs(composition_sum - 1.0) > 1.0e-12
-        || native.temperature_k != temperature_k
-        || native.pressure_pa != pressure_pa
-        || native.reference_amount_mol != 1.0
-        || native.reference_number_density_mol_per_m3 != 1.0
-        || !std::isfinite(native.solvent_molar_mass_kg_per_mol)
-        || native.solvent_molar_mass_kg_per_mol <= 0.0
-        || !std::isfinite(native.reference_molality_mol_per_kg)
-        || native.reference_molality_mol_per_kg <= 0.0
-        || !std::isfinite(native.reference_convergence_error)
-        || native.reference_convergence_error < 0.0
-        || native.reference_convergence_error > kNeutralReferenceConvergenceErrorMax) {
-        throw std::invalid_argument("Provider neutral-reference scalar identity is invalid");
+    if (topology_descriptor == nullptr) {
+        throw std::invalid_argument(
+            "Provider neutral-reference derivative topology is not advertised"
+        );
     }
-    result.basis_id = decode_provider_char_array(
-        native.helmholtz_basis_id,
-        sizeof(native.helmholtz_basis_id),
-        "Provider neutral-reference basis"
+    const std::string topology_fingerprint = decode_provider_char_array(
+        topology_descriptor->topology_fingerprint,
+        sizeof(topology_descriptor->topology_fingerprint),
+        "Provider derivative topology fingerprint"
     );
-    result.parameter_fingerprint = decode_provider_char_array(
+    const std::string descriptor_fingerprint = decode_provider_char_array(
+        topology_descriptor->parameter_fingerprint,
+        sizeof(topology_descriptor->parameter_fingerprint),
+        "Provider derivative parameter fingerprint"
+    );
+    const std::string descriptor_basis = decode_provider_char_array(
+        topology_descriptor->helmholtz_basis_id,
+        sizeof(topology_descriptor->helmholtz_basis_id),
+        "Provider derivative basis"
+    );
+    if (topology_fingerprint.empty()
+        || descriptor_fingerprint != fingerprint_
+        || descriptor_basis != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1) {
+        throw std::invalid_argument(
+            "Provider neutral-reference derivative descriptor identity mismatch"
+        );
+    }
+
+    const std::size_t component_count = sdk_.component_count;
+    const std::size_t row_count = sdk_.neutral_reference_basis_row_count;
+    std::vector<double> neutral_basis(component_count * row_count, 0.0);
+    std::vector<double> contractions(row_count, 0.0);
+    std::vector<double> reference_composition(component_count, 0.0);
+    std::vector<double> pressure_derivatives(row_count, 0.0);
+    epcsaft_neutral_reference_derivative_result_v1 native{};
+    native.struct_size = sizeof(native);
+    native.value.struct_size = sizeof(native.value);
+    native.value.component_count = component_count;
+    native.value.neutral_basis_row_count = row_count;
+    native.value.neutral_basis_capacity = neutral_basis.size();
+    native.value.contraction_capacity = contractions.size();
+    native.value.reference_composition_capacity = reference_composition.size();
+    native.value.neutral_basis = neutral_basis.data();
+    native.value.log_fugacity_contractions = contractions.data();
+    native.value.reference_composition = reference_composition.data();
+    native.active_parameter_count = 0;
+    native.pressure_derivative_capacity = pressure_derivatives.size();
+    native.parameter_derivative_capacity = 0;
+    native.pressure_derivatives_per_pa = pressure_derivatives.data();
+    native.parameter_derivatives = nullptr;
+    const int status = sdk_.evaluate_neutral_reference_derivatives(
+        sdk_.model_context,
+        fingerprint_.c_str(),
+        topology_fingerprint.c_str(),
+        temperature_k,
+        pressure_pa,
+        nullptr,
+        0,
+        &native
+    );
+    if (status != native.status || status != native.value.status) {
+        throw std::runtime_error(
+            "Provider neutral-reference derivative returned inconsistent status values"
+        );
+    }
+    if (status != EPCSAFT_NATIVE_STATUS_OK_V1) {
+        throw std::domain_error(
+            "Provider neutral-reference derivative evaluation failed: "
+            + decode_provider_char_array(
+                native.error,
+                sizeof(native.error),
+                "Provider neutral-reference derivative error"
+            )
+        );
+    }
+    if (native.struct_size != sizeof(native)
+        || native.value.struct_size != sizeof(native.value)
+        || native.active_parameter_count != 0
+        || native.pressure_derivative_capacity != pressure_derivatives.size()
+        || native.parameter_derivative_capacity != 0
+        || native.pressure_derivatives_per_pa != pressure_derivatives.data()
+        || native.parameter_derivatives != nullptr
+        || native.derivative_availability
+            != EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1) {
+        throw std::invalid_argument(
+            "Provider neutral-reference derivative result contract changed"
+        );
+    }
+
+    NeutralReferenceEvaluation result = checked_neutral_reference_value(
+        sdk_,
+        fingerprint_,
+        temperature_k,
+        pressure_pa,
+        native.value,
+        std::move(neutral_basis),
+        std::move(contractions),
+        reference_composition
+    );
+    const std::string returned_fingerprint = decode_provider_char_array(
         native.parameter_fingerprint,
         sizeof(native.parameter_fingerprint),
-        "Provider neutral-reference fingerprint"
+        "Provider neutral-reference derivative fingerprint"
     );
-    if (result.basis_id != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1
-        || result.parameter_fingerprint != fingerprint_) {
-        throw std::invalid_argument("Provider neutral-reference identity mismatch");
+    const std::string returned_topology = decode_provider_char_array(
+        native.topology_fingerprint,
+        sizeof(native.topology_fingerprint),
+        "Provider neutral-reference derivative topology"
+    );
+    const std::string returned_basis = decode_provider_char_array(
+        native.helmholtz_basis_id,
+        sizeof(native.helmholtz_basis_id),
+        "Provider neutral-reference derivative basis"
+    );
+    const std::string reference_branch = decode_provider_char_array(
+        native.reference_branch,
+        sizeof(native.reference_branch),
+        "Provider neutral-reference derivative branch"
+    );
+    if (returned_fingerprint != fingerprint_
+        || returned_topology != topology_fingerprint
+        || returned_basis != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1
+        || reference_branch.empty()
+        || !std::isfinite(native.source_pressure_min_pa)
+        || !std::isfinite(native.source_pressure_max_pa)
+        || native.source_pressure_min_pa <= 0.0
+        || native.source_pressure_min_pa > pressure_pa
+        || native.source_pressure_max_pa < pressure_pa
+        || native.source_pressure_max_pa < native.source_pressure_min_pa
+        || !std::isfinite(native.maximum_root_residual_pa)
+        || native.maximum_root_residual_pa < 0.0
+        || native.maximum_root_residual_pa
+            > kNeutralReferenceRootResidualRelativeMax * pressure_pa
+        || !std::isfinite(native.minimum_pressure_density_derivative_pa_m3_per_mol)
+        || native.minimum_pressure_density_derivative_pa_m3_per_mol <= 0.0
+        || !std::isfinite(native.maximum_density_condition_number)
+        || native.maximum_density_condition_number < 0.0
+        || !std::isfinite(native.reference_derivative_convergence_error)
+        || native.reference_derivative_convergence_error < 0.0
+        || native.reference_derivative_convergence_error
+            > kNeutralReferenceConvergenceErrorMax
+        || !std::isfinite(native.maximum_relative_root_bracket_width)
+        || native.maximum_relative_root_bracket_width < 0.0
+        || native.maximum_relative_root_bracket_width
+            > kNeutralReferenceRootBracketRelativeMax
+        || !std::isfinite(native.maximum_relative_root_density_step)
+        || native.maximum_relative_root_density_step < 0.0
+        || native.maximum_relative_root_density_step
+            > kNeutralReferenceRootDensityStepRelativeMax
+        || native.stable_root_count == 0
+        || native.selected_stable_root_index >= native.stable_root_count
+        || !std::all_of(
+            pressure_derivatives.begin(),
+            pressure_derivatives.end(),
+            [](double value) { return std::isfinite(value); }
+        )) {
+        throw std::invalid_argument(
+            "Provider neutral-reference derivative certificate is invalid"
+        );
     }
+    result.pressure_derivatives_per_pa = std::move(pressure_derivatives);
     result.derivative_availability = native.derivative_availability;
-    result.temperature_k = native.temperature_k;
-    result.pressure_pa = native.pressure_pa;
-    result.reference_convergence_error = native.reference_convergence_error;
+    result.source_pressure_min_pa = native.source_pressure_min_pa;
+    result.source_pressure_max_pa = native.source_pressure_max_pa;
+    result.maximum_root_residual_pa = native.maximum_root_residual_pa;
+    result.minimum_pressure_density_derivative_pa_m3_per_mol =
+        native.minimum_pressure_density_derivative_pa_m3_per_mol;
+    result.maximum_density_condition_number =
+        native.maximum_density_condition_number;
+    result.reference_derivative_convergence_error =
+        native.reference_derivative_convergence_error;
+    result.maximum_relative_root_bracket_width =
+        native.maximum_relative_root_bracket_width;
+    result.maximum_relative_root_density_step =
+        native.maximum_relative_root_density_step;
+    result.stable_root_count = native.stable_root_count;
+    result.selected_stable_root_index = native.selected_stable_root_index;
+    result.reference_branch = std::move(reference_branch);
+    result.topology_fingerprint = std::move(returned_topology);
     return result;
 }
 

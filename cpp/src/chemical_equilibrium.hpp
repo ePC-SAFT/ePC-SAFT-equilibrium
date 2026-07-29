@@ -156,6 +156,7 @@ struct NeutralReferenceEvaluation;
 struct SourceStandardStateResult {
     std::vector<double> standard_offsets;
     std::vector<double> ln_k_provider_basis;
+    std::vector<double> pressure_derivatives_per_pa;
     double representation_residual_inf_norm = 0.0;
 };
 
@@ -234,6 +235,7 @@ struct SourceStandardStateResult {
     double packing_fraction_max,
     double total_ion_fraction_max,
     double trace_floor,
+    const std::vector<double>& ln_k_pressure_derivatives_per_pa = {},
     int max_iterations = 500
 );
 

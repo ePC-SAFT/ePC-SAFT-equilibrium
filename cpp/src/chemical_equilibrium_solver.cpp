@@ -863,7 +863,8 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
     const std::vector<double>& upper,
     const std::vector<std::size_t>& active_constraint_bounds,
     double trace_floor,
-    const std::string& parameter_fingerprint
+    const std::string& parameter_fingerprint,
+    const std::vector<double>& ln_k_pressure_derivatives_per_pa
 ) {
     constexpr double kInactiveMargin = 1.0e-7;
     ChemicalSensitivityResult result;
@@ -921,6 +922,12 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
         result.failure_reason = "ill_conditioned_kkt_jacobian";
         return result;
     }
+    if (!ln_k_pressure_derivatives_per_pa.empty()
+        && ln_k_pressure_derivatives_per_pa.size() != reactions.rows) {
+        result.failure_reason =
+            "incomplete_transformed_reference_pressure_derivatives";
+        return result;
+    }
 
     for (std::size_t row = 0; row < balances.matrix.rows; ++row) {
         result.parameter_order.push_back("balance_total[" + std::to_string(row) + "]");
@@ -975,6 +982,13 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
             right_hand_side[parameter] =
                 1.0 / matrix_row_l2_norm(reactions, reaction);
         } else {
+            for (std::size_t reaction = 0; reaction < reactions.rows; ++reaction) {
+                right_hand_side[balances.matrix.rows + reaction] =
+                    ln_k_pressure_derivatives_per_pa.empty()
+                    ? 0.0
+                    : ln_k_pressure_derivatives_per_pa[reaction]
+                        / matrix_row_l2_norm(reactions, reaction);
+            }
             right_hand_side.back() =
                 (1.0 + evaluation.constraints.back()) / pressure_pa;
         }
@@ -1659,7 +1673,8 @@ ChemicalSolveResult solve_reaction(
     const MaxMinInitializationResult& initialization,
     const PhaseEvaluator& phase_evaluator,
     const ReactionDomain& domain,
-    double initial_volume
+    double initial_volume,
+    const std::vector<double>& ln_k_pressure_derivatives_per_pa
 ) {
     if (!std::isfinite(temperature_k) || temperature_k <= 0.0
         || !std::isfinite(pressure_pa) || pressure_pa <= 0.0
@@ -2035,7 +2050,8 @@ ChemicalSolveResult solve_reaction(
             upper,
             active_constraint_bounds,
             trace_floor,
-            system.provider_fingerprint
+            system.provider_fingerprint,
+            ln_k_pressure_derivatives_per_pa
         );
         if (!result.accepted && result.sensitivities.status == "available") {
             result.sensitivities.status = "unavailable";
@@ -2186,7 +2202,8 @@ ChemicalSolveResult solve_manufactured_ideal_reaction(
         initialization,
         ideal_phase_evaluator(),
         ReactionDomain{},
-        std::numeric_limits<double>::quiet_NaN()
+        std::numeric_limits<double>::quiet_NaN(),
+        {}
     );
     return finalize_chemical_result(system, std::move(result), true);
 }
@@ -2223,6 +2240,7 @@ ChemicalSolveResult solve_provider_reaction(
     double packing_fraction_max,
     double total_ion_fraction_max,
     double trace_floor,
+    const std::vector<double>& ln_k_pressure_derivatives_per_pa,
     int max_iterations
 ) {
     if (!std::isfinite(packing_fraction_min)
@@ -2326,7 +2344,8 @@ ChemicalSolveResult solve_provider_reaction(
             initialization,
             phase_evaluator,
             domain,
-            initial_volume
+            initial_volume,
+            ln_k_pressure_derivatives_per_pa
         ),
         false
     );

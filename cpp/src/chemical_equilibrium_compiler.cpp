@@ -934,9 +934,19 @@ SourceStandardStateResult transform_source_standard_state(
         throw std::invalid_argument("Provider neutral-reference identity is incompatible");
     }
     if (reference.derivative_availability
-        != EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_NONE_V1) {
+            != EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_NONE_V1
+        && reference.derivative_availability
+            != EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1) {
         throw std::invalid_argument(
             "Provider neutral-reference derivative availability is unsupported"
+        );
+    }
+    if (reference.derivative_availability
+            == EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1
+        && reference.pressure_derivatives_per_pa.size()
+            != reference.neutral_basis_row_count) {
+        throw std::invalid_argument(
+            "Provider neutral-reference pressure derivatives are incomplete"
         );
     }
     if (temperature_k != reference.temperature_k
@@ -967,6 +977,7 @@ SourceStandardStateResult transform_source_standard_state(
         );
     }
     SourceStandardStateResult result{
+        std::vector<double>(reaction_matrix.rows, 0.0),
         std::vector<double>(reaction_matrix.rows, 0.0),
         std::vector<double>(reaction_matrix.rows, 0.0),
         0.0,
@@ -1025,6 +1036,21 @@ SourceStandardStateResult transform_source_standard_state(
         }
         result.standard_offsets[reaction] = offset;
         result.ln_k_provider_basis[reaction] = source_ln_k[reaction] + offset;
+        if (reference.derivative_availability
+            == EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1) {
+            result.pressure_derivatives_per_pa[reaction] =
+                std::inner_product(
+                    coordinates.begin(),
+                    coordinates.end(),
+                    reference.pressure_derivatives_per_pa.begin(),
+                    0.0
+                );
+            if (!std::isfinite(result.pressure_derivatives_per_pa[reaction])) {
+                throw std::invalid_argument(
+                    "source standard-state pressure derivative is non-finite"
+                );
+            }
+        }
         result.representation_residual_inf_norm = std::max(
             result.representation_residual_inf_norm, residual
         );

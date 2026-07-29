@@ -846,6 +846,7 @@ def _held_water_ionization_problem() -> tuple[
             "id": standard_state["id"],
             "activity_scale_id": standard_state["activity_scale_id"],
             "log_activity_scale_factors": (0.0, conversion, conversion),
+            "reference_pressure_pa": state["pressure_pa"],
         },
     )
 
@@ -864,6 +865,7 @@ def _provider_solve(
             id=source_standard_state["id"],
             activity_scale_id=source_standard_state["activity_scale_id"],
             log_activity_scale_factors=tuple(source_standard_state["log_activity_scale_factors"]),
+            reference_pressure_pa=source_standard_state["reference_pressure_pa"],
         )
     )
     return epcsaft_equilibrium.chemical_equilibrium(
@@ -952,14 +954,14 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
         "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3"
     )
     diagnostics = result.diagnostics
-    assert diagnostics.reference_derivative_availability == 0
+    assert diagnostics.reference_derivative_availability == 2
     assert diagnostics.reference_convergence_error <= 5.0e-5
     assert diagnostics.reference_representation_residual_inf_norm <= 1.0e-12
     assert (
         result.source_standard_state.activity_scale_id == source_standard_state["activity_scale_id"]
     )
-    assert result.standard_offsets == pytest.approx((-21.200377331401143,), abs=2.0e-12)
-    assert result.ln_k_provider_basis == pytest.approx((-53.423919749357395,), abs=2.0e-12)
+    assert result.standard_offsets == pytest.approx((-21.200377331250067,), abs=2.0e-12)
+    assert result.ln_k_provider_basis == pytest.approx((-53.42391974920632,), abs=2.0e-12)
     assert diagnostics.chemical_certification_level == "LOCAL_EQUILIBRIUM"
     assert diagnostics.boundary_status == "strict_interior"
     assert diagnostics.trace_status == "interior"
@@ -970,13 +972,33 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     assert diagnostics.globality_status == "not_guaranteed"
     sensitivity = result.sensitivity
     assert sensitivity is not None
-    assert result.response_kind == "value_with_unavailable_jacobian"
-    assert sensitivity.status == "unavailable"
-    assert sensitivity.failure_reason == "missing_transformed_reference_derivatives"
-    assert sensitivity.reference_parameter_status == "unavailable"
-    assert sensitivity.parameters == ()
-    assert sensitivity.amount_derivatives == ()
-    assert sensitivity.volume_derivatives == ()
+    assert result.response_kind == "value_plus_jacobian"
+    assert sensitivity.status == "available"
+    assert sensitivity.failure_reason == ""
+    assert sensitivity.reference_parameter_status == "available"
+    assert tuple(parameter.name for parameter in sensitivity.parameters) == (
+        "balance_total[0]",
+        "ln_k_provider_basis[0]",
+        "pressure_pa",
+    )
+    pressure_index = tuple(
+        parameter.name for parameter in sensitivity.parameters
+    ).index("pressure_pa")
+    assert sensitivity.amount_derivatives[pressure_index] == pytest.approx(
+        (
+            6.04641378378937e-18,
+            -3.0241437366821673e-18,
+            -3.0241437366821673e-18,
+        ),
+        rel=2.0e-11,
+        abs=2.0e-24,
+    )
+    assert sensitivity.volume_derivatives[pressure_index] == pytest.approx(
+        -2.4677833433192133e-7,
+        rel=2.0e-11,
+        abs=2.0e-15,
+    )
+    assert result.source_standard_state.reference_pressure_pa == 100_000.0
     artifact = result.artifact_identity
     assert artifact.provider_distribution == "epcsaft"
     assert artifact.provider_record_sha256.startswith("sha256:")
@@ -984,6 +1006,34 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     assert artifact.provider_sdk_abi_version == 1
     assert artifact.provider_sdk_table_size > 0
     assert artifact.provider_sdk_mixture_result_size > 0
+    assert artifact.provider_sdk_neutral_reference_derivative_result_size > 0
+    assert artifact.provider_sdk_reacting_phase_parameter_result_size > 0
+
+
+def test_installed_provider_active_request_fails_closed_without_atomic_packing_state() -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    request = epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+        active_parameters=(
+            epcsaft_equilibrium.ChemicalEquilibriumActiveParameter(
+                family="segment_diameter",
+                identity="component",
+                component_ids=("hydronium-cation",),
+                value=2.2740,
+                unit="angstrom",
+            ),
+        )
+    )
+
+    with pytest.raises(
+        epcsaft_equilibrium.ChemicalEquilibriumError,
+        match="atomic parameterized packing state derivatives",
+    ):
+        _provider_solve(
+            model,
+            spec,
+            source_standard_state,
+            request,
+        )
 
 
 @pytest.mark.parametrize("variant", ("species_order", "reaction_orientation"))
@@ -1207,11 +1257,8 @@ def test_installed_provider_pressure_sensitivity_matches_independent_resolves() 
     )
     assert sensitivities["status"] == "available"
     assert sensitivities["parameter_fingerprint"] == model.parameter_fingerprint
-    assert sensitivities["provider_parameter_status"] == "unavailable"
-    assert (
-        sensitivities["provider_parameter_failure_reason"]
-        == "missing_typed_provider_kkt_cross_derivatives"
-    )
+    assert sensitivities["provider_parameter_status"] == "not_applicable"
+    assert sensitivities["provider_parameter_failure_reason"] == ""
     pressure_index = sensitivities["parameter_order"].index("pressure_pa")
 
     step_pa = 5.0
