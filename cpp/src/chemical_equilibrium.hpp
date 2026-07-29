@@ -54,6 +54,7 @@ struct CompiledReactionSystem {
     std::vector<std::size_t> removed_species_indices;
     DenseMatrix balance_matrix;
     DenseMatrix reaction_matrix;
+    DenseMatrix supplied_reaction_transform;
     std::vector<double> balance_totals;
     std::vector<double> feed_amounts;
     std::vector<double> g_ref;
@@ -151,11 +152,15 @@ struct ProviderPhaseBlockEvidence {
 };
 
 class ProviderContext;
+struct ProviderActiveParameterSet;
 struct NeutralReferenceEvaluation;
 
 struct SourceStandardStateResult {
     std::vector<double> standard_offsets;
     std::vector<double> ln_k_provider_basis;
+    std::vector<double> pressure_derivatives_per_pa;
+    std::vector<double> parameter_derivatives;
+    std::size_t active_parameter_count = 0;
     double representation_residual_inf_norm = 0.0;
 };
 
@@ -234,6 +239,9 @@ struct SourceStandardStateResult {
     double packing_fraction_max,
     double total_ion_fraction_max,
     double trace_floor,
+    const std::vector<double>& ln_k_pressure_derivatives_per_pa = {},
+    const std::vector<double>& ln_k_parameter_derivatives = {},
+    const ProviderActiveParameterSet* active_parameters = nullptr,
     int max_iterations = 500
 );
 

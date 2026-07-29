@@ -123,9 +123,10 @@ standard-state offset, rewrites the provenance to the Provider Helmholtz
 coordinate basis, and enters the same compiler and solver. The retained
 source-complete sentinel is Held-2008/IAPWS R11-07(2019) water
 self-ionization at 298.15 K and 1 bar. No absolute single-ion standard is
-constructed. SDK v1 reports no neutral-reference derivatives, so this path
-supports fixed-state values but no caloric, implicit, or parameter
-sensitivities.
+constructed. The appended SDK tail supplies a certified neutral-reference
+pressure derivative, so the implicit pressure column includes the exact
+source-reference contribution at the actual system pressure. This does not
+supply caloric, composition, or active-parameter reference derivatives.
 
 ## Initialization and solve
 
@@ -173,13 +174,15 @@ parameter fingerprint. It returns no derivative when the KKT matrix is
 singular or unacceptably conditioned, the active set can change, or the primal
 result is not certified.
 
-Provider parameters require typed phase-KKT cross derivatives, and a
-source-standard-state parameter requires the corresponding derivative of the
-transformed Provider reference vector. SDK v1 supplies neither contract for
-the reacting electrolyte phase. Those parameter families therefore remain
-explicitly unavailable; Equilibrium does not synthesize them with finite
-differences. The public `chemical_equilibrium` value result does not expose
-this private sensitivity payload.
+Provider parameters require typed phase-KKT cross derivatives and the
+corresponding derivative of the transformed Provider reference vector. The
+current tail supplies the pressure/reference column but not an atomic
+active-model callback with complete Helmholtz and packing state tensors.
+Active Provider parameter families therefore remain explicitly unavailable;
+Equilibrium does not synthesize them with finite differences. The public
+`chemical_equilibrium` operation optionally exposes the exact conditioned
+totals, Provider-basis `ln(K)`, and pressure columns through its typed
+sensitivity result.
 
 ## Later reuse and explicit deferrals
 

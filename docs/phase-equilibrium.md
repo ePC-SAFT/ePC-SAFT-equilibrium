@@ -19,7 +19,7 @@ replace a formulation owner.
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
 | Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Public development dispatch over one native core with fail-closed installed evidence; no admitted electrolyte LLE capability |
-| Homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) and [GREPE homogeneous layer](designs/2026-07-27-grepe-homogeneous-chemical-layer.md) | Public typed local value operation plus private conditioned state-input sensitivities; Belov trace evidence plus one source-complete Held/IAPWS installed-Provider value case; no predictive or global admission |
+| Homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) and [GREPE homogeneous layer](designs/2026-07-27-grepe-homogeneous-chemical-layer.md) | Public typed local value operation with optional conditioned state-input sensitivities; Belov trace evidence plus one source-complete Held/IAPWS installed-Provider value case; no predictive or global admission |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Coupled multiphase chemical equilibrium | [GREPE reactive phase equilibrium](designs/2026-07-28-grepe-reactive-phase-equilibrium.md) | Package-local design only; no public schema or runtime route |
@@ -198,23 +198,51 @@ axes keep artifact/input completeness, Ipopt status, numerical and physical
 checks, reduced-Hessian local status, predictive status, finite search, and
 globality separate. The manufactured installed-Provider evidence remains
 labeled manufactured/nonpredictive. Source-bound input consumes explicit
-source activity-scale shifts and the installed Provider
-neutral-reference callback, then passes transformed constants directly to the
-same compiler and `solve_provider_reaction` owner. Its source-complete sentinel
-is `2 H2O <=> H3O+ + OH-` at 298.15 K and 1 bar using frozen IAPWS
-R11-07(2019) reaction data and the immutable Held-2008 Provider catalog. This
-establishes one local, strictly interior, fixed-`T,P` value result only. The
-private native result also owns exact implicit derivatives with respect to its
-compiled balance totals, final Provider-basis reaction constants, and pressure
-when the active-set residual Jacobian is full-rank and acceptably conditioned.
-It reports rank, condition number, active bounds, amount-chart topology, and
-the immutable Provider parameter fingerprint. Provider-parameter sensitivity
-remains unavailable because SDK v1 has no typed reacting-phase KKT cross
-derivatives. Source/reference parameter sensitivity likewise remains
-unavailable because the neutral-reference callback advertises no derivatives;
-neither gap is filled numerically. There is no public sensitivity contract,
+source activity-scale shifts and the installed Provider neutral-reference
+callback at the actual system pressure, then passes Provider-basis constants
+and private transformed records bound to that trial pressure directly to the
+same compiler and `solve_provider_reaction` owner. The source standard state's
+declared reference pressure is retained separately as immutable provenance.
+Its source-complete sentinel is `2 H2O <=> H3O+ + OH-` at 298.15 K and 1 bar
+using frozen IAPWS R11-07(2019) reaction data and the immutable Held-2008
+Provider catalog. This establishes one local, strictly interior, fixed-`T,P`
+value result only.
+
+The operation accepts an optional typed sensitivity request. Without it the
+response is explicitly `value_only`; the internal solve still uses its exact
+Ipopt and Provider derivatives, but no Jacobian columns are returned. With it
+the response is `value_plus_jacobian` when exact derivatives are available and
+`value_with_unavailable_jacobian` when they fail closed. Available derivatives
+are with respect to compiled balance totals (mol), final Provider-basis
+reaction constants (dimensionless `ln(K)`), and pressure (Pa) when the
+active-set residual Jacobian is full-rank and acceptably conditioned. Amount
+rows follow the result species order and volume is the final scalar state. Each
+parameter records input and derivative units.
+
+The typed sensitivity receipt reports rank, condition number, active bounds,
+amount-chart topology, and the immutable Provider parameter fingerprint. The
+result also binds installed Equilibrium and Provider distribution versions and
+RECORD fingerprints plus the Provider capsule name, ABI version, table size,
+and result-structure sizes. The pressure column includes the exact transformed
+source-reference pressure contribution when the installed neutral-reference
+derivative tail passes its pressure-domain, root-branch, topology,
+conditioning, ordering, and fingerprint certificates. Redundant source
+reaction rows are reduced through the compiler's exact reaction transformation
+before entering the KKT column. Provider active-parameter coordinates are
+available only when the installed capability table advertises each requested
+typed coordinate and one atomic Provider callback supplies the active-model
+Helmholtz state derivatives, state-parameter block, pressure and
+chemical-potential projections, reference derivative, and packing state
+gradient/Hessian. Request order is preserved. Missing blocks, unadvertised
+coordinates, active bounds, or unavailable KKT columns fail closed; no missing
+column is filled numerically. There is no
 chemistry registry, predictive admission, coupled-equilibrium result, or
 globality claim.
+
+A source-bound active request also requires the Provider's active
+neutral-reference value and parameter derivative at the same model point. If
+that prerequisite is unavailable, the operation rejects before solving rather
+than combining an active phase with a fixed-catalog reference value.
 
 ## Shared package contract
 

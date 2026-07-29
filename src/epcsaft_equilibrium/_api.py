@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from functools import cache
+from importlib import metadata
 from types import MappingProxyType
 from typing import Any, cast
 
@@ -144,11 +147,12 @@ class ChemicalEquilibriumConstant:
 
 @dataclass(frozen=True)
 class ChemicalStandardState:
-    """Source activity convention transformed through Provider metadata."""
+    """Source activity convention and p° provenance transformed at each trial P."""
 
     id: str
     activity_scale_id: str
     log_activity_scale_factors: tuple[float, ...]
+    reference_pressure_pa: float
 
 
 @dataclass(frozen=True)
@@ -214,6 +218,84 @@ class ChemicalEquilibriumDiagnostics:
 
 
 @dataclass(frozen=True)
+class ChemicalEquilibriumActiveParameter:
+    """One exact coordinate resolved from the installed Provider descriptor table."""
+
+    family: str
+    identity: str
+    component_ids: tuple[str, ...]
+    value: float
+    unit: str
+
+
+@dataclass(frozen=True)
+class ChemicalEquilibriumSensitivityRequest:
+    """Request exact operation columns and ordered installed-Provider coordinates."""
+
+    active_parameters: tuple[ChemicalEquilibriumActiveParameter, ...] = ()
+
+
+@dataclass(frozen=True)
+class ChemicalEquilibriumSensitivityParameter:
+    """One ordered scalar input and the units of its returned state derivatives."""
+
+    name: str
+    kind: str
+    source_index: int | None
+    input_unit: str
+    amount_derivative_unit: str
+    volume_derivative_unit: str
+    identity: str | None = None
+    component_ids: tuple[str, ...] = ()
+    value: float | None = None
+
+
+@dataclass(frozen=True)
+class ChemicalEquilibriumSensitivity:
+    """Exact conditioned state-input Jacobian or fail-closed unavailability evidence."""
+
+    status: str
+    failure_reason: str
+    parameters: tuple[ChemicalEquilibriumSensitivityParameter, ...]
+    amount_state_order: tuple[str, ...]
+    amount_derivatives: tuple[tuple[float, ...], ...]
+    volume_derivatives: tuple[float, ...]
+    kkt_dimension: int
+    kkt_rank: int
+    condition_number_inf: float
+    active_lower_bounds: tuple[int, ...]
+    active_upper_bounds: tuple[int, ...]
+    active_constraint_bounds: tuple[int, ...]
+    active_trace_species: tuple[int, ...]
+    chart_topology: str
+    parameter_fingerprint: str
+    provider_parameter_status: str
+    provider_parameter_failure_reason: str
+    reference_parameter_status: str
+    reference_parameter_failure_reason: str
+
+
+@dataclass(frozen=True)
+class ChemicalArtifactIdentity:
+    """Installed distributions and Provider ABI consumed by one chemical result."""
+
+    equilibrium_distribution: str
+    equilibrium_version: str
+    equilibrium_record_sha256: str
+    provider_distribution: str | None
+    provider_version: str | None
+    provider_record_sha256: str | None
+    provider_sdk_capsule_name: str | None
+    provider_sdk_abi_version: int | None
+    provider_sdk_table_size: int | None
+    provider_sdk_result_size: int | None
+    provider_sdk_mixture_result_size: int | None
+    provider_sdk_neutral_reference_result_size: int | None
+    provider_sdk_neutral_reference_derivative_result_size: int | None
+    provider_sdk_reacting_phase_parameter_result_size: int | None
+
+
+@dataclass(frozen=True)
 class ChemicalEquilibriumResult:
     """Certified local fixed-T,P homogeneous chemical-equilibrium value."""
 
@@ -235,6 +317,9 @@ class ChemicalEquilibriumResult:
     ln_k_provider_basis: tuple[float, ...] | None
     local_scope: str
     diagnostics: ChemicalEquilibriumDiagnostics
+    response_kind: str
+    artifact_identity: ChemicalArtifactIdentity
+    sensitivity: ChemicalEquilibriumSensitivity | None
 
 
 class ChemicalEquilibriumError(RuntimeError):
@@ -784,19 +869,336 @@ def _chemical_diagnostics(
     )
 
 
+@cache
+def _distribution_identity(distribution_name: str) -> tuple[str, str]:
+    distribution = metadata.distribution(distribution_name)
+    record = distribution.read_text("RECORD")
+    if record is None or not record.strip():
+        raise ValueError(f"installed {distribution_name} distribution has no RECORD identity")
+    digest = hashlib.sha256(record.encode("utf-8")).hexdigest()
+    return distribution.version, f"sha256:{digest}"
+
+
+def _chemical_artifact_identity(
+    native: Mapping[str, object],
+    *,
+    uses_provider: bool,
+) -> ChemicalArtifactIdentity:
+    equilibrium_version, equilibrium_record = _distribution_identity("epcsaft-equilibrium")
+    if not uses_provider:
+        return ChemicalArtifactIdentity(
+            equilibrium_distribution="epcsaft-equilibrium",
+            equilibrium_version=equilibrium_version,
+            equilibrium_record_sha256=equilibrium_record,
+            provider_distribution=None,
+            provider_version=None,
+            provider_record_sha256=None,
+            provider_sdk_capsule_name=None,
+            provider_sdk_abi_version=None,
+            provider_sdk_table_size=None,
+            provider_sdk_result_size=None,
+            provider_sdk_mixture_result_size=None,
+            provider_sdk_neutral_reference_result_size=None,
+            provider_sdk_neutral_reference_derivative_result_size=None,
+            provider_sdk_reacting_phase_parameter_result_size=None,
+        )
+    provider_version, provider_record = _distribution_identity("epcsaft")
+    capsule_name = str(native["provider_sdk_capsule_name"])
+    abi_version = int(cast(int, native["provider_sdk_abi_version"]))
+    sizes = tuple(
+        int(cast(int, native[name]))
+        for name in (
+            "provider_sdk_table_size",
+            "provider_sdk_result_size",
+            "provider_sdk_mixture_result_size",
+            "provider_sdk_neutral_reference_result_size",
+            "provider_sdk_neutral_reference_derivative_result_size",
+            "provider_sdk_reacting_phase_parameter_result_size",
+        )
+    )
+    if capsule_name != "epcsaft.native_sdk.v1" or abi_version != 1:
+        raise ValueError("native result has an incompatible Provider SDK identity")
+    if any(size <= 0 for size in sizes[:3]) or any(size < 0 for size in sizes[3:]):
+        raise ValueError("native result has invalid Provider SDK structure sizes")
+    return ChemicalArtifactIdentity(
+        equilibrium_distribution="epcsaft-equilibrium",
+        equilibrium_version=equilibrium_version,
+        equilibrium_record_sha256=equilibrium_record,
+        provider_distribution="epcsaft",
+        provider_version=provider_version,
+        provider_record_sha256=provider_record,
+        provider_sdk_capsule_name=capsule_name,
+        provider_sdk_abi_version=abi_version,
+        provider_sdk_table_size=sizes[0],
+        provider_sdk_result_size=sizes[1],
+        provider_sdk_mixture_result_size=sizes[2],
+        provider_sdk_neutral_reference_result_size=sizes[3],
+        provider_sdk_neutral_reference_derivative_result_size=sizes[4],
+        provider_sdk_reacting_phase_parameter_result_size=sizes[5],
+    )
+
+
+def _active_parameter_name(parameter: ChemicalEquilibriumActiveParameter) -> str:
+    return (
+        f"provider_parameter[{parameter.family};{parameter.identity};"
+        f"{','.join(parameter.component_ids)}]"
+    )
+
+
+def _sensitivity_parameter(
+    name: str,
+    active_parameters: tuple[ChemicalEquilibriumActiveParameter, ...] = (),
+) -> ChemicalEquilibriumSensitivityParameter:
+    if name == "pressure_pa":
+        return ChemicalEquilibriumSensitivityParameter(
+            name=name,
+            kind="pressure",
+            source_index=None,
+            input_unit="Pa",
+            amount_derivative_unit="mol/Pa",
+            volume_derivative_unit="m^3/Pa",
+        )
+    for prefix, kind, input_unit, amount_unit, volume_unit in (
+        (
+            "balance_total[",
+            "compiled_balance_total",
+            "mol",
+            "mol/mol",
+            "m^3/mol",
+        ),
+        (
+            "ln_k_provider_basis[",
+            "provider_basis_ln_k",
+            "dimensionless",
+            "mol",
+            "m^3",
+        ),
+    ):
+        if name.startswith(prefix) and name.endswith("]"):
+            index_text = name[len(prefix) : -1]
+            if index_text.isdecimal():
+                return ChemicalEquilibriumSensitivityParameter(
+                    name=name,
+                    kind=kind,
+                    source_index=int(index_text),
+                    input_unit=input_unit,
+                    amount_derivative_unit=amount_unit,
+                    volume_derivative_unit=volume_unit,
+                )
+    for parameter in active_parameters:
+        if name == _active_parameter_name(parameter):
+            return ChemicalEquilibriumSensitivityParameter(
+                name=name,
+                kind=f"provider_{parameter.identity}_{parameter.family}",
+                source_index=None,
+                input_unit=parameter.unit,
+                amount_derivative_unit=f"mol/{parameter.unit}",
+                volume_derivative_unit=f"m^3/{parameter.unit}",
+                identity=parameter.identity,
+                component_ids=parameter.component_ids,
+                value=parameter.value,
+            )
+    raise ValueError(f"native sensitivity parameter identity is unsupported: {name}")
+
+
+def _index_tuple(payload: object, name: str) -> tuple[int, ...]:
+    values = tuple(int(value) for value in cast(Sequence[int], payload))
+    if any(value < 0 for value in values):
+        raise ValueError(f"native sensitivity {name} contains a negative index")
+    return values
+
+
+def _chemical_sensitivity(
+    native: Mapping[str, object],
+    *,
+    species_ids: tuple[str, ...],
+    model_fingerprint: str,
+    active_parameters: tuple[ChemicalEquilibriumActiveParameter, ...],
+) -> ChemicalEquilibriumSensitivity:
+    payload = cast(Mapping[str, object], native["sensitivities"])
+    status = str(payload["status"])
+    if status not in {"available", "unavailable"}:
+        raise ValueError("native sensitivity status is invalid")
+    failure_reason = str(payload["failure_reason"])
+    parameter_names = tuple(
+        str(value) for value in cast(Sequence[object], payload["parameter_order"])
+    )
+    parameters = tuple(
+        _sensitivity_parameter(name, active_parameters) for name in parameter_names
+    )
+    amount_derivatives = tuple(
+        _vector(row, len(species_ids), "chemical sensitivity amount row")
+        for row in cast(Sequence[object], payload["amount_derivatives"])
+    )
+    volume_derivatives = _float_tuple(payload["volume_derivatives"])
+    if len(amount_derivatives) != len(parameters) or len(volume_derivatives) != len(parameters):
+        raise ValueError("native sensitivity parameter and derivative dimensions disagree")
+    if status == "available":
+        if failure_reason or not parameters:
+            raise ValueError("available native sensitivity has incomplete status evidence")
+        balance_parameters = tuple(
+            parameter for parameter in parameters if parameter.kind == "compiled_balance_total"
+        )
+        reaction_parameters = tuple(
+            parameter for parameter in parameters if parameter.kind == "provider_basis_ln_k"
+        )
+        expected_parameters = (
+            balance_parameters
+            + reaction_parameters
+            + (_sensitivity_parameter("pressure_pa"),)
+            + tuple(
+                _sensitivity_parameter(
+                    _active_parameter_name(parameter), active_parameters
+                )
+                for parameter in active_parameters
+            )
+        )
+        if (
+            parameters != expected_parameters
+            or tuple(parameter.source_index for parameter in balance_parameters)
+            != tuple(range(len(balance_parameters)))
+            or tuple(parameter.source_index for parameter in reaction_parameters)
+            != tuple(range(len(reaction_parameters)))
+        ):
+            raise ValueError("available native sensitivity parameter order is incomplete")
+        values = (value for row in amount_derivatives for value in row)
+        if not all(math.isfinite(value) for value in (*values, *volume_derivatives)):
+            raise ValueError("available native sensitivity contains a non-finite derivative")
+    elif parameters or amount_derivatives or volume_derivatives or not failure_reason:
+        raise ValueError("unavailable native sensitivity exposes derivative columns")
+    kkt_dimension = int(cast(int, payload["kkt_dimension"]))
+    kkt_rank = int(cast(int, payload["kkt_rank"]))
+    condition_number = float(cast(float, payload["condition_number_inf"]))
+    if kkt_dimension < 0 or not 0 <= kkt_rank <= kkt_dimension:
+        raise ValueError("native sensitivity KKT rank evidence is invalid")
+    if math.isnan(condition_number) or condition_number < 0.0:
+        raise ValueError("native sensitivity KKT conditioning evidence is invalid")
+    if status == "available" and (
+        kkt_dimension == 0 or kkt_rank != kkt_dimension or not math.isfinite(condition_number)
+    ):
+        raise ValueError("available native sensitivity lacks a conditioned square KKT system")
+    if status == "available" and len(parameters) - len(active_parameters) != kkt_dimension:
+        raise ValueError("available native sensitivity omits a KKT input column")
+    chart_topology = str(payload["chart_topology"])
+    parameter_fingerprint = str(payload["parameter_fingerprint"])
+    if not chart_topology or parameter_fingerprint != model_fingerprint:
+        raise ValueError("native sensitivity topology or parameter fingerprint is invalid")
+    active_trace_species = _index_tuple(payload["active_trace_species"], "active trace species")
+    if any(index >= len(species_ids) for index in active_trace_species):
+        raise ValueError("native sensitivity trace-species index is out of range")
+    provider_parameter_status = str(payload["provider_parameter_status"])
+    reference_parameter_status = str(payload["reference_parameter_status"])
+    if provider_parameter_status not in {"available", "not_applicable", "unavailable"} or (
+        reference_parameter_status not in {"available", "not_applicable", "unavailable"}
+    ):
+        raise ValueError("native sensitivity parameter-support status is invalid")
+    provider_parameter_failure = str(payload["provider_parameter_failure_reason"])
+    reference_parameter_failure = str(payload["reference_parameter_failure_reason"])
+    if (provider_parameter_status == "unavailable") != bool(provider_parameter_failure) or (
+        reference_parameter_status == "unavailable"
+    ) != bool(reference_parameter_failure):
+        raise ValueError("native sensitivity parameter-support evidence is inconsistent")
+    active_lower_bounds = _index_tuple(payload["active_lower_bounds"], "active lower bounds")
+    active_upper_bounds = _index_tuple(payload["active_upper_bounds"], "active upper bounds")
+    active_constraint_bounds = _index_tuple(
+        payload["active_constraint_bounds"], "active constraint bounds"
+    )
+    if status == "available" and (
+        active_lower_bounds
+        or active_upper_bounds
+        or active_constraint_bounds
+        or active_trace_species
+    ):
+        raise ValueError("available native sensitivity has active-set evidence")
+    return ChemicalEquilibriumSensitivity(
+        status=status,
+        failure_reason=failure_reason,
+        parameters=parameters,
+        amount_state_order=species_ids,
+        amount_derivatives=amount_derivatives,
+        volume_derivatives=volume_derivatives,
+        kkt_dimension=kkt_dimension,
+        kkt_rank=kkt_rank,
+        condition_number_inf=condition_number,
+        active_lower_bounds=active_lower_bounds,
+        active_upper_bounds=active_upper_bounds,
+        active_constraint_bounds=active_constraint_bounds,
+        active_trace_species=active_trace_species,
+        chart_topology=chart_topology,
+        parameter_fingerprint=parameter_fingerprint,
+        provider_parameter_status=provider_parameter_status,
+        provider_parameter_failure_reason=provider_parameter_failure,
+        reference_parameter_status=reference_parameter_status,
+        reference_parameter_failure_reason=reference_parameter_failure,
+    )
+
+
 def chemical_equilibrium(
     phase: IdealGasPhase | ProviderPhase,
     temperature: Quantity[Any],
     pressure: Quantity[Any],
     problem: ChemicalEquilibriumProblem,
+    *,
+    sensitivity_request: ChemicalEquilibriumSensitivityRequest | None = None,
 ) -> ChemicalEquilibriumResult:
     """Solve and certify one local fixed-T,P homogeneous reacting phase."""
 
     try:
         if not isinstance(problem, ChemicalEquilibriumProblem):
             raise TypeError("chemical_equilibrium requires a typed problem")
+        if sensitivity_request is not None and not isinstance(
+            sensitivity_request, ChemicalEquilibriumSensitivityRequest
+        ):
+            raise TypeError("sensitivity_request must be a typed sensitivity request")
+        active_parameters = (
+            ()
+            if sensitivity_request is None
+            else sensitivity_request.active_parameters
+        )
+        if any(
+            not isinstance(parameter, ChemicalEquilibriumActiveParameter)
+            for parameter in active_parameters
+        ):
+            raise TypeError("active parameters must use the typed request record")
+        active_parameter_payload = tuple(
+            {
+                "family": parameter.family,
+                "identity": parameter.identity,
+                "component_ids": parameter.component_ids,
+                "value": parameter.value,
+                "unit": parameter.unit,
+            }
+            for parameter in active_parameters
+        )
+        for parameter in active_parameters:
+            component_shape_valid = (
+                parameter.identity == "component"
+                and len(parameter.component_ids) == 1
+            ) or (
+                parameter.identity == "unordered_component_pair"
+                and len(parameter.component_ids) == 2
+                and parameter.component_ids[0] != parameter.component_ids[1]
+            ) or (
+                parameter.identity == "model"
+                and not parameter.component_ids
+            )
+            if (
+                not parameter.family
+                or not parameter.identity
+                or not component_shape_valid
+                or any(not component_id for component_id in parameter.component_ids)
+                or not math.isfinite(parameter.value)
+                or not parameter.unit
+            ):
+                raise ValueError("active Provider parameter request is incomplete")
         temperature_k = _quantity(temperature, "kelvin", "temperature", "chemical_equilibrium")
         pressure_pa = _quantity(pressure, "pascal", "pressure", "chemical_equilibrium")
+        standard_state = problem.source_standard_state
+        if standard_state is not None and (
+            not math.isfinite(standard_state.reference_pressure_pa)
+            or standard_state.reference_pressure_pa <= 0.0
+        ):
+            raise ValueError("source-standard-state reference pressure must be positive and finite")
         if not math.isfinite(problem.strict_interior_amount_floor_mol) or (
             problem.strict_interior_amount_floor_mol <= 0.0
         ):
@@ -809,7 +1211,11 @@ def chemical_equilibrium(
                 "conversion_id": record.conversion_id,
                 "dimensionless": record.dimensionless,
                 "temperature_k": temperature_k,
-                "pressure_pa": pressure_pa,
+                "pressure_pa": (
+                    standard_state.reference_pressure_pa
+                    if standard_state is not None
+                    else pressure_pa
+                ),
             }
             for record in problem.equilibrium_constants
         )
@@ -828,6 +1234,8 @@ def chemical_equilibrium(
         }
         packing_bounds: tuple[float, float] | None
         if isinstance(phase, IdealGasPhase):
+            if active_parameters:
+                raise ValueError("ideal-gas sensitivity cannot request Provider coordinates")
             if problem.source_standard_state is not None:
                 raise ValueError("ideal-gas problems cannot request Provider reference transport")
             if not phase.model_fingerprint or not phase.reference_id:
@@ -869,7 +1277,6 @@ def chemical_equilibrium(
             provider_fingerprint = model_fingerprint
         else:
             raise TypeError("chemical_equilibrium requires a typed phase model")
-        standard_state = problem.source_standard_state
         native_standard_state: dict[str, object] | None = (
             None
             if standard_state is None
@@ -877,6 +1284,7 @@ def chemical_equilibrium(
                 "id": standard_state.id,
                 "activity_scale_id": standard_state.activity_scale_id,
                 "log_activity_scale_factors": standard_state.log_activity_scale_factors,
+                "reference_pressure_pa": standard_state.reference_pressure_pa,
             }
         )
         native = cast(
@@ -887,6 +1295,7 @@ def chemical_equilibrium(
                 native_standard_state,
                 packing_bounds,
                 problem.strict_interior_amount_floor_mol,
+                None if sensitivity_request is None else active_parameter_payload,
             ),
         )
         diagnostics = _chemical_diagnostics(native)
@@ -928,9 +1337,23 @@ def chemical_equilibrium(
         ln_k_provider_basis = (
             _float_tuple(native["ln_k_provider_basis"]) if "ln_k_provider_basis" in native else None
         )
+        artifact_identity = _chemical_artifact_identity(
+            native,
+            uses_provider=provider_fingerprint is not None,
+        )
+        sensitivity = (
+            None
+            if sensitivity_request is None
+            else _chemical_sensitivity(
+                native,
+                species_ids=problem.species_ids,
+                model_fingerprint=model_fingerprint,
+                active_parameters=active_parameters,
+            )
+        )
     except ChemicalEquilibriumError:
         raise
-    except (KeyError, RuntimeError, TypeError, ValueError) as error:
+    except (KeyError, metadata.PackageNotFoundError, RuntimeError, TypeError, ValueError) as error:
         raise ChemicalEquilibriumError(
             str(error), _failed_chemical_diagnostics("payload_error", str(error))
         ) from error
@@ -953,6 +1376,17 @@ def chemical_equilibrium(
         ln_k_provider_basis=ln_k_provider_basis,
         local_scope="fixed_TP_single_homogeneous_phase",
         diagnostics=diagnostics,
+        response_kind=(
+            "value_only"
+            if sensitivity is None
+            else (
+                "value_plus_jacobian"
+                if sensitivity.status == "available"
+                else "value_with_unavailable_jacobian"
+            )
+        ),
+        artifact_identity=artifact_identity,
+        sensitivity=sensitivity,
     )
 
 

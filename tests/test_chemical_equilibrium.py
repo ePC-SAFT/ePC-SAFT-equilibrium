@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import copy
+import ctypes
 import json
 import math
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 
 import epcsaft
@@ -38,6 +42,142 @@ _BELOV_SOURCE_GIBBS = (
 )
 _HELD_WATER_IONIZATION_FINGERPRINT = (
     "sha256:6af6c7aec1106723cf6fa536391b7ba08f2e70ef9fe7064bcb6bb61db18644e8"
+)
+_FINGERPRINT_CAPACITY = 72
+_PROVIDER_ERROR_CAPACITY = 160
+
+
+class _NeutralReferenceResult(ctypes.Structure):
+    _fields_ = (
+        ("struct_size", ctypes.c_uint32),
+        ("status", ctypes.c_int32),
+        ("component_count", ctypes.c_size_t),
+        ("neutral_basis_row_count", ctypes.c_size_t),
+        ("neutral_basis_capacity", ctypes.c_size_t),
+        ("contraction_capacity", ctypes.c_size_t),
+        ("reference_composition_capacity", ctypes.c_size_t),
+        ("neutral_basis", ctypes.POINTER(ctypes.c_double)),
+        ("log_fugacity_contractions", ctypes.POINTER(ctypes.c_double)),
+        ("reference_composition", ctypes.POINTER(ctypes.c_double)),
+        ("derivative_availability", ctypes.c_uint32),
+        ("temperature_k", ctypes.c_double),
+        ("pressure_pa", ctypes.c_double),
+        ("solvent_molar_mass_kg_per_mol", ctypes.c_double),
+        ("reference_amount_mol", ctypes.c_double),
+        ("reference_number_density_mol_per_m3", ctypes.c_double),
+        ("reference_molality_mol_per_kg", ctypes.c_double),
+        ("reference_convergence_error", ctypes.c_double),
+        ("parameter_fingerprint", ctypes.c_char * _FINGERPRINT_CAPACITY),
+        ("helmholtz_basis_id", ctypes.c_char * _FINGERPRINT_CAPACITY),
+        ("error", ctypes.c_char * _PROVIDER_ERROR_CAPACITY),
+    )
+
+
+class _NeutralReferenceDerivativeResult(ctypes.Structure):
+    _fields_ = (
+        ("struct_size", ctypes.c_uint32),
+        ("status", ctypes.c_int32),
+        ("value", _NeutralReferenceResult),
+        ("active_parameter_count", ctypes.c_size_t),
+        ("pressure_derivative_capacity", ctypes.c_size_t),
+        ("parameter_derivative_capacity", ctypes.c_size_t),
+        ("pressure_derivatives_per_pa", ctypes.POINTER(ctypes.c_double)),
+        ("parameter_derivatives", ctypes.POINTER(ctypes.c_double)),
+        ("derivative_availability", ctypes.c_uint32),
+        ("source_pressure_min_pa", ctypes.c_double),
+        ("source_pressure_max_pa", ctypes.c_double),
+        ("maximum_root_residual_pa", ctypes.c_double),
+        ("minimum_pressure_density_derivative_pa_m3_per_mol", ctypes.c_double),
+        ("maximum_density_condition_number", ctypes.c_double),
+        ("reference_derivative_convergence_error", ctypes.c_double),
+        ("maximum_relative_root_bracket_width", ctypes.c_double),
+        ("maximum_relative_root_density_step", ctypes.c_double),
+        ("stable_root_count", ctypes.c_size_t),
+        ("selected_stable_root_index", ctypes.c_size_t),
+        ("reference_branch", ctypes.c_char * 16),
+        ("parameter_fingerprint", ctypes.c_char * _FINGERPRINT_CAPACITY),
+        ("topology_fingerprint", ctypes.c_char * _FINGERPRINT_CAPACITY),
+        ("helmholtz_basis_id", ctypes.c_char * _FINGERPRINT_CAPACITY),
+        ("error", ctypes.c_char * _PROVIDER_ERROR_CAPACITY),
+    )
+
+
+class _ChemicalSdkTable(ctypes.Structure):
+    _fields_ = (
+        ("abi_version", ctypes.c_uint32),
+        ("table_size", ctypes.c_size_t),
+        ("result_size", ctypes.c_size_t),
+        ("model_context", ctypes.c_void_p),
+        ("evaluate_pure_phase", ctypes.c_void_p),
+        ("parameterized_result_size", ctypes.c_size_t),
+        ("evaluate_pure_phase_parameters", ctypes.c_void_p),
+        ("component_count", ctypes.c_size_t),
+        ("mixture_result_size", ctypes.c_size_t),
+        ("evaluate_mixture_phase", ctypes.c_void_p),
+        ("evaluate_mixture_phase_kij", ctypes.c_void_p),
+        ("component_ids", ctypes.c_void_p),
+        ("component_charges", ctypes.c_void_p),
+        ("evaluate_electrolyte_phase", ctypes.c_void_p),
+        ("evaluate_molar_volume_bounds", ctypes.c_void_p),
+        ("evaluate_packing_fraction", ctypes.c_void_p),
+        ("source_temperature_min_k", ctypes.c_double),
+        ("source_temperature_max_k", ctypes.c_double),
+        ("total_ion_mole_fraction_max", ctypes.c_double),
+        ("ion_solvation_born_result_size", ctypes.c_size_t),
+        ("evaluate_ion_solvation_born", ctypes.c_void_p),
+        ("aqueous_miac_kij_result_size", ctypes.c_size_t),
+        ("evaluate_aqueous_miac_kij", ctypes.c_void_p),
+        ("neutral_reference_basis_row_count", ctypes.c_size_t),
+        ("neutral_reference_result_size", ctypes.c_size_t),
+        ("evaluate_neutral_reference", ctypes.c_void_p),
+        ("aqueous_miac_solvation_factor_result_size", ctypes.c_size_t),
+        ("evaluate_aqueous_miac_solvation_factor", ctypes.c_void_p),
+        ("evaluate_aqueous_miac_kij_batch", ctypes.c_void_p),
+        ("evaluate_aqueous_miac_solvation_factor_batch", ctypes.c_void_p),
+        ("evaluation_budget_size", ctypes.c_size_t),
+        ("evaluate_aqueous_miac_kij_batch_bounded", ctypes.c_void_p),
+        ("evaluate_aqueous_miac_solvation_factor_batch_bounded", ctypes.c_void_p),
+        ("capability_count", ctypes.c_size_t),
+        ("capabilities", ctypes.c_void_p),
+        ("evaluate_mixture_phase_lij", ctypes.c_void_p),
+        ("evaluate_pure_phase_parameter", ctypes.c_void_p),
+        ("ion_fraction_suppression_result_size", ctypes.c_size_t),
+        ("evaluate_ion_fraction_suppression", ctypes.c_void_p),
+        ("ion_solvation_kij_result_size", ctypes.c_size_t),
+        ("evaluate_ion_solvation_kij", ctypes.c_void_p),
+        ("ion_solvation_ionic_permittivity_result_size", ctypes.c_size_t),
+        ("evaluate_ion_solvation_ionic_permittivity", ctypes.c_void_p),
+        ("ion_solvation_solvent_permittivity_result_size", ctypes.c_size_t),
+        ("evaluate_ion_solvation_solvent_permittivity", ctypes.c_void_p),
+        ("associating_parameterized_result_size", ctypes.c_size_t),
+        ("evaluate_diameter_basis_associating_pure_phase_parameters", ctypes.c_void_p),
+        ("electrolyte_phase_value_result_size", ctypes.c_size_t),
+        ("evaluate_electrolyte_phase_value", ctypes.c_void_p),
+        ("neutral_reference_derivative_result_size", ctypes.c_size_t),
+        ("evaluate_neutral_reference_derivatives", ctypes.c_void_p),
+        ("reacting_phase_parameter_result_size", ctypes.c_size_t),
+        ("evaluate_reacting_phase_parameters", ctypes.c_void_p),
+    )
+
+
+_NeutralReferenceCallback = ctypes.CFUNCTYPE(
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_char_p,
+    ctypes.c_double,
+    ctypes.c_double,
+    ctypes.POINTER(_NeutralReferenceResult),
+)
+_NeutralReferenceDerivativeCallback = ctypes.CFUNCTYPE(
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_char_p,
+    ctypes.c_char_p,
+    ctypes.c_double,
+    ctypes.c_double,
+    ctypes.c_void_p,
+    ctypes.c_size_t,
+    ctypes.POINTER(_NeutralReferenceDerivativeResult),
 )
 
 
@@ -794,6 +934,86 @@ def _figiel_provider_model(
     return epcsaft.Mixture(parameters)
 
 
+@pytest.mark.parametrize("with_sensitivity", (False, True))
+def test_unreachable_provider_state_fails_closed_in_subprocess(
+    with_sensitivity: bool,
+) -> None:
+    script = textwrap.dedent(
+        f"""
+        import json
+
+        import epcsaft
+        import epcsaft_equilibrium
+
+        component_ids = ("water", "sodium-cation", "chloride-anion")
+        parameters = epcsaft.Parameters.from_catalog(
+            "figiel-2025-reference-electrolytes",
+            components=component_ids,
+            version=1,
+        )
+        model = epcsaft.Mixture(parameters)
+        phase = epcsaft_equilibrium.ProviderPhase(
+            model=model,
+            expected_parameter_fingerprint=model.parameter_fingerprint,
+            admissible_packing_fraction_interval=(1.0e-6, 0.74),
+        )
+        problem = epcsaft_equilibrium.ChemicalEquilibriumProblem(
+            species_ids=component_ids,
+            charges=(0, 1, -1),
+            molar_masses_kg_per_mol=(2.0, 1.0, 1.0),
+            balance_matrix=((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
+            conserved_totals=(1.8, 0.0),
+            reaction_matrix=((-1.0, 1.0, 1.0),),
+            feed_amounts_mol=(0.8, 0.1, 0.1),
+            equilibrium_constants=(
+                epcsaft_equilibrium.ChemicalEquilibriumConstant(
+                    ln_value=0.0,
+                    source_id="issue-81-minimal-reproducer",
+                    reference_id="provider-helmholtz-coordinate-basis",
+                    reaction_orientation="products_positive",
+                    conversion_id="already-provider-basis",
+                    dimensionless=True,
+                ),
+            ),
+            strict_interior_amount_floor_mol=1.0e-12,
+        )
+        sensitivity = (
+            epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest()
+            if {with_sensitivity!r}
+            else None
+        )
+        try:
+            epcsaft_equilibrium.chemical_equilibrium(
+                phase,
+                298.15 * epcsaft.unit_registry.kelvin,
+                100000.0 * epcsaft.unit_registry.pascal,
+                problem,
+                sensitivity_request=sensitivity,
+            )
+        except epcsaft_equilibrium.ChemicalEquilibriumError as error:
+            print(json.dumps({{
+                "kind": type(error).__name__,
+                "solver_status": error.diagnostics.solver_status,
+                "failure_reason": error.diagnostics.failure_reason,
+                "callback_error": error.diagnostics.callback_error,
+            }}, sort_keys=True))
+            raise SystemExit(0)
+        raise SystemExit(3)
+        """
+    )
+    completed = subprocess.run(
+        (sys.executable, "-X", "faulthandler", "-c", script),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["kind"] == "ChemicalEquilibriumError"
+    assert payload["solver_status"]
+    assert "ion mole fraction exceeds the parameter source domain" in payload["callback_error"]
+
+
 def _held_water_ionization_problem() -> tuple[
     epcsaft.Mixture, dict[str, object], dict[str, object]
 ]:
@@ -846,6 +1066,7 @@ def _held_water_ionization_problem() -> tuple[
             "id": standard_state["id"],
             "activity_scale_id": standard_state["activity_scale_id"],
             "log_activity_scale_factors": (0.0, conversion, conversion),
+            "reference_pressure_pa": state["pressure_pa"],
         },
     )
 
@@ -854,6 +1075,8 @@ def _provider_solve(
     model: epcsaft.Mixture,
     spec: dict[str, object],
     source_standard_state: dict[str, object] | None = None,
+    sensitivity_request: epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest
+    | None = None,
 ) -> epcsaft_equilibrium.ChemicalEquilibriumResult:
     standard_state = (
         None
@@ -862,6 +1085,7 @@ def _provider_solve(
             id=source_standard_state["id"],
             activity_scale_id=source_standard_state["activity_scale_id"],
             log_activity_scale_factors=tuple(source_standard_state["log_activity_scale_factors"]),
+            reference_pressure_pa=source_standard_state["reference_pressure_pa"],
         )
     )
     return epcsaft_equilibrium.chemical_equilibrium(
@@ -873,6 +1097,114 @@ def _provider_solve(
         spec["temperature_k"] * epcsaft.unit_registry.kelvin,
         spec["pressure_pa"] * epcsaft.unit_registry.pascal,
         _typed_problem(spec, source_standard_state=standard_state),
+        sensitivity_request=sensitivity_request,
+    )
+
+
+def _linear_reference_capsule(
+    model: epcsaft.Mixture,
+    pressure_derivatives_per_pa: tuple[float, ...],
+) -> tuple[object, tuple[object, ...]]:
+    """Test-only broad linear reference layered over one installed Provider point."""
+    source_pressure_pa = 100_000.0
+    provider_capsule = epcsaft.native_sdk(model)
+    get_pointer = ctypes.pythonapi.PyCapsule_GetPointer
+    get_pointer.argtypes = (ctypes.py_object, ctypes.c_char_p)
+    get_pointer.restype = ctypes.c_void_p
+    provider_pointer = get_pointer(provider_capsule, b"epcsaft.native_sdk.v1")
+    provider_table = ctypes.cast(
+        provider_pointer, ctypes.POINTER(_ChemicalSdkTable)
+    ).contents
+    assert provider_table.table_size == ctypes.sizeof(_ChemicalSdkTable)
+    assert len(pressure_derivatives_per_pa) == provider_table.neutral_reference_basis_row_count
+
+    table = _ChemicalSdkTable.from_buffer_copy(
+        ctypes.string_at(provider_pointer, provider_table.table_size)
+    )
+    provider_value = _NeutralReferenceCallback(table.evaluate_neutral_reference)
+    provider_derivatives = _NeutralReferenceDerivativeCallback(
+        table.evaluate_neutral_reference_derivatives
+    )
+
+    def apply_linear_reference(
+        pressure_pa: float,
+        value: _NeutralReferenceResult,
+    ) -> None:
+        for row, derivative in enumerate(pressure_derivatives_per_pa):
+            value.log_fugacity_contractions[row] += derivative * (
+                pressure_pa - source_pressure_pa
+            )
+        value.pressure_pa = pressure_pa
+
+    def evaluate_value(
+        context: int,
+        fingerprint: bytes,
+        temperature_k: float,
+        pressure_pa: float,
+        result: ctypes.POINTER(_NeutralReferenceResult),
+    ) -> int:
+        status = provider_value(
+            context,
+            fingerprint,
+            temperature_k,
+            source_pressure_pa,
+            result,
+        )
+        if status == 0:
+            apply_linear_reference(pressure_pa, result.contents)
+        return status
+
+    def evaluate_derivatives(
+        context: int,
+        fingerprint: bytes,
+        topology_fingerprint: bytes,
+        temperature_k: float,
+        pressure_pa: float,
+        active_parameters: int,
+        active_parameter_count: int,
+        result: ctypes.POINTER(_NeutralReferenceDerivativeResult),
+    ) -> int:
+        status = provider_derivatives(
+            context,
+            fingerprint,
+            topology_fingerprint,
+            temperature_k,
+            source_pressure_pa,
+            active_parameters,
+            active_parameter_count,
+            result,
+        )
+        if status == 0:
+            native = result.contents
+            apply_linear_reference(pressure_pa, native.value)
+            for row, derivative in enumerate(pressure_derivatives_per_pa):
+                native.pressure_derivatives_per_pa[row] = derivative
+            native.derivative_availability = 2
+            native.source_pressure_min_pa = 50_000.0
+            native.source_pressure_max_pa = 150_000.0
+        return status
+
+    value_callback = _NeutralReferenceCallback(evaluate_value)
+    derivative_callback = _NeutralReferenceDerivativeCallback(evaluate_derivatives)
+    table.evaluate_neutral_reference = ctypes.cast(
+        value_callback, ctypes.c_void_p
+    ).value
+    table.evaluate_neutral_reference_derivatives = ctypes.cast(
+        derivative_callback, ctypes.c_void_p
+    ).value
+    name = ctypes.create_string_buffer(b"epcsaft.native_sdk.v1")
+    new_capsule = ctypes.pythonapi.PyCapsule_New
+    new_capsule.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p)
+    new_capsule.restype = ctypes.py_object
+    capsule = new_capsule(ctypes.addressof(table), name, None)
+    return capsule, (
+        provider_capsule,
+        provider_value,
+        provider_derivatives,
+        value_callback,
+        derivative_callback,
+        table,
+        name,
     )
 
 
@@ -921,7 +1253,12 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     model, spec, source_standard_state = _held_water_ionization_problem()
     capsule = epcsaft.native_sdk(model)
 
-    result = _provider_solve(model, spec, source_standard_state)
+    result = _provider_solve(
+        model,
+        spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
+    )
 
     assert result.thermodynamic_model == "installed_provider"
     amounts = result.amounts_mol
@@ -944,14 +1281,14 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
         "A_over_RT_reference_amount:n_ref=1mol:rho_ref=1mol_per_m3"
     )
     diagnostics = result.diagnostics
-    assert diagnostics.reference_derivative_availability == 0
+    assert diagnostics.reference_derivative_availability == 2
     assert diagnostics.reference_convergence_error <= 5.0e-5
     assert diagnostics.reference_representation_residual_inf_norm <= 1.0e-12
     assert (
         result.source_standard_state.activity_scale_id == source_standard_state["activity_scale_id"]
     )
-    assert result.standard_offsets == pytest.approx((-21.200377331401143,), abs=2.0e-12)
-    assert result.ln_k_provider_basis == pytest.approx((-53.423919749357395,), abs=2.0e-12)
+    assert result.standard_offsets == pytest.approx((-21.200377331250067,), abs=2.0e-12)
+    assert result.ln_k_provider_basis == pytest.approx((-53.42391974920632,), abs=2.0e-12)
     assert diagnostics.chemical_certification_level == "LOCAL_EQUILIBRIUM"
     assert diagnostics.boundary_status == "strict_interior"
     assert diagnostics.trace_status == "interior"
@@ -960,14 +1297,342 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     assert diagnostics.reaction_affinity_inf_norm <= 1.0e-12
     assert diagnostics.kkt_stationarity_inf_norm <= 1.0e-12
     assert diagnostics.globality_status == "not_guaranteed"
-    native = _provider_native(model, spec, source_standard_state)
+    sensitivity = result.sensitivity
+    assert sensitivity is not None
+    assert result.response_kind == "value_plus_jacobian"
+    assert sensitivity.status == "available"
+    assert sensitivity.failure_reason == ""
+    assert sensitivity.reference_parameter_status == "available"
+    assert tuple(parameter.name for parameter in sensitivity.parameters) == (
+        "balance_total[0]",
+        "ln_k_provider_basis[0]",
+        "pressure_pa",
+    )
+    pressure_index = tuple(
+        parameter.name for parameter in sensitivity.parameters
+    ).index("pressure_pa")
+    assert sensitivity.amount_derivatives[pressure_index] == pytest.approx(
+        (
+            6.04641378378937e-18,
+            -3.0241437366821673e-18,
+            -3.0241437366821673e-18,
+        ),
+        rel=2.0e-11,
+        abs=2.0e-24,
+    )
+    assert sensitivity.volume_derivatives[pressure_index] == pytest.approx(
+        -2.4677833433192133e-7,
+        rel=2.0e-11,
+        abs=2.0e-15,
+    )
+    assert result.source_standard_state.reference_pressure_pa == 100_000.0
+    artifact = result.artifact_identity
+    assert artifact.provider_distribution == "epcsaft"
+    assert artifact.provider_record_sha256.startswith("sha256:")
+    assert artifact.provider_sdk_capsule_name == "epcsaft.native_sdk.v1"
+    assert artifact.provider_sdk_abi_version == 1
+    assert artifact.provider_sdk_table_size > 0
+    assert artifact.provider_sdk_mixture_result_size > 0
+    assert artifact.provider_sdk_neutral_reference_derivative_result_size > 0
+    assert artifact.provider_sdk_reacting_phase_parameter_result_size > 0
+
+
+def test_source_reference_pressure_is_distinct_from_trial_pressure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    source_pressure_pa = 100_000.0
+    trial_pressure_pa = 100_010.0
+    pressure_step_pa = 2.0
+    reference_derivatives = (1.0e-4, -2.0e-4)
+    expected_reaction_derivative = (
+        -2.0 * reference_derivatives[0] + reference_derivatives[1]
+    )
+    source_standard_state["id"] = "manufactured-linear-reference-standard"
+    source_standard_state["reference_pressure_pa"] = source_pressure_pa
+    source_record = spec["equilibrium_constant_records"][0]
+    spec["equilibrium_constant_records"] = (
+        {
+            **source_record,
+            "source_id": "manufactured:linear-reference-pressure",
+            "reference_id": source_standard_state["id"],
+            "pressure_pa": source_pressure_pa,
+        },
+    )
+    spec["ln_k"] = (spec["ln_k"][0] + 50.0,)
+    spec["pressure_pa"] = trial_pressure_pa
+    capsule, keepalive = _linear_reference_capsule(model, reference_derivatives)
+    monkeypatch.setattr(
+        epcsaft,
+        "native_sdk",
+        lambda _model: (keepalive, capsule)[1],
+    )
+
+    result = _provider_solve(
+        model,
+        spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
+    )
+    perturbed: list[epcsaft_equilibrium.ChemicalEquilibriumResult] = []
+    for direction in (-1.0, 1.0):
+        trial = copy.deepcopy(spec)
+        trial["pressure_pa"] = trial_pressure_pa + direction * pressure_step_pa
+        perturbed.append(_provider_solve(model, trial, source_standard_state))
+
+    assert result.pressure_pa == trial_pressure_pa
+    assert result.source_standard_state is not None
+    assert result.source_standard_state.reference_pressure_pa == source_pressure_pa
+    assert result.sensitivity is not None
+    pressure_index = tuple(
+        parameter.name for parameter in result.sensitivity.parameters
+    ).index("pressure_pa")
+    finite_difference_amounts = tuple(
+        (
+            perturbed[1].amounts_mol[species]
+            - perturbed[0].amounts_mol[species]
+        )
+        / (2.0 * pressure_step_pa)
+        for species in range(len(result.amounts_mol))
+    )
+    assert result.sensitivity.amount_derivatives[pressure_index] == pytest.approx(
+        finite_difference_amounts,
+        rel=2.0e-5,
+        abs=2.0e-10,
+    )
+    finite_difference_ln_k = (
+        perturbed[1].ln_k_provider_basis[0]
+        - perturbed[0].ln_k_provider_basis[0]
+    ) / (2.0 * pressure_step_pa)
+    assert finite_difference_ln_k == pytest.approx(
+        expected_reaction_derivative,
+        rel=1.0e-11,
+        abs=1.0e-14,
+    )
+
+
+def test_source_pressure_derivatives_follow_compiled_reaction_basis() -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    reaction = spec["reaction_matrix"][0]
+    source_ln_k = spec["ln_k"][0]
+    source_record = spec["equilibrium_constant_records"][0]
+    spec["reaction_matrix"] = (
+        reaction,
+        tuple(2.0 * coefficient for coefficient in reaction),
+    )
+    spec["ln_k"] = (source_ln_k, 2.0 * source_ln_k)
+    spec["equilibrium_constant_records"] = (
+        source_record,
+        {
+            **source_record,
+            "source_id": f"{source_record['source_id']}:scaled-by-two",
+        },
+    )
+
+    result = _provider_solve(
+        model,
+        spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
+    )
+
+    assert result.sensitivity is not None
+    assert result.sensitivity.status == "available"
+    assert tuple(parameter.name for parameter in result.sensitivity.parameters) == (
+        "balance_total[0]",
+        "ln_k_provider_basis[0]",
+        "pressure_pa",
+    )
+
+
+def _held_active_parameter(
+    family: str = "segment_diameter",
+    value: float = 2.2740,
+    unit: str = "angstrom",
+) -> epcsaft_equilibrium.ChemicalEquilibriumActiveParameter:
+    return epcsaft_equilibrium.ChemicalEquilibriumActiveParameter(
+        family=family,
+        identity="component",
+        component_ids=("hydronium-cation",),
+        value=value,
+        unit=unit,
+    )
+
+
+def test_installed_provider_active_request_is_atomic_exact_and_ordered() -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    value_only = _provider_solve(model, spec, source_standard_state)
+    empty_request = _provider_solve(
+        model,
+        spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
+    )
+    assert empty_request.amounts_mol == pytest.approx(
+        value_only.amounts_mol, rel=1.0e-9, abs=2.0e-22
+    )
+    assert empty_request.volume_m3 == pytest.approx(
+        value_only.volume_m3, rel=2.0e-13
+    )
+
+    parameter = _held_active_parameter()
+    request = epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+        active_parameters=(parameter,)
+    )
+    result = _provider_solve(model, spec, source_standard_state, request)
+    assert result.amounts_mol == pytest.approx(
+        value_only.amounts_mol, rel=1.0e-9, abs=2.0e-22
+    )
+    assert result.volume_m3 == pytest.approx(value_only.volume_m3, rel=2.0e-13)
+    assert result.sensitivity is not None
+    assert result.sensitivity.status == "available"
+    assert result.sensitivity.provider_parameter_status == "available"
+    assert result.sensitivity.reference_parameter_status == "available"
+    assert tuple(item.name for item in result.sensitivity.parameters) == (
+        "balance_total[0]",
+        "ln_k_provider_basis[0]",
+        "pressure_pa",
+        "provider_parameter[segment_diameter;component;hydronium-cation]",
+    )
+
+    step = 2.0e-5
+    shifted = tuple(
+        _provider_solve(
+            model,
+            spec,
+            source_standard_state,
+            epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+                active_parameters=(
+                    _held_active_parameter(value=parameter.value + direction * step),
+                )
+            ),
+        )
+        for direction in (-1.0, 1.0)
+    )
+    exact = result.sensitivity.amount_derivatives[-1]
+    for ion in (1, 2):
+        numerical = (
+            shifted[1].amounts_mol[ion] - shifted[0].amounts_mol[ion]
+        ) / (2.0 * step)
+        assert exact[ion] == pytest.approx(numerical, rel=3.0e-7, abs=1.0e-18)
+
+    dispersion = _held_active_parameter(
+        family="dispersion_energy_over_k",
+        value=1616.4939,
+        unit="kelvin",
+    )
+    forward = _provider_solve(
+        model,
+        spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+            active_parameters=(parameter, dispersion)
+        ),
+    )
+    reversed_result = _provider_solve(
+        model,
+        spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+            active_parameters=(dispersion, parameter)
+        ),
+    )
+    assert forward.sensitivity is not None
+    assert reversed_result.sensitivity is not None
+    for forward_row, reversed_row in zip(
+        forward.sensitivity.amount_derivatives[-2:],
+        reversed(reversed_result.sensitivity.amount_derivatives[-2:]),
+        strict=True,
+    ):
+        assert forward_row == pytest.approx(
+            reversed_row, rel=2.0e-13, abs=1.0e-25
+        )
+    assert forward.sensitivity.volume_derivatives[-2:] == pytest.approx(
+        tuple(reversed(reversed_result.sensitivity.volume_derivatives[-2:])),
+        rel=2.0e-13,
+        abs=1.0e-28,
+    )
+
+
+def test_installed_provider_basis_active_request_has_zero_lnk_cross_block() -> None:
+    model, source_spec, source_standard_state = _held_water_ionization_problem()
+    transformed = _provider_solve(
+        model,
+        source_spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
+    )
+    spec = copy.deepcopy(source_spec)
+    spec["ln_k"] = transformed.ln_k_provider_basis
+    spec["equilibrium_constant_records"] = tuple(
+        {
+            **record,
+            "reference_id": "provider-helmholtz-coordinate-basis",
+            "conversion_id": "already-provider-basis",
+        }
+        for record in spec["equilibrium_constant_records"]
+    )
+    result = _provider_solve(
+        model,
+        spec,
+        None,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+            active_parameters=(_held_active_parameter(),)
+        ),
+    )
+    assert result.sensitivity is not None
+    assert result.sensitivity.status == "available"
+    assert result.sensitivity.provider_parameter_status == "available"
+    assert result.sensitivity.reference_parameter_status == "not_applicable"
+
+
+def test_installed_provider_active_request_rejects_unadvertised_unit() -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    with pytest.raises(
+        epcsaft_equilibrium.ChemicalEquilibriumError,
+        match="descriptor is missing or incompatible",
+    ):
+        _provider_solve(
+            model,
+            spec,
+            source_standard_state,
+            epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+                active_parameters=(_held_active_parameter(unit="meter"),)
+            ),
+        )
+
+
+def test_active_provider_substatus_tracks_kkt_unavailability() -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    balances = spec["balance_matrix"]
+    feed = spec["feed_amounts"]
+    spec["conserved_totals"] = tuple(
+        math.fsum(
+            row[index] * feed[index]  # type: ignore[index]
+            for index in range(len(feed))  # type: ignore[arg-type]
+        )
+        for row in balances  # type: ignore[union-attr]
+    )
+    native = _equilibrium._chemical_equilibrium(
+        epcsaft.native_sdk(model),
+        spec,
+        source_standard_state,
+        (1.0e-6, 0.74),
+        1.0e-8,
+        (
+            {
+                "family": "segment_diameter",
+                "identity": "component",
+                "component_ids": ("hydronium-cation",),
+                "value": 2.2740,
+                "unit": "angstrom",
+            },
+        ),
+    )
     sensitivities = native["sensitivities"]
     assert sensitivities["status"] == "unavailable"
-    assert sensitivities["failure_reason"] == "missing_transformed_reference_derivatives"
-    assert sensitivities["reference_parameter_status"] == "unavailable"
-    assert sensitivities["parameter_order"] == ()
-    assert sensitivities["amount_derivatives"] == ()
-    assert sensitivities["volume_derivatives"] == ()
+    assert sensitivities["provider_parameter_status"] == "unavailable"
+    assert sensitivities["provider_parameter_failure_reason"] == sensitivities["failure_reason"]
 
 
 @pytest.mark.parametrize("variant", ("species_order", "reaction_orientation"))
@@ -1172,13 +1837,27 @@ def test_installed_provider_pressure_sensitivity_matches_independent_resolves() 
     _bind_record(spec)
     native = _provider_native(model, spec)
     sensitivities = native["sensitivities"]
+    public = _provider_solve(
+        model,
+        spec,
+        sensitivity_request=epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
+    )
+    public_sensitivity = public.sensitivity
+    assert public_sensitivity is not None
+    assert public_sensitivity.status == "available"
+    assert tuple(parameter.name for parameter in public_sensitivity.parameters) == (
+        sensitivities["parameter_order"]
+    )
+    assert public_sensitivity.amount_derivatives == tuple(
+        tuple(row) for row in sensitivities["amount_derivatives"]
+    )
+    assert public_sensitivity.volume_derivatives == pytest.approx(
+        sensitivities["volume_derivatives"]
+    )
     assert sensitivities["status"] == "available"
     assert sensitivities["parameter_fingerprint"] == model.parameter_fingerprint
-    assert sensitivities["provider_parameter_status"] == "unavailable"
-    assert (
-        sensitivities["provider_parameter_failure_reason"]
-        == "missing_typed_provider_kkt_cross_derivatives"
-    )
+    assert sensitivities["provider_parameter_status"] == "not_applicable"
+    assert sensitivities["provider_parameter_failure_reason"] == ""
     pressure_index = sensitivities["parameter_order"].index("pressure_pa")
 
     step_pa = 5.0

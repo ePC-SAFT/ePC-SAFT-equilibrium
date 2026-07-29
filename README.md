@@ -200,11 +200,22 @@ reacting-phase foundation is documented separately in
 `docs/designs/2026-07-21-private-reacting-phase-kernel.md`. It currently has
 Belov trace evidence, installed-Provider-manufactured evidence, and one
 source-complete Held/IAPWS water self-ionization value case. The public typed
-`chemical_equilibrium` operation reports only a local fixed-`T,P` homogeneous
-value result. Its native owner retains conditioned implicit derivatives for
-supported state inputs and fails closed for missing Provider/reference
-parameter tensors, singular systems, or active-set changes. The public
-operation has no sensitivity contract, predictive admission, coupled
+`chemical_equilibrium` operation reports a local fixed-`T,P` homogeneous value
+and optionally returns exact conditioned derivatives with respect to compiled
+balance totals, final Provider-basis `ln(K)`, and pressure. Value-only and
+value-plus-Jacobian responses are explicit. Requested unsupported columns fail
+closed. A source standard state's reference pressure remains immutable
+provenance, while the Provider reference is re-evaluated and the transformed
+Provider-basis record is bound at each actual trial pressure. Exact
+source-reference pressure derivatives are included in the returned pressure
+column when the installed derivative tail and its branch certificates are
+available. Typed active-parameter requests consume only coordinates advertised
+by the installed Provider and require one atomic callback to supply the
+active-model Helmholtz, packing, pressure, chemical-potential, and
+neutral-reference derivative blocks. Unsupported or incomplete requests fail
+closed; no derivative is approximated. Results bind species/parameter order, units, chart topology,
+Provider fingerprint, installed distribution RECORD fingerprints, and Provider
+SDK ABI identity. The operation has no predictive admission, coupled
 phase-equilibrium claim, or globality proof.
 Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the

@@ -353,7 +353,7 @@ public_surface:
 
 homogeneous_reacting_phase:
   binding_decision: D-028
-  status: public-local-value-source-complete-evidence
+  status: public-local-value-and-conditioned-sensitivity-source-complete-evidence
   authority_effect: none
   public_operation: chemical_equilibrium
   scope: one homogeneous fixed-temperature fixed-pressure reacting phase
@@ -368,6 +368,20 @@ homogeneous_reacting_phase:
     - packing-fraction value, gradient, and Hessian
     - source temperature and total-ion composition bounds
     - Provider-basis lnK or explicit source activity-scale shifts plus the neutral-reference callback
+    - certified neutral-reference pressure derivatives at the actual system pressure
+  source_pressure_semantics:
+    provenance: source-standard-state reference pressure
+    provider_evaluation: actual trial system pressure
+    transformed_record_binding: actual trial system pressure
+  sensitivity_contract:
+    available:
+      - compiled balance totals
+      - compiled Provider-basis lnK
+      - pressure including transformed source-reference pressure derivatives
+      - ordered active Provider coordinates with complete atomic active-model tensors
+    fail_closed:
+      - unadvertised coordinates or incomplete Provider derivative blocks
+      - active bounds or unavailable, rank-deficient, or ill-conditioned KKT columns
   evidence_profiles:
     - installed_provider_manufactured_nonpredictive
     - installed_provider_source_bound_water_self_ionization
@@ -388,7 +402,7 @@ homogeneous_reacting_phase:
     kkt_stationarity_inf_norm: 4.9960036108132044e-15
     public_private_value_and_certificate_parity: passed
   downstream_blockers:
-    - typed Provider parameter derivatives for implicit sensitivities
+    - atomic active-model Helmholtz, mixed-parameter, and packing state tensors
     - coupled phase incidence and HELD-owned phase discovery
 
 evidence:

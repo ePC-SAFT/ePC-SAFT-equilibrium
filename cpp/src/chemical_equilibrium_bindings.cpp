@@ -20,6 +20,15 @@ namespace {
 
 constexpr std::size_t kChemicalSourceDomainSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, total_ion_mole_fraction_max) + sizeof(double);
+constexpr std::size_t kChemicalNeutralReferenceSizeSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, neutral_reference_result_size)
+    + sizeof(std::size_t);
+constexpr std::size_t kChemicalNeutralReferenceDerivativeSizeSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, neutral_reference_derivative_result_size)
+    + sizeof(std::size_t);
+constexpr std::size_t kChemicalReactingPhaseParameterSizeSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, reacting_phase_parameter_result_size)
+    + sizeof(std::size_t);
 
 struct ChemicalProviderMetadata {
     std::vector<std::string> component_ids;
@@ -108,6 +117,26 @@ std::vector<EquilibriumConstantRecord> equilibrium_constant_records(
             py::cast<bool>(record["dimensionless"]),
             py::cast<double>(record["temperature_k"]),
             py::cast<double>(record["pressure_pa"]),
+        });
+    }
+    return result;
+}
+
+std::vector<ProviderActiveParameterInput> active_parameter_inputs(
+    const py::object& value
+) {
+    std::vector<ProviderActiveParameterInput> result;
+    if (value.is_none()) {
+        return result;
+    }
+    for (const py::handle item : py::cast<py::tuple>(value)) {
+        const py::dict request = py::cast<py::dict>(item);
+        result.push_back({
+            py::cast<std::string>(request["family"]),
+            py::cast<std::string>(request["identity"]),
+            py::cast<std::vector<std::string>>(request["component_ids"]),
+            py::cast<double>(request["value"]),
+            py::cast<std::string>(request["unit"]),
         });
     }
     return result;
@@ -308,7 +337,10 @@ py::dict solve_provider_input(
     const ReactionSystemInput& input,
     const ProviderContext& provider,
     const std::vector<double>& packing_bounds,
-    double trace_floor
+    double trace_floor,
+    const std::vector<double>& ln_k_pressure_derivatives_per_pa = {},
+    const std::vector<double>& ln_k_parameter_derivatives = {},
+    const ProviderActiveParameterSet* active_parameters = nullptr
 ) {
     validate_provider_identity(metadata, input);
     if (input.temperature_k < sdk.source_temperature_min_k
@@ -332,6 +364,75 @@ py::dict solve_provider_input(
     if (packing_bounds.size() != 2) {
         throw py::value_error("packing_fraction_bounds must contain two values");
     }
+    std::vector<double> compiled_ln_k_pressure_derivatives_per_pa;
+    if (!ln_k_pressure_derivatives_per_pa.empty()) {
+        if (ln_k_pressure_derivatives_per_pa.size()
+                != input.reaction_matrix.rows
+            || compiled.supplied_reaction_transform.rows
+                != compiled.reaction_matrix.rows
+            || compiled.supplied_reaction_transform.columns
+                != input.reaction_matrix.rows) {
+            throw py::value_error(
+                "source pressure derivatives do not match the compiled reaction basis"
+            );
+        }
+        compiled_ln_k_pressure_derivatives_per_pa.assign(
+            compiled.reaction_matrix.rows, 0.0
+        );
+        for (std::size_t reaction = 0;
+             reaction < compiled.reaction_matrix.rows;
+             ++reaction) {
+            for (std::size_t supplied = 0;
+                 supplied < input.reaction_matrix.rows;
+                 ++supplied) {
+                compiled_ln_k_pressure_derivatives_per_pa[reaction] +=
+                    compiled.supplied_reaction_transform(reaction, supplied)
+                    * ln_k_pressure_derivatives_per_pa[supplied];
+            }
+        }
+    }
+    std::vector<double> compiled_ln_k_parameter_derivatives;
+    const std::size_t active_parameter_count = active_parameters == nullptr
+        ? 0
+        : active_parameters->parameters.size();
+    if (!ln_k_parameter_derivatives.empty()) {
+        if (active_parameter_count == 0
+            || ln_k_parameter_derivatives.size()
+                != input.reaction_matrix.rows * active_parameter_count
+            || compiled.supplied_reaction_transform.rows
+                != compiled.reaction_matrix.rows
+            || compiled.supplied_reaction_transform.columns
+                != input.reaction_matrix.rows) {
+            throw py::value_error(
+                "source parameter derivatives do not match the compiled reaction basis"
+            );
+        }
+        compiled_ln_k_parameter_derivatives.assign(
+            compiled.reaction_matrix.rows * active_parameter_count, 0.0
+        );
+        for (std::size_t reaction = 0;
+             reaction < compiled.reaction_matrix.rows;
+             ++reaction) {
+            for (std::size_t supplied = 0;
+                 supplied < input.reaction_matrix.rows;
+                 ++supplied) {
+                for (std::size_t parameter = 0;
+                     parameter < active_parameter_count;
+                     ++parameter) {
+                    compiled_ln_k_parameter_derivatives[
+                        reaction * active_parameter_count + parameter
+                    ] += compiled.supplied_reaction_transform(reaction, supplied)
+                        * ln_k_parameter_derivatives[
+                            supplied * active_parameter_count + parameter
+                        ];
+                }
+            }
+        }
+    } else if (active_parameter_count != 0) {
+        compiled_ln_k_parameter_derivatives.assign(
+            compiled.reaction_matrix.rows * active_parameter_count, 0.0
+        );
+    }
     ChemicalSolveResult evaluation = solve_provider_reaction(
         compiled,
         provider,
@@ -340,14 +441,42 @@ py::dict solve_provider_input(
         packing_bounds[0],
         packing_bounds[1],
         sdk.total_ion_mole_fraction_max,
-        trace_floor
+        trace_floor,
+        compiled_ln_k_pressure_derivatives_per_pa,
+        compiled_ln_k_parameter_derivatives,
+        active_parameters
     );
-    evaluation.sensitivities.provider_parameter_status = "unavailable";
-    evaluation.sensitivities.provider_parameter_failure_reason =
-        "missing_typed_provider_kkt_cross_derivatives";
+    if (active_parameter_count == 0) {
+        evaluation.sensitivities.provider_parameter_status = "not_applicable";
+        evaluation.sensitivities.provider_parameter_failure_reason.clear();
+    } else if (evaluation.sensitivities.status == "available") {
+        evaluation.sensitivities.provider_parameter_status = "available";
+        evaluation.sensitivities.provider_parameter_failure_reason.clear();
+    } else {
+        evaluation.sensitivities.provider_parameter_status = "unavailable";
+        evaluation.sensitivities.provider_parameter_failure_reason =
+            evaluation.sensitivities.failure_reason;
+    }
     py::dict result = chemical_result(evaluation);
     result["parameter_fingerprint"] = input.provider_fingerprint;
     result["packing_fraction_bounds"] = packing_bounds;
+    result["provider_sdk_capsule_name"] = EPCSAFT_NATIVE_SDK_V1_CAPSULE_NAME;
+    result["provider_sdk_abi_version"] = sdk.abi_version;
+    result["provider_sdk_table_size"] = sdk.table_size;
+    result["provider_sdk_result_size"] = sdk.result_size;
+    result["provider_sdk_mixture_result_size"] = sdk.mixture_result_size;
+    result["provider_sdk_neutral_reference_result_size"] =
+        sdk.table_size >= kChemicalNeutralReferenceSizeSdkTableSize
+        ? sdk.neutral_reference_result_size
+        : 0;
+    result["provider_sdk_neutral_reference_derivative_result_size"] =
+        sdk.table_size >= kChemicalNeutralReferenceDerivativeSizeSdkTableSize
+        ? sdk.neutral_reference_derivative_result_size
+        : 0;
+    result["provider_sdk_reacting_phase_parameter_result_size"] =
+        sdk.table_size >= kChemicalReactingPhaseParameterSizeSdkTableSize
+        ? sdk.reacting_phase_parameter_result_size
+        : 0;
     return result;
 }
 
@@ -356,7 +485,9 @@ py::dict solve_provider_source(
     const py::dict& spec,
     const py::dict& source_standard_state,
     const std::vector<double>& packing_bounds,
-    double trace_floor
+    double trace_floor,
+    bool sensitivities_requested,
+    const ProviderActiveParameterSet* active_parameters
 ) {
     const epcsaft_native_sdk_v1& sdk = checked_chemical_sdk(capsule);
     const ChemicalProviderMetadata metadata = chemical_provider_metadata(sdk);
@@ -372,8 +503,17 @@ py::dict solve_provider_source(
         py::cast<std::vector<double>>(
             source_standard_state["log_activity_scale_factors"]
         );
+    const double source_reference_pressure_pa = py::cast<double>(
+        source_standard_state["reference_pressure_pa"]
+    );
     if (source_standard_state_id.empty() || source_activity_scale_id.empty()) {
         throw py::value_error("source standard-state identity is incomplete");
+    }
+    if (!std::isfinite(source_reference_pressure_pa)
+        || source_reference_pressure_pa <= 0.0) {
+        throw py::value_error(
+            "source standard-state reference pressure is invalid"
+        );
     }
     for (const EquilibriumConstantRecord& record : input.equilibrium_constant_records) {
         if (record.conversion_id
@@ -382,7 +522,7 @@ py::dict solve_provider_source(
             || !record.dimensionless
             || record.reference_id.empty()
             || record.temperature_k != input.temperature_k
-            || record.pressure_pa != input.pressure_pa) {
+            || record.pressure_pa != source_reference_pressure_pa) {
             throw py::value_error(
                 "source equilibrium-constant provenance is incompatible"
             );
@@ -394,9 +534,17 @@ py::dict solve_provider_source(
         }
     }
     const ProviderContext provider(sdk, input.provider_fingerprint);
-    const NeutralReferenceEvaluation reference = provider.evaluate_neutral_reference(
-        input.temperature_k, input.pressure_pa
-    );
+    const NeutralReferenceEvaluation reference = sensitivities_requested
+        ? provider.evaluate_neutral_reference_derivatives(
+            input.temperature_k,
+            input.pressure_pa,
+            active_parameters == nullptr
+                ? ProviderActiveParameterSet{}
+                : *active_parameters
+        )
+        : provider.evaluate_neutral_reference(
+            input.temperature_k, input.pressure_pa
+        );
     const SourceStandardStateResult transformed = transform_source_standard_state(
         input.reaction_matrix,
         input.ln_k,
@@ -411,6 +559,7 @@ py::dict solve_provider_source(
     for (EquilibriumConstantRecord& record : input.equilibrium_constant_records) {
         record.reference_id = "provider-helmholtz-coordinate-basis";
         record.conversion_id = "already-provider-basis";
+        record.pressure_pa = input.pressure_pa;
     }
     py::dict result = solve_provider_input(
         sdk,
@@ -418,18 +567,19 @@ py::dict solve_provider_source(
         input,
         provider,
         packing_bounds,
-        trace_floor
+        trace_floor,
+        sensitivities_requested
+            ? transformed.pressure_derivatives_per_pa
+            : std::vector<double>{},
+        sensitivities_requested
+            ? transformed.parameter_derivatives
+            : std::vector<double>{},
+        active_parameters
     );
     py::dict sensitivities = py::cast<py::dict>(result["sensitivities"]);
-    sensitivities["status"] = "unavailable";
-    sensitivities["failure_reason"] =
-        "missing_transformed_reference_derivatives";
-    sensitivities["parameter_order"] = py::tuple();
-    sensitivities["amount_derivatives"] = py::tuple();
-    sensitivities["volume_derivatives"] = py::tuple();
-    sensitivities["reference_parameter_status"] = "unavailable";
-    sensitivities["reference_parameter_failure_reason"] =
-        "provider_neutral_reference_derivatives_unavailable";
+    sensitivities["reference_parameter_status"] =
+        sensitivities_requested ? "available" : "not_applicable";
+    sensitivities["reference_parameter_failure_reason"] = "";
     result["standard_offsets"] = transformed.standard_offsets;
     result["ln_k_provider_basis"] = transformed.ln_k_provider_basis;
     result["reference_representation_residual_inf_norm"] =
@@ -449,8 +599,11 @@ py::dict solve_chemical_equilibrium(
     const py::dict& spec,
     const py::object& source_standard_state,
     const py::object& packing_fraction_bounds,
-    double trace_floor
+    double trace_floor,
+    const py::object& active_parameters
 ) {
+    const std::vector<ProviderActiveParameterInput> active_requests =
+        active_parameter_inputs(active_parameters);
     if (capsule.is_none()) {
         if (!source_standard_state.is_none() || !packing_fraction_bounds.is_none()) {
             throw py::value_error(
@@ -472,21 +625,33 @@ py::dict solve_chemical_equilibrium(
         const ChemicalProviderMetadata metadata = chemical_provider_metadata(sdk);
         const ReactionSystemInput input = reaction_system_input(spec);
         const ProviderContext provider(sdk, input.provider_fingerprint);
+        const ProviderActiveParameterSet resolved =
+            provider.resolve_active_parameters(input.temperature_k, active_requests);
         return solve_provider_input(
             sdk,
             metadata,
             input,
             provider,
             packing_bounds,
-            trace_floor
+            trace_floor,
+            {},
+            {},
+            resolved.parameters.empty() ? nullptr : &resolved
         );
     }
+    const epcsaft_native_sdk_v1& sdk = checked_chemical_sdk(provider_capsule);
+    const ReactionSystemInput input = reaction_system_input(spec);
+    const ProviderContext provider(sdk, input.provider_fingerprint);
+    const ProviderActiveParameterSet resolved =
+        provider.resolve_active_parameters(input.temperature_k, active_requests);
     return solve_provider_source(
         provider_capsule,
         spec,
         py::cast<py::dict>(source_standard_state),
         packing_bounds,
-        trace_floor
+        trace_floor,
+        !active_parameters.is_none(),
+        resolved.parameters.empty() ? nullptr : &resolved
     );
 }
 
@@ -534,7 +699,8 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("spec"),
         py::arg("source_standard_state"),
         py::arg("packing_fraction_bounds"),
-        py::arg("trace_floor")
+        py::arg("trace_floor"),
+        py::arg("active_parameters") = py::none()
     );
     module.def(
         "_chemical_evaluate_provider_block",

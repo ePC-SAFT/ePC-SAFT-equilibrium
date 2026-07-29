@@ -43,4 +43,5 @@ def _chemical_equilibrium(
     source_standard_state: dict[str, object] | None,
     packing_fraction_bounds: tuple[float, float] | None,
     trace_floor: float,
+    active_parameters: tuple[dict[str, object], ...] | None = ...,
 ) -> dict[str, Any]: ...
