@@ -22,7 +22,7 @@ replace a formulation owner.
 | Homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) and [GREPE homogeneous layer](designs/2026-07-27-grepe-homogeneous-chemical-layer.md) | Public typed local value operation plus private conditioned state-input sensitivities; Belov trace evidence plus one source-complete Held/IAPWS installed-Provider value case; no predictive or global admission |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
-| Coupled multiphase chemical equilibrium | No current runtime design | Closed future formulation; no public schema or runtime route |
+| Coupled multiphase chemical equilibrium | [GREPE reactive phase equilibrium](designs/2026-07-28-grepe-reactive-phase-equilibrium.md) | Package-local design only; no public schema or runtime route |
 
 The only accepted capability is `pure-component-saturation-v1`. A public
 symbol, a local candidate, an installed campaign, or a converged local solve is
@@ -340,7 +340,13 @@ phase incidence, global conservation, phase-specific electroneutrality,
 source-complete standard-state transformations, phase discovery, and distinct
 reaction/transfer/pressure certificates. Staged chemistry followed by a
 phase-only solve is initialization evidence, not a coupled equilibrium result.
-No public coupled reactive-phase schema or runtime route is admitted.
+The package-local
+[GREPE reactive phase-equilibrium design](designs/2026-07-28-grepe-reactive-phase-equilibrium.md)
+preserves those requirements and revises phase discovery around the validated
+HELD2 joint composition/log-volume search, immutable candidate identity,
+master-to-NLP initialization, active-set re-solves, and fail-closed evidence
+rules. It is a design only. No public coupled reactive-phase schema or runtime
+route is admitted.
 
 ## Historical and scientific provenance
 

@@ -619,8 +619,16 @@ void run_held2_step1_checks() {
 
 void run_held2_step2_checks() {
     const Held2StateEvaluation reference = quadratic_state({0.4}, 0.0);
+    const Held2StateEvaluation trial = quadratic_state({0.6}, 0.1);
     const Held2TpdEvaluation tpd = evaluate_held2_tpd(
-        reference, {0.4}, quadratic_state({0.6}, 0.1), {0.6}
+        reference, {0.4}, trial, {0.6}
+    );
+    const double grepe_reduced_cost = trial.objective
+        - (reference.objective - 0.4 * reference.gradient.front())
+        - 0.6 * reference.gradient.front();
+    require(
+        std::abs(tpd.value - grepe_reduced_cost) <= 1.0e-12,
+        "HELD2 TPD no longer equals the nonreactive GREPE reduced cost"
     );
     require(
         std::abs(evaluate_held2_tpd(
@@ -847,6 +855,35 @@ void run_held2_step4_checks() {
     require(
         std::abs(result.multipliers->front()) <= 0.25 + 1.0e-10,
         "Step-4 multiplier left the analytic optimum face"
+    );
+
+    Held2PersistentState master;
+    master.feed = {0.5};
+    master.feed_reduced_gibbs = 10.0;
+    master.M = {
+        {1, {0.2}, 1.0, 0.0, 1.0, {}, "master"},
+        {2, {0.8}, 1.0, 0.0, 2.0, {}, "master"},
+    };
+    const Held2Step4Result dual = run_held2_step4(master);
+    constexpr double slope = 5.0 / 3.0;
+    require(dual.status == "complete", "restricted-master dual solve failed");
+    const double intercept = *dual.upper_bound - 0.5 * slope;
+    require_close(
+        {
+            *dual.upper_bound, dual.multipliers->front(),
+            1.0 - intercept - 0.2 * slope,
+            2.0 - intercept - 0.8 * slope,
+        },
+        {1.5, slope, 0.0, 0.0}, 1.0e-12,
+        "HELD2 upper envelope no longer equals the restricted phase master"
+    );
+    master.M.push_back({3, {0.5}, 1.0, 0.0, 1.4, {}, "pricing"});
+    const Held2Step4Result expanded = run_held2_step4(master);
+    require(expanded.status == "complete", "expanded restricted-master dual failed");
+    require_close(
+        {1.4 - intercept - 0.5 * slope, *expanded.upper_bound},
+        {-0.1, 1.4}, 1.0e-12,
+        "negative reduced-cost column did not improve the restricted master"
     );
 }
 
