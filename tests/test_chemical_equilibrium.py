@@ -854,6 +854,8 @@ def _provider_solve(
     model: epcsaft.Mixture,
     spec: dict[str, object],
     source_standard_state: dict[str, object] | None = None,
+    sensitivity_request: epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest
+    | None = None,
 ) -> epcsaft_equilibrium.ChemicalEquilibriumResult:
     standard_state = (
         None
@@ -873,6 +875,7 @@ def _provider_solve(
         spec["temperature_k"] * epcsaft.unit_registry.kelvin,
         spec["pressure_pa"] * epcsaft.unit_registry.pascal,
         _typed_problem(spec, source_standard_state=standard_state),
+        sensitivity_request=sensitivity_request,
     )
 
 
@@ -921,7 +924,12 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     model, spec, source_standard_state = _held_water_ionization_problem()
     capsule = epcsaft.native_sdk(model)
 
-    result = _provider_solve(model, spec, source_standard_state)
+    result = _provider_solve(
+        model,
+        spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
+    )
 
     assert result.thermodynamic_model == "installed_provider"
     amounts = result.amounts_mol
@@ -960,14 +968,22 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     assert diagnostics.reaction_affinity_inf_norm <= 1.0e-12
     assert diagnostics.kkt_stationarity_inf_norm <= 1.0e-12
     assert diagnostics.globality_status == "not_guaranteed"
-    native = _provider_native(model, spec, source_standard_state)
-    sensitivities = native["sensitivities"]
-    assert sensitivities["status"] == "unavailable"
-    assert sensitivities["failure_reason"] == "missing_transformed_reference_derivatives"
-    assert sensitivities["reference_parameter_status"] == "unavailable"
-    assert sensitivities["parameter_order"] == ()
-    assert sensitivities["amount_derivatives"] == ()
-    assert sensitivities["volume_derivatives"] == ()
+    sensitivity = result.sensitivity
+    assert sensitivity is not None
+    assert result.response_kind == "value_with_unavailable_jacobian"
+    assert sensitivity.status == "unavailable"
+    assert sensitivity.failure_reason == "missing_transformed_reference_derivatives"
+    assert sensitivity.reference_parameter_status == "unavailable"
+    assert sensitivity.parameters == ()
+    assert sensitivity.amount_derivatives == ()
+    assert sensitivity.volume_derivatives == ()
+    artifact = result.artifact_identity
+    assert artifact.provider_distribution == "epcsaft"
+    assert artifact.provider_record_sha256.startswith("sha256:")
+    assert artifact.provider_sdk_capsule_name == "epcsaft.native_sdk.v1"
+    assert artifact.provider_sdk_abi_version == 1
+    assert artifact.provider_sdk_table_size > 0
+    assert artifact.provider_sdk_mixture_result_size > 0
 
 
 @pytest.mark.parametrize("variant", ("species_order", "reaction_orientation"))
@@ -1172,6 +1188,23 @@ def test_installed_provider_pressure_sensitivity_matches_independent_resolves() 
     _bind_record(spec)
     native = _provider_native(model, spec)
     sensitivities = native["sensitivities"]
+    public = _provider_solve(
+        model,
+        spec,
+        sensitivity_request=epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
+    )
+    public_sensitivity = public.sensitivity
+    assert public_sensitivity is not None
+    assert public_sensitivity.status == "available"
+    assert tuple(parameter.name for parameter in public_sensitivity.parameters) == (
+        sensitivities["parameter_order"]
+    )
+    assert public_sensitivity.amount_derivatives == tuple(
+        tuple(row) for row in sensitivities["amount_derivatives"]
+    )
+    assert public_sensitivity.volume_derivatives == pytest.approx(
+        sensitivities["volume_derivatives"]
+    )
     assert sensitivities["status"] == "available"
     assert sensitivities["parameter_fingerprint"] == model.parameter_fingerprint
     assert sensitivities["provider_parameter_status"] == "unavailable"

@@ -20,6 +20,9 @@ namespace {
 
 constexpr std::size_t kChemicalSourceDomainSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, total_ion_mole_fraction_max) + sizeof(double);
+constexpr std::size_t kChemicalNeutralReferenceSizeSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, neutral_reference_result_size)
+    + sizeof(std::size_t);
 
 struct ChemicalProviderMetadata {
     std::vector<std::string> component_ids;
@@ -348,6 +351,15 @@ py::dict solve_provider_input(
     py::dict result = chemical_result(evaluation);
     result["parameter_fingerprint"] = input.provider_fingerprint;
     result["packing_fraction_bounds"] = packing_bounds;
+    result["provider_sdk_capsule_name"] = EPCSAFT_NATIVE_SDK_V1_CAPSULE_NAME;
+    result["provider_sdk_abi_version"] = sdk.abi_version;
+    result["provider_sdk_table_size"] = sdk.table_size;
+    result["provider_sdk_result_size"] = sdk.result_size;
+    result["provider_sdk_mixture_result_size"] = sdk.mixture_result_size;
+    result["provider_sdk_neutral_reference_result_size"] =
+        sdk.table_size >= kChemicalNeutralReferenceSizeSdkTableSize
+        ? sdk.neutral_reference_result_size
+        : 0;
     return result;
 }
 

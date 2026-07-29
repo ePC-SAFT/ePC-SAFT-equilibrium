@@ -1,11 +1,15 @@
 """Bounded local equilibrium routes over the public ePC-SAFT provider."""
 
 from ._api import (
+    ChemicalArtifactIdentity,
     ChemicalEquilibriumConstant,
     ChemicalEquilibriumDiagnostics,
     ChemicalEquilibriumError,
     ChemicalEquilibriumProblem,
     ChemicalEquilibriumResult,
+    ChemicalEquilibriumSensitivity,
+    ChemicalEquilibriumSensitivityParameter,
+    ChemicalEquilibriumSensitivityRequest,
     ChemicalStandardState,
     FlashError,
     HeldDiagnostics,
@@ -23,11 +27,15 @@ from ._api import (
 )
 
 __all__ = [
+    "ChemicalArtifactIdentity",
     "ChemicalEquilibriumConstant",
     "ChemicalEquilibriumDiagnostics",
     "ChemicalEquilibriumError",
     "ChemicalEquilibriumProblem",
     "ChemicalEquilibriumResult",
+    "ChemicalEquilibriumSensitivity",
+    "ChemicalEquilibriumSensitivityParameter",
+    "ChemicalEquilibriumSensitivityRequest",
     "ChemicalStandardState",
     "FlashError",
     "HeldDiagnostics",
