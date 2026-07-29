@@ -117,10 +117,12 @@ source standard state's declared reference pressure remains provenance; the
 neutral reference and transformed Provider-basis records are evaluated and
 bound at the actual system pressure. The pressure column includes exact
 source-reference pressure derivatives when the installed derivative tail and
-branch certificates are available. The typed active-parameter schema is
-reserved, but Provider-parameter sensitivities remain fail-closed pending one
-atomic active-model callback with Helmholtz and packing state tensors. D-026
-remains the public HELD2 admission gate.
+branch certificates are available. A typed active-parameter request is also
+available when the installed Provider advertises the exact coordinate and its
+atomic active-model Helmholtz, packing, pressure, chemical-potential, and
+neutral-reference derivative blocks. Unsupported coordinates, incomplete
+blocks, active bounds, or unavailable KKT columns fail closed. D-026 remains
+the public HELD2 admission gate.
 
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD

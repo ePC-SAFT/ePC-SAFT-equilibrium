@@ -269,11 +269,13 @@ root-branch, topology, conditioning, basis, and fingerprint evidence. The
 source reference pressure remains provenance while the reference is
 re-evaluated and transformed at each actual trial pressure; that contribution
 is included in the conditioned implicit pressure column. Temperature,
-composition, and active-parameter reference derivatives are not thereby
-admitted. Active Provider coordinates remain fail-closed until the same
-active-model evaluation supplies complete Helmholtz and packing state tensors;
-no caloric or Regression parameter capability follows from this pressure
-slice.
+composition, and active-parameter reference derivatives are not admitted by
+that pressure slice alone. A later installed Provider contract now admits
+ordered typed active coordinates only when the same active-model evaluation
+supplies complete Helmholtz, packing, pressure, chemical-potential, and
+neutral-reference parameter derivatives. Missing or inconsistent blocks fail
+closed; no caloric or Regression parameter capability follows from either
+transport slice.
 
 The reaction compiler then constructs a minimum-norm chemical reference vector
 

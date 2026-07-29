@@ -219,7 +219,7 @@ class ChemicalEquilibriumDiagnostics:
 
 @dataclass(frozen=True)
 class ChemicalEquilibriumActiveParameter:
-    """Reserved Provider coordinate request; unavailable without atomic packing tensors."""
+    """One exact coordinate resolved from the installed Provider descriptor table."""
 
     family: str
     identity: str
@@ -230,7 +230,7 @@ class ChemicalEquilibriumActiveParameter:
 
 @dataclass(frozen=True)
 class ChemicalEquilibriumSensitivityRequest:
-    """Request exact operation columns and optionally reserved Provider coordinates."""
+    """Request exact operation columns and ordered installed-Provider coordinates."""
 
     active_parameters: tuple[ChemicalEquilibriumActiveParameter, ...] = ()
 
@@ -1171,10 +1171,21 @@ def chemical_equilibrium(
             for parameter in active_parameters
         )
         for parameter in active_parameters:
+            component_shape_valid = (
+                parameter.identity == "component"
+                and len(parameter.component_ids) == 1
+            ) or (
+                parameter.identity == "unordered_component_pair"
+                and len(parameter.component_ids) == 2
+                and parameter.component_ids[0] != parameter.component_ids[1]
+            ) or (
+                parameter.identity == "model"
+                and not parameter.component_ids
+            )
             if (
                 not parameter.family
                 or not parameter.identity
-                or not parameter.component_ids
+                or not component_shape_valid
                 or any(not component_id for component_id in parameter.component_ids)
                 or not math.isfinite(parameter.value)
                 or not parameter.unit

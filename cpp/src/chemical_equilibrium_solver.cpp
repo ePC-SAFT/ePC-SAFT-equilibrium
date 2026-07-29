@@ -324,6 +324,10 @@ struct PhaseBlockEvaluation {
     PhysicalPhaseEvaluation mechanical;
     PhysicalScalarEvaluation packing;
     bool has_packing = false;
+    std::vector<std::string> active_parameter_names;
+    std::vector<double> state_parameter_derivatives;
+    std::vector<double> pressure_parameter_derivatives_pa;
+    std::vector<double> chemical_potential_parameter_derivatives_over_rt;
 };
 
 using PhaseEvaluator = std::function<PhaseBlockEvaluation(
@@ -864,7 +868,8 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
     const std::vector<std::size_t>& active_constraint_bounds,
     double trace_floor,
     const std::string& parameter_fingerprint,
-    const std::vector<double>& ln_k_pressure_derivatives_per_pa
+    const std::vector<double>& ln_k_pressure_derivatives_per_pa,
+    const std::vector<double>& ln_k_parameter_derivatives
 ) {
     constexpr double kInactiveMargin = 1.0e-7;
     ChemicalSensitivityResult result;
@@ -928,6 +933,43 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
             "incomplete_transformed_reference_pressure_derivatives";
         return result;
     }
+    const std::size_t amount_dimension = chart.coordinate_count();
+    const AmountChartEvaluation amount_chart = evaluate_amount_chart(
+        chart,
+        std::vector<double>(
+            variables.begin(),
+            variables.begin() + static_cast<std::ptrdiff_t>(amount_dimension)
+        )
+    );
+    const double volume = std::exp(variables.back());
+    PhaseBlockEvaluation phase;
+    try {
+        phase = phase_evaluator(
+            temperature_k, amount_chart.amounts, volume
+        );
+    } catch (const std::exception&) {
+        result.failure_reason = "provider_parameter_partial_evaluation_failed";
+        return result;
+    }
+    const std::size_t active_parameter_count =
+        phase.active_parameter_names.size();
+    if (active_parameter_count != 0
+        && (phase.state_parameter_derivatives.size()
+                != (g_ref.size() + 1) * active_parameter_count
+            || phase.pressure_parameter_derivatives_pa.size()
+                != active_parameter_count
+            || phase.chemical_potential_parameter_derivatives_over_rt.size()
+                != g_ref.size() * active_parameter_count
+            || ln_k_parameter_derivatives.size()
+                != reactions.rows * active_parameter_count)) {
+        result.failure_reason =
+            "incomplete_provider_or_reference_parameter_derivatives";
+        return result;
+    }
+    if (active_parameter_count == 0 && !ln_k_parameter_derivatives.empty()) {
+        result.failure_reason = "provider_parameter_order_mismatch";
+        return result;
+    }
 
     for (std::size_t row = 0; row < balances.matrix.rows; ++row) {
         result.parameter_order.push_back("balance_total[" + std::to_string(row) + "]");
@@ -938,19 +980,16 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
         );
     }
     result.parameter_order.emplace_back("pressure_pa");
+    result.parameter_order.insert(
+        result.parameter_order.end(),
+        phase.active_parameter_names.begin(),
+        phase.active_parameter_names.end()
+    );
     const std::size_t parameter_count = result.parameter_order.size();
-    const std::size_t amount_dimension = chart.coordinate_count();
     result.amount_derivatives.assign(
         parameter_count * g_ref.size(), 0.0
     );
     result.volume_derivatives.assign(parameter_count, 0.0);
-    const AmountChartEvaluation amount_chart = evaluate_amount_chart(
-        chart,
-        std::vector<double>(
-            variables.begin(),
-            variables.begin() + static_cast<std::ptrdiff_t>(amount_dimension)
-        )
-    );
     for (std::size_t species = 0;
          species < amount_chart.amounts.size();
          ++species) {
@@ -965,7 +1004,6 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
         result.volume_derivatives.clear();
         return result;
     }
-    const double volume = std::exp(variables.back());
     for (std::size_t parameter = 0; parameter < parameter_count; ++parameter) {
         std::vector<double> right_hand_side(result.kkt_dimension, 0.0);
         if (parameter < balances.matrix.rows) {
@@ -981,7 +1019,8 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
             const std::size_t reaction = parameter - balances.matrix.rows;
             right_hand_side[parameter] =
                 1.0 / matrix_row_l2_norm(reactions, reaction);
-        } else {
+        } else if (parameter
+            == balances.matrix.rows + reactions.rows) {
             for (std::size_t reaction = 0; reaction < reactions.rows; ++reaction) {
                 right_hand_side[balances.matrix.rows + reaction] =
                     ln_k_pressure_derivatives_per_pa.empty()
@@ -991,6 +1030,25 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
             }
             right_hand_side.back() =
                 (1.0 + evaluation.constraints.back()) / pressure_pa;
+        } else {
+            const std::size_t active = parameter
+                - balances.matrix.rows - reactions.rows - 1;
+            for (std::size_t reaction = 0; reaction < reactions.rows; ++reaction) {
+                double mechanical_derivative = 0.0;
+                for (std::size_t species = 0; species < g_ref.size(); ++species) {
+                    mechanical_derivative += reactions(reaction, species)
+                        * phase.chemical_potential_parameter_derivatives_over_rt[
+                            species * active_parameter_count + active
+                        ];
+                }
+                right_hand_side[balances.matrix.rows + reaction] = (
+                    ln_k_parameter_derivatives[
+                        reaction * active_parameter_count + active
+                    ] - mechanical_derivative
+                ) / matrix_row_l2_norm(reactions, reaction);
+            }
+            right_hand_side.back() =
+                -phase.pressure_parameter_derivatives_pa[active] / pressure_pa;
         }
         if (!solve_square_system(evaluation.jacobian, right_hand_side)) {
             result.failure_reason = "singular_kkt_jacobian";
@@ -1674,7 +1732,9 @@ ChemicalSolveResult solve_reaction(
     const PhaseEvaluator& phase_evaluator,
     const ReactionDomain& domain,
     double initial_volume,
-    const std::vector<double>& ln_k_pressure_derivatives_per_pa
+    const std::vector<double>& ln_k_pressure_derivatives_per_pa,
+    const std::vector<double>& ln_k_parameter_derivatives,
+    const std::array<double, 2>& volume_bounds
 ) {
     if (!std::isfinite(temperature_k) || temperature_k <= 0.0
         || !std::isfinite(pressure_pa) || pressure_pa <= 0.0
@@ -1741,8 +1801,22 @@ ChemicalSolveResult solve_reaction(
             );
         }
     }
-    lower.back() = std::log(initial_volume) - 30.0;
-    upper.back() = std::log(initial_volume) + 30.0;
+    if (std::isfinite(volume_bounds[0])
+        && std::isfinite(volume_bounds[1])) {
+        if (volume_bounds[0] <= 0.0
+            || volume_bounds[1] <= volume_bounds[0]
+            || initial_volume <= volume_bounds[0]
+            || initial_volume >= volume_bounds[1]) {
+            throw std::invalid_argument(
+                "reaction volume bounds or initial volume are incompatible"
+            );
+        }
+        lower.back() = std::log(volume_bounds[0]);
+        upper.back() = std::log(volume_bounds[1]);
+    } else {
+        lower.back() = std::log(initial_volume) - 30.0;
+        upper.back() = std::log(initial_volume) + 30.0;
+    }
     const ConstraintRows balances{system.balance_matrix, system.balance_totals};
     auto* raw_problem = new ReactionTnlp(
         chart,
@@ -2051,7 +2125,8 @@ ChemicalSolveResult solve_reaction(
             active_constraint_bounds,
             trace_floor,
             system.provider_fingerprint,
-            ln_k_pressure_derivatives_per_pa
+            ln_k_pressure_derivatives_per_pa,
+            ln_k_parameter_derivatives
         );
         if (!result.accepted && result.sensitivities.status == "available") {
             result.sensitivities.status = "unavailable";
@@ -2203,7 +2278,12 @@ ChemicalSolveResult solve_manufactured_ideal_reaction(
         ideal_phase_evaluator(),
         ReactionDomain{},
         std::numeric_limits<double>::quiet_NaN(),
-        {}
+        {},
+        {},
+        {
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(),
+        }
     );
     return finalize_chemical_result(system, std::move(result), true);
 }
@@ -2241,6 +2321,8 @@ ChemicalSolveResult solve_provider_reaction(
     double total_ion_fraction_max,
     double trace_floor,
     const std::vector<double>& ln_k_pressure_derivatives_per_pa,
+    const std::vector<double>& ln_k_parameter_derivatives,
+    const ProviderActiveParameterSet* active_parameters,
     int max_iterations
 ) {
     if (!std::isfinite(packing_fraction_min)
@@ -2274,12 +2356,43 @@ ChemicalSolveResult solve_provider_reaction(
     for (std::size_t species = 0; species < mole_fractions.size(); ++species) {
         mole_fractions[species] = starting_amounts[species] / total;
     }
-    const std::array<double, 2> molar_bounds = provider.evaluate_molar_volume_bounds(
+    const std::array<double, 2> seed_molar_bounds = provider.evaluate_molar_volume_bounds(
         temperature_k, mole_fractions, packing_fraction_min, packing_fraction_max
     );
-    double lower_volume = std::nextafter(total * molar_bounds[0], std::numeric_limits<double>::infinity());
+    const bool parameterized = active_parameters != nullptr
+        && !active_parameters->parameters.empty();
+    std::array<double, 2> molar_bounds = seed_molar_bounds;
+    if (parameterized) {
+        const double seed_volume = std::sqrt(
+            total * seed_molar_bounds[0] * total * seed_molar_bounds[1]
+        );
+        molar_bounds = provider.evaluate_reacting_phase_parameters(
+            temperature_k,
+            starting_amounts,
+            seed_volume,
+            packing_fraction_min,
+            packing_fraction_max,
+            *active_parameters
+        ).molar_volume_bounds_m3_per_mol;
+    }
+    double lower_volume = std::nextafter(
+        total * molar_bounds[0], std::numeric_limits<double>::infinity()
+    );
     double upper_volume = std::nextafter(total * molar_bounds[1], 0.0);
+    const std::array<double, 2> admitted_volume_bounds{
+        lower_volume, upper_volume
+    };
     const auto pressure_residual = [&](double volume) {
+        if (parameterized) {
+            return provider.evaluate_reacting_phase_parameters(
+                temperature_k,
+                starting_amounts,
+                volume,
+                packing_fraction_min,
+                packing_fraction_max,
+                *active_parameters
+            ).phase.pressure_pa - pressure_pa;
+        }
         return provider.evaluate_electrolyte(
             temperature_k, starting_amounts, volume
         ).pressure_pa - pressure_pa;
@@ -2303,28 +2416,82 @@ ChemicalSolveResult solve_provider_reaction(
             }
         }
     }
-    const PhaseEvaluator phase_evaluator = [&provider](
+    const PhaseEvaluator phase_evaluator = [
+        &provider,
+        active_parameters,
+        parameterized,
+        packing_fraction_min,
+        packing_fraction_max
+    ](
         double temperature,
         const std::vector<double>& amounts,
         double volume
     ) {
+        if (parameterized) {
+            const ParameterizedPhaseEvaluation block =
+                provider.evaluate_reacting_phase_parameters(
+                    temperature,
+                    amounts,
+                    volume,
+                    packing_fraction_min,
+                    packing_fraction_max,
+                    *active_parameters
+                );
+            PhaseBlockEvaluation result;
+            result.mechanical = {
+                block.phase.value,
+                block.phase.gradient,
+                block.phase.hessian,
+                block.phase.pressure_pa,
+            };
+            result.packing = {
+                block.packing.value,
+                block.packing.gradient,
+                block.packing.hessian,
+            };
+            result.has_packing = true;
+            result.state_parameter_derivatives =
+                block.state_parameter_derivatives;
+            result.pressure_parameter_derivatives_pa =
+                block.pressure_parameter_derivatives_pa;
+            result.chemical_potential_parameter_derivatives_over_rt =
+                block.chemical_potential_parameter_derivatives_over_rt;
+            result.active_parameter_names.reserve(
+                active_parameters->parameters.size()
+            );
+            for (const ProviderActiveParameter& parameter
+                 : active_parameters->parameters) {
+                std::string name = "provider_parameter["
+                    + parameter.family + ";" + parameter.identity + ";";
+                for (std::size_t index = 0;
+                     index < parameter.component_ids.size();
+                     ++index) {
+                    if (index != 0) {
+                        name += ",";
+                    }
+                    name += parameter.component_ids[index];
+                }
+                result.active_parameter_names.push_back(name + "]");
+            }
+            return result;
+        }
         const ProviderPhaseBlockEvidence block = evaluate_provider_phase_block(
             provider, temperature, amounts, volume
         );
-        return PhaseBlockEvaluation{
-            {
-                block.value,
-                block.gradient,
-                block.hessian,
-                block.pressure_pa,
-            },
-            {
-                block.packing_fraction,
-                block.packing_gradient,
-                block.packing_hessian,
-            },
-            true,
+        PhaseBlockEvaluation result;
+        result.mechanical = {
+            block.value,
+            block.gradient,
+            block.hessian,
+            block.pressure_pa,
         };
+        result.packing = {
+            block.packing_fraction,
+            block.packing_gradient,
+            block.packing_hessian,
+        };
+        result.has_packing = true;
+        return result;
     };
     const ReactionDomain domain{
         true,
@@ -2345,7 +2512,9 @@ ChemicalSolveResult solve_provider_reaction(
             phase_evaluator,
             domain,
             initial_volume,
-            ln_k_pressure_derivatives_per_pa
+            ln_k_pressure_derivatives_per_pa,
+            ln_k_parameter_derivatives,
+            admitted_volume_bounds
         ),
         false
     );

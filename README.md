@@ -209,10 +209,11 @@ provenance, while the Provider reference is re-evaluated and the transformed
 Provider-basis record is bound at each actual trial pressure. Exact
 source-reference pressure derivatives are included in the returned pressure
 column when the installed derivative tail and its branch certificates are
-available. The typed active-parameter request schema is reserved, but active
-Provider coordinates remain fail-closed until one atomic callback supplies the
-active-model Helmholtz and packing state tensors; no derivative is
-approximated. Results bind species/parameter order, units, chart topology,
+available. Typed active-parameter requests consume only coordinates advertised
+by the installed Provider and require one atomic callback to supply the
+active-model Helmholtz, packing, pressure, chemical-potential, and
+neutral-reference derivative blocks. Unsupported or incomplete requests fail
+closed; no derivative is approximated. Results bind species/parameter order, units, chart topology,
 Provider fingerprint, installed distribution RECORD fingerprints, and Provider
 SDK ABI identity. The operation has no predictive admission, coupled
 phase-equilibrium claim, or globality proof.

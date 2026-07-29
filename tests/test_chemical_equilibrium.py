@@ -1362,30 +1362,194 @@ def test_source_pressure_derivatives_follow_compiled_reaction_basis() -> None:
     )
 
 
-def test_installed_provider_active_request_fails_closed_without_atomic_packing_state() -> None:
-    model, spec, source_standard_state = _held_water_ionization_problem()
-    request = epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
-        active_parameters=(
-            epcsaft_equilibrium.ChemicalEquilibriumActiveParameter(
-                family="segment_diameter",
-                identity="component",
-                component_ids=("hydronium-cation",),
-                value=2.2740,
-                unit="angstrom",
-            ),
-        )
+def _held_active_parameter(
+    family: str = "segment_diameter",
+    value: float = 2.2740,
+    unit: str = "angstrom",
+) -> epcsaft_equilibrium.ChemicalEquilibriumActiveParameter:
+    return epcsaft_equilibrium.ChemicalEquilibriumActiveParameter(
+        family=family,
+        identity="component",
+        component_ids=("hydronium-cation",),
+        value=value,
+        unit=unit,
     )
 
+
+def test_installed_provider_active_request_is_atomic_exact_and_ordered() -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    value_only = _provider_solve(model, spec, source_standard_state)
+    empty_request = _provider_solve(
+        model,
+        spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
+    )
+    assert empty_request.amounts_mol == pytest.approx(
+        value_only.amounts_mol, rel=1.0e-9, abs=2.0e-22
+    )
+    assert empty_request.volume_m3 == pytest.approx(
+        value_only.volume_m3, rel=2.0e-13
+    )
+
+    parameter = _held_active_parameter()
+    request = epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+        active_parameters=(parameter,)
+    )
+    result = _provider_solve(model, spec, source_standard_state, request)
+    assert result.amounts_mol == pytest.approx(
+        value_only.amounts_mol, rel=1.0e-9, abs=2.0e-22
+    )
+    assert result.volume_m3 == pytest.approx(value_only.volume_m3, rel=2.0e-13)
+    assert result.sensitivity is not None
+    assert result.sensitivity.status == "available"
+    assert result.sensitivity.provider_parameter_status == "available"
+    assert result.sensitivity.reference_parameter_status == "available"
+    assert tuple(item.name for item in result.sensitivity.parameters) == (
+        "balance_total[0]",
+        "ln_k_provider_basis[0]",
+        "pressure_pa",
+        "provider_parameter[segment_diameter;component;hydronium-cation]",
+    )
+
+    step = 2.0e-5
+    shifted = tuple(
+        _provider_solve(
+            model,
+            spec,
+            source_standard_state,
+            epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+                active_parameters=(
+                    _held_active_parameter(value=parameter.value + direction * step),
+                )
+            ),
+        )
+        for direction in (-1.0, 1.0)
+    )
+    exact = result.sensitivity.amount_derivatives[-1]
+    for ion in (1, 2):
+        numerical = (
+            shifted[1].amounts_mol[ion] - shifted[0].amounts_mol[ion]
+        ) / (2.0 * step)
+        assert exact[ion] == pytest.approx(numerical, rel=3.0e-7, abs=1.0e-18)
+
+    dispersion = _held_active_parameter(
+        family="dispersion_energy_over_k",
+        value=1616.4939,
+        unit="kelvin",
+    )
+    forward = _provider_solve(
+        model,
+        spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+            active_parameters=(parameter, dispersion)
+        ),
+    )
+    reversed_result = _provider_solve(
+        model,
+        spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+            active_parameters=(dispersion, parameter)
+        ),
+    )
+    assert forward.sensitivity is not None
+    assert reversed_result.sensitivity is not None
+    for forward_row, reversed_row in zip(
+        forward.sensitivity.amount_derivatives[-2:],
+        reversed(reversed_result.sensitivity.amount_derivatives[-2:]),
+        strict=True,
+    ):
+        assert forward_row == pytest.approx(
+            reversed_row, rel=2.0e-13, abs=1.0e-25
+        )
+    assert forward.sensitivity.volume_derivatives[-2:] == pytest.approx(
+        tuple(reversed(reversed_result.sensitivity.volume_derivatives[-2:])),
+        rel=2.0e-13,
+        abs=1.0e-28,
+    )
+
+
+def test_installed_provider_basis_active_request_has_zero_lnk_cross_block() -> None:
+    model, source_spec, source_standard_state = _held_water_ionization_problem()
+    transformed = _provider_solve(
+        model,
+        source_spec,
+        source_standard_state,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
+    )
+    spec = copy.deepcopy(source_spec)
+    spec["ln_k"] = transformed.ln_k_provider_basis
+    spec["equilibrium_constant_records"] = tuple(
+        {
+            **record,
+            "reference_id": "provider-helmholtz-coordinate-basis",
+            "conversion_id": "already-provider-basis",
+        }
+        for record in spec["equilibrium_constant_records"]
+    )
+    result = _provider_solve(
+        model,
+        spec,
+        None,
+        epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+            active_parameters=(_held_active_parameter(),)
+        ),
+    )
+    assert result.sensitivity is not None
+    assert result.sensitivity.status == "available"
+    assert result.sensitivity.provider_parameter_status == "available"
+    assert result.sensitivity.reference_parameter_status == "not_applicable"
+
+
+def test_installed_provider_active_request_rejects_unadvertised_unit() -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
     with pytest.raises(
         epcsaft_equilibrium.ChemicalEquilibriumError,
-        match="atomic parameterized packing state derivatives",
+        match="descriptor is missing or incompatible",
     ):
         _provider_solve(
             model,
             spec,
             source_standard_state,
-            request,
+            epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(
+                active_parameters=(_held_active_parameter(unit="meter"),)
+            ),
         )
+
+
+def test_active_provider_substatus_tracks_kkt_unavailability() -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    balances = spec["balance_matrix"]
+    feed = spec["feed_amounts"]
+    spec["conserved_totals"] = tuple(
+        math.fsum(
+            row[index] * feed[index]  # type: ignore[index]
+            for index in range(len(feed))  # type: ignore[arg-type]
+        )
+        for row in balances  # type: ignore[union-attr]
+    )
+    native = _equilibrium._chemical_equilibrium(
+        epcsaft.native_sdk(model),
+        spec,
+        source_standard_state,
+        (1.0e-6, 0.74),
+        1.0e-8,
+        (
+            {
+                "family": "segment_diameter",
+                "identity": "component",
+                "component_ids": ("hydronium-cation",),
+                "value": 2.2740,
+                "unit": "angstrom",
+            },
+        ),
+    )
+    sensitivities = native["sensitivities"]
+    assert sensitivities["status"] == "unavailable"
+    assert sensitivities["provider_parameter_status"] == "unavailable"
+    assert sensitivities["provider_parameter_failure_reason"] == sensitivities["failure_reason"]
 
 
 @pytest.mark.parametrize("variant", ("species_order", "reaction_orientation"))

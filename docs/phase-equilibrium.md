@@ -228,14 +228,21 @@ source-reference pressure contribution when the installed neutral-reference
 derivative tail passes its pressure-domain, root-branch, topology,
 conditioning, ordering, and fingerprint certificates. Redundant source
 reaction rows are reduced through the compiler's exact reaction transformation
-before entering the KKT column. Provider active-parameter coordinates remain
-explicitly unavailable: the public typed request schema is reserved, but a
-nonempty request fails before solving until one atomic Provider callback
-supplies the active-model Helmholtz state derivatives, state-parameter block,
-pressure and chemical-potential projections, reference derivative, and packing
-state gradient/Hessian. No missing column is filled numerically. There is no
+before entering the KKT column. Provider active-parameter coordinates are
+available only when the installed capability table advertises each requested
+typed coordinate and one atomic Provider callback supplies the active-model
+Helmholtz state derivatives, state-parameter block, pressure and
+chemical-potential projections, reference derivative, and packing state
+gradient/Hessian. Request order is preserved. Missing blocks, unadvertised
+coordinates, active bounds, or unavailable KKT columns fail closed; no missing
+column is filled numerically. There is no
 chemistry registry, predictive admission, coupled-equilibrium result, or
 globality claim.
+
+A source-bound active request also requires the Provider's active
+neutral-reference value and parameter derivative at the same model point. If
+that prerequisite is unavailable, the operation rejects before solving rather
+than combining an active phase with a fixed-catalog reference value.
 
 ## Shared package contract
 

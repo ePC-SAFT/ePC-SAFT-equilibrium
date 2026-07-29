@@ -378,8 +378,10 @@ homogeneous_reacting_phase:
       - compiled balance totals
       - compiled Provider-basis lnK
       - pressure including transformed source-reference pressure derivatives
-    reserved_fail_closed:
-      - active Provider coordinates pending atomic active-model packing state tensors
+      - ordered active Provider coordinates with complete atomic active-model tensors
+    fail_closed:
+      - unadvertised coordinates or incomplete Provider derivative blocks
+      - active bounds or unavailable, rank-deficient, or ill-conditioned KKT columns
   evidence_profiles:
     - installed_provider_manufactured_nonpredictive
     - installed_provider_source_bound_water_self_ionization

@@ -946,10 +946,10 @@ SourceStandardStateResult transform_source_standard_state(
         || reference.basis_id != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1) {
         throw std::invalid_argument("Provider neutral-reference identity is incompatible");
     }
-    if (reference.derivative_availability
-            != EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_NONE_V1
-        && reference.derivative_availability
-            != EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1) {
+    const std::uint32_t supported_derivatives =
+        EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1
+        | EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PARAMETERS_V1;
+    if ((reference.derivative_availability & ~supported_derivatives) != 0) {
         throw std::invalid_argument(
             "Provider neutral-reference derivative availability is unsupported"
         );
@@ -960,6 +960,24 @@ SourceStandardStateResult transform_source_standard_state(
             != reference.neutral_basis_row_count) {
         throw std::invalid_argument(
             "Provider neutral-reference pressure derivatives are incomplete"
+        );
+    }
+    if ((reference.derivative_availability
+            & EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1) != 0
+        && reference.pressure_derivatives_per_pa.size()
+            != reference.neutral_basis_row_count) {
+        throw std::invalid_argument(
+            "Provider neutral-reference pressure derivatives are incomplete"
+        );
+    }
+    if ((reference.derivative_availability
+            & EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PARAMETERS_V1) != 0
+        && (reference.active_parameter_count == 0
+            || reference.parameter_derivatives.size()
+                != reference.neutral_basis_row_count
+                    * reference.active_parameter_count)) {
+        throw std::invalid_argument(
+            "Provider neutral-reference parameter derivatives are incomplete"
         );
     }
     if (temperature_k != reference.temperature_k
@@ -993,6 +1011,10 @@ SourceStandardStateResult transform_source_standard_state(
         std::vector<double>(reaction_matrix.rows, 0.0),
         std::vector<double>(reaction_matrix.rows, 0.0),
         std::vector<double>(reaction_matrix.rows, 0.0),
+        std::vector<double>(
+            reaction_matrix.rows * reference.active_parameter_count, 0.0
+        ),
+        reference.active_parameter_count,
         0.0,
     };
     for (std::size_t reaction = 0; reaction < reaction_matrix.rows; ++reaction) {
@@ -1049,8 +1071,8 @@ SourceStandardStateResult transform_source_standard_state(
         }
         result.standard_offsets[reaction] = offset;
         result.ln_k_provider_basis[reaction] = source_ln_k[reaction] + offset;
-        if (reference.derivative_availability
-            == EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1) {
+        if ((reference.derivative_availability
+            & EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1) != 0) {
             result.pressure_derivatives_per_pa[reaction] =
                 std::inner_product(
                     coordinates.begin(),
@@ -1062,6 +1084,28 @@ SourceStandardStateResult transform_source_standard_state(
                 throw std::invalid_argument(
                     "source standard-state pressure derivative is non-finite"
                 );
+            }
+        }
+        if ((reference.derivative_availability
+            & EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PARAMETERS_V1) != 0) {
+            for (std::size_t parameter = 0;
+                 parameter < reference.active_parameter_count;
+                 ++parameter) {
+                double derivative = 0.0;
+                for (std::size_t basis = 0; basis < coordinates.size(); ++basis) {
+                    derivative += coordinates[basis]
+                        * reference.parameter_derivatives[
+                            basis * reference.active_parameter_count + parameter
+                        ];
+                }
+                if (!std::isfinite(derivative)) {
+                    throw std::invalid_argument(
+                        "source standard-state parameter derivative is non-finite"
+                    );
+                }
+                result.parameter_derivatives[
+                    reaction * reference.active_parameter_count + parameter
+                ] = derivative;
             }
         }
         result.representation_residual_inf_norm = std::max(
