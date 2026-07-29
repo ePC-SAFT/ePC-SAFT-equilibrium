@@ -201,7 +201,10 @@ reacting-phase foundation is documented separately in
 Belov trace evidence, installed-Provider-manufactured evidence, and one
 source-complete Held/IAPWS water self-ionization value case. The public typed
 `chemical_equilibrium` operation reports only a local fixed-`T,P` homogeneous
-value result. It has no sensitivity contract, predictive admission, coupled
+value result. Its native owner retains conditioned implicit derivatives for
+supported state inputs and fails closed for missing Provider/reference
+parameter tensors, singular systems, or active-set changes. The public
+operation has no sensitivity contract, predictive admission, coupled
 phase-equilibrium claim, or globality proof.
 Migration receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the

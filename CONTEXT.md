@@ -110,8 +110,12 @@ and trace-range evidence through the seam and remains
 R11-07(2019) water self-ionization sentinel exercises the installed Provider
 neutral-reference transport through the same solver at 298.15 K and
 1 bar. It establishes one local fixed-state value result, not application
-chemistry, sensitivity, predictive, phase-stability, coupled-equilibrium, or
-globality. D-026 remains the public HELD2 admission gate.
+chemistry, predictive, phase-stability, coupled-equilibrium, or globality.
+The native owner retains exact conditioned derivatives for compiled totals,
+final Provider-basis reaction constants, and pressure. Source-reference and
+Provider-parameter sensitivities fail closed while their typed SDK tensors are
+absent, and the public value operation exposes no sensitivity contract. D-026
+remains the public HELD2 admission gate.
 
 The prior `neutral-two-phase-tp-flash-v1` campaign remains historical
 `NON_ADMISSION` under the frozen `3*u_c` composition contract. Validation HEAD

@@ -182,6 +182,71 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
     result["packing_fraction"] = evaluation.packing_fraction;
     result["kkt_stationarity_inf_norm"] = evaluation.kkt_stationarity_inf_norm;
     result["complementarity_inf_norm"] = evaluation.complementarity_inf_norm;
+    py::dict sensitivities;
+    sensitivities["status"] = evaluation.sensitivities.status;
+    sensitivities["failure_reason"] = evaluation.sensitivities.failure_reason;
+    const std::size_t species_count = evaluation.amounts.size();
+    if (evaluation.sensitivities.amount_derivatives.size()
+            != evaluation.sensitivities.parameter_order.size() * species_count
+        || evaluation.sensitivities.volume_derivatives.size()
+            != evaluation.sensitivities.parameter_order.size()) {
+        throw std::runtime_error(
+            "internal chemical-sensitivity result dimensions are inconsistent"
+        );
+    }
+    py::tuple parameter_order(evaluation.sensitivities.parameter_order.size());
+    for (std::size_t parameter = 0;
+         parameter < evaluation.sensitivities.parameter_order.size();
+         ++parameter) {
+        parameter_order[parameter] =
+            evaluation.sensitivities.parameter_order[parameter];
+    }
+    sensitivities["parameter_order"] = std::move(parameter_order);
+    py::tuple amount_derivatives(evaluation.sensitivities.parameter_order.size());
+    for (std::size_t parameter = 0;
+         parameter < evaluation.sensitivities.parameter_order.size();
+         ++parameter) {
+        py::tuple row(species_count);
+        for (std::size_t species = 0; species < species_count; ++species) {
+            row[species] = evaluation.sensitivities.amount_derivatives[
+                parameter * species_count + species
+            ];
+        }
+        amount_derivatives[parameter] = std::move(row);
+    }
+    sensitivities["amount_derivatives"] = std::move(amount_derivatives);
+    sensitivities["volume_derivatives"] = py::tuple(py::cast(
+        evaluation.sensitivities.volume_derivatives
+    ));
+    sensitivities["kkt_dimension"] = evaluation.sensitivities.kkt_dimension;
+    sensitivities["kkt_rank"] = evaluation.sensitivities.kkt_rank;
+    sensitivities["condition_number_inf"] =
+        evaluation.sensitivities.condition_number_inf;
+    sensitivities["active_lower_bounds"] = py::tuple(py::cast(
+        evaluation.sensitivities.active_lower_bounds
+    ));
+    sensitivities["active_upper_bounds"] = py::tuple(py::cast(
+        evaluation.sensitivities.active_upper_bounds
+    ));
+    sensitivities["active_constraint_bounds"] = py::tuple(py::cast(
+        evaluation.sensitivities.active_constraint_bounds
+    ));
+    sensitivities["active_trace_species"] = py::tuple(py::cast(
+        evaluation.sensitivities.active_trace_species
+    ));
+    sensitivities["chart_topology"] =
+        evaluation.sensitivities.chart_topology;
+    sensitivities["parameter_fingerprint"] =
+        evaluation.sensitivities.parameter_fingerprint;
+    sensitivities["provider_parameter_status"] =
+        evaluation.sensitivities.provider_parameter_status;
+    sensitivities["provider_parameter_failure_reason"] =
+        evaluation.sensitivities.provider_parameter_failure_reason;
+    sensitivities["reference_parameter_status"] =
+        evaluation.sensitivities.reference_parameter_status;
+    sensitivities["reference_parameter_failure_reason"] =
+        evaluation.sensitivities.reference_parameter_failure_reason;
+    result["sensitivities"] = std::move(sensitivities);
     return result;
 }
 
@@ -267,18 +332,20 @@ py::dict solve_provider_input(
     if (packing_bounds.size() != 2) {
         throw py::value_error("packing_fraction_bounds must contain two values");
     }
-    py::dict result = chemical_result(
-        solve_provider_reaction(
-            compiled,
-            provider,
-            input.temperature_k,
-            input.pressure_pa,
-            packing_bounds[0],
-            packing_bounds[1],
-            sdk.total_ion_mole_fraction_max,
-            trace_floor
-        )
+    ChemicalSolveResult evaluation = solve_provider_reaction(
+        compiled,
+        provider,
+        input.temperature_k,
+        input.pressure_pa,
+        packing_bounds[0],
+        packing_bounds[1],
+        sdk.total_ion_mole_fraction_max,
+        trace_floor
     );
+    evaluation.sensitivities.provider_parameter_status = "unavailable";
+    evaluation.sensitivities.provider_parameter_failure_reason =
+        "missing_typed_provider_kkt_cross_derivatives";
+    py::dict result = chemical_result(evaluation);
     result["parameter_fingerprint"] = input.provider_fingerprint;
     result["packing_fraction_bounds"] = packing_bounds;
     return result;
@@ -353,6 +420,16 @@ py::dict solve_provider_source(
         packing_bounds,
         trace_floor
     );
+    py::dict sensitivities = py::cast<py::dict>(result["sensitivities"]);
+    sensitivities["status"] = "unavailable";
+    sensitivities["failure_reason"] =
+        "missing_transformed_reference_derivatives";
+    sensitivities["parameter_order"] = py::tuple();
+    sensitivities["amount_derivatives"] = py::tuple();
+    sensitivities["volume_derivatives"] = py::tuple();
+    sensitivities["reference_parameter_status"] = "unavailable";
+    sensitivities["reference_parameter_failure_reason"] =
+        "provider_neutral_reference_derivatives_unavailable";
     result["standard_offsets"] = transformed.standard_offsets;
     result["ln_k_provider_basis"] = transformed.ln_k_provider_basis;
     result["reference_representation_residual_inf_norm"] =
