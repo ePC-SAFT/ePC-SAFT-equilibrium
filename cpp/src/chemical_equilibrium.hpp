@@ -223,7 +223,8 @@ struct SourceStandardStateResult {
     double pressure_pa,
     const std::vector<double>& gauge_coefficients,
     double trace_floor,
-    int max_iterations = 500
+    int max_iterations = 500,
+    double quadratic_strength = 2.3
 );
 
 [[nodiscard]] ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(
@@ -244,7 +245,8 @@ analyze_manufactured_reduced_hessian(const std::vector<double>& hessian);
     const std::vector<double>& lower,
     const std::vector<double>& upper,
     const std::vector<double>& direction,
-    int sign
+    int sign,
+    std::size_t backtrack_index = 0
 );
 
 // Private derivative evidence seam. This is intentionally not part of the
