@@ -2,7 +2,7 @@ version: 1
 status: accepted-pure-saturation-with-local-held-development-candidates
 
 authority:
-  governance_doctrine_revision: 4
+  governance_doctrine_revision: 5
   runtime_source_of_truth: true
   runtime_source_of_truth_scope: package-implementation-not-capability-admission
   accepted_capability_authority: receipt-bound
@@ -19,6 +19,7 @@ documentation:
   perdomo_held2_prior_design: docs/designs/2026-07-21-perdomo-held2.md
   perdomo_held2_implementation_plan: docs/plans/2026-07-24-held2-paper-rewrite.md
   homogeneous_reacting_phase_design: docs/designs/2026-07-21-private-reacting-phase-kernel.md
+  homogeneous_chemical_basin_search_design: docs/designs/2026-07-30-homogeneous-chemical-basin-search.md
   historical_lab_m4_role: scientific-and-migration-provenance
 
 accepted_capability:

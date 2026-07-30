@@ -7,7 +7,7 @@ it does not admit, promote, or publish a capability.
 
 ## Authority and capability status
 
-Organization doctrine revision 4 defines the ecosystem authority hierarchy.
+Organization doctrine revision 5 defines the ecosystem authority hierarchy.
 Within this repository, `AGENTS.md` and `CONTEXT.md` govern package scope,
 `ARCHITECTURE.yaml` records the machine-readable architecture, and the design
 documents named below own the scientific and numerical contracts of individual
@@ -19,7 +19,7 @@ replace a formulation owner.
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
 | Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), [publication companion](designs/2026-07-29-held2-publication-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Public development dispatch over one native core with fail-closed installed evidence; no admitted electrolyte LLE capability |
-| Homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) and [GREPE homogeneous layer](designs/2026-07-27-grepe-homogeneous-chemical-layer.md) | Public typed local value operation with optional conditioned state-input sensitivities; Belov trace evidence plus one source-complete Held/IAPWS installed-Provider value case; no predictive or global admission |
+| Homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md), [GREPE homogeneous layer](designs/2026-07-27-grepe-homogeneous-chemical-layer.md), and [deterministic basin-search contract](designs/2026-07-30-homogeneous-chemical-basin-search.md) | Public typed local value operation with optional conditioned state-input sensitivities; deterministic finite basin search for the lowest observed certified strict local minimum; no predictive, phase-stability, or global admission |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Coupled multiphase chemical equilibrium | [GREPE reactive phase equilibrium](designs/2026-07-28-grepe-reactive-phase-equilibrium.md), [implementation plan](plans/2026-07-29-grepe-reactive-lle-plan.md), and [benchmark review](designs/2026-07-29-reactive-lle-benchmark-review.md) | Normative future implementation contract for an at-most-two-liquid first slice; no public schema or runtime route |
@@ -184,13 +184,13 @@ SAFT-gamma-Mie endpoint, or an admitted electrolyte-LLE result.
 
 ### Homogeneous reacting phase
 
-The D-028 design owns one homogeneous fixed-`T,P` reacting-phase
+The D-028 design and deterministic basin-search contract own one homogeneous fixed-`T,P` reacting-phase
 foundation. It validates ordered species, conservation and independent
 reaction ranks, dimensionless source/reference-bound `lnK`, and the exact
 Provider identity before solving. It constructs `g_ref` in the Provider
 Helmholtz coordinate basis, uses a general positive electroneutral amount
-chart, performs max-min initialization, attempts the true Provider objective
-once, and treats a failed direct solve as failed.
+chart, performs max-min initialization, and evaluates one frozen deterministic
+finite start sequence against the same true Provider objective.
 
 The public `chemical_equilibrium` operation exposes that owner without solver
 settings, chemistry data, aliases, or a second implementation. Its certificate
