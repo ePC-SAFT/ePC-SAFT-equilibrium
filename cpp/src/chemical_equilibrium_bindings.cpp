@@ -218,6 +218,99 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
     result["packing_fraction"] = evaluation.packing_fraction;
     result["kkt_stationarity_inf_norm"] = evaluation.kkt_stationarity_inf_norm;
     result["complementarity_inf_norm"] = evaluation.complementarity_inf_norm;
+    result["kkt_dimension"] = evaluation.kkt_dimension;
+    result["kkt_rank"] = evaluation.kkt_rank;
+    const auto optional_float = [](double value) -> py::object {
+        return std::isfinite(value) ? py::cast(value) : py::none();
+    };
+    const auto optional_index = [](long value) -> py::object {
+        return value >= 0 ? py::cast(value) : py::none();
+    };
+    result["condition_number_inf"] =
+        optional_float(evaluation.condition_number_inf);
+    py::dict search;
+    search["status"] = evaluation.search.status;
+    search["continuation_status"] = evaluation.search.continuation_status;
+    search["primary_budget"] = evaluation.search.primary_budget;
+    search["primary_attempt_count"] =
+        evaluation.search.primary_attempt_count;
+    search["selected_basin_ordinal"] =
+        optional_index(evaluation.search.selected_basin_ordinal);
+    search["selected_objective"] =
+        optional_float(evaluation.search.selected_objective);
+    search["selection_label"] = evaluation.search.selection_label;
+    py::list attempts;
+    for (const ChemicalSearchAttempt& attempt : evaluation.search.attempts) {
+        py::dict record;
+        record["ordinal"] = attempt.ordinal;
+        record["primary_ordinal"] = attempt.primary_ordinal;
+        record["kind"] = attempt.kind;
+        record["parent_ordinal"] = optional_index(attempt.parent_ordinal);
+        record["start_identity"] = attempt.start_identity;
+        record["start_construction_status"] =
+            attempt.start_construction_status;
+        record["retraction_status"] = attempt.retraction_status;
+        record["continuation_status"] = attempt.continuation_status;
+        record["provider_domain_status"] =
+            attempt.provider_domain_status;
+        record["solver_status"] = attempt.solver_status;
+        record["callback_error"] = attempt.callback_error;
+        record["terminal_status"] = attempt.terminal_status;
+        record["amounts"] = attempt.amounts;
+        record["volume_m3"] = optional_float(attempt.volume_m3);
+        record["objective"] = optional_float(attempt.objective);
+        record["balance_inf_norm"] =
+            optional_float(attempt.balance_inf_norm);
+        record["charge_inf_norm"] =
+            optional_float(attempt.charge_inf_norm);
+        record["pressure_relative_residual"] =
+            optional_float(attempt.pressure_relative_residual);
+        record["reaction_affinity_inf_norm"] =
+            optional_float(attempt.reaction_affinity_inf_norm);
+        record["kkt_stationarity_inf_norm"] =
+            optional_float(attempt.kkt_stationarity_inf_norm);
+        record["complementarity_inf_norm"] =
+            optional_float(attempt.complementarity_inf_norm);
+        record["kkt_dimension"] = attempt.kkt_dimension;
+        record["kkt_rank"] = attempt.kkt_rank;
+        record["condition_number_inf"] =
+            optional_float(attempt.condition_number_inf);
+        record["local_minimum_status"] =
+            attempt.local_minimum_status;
+        record["trace_status"] = attempt.trace_status;
+        record["basin_ordinal"] = optional_index(attempt.basin_ordinal);
+        record["recovery_seed_count"] = attempt.recovery_seed_count;
+        record["recovery_solve_count"] = attempt.recovery_solve_count;
+        attempts.append(std::move(record));
+    }
+    search["attempts"] = std::move(attempts);
+    py::list basins;
+    for (const ChemicalSearchBasin& basin : evaluation.search.basins) {
+        py::dict record;
+        record["ordinal"] = basin.ordinal;
+        record["representative_attempt_ordinal"] =
+            basin.representative_attempt_ordinal;
+        record["amounts"] = basin.amounts;
+        record["volume_m3"] = optional_float(basin.volume_m3);
+        record["objective"] = optional_float(basin.objective);
+        basins.append(std::move(record));
+    }
+    search["basins"] = std::move(basins);
+    py::list prefixes;
+    for (const ChemicalSearchBudgetPrefix& prefix
+         : evaluation.search.budget_prefixes) {
+        py::dict record;
+        record["primary_budget"] = prefix.primary_budget;
+        record["attempted_primary_ordinals"] =
+            prefix.attempted_primary_ordinals;
+        record["basin_ordinals"] = prefix.basin_ordinals;
+        record["selected_basin_ordinal"] =
+            optional_index(prefix.selected_basin_ordinal);
+        record["selection_changed"] = prefix.selection_changed;
+        prefixes.append(std::move(record));
+    }
+    search["budget_prefixes"] = std::move(prefixes);
+    result["search"] = std::move(search);
     py::dict sensitivities;
     sensitivities["status"] = evaluation.sensitivities.status;
     sensitivities["failure_reason"] = evaluation.sensitivities.failure_reason;

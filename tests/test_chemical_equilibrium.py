@@ -445,6 +445,26 @@ def test_manufactured_nonconvex_saddle_recovers_certified_lower_minimum() -> Non
     assert native["negative_curvature_recovery_status"] == "recovered"
     assert native["negative_curvature_recovery_attempts"] == 2
     assert native["negative_curvature_recovery_selected_sign"] in (-1, 1)
+    attempts = native["search"]["attempts"]
+    assert attempts[0]["kind"] == "primary"
+    assert attempts[0]["terminal_status"] == "saddle_observed"
+    recovery_attempts = tuple(
+        attempt for attempt in attempts if attempt["kind"] == "recovery"
+    )
+    assert tuple(attempt["parent_ordinal"] for attempt in recovery_attempts) == (
+        0,
+        0,
+    )
+    assert tuple(
+        attempt["start_identity"] for attempt in recovery_attempts
+    ) == (
+        "negative_curvature;sign=1",
+        "negative_curvature;sign=-1",
+    )
+    assert all(
+        attempt["terminal_status"] == "certified_local_minimum"
+        for attempt in recovery_attempts
+    )
     assert native["amounts"][0] != pytest.approx(native["amounts"][1], abs=1.0e-5)
     pressure_over_rt = spec["pressure_pa"] / (8.31446261815324 * spec["temperature_k"])
 
@@ -476,15 +496,71 @@ def test_manufactured_nonconvex_saddle_recovers_certified_lower_minimum() -> Non
     backtracked_seed = _equilibrium._chemical_manufactured_recovery_displacement(
         saddle_coordinates, lower, upper, tangent, 1, 3
     )
-    assert objective(tuple(math.exp(value) for value in coarse_seed[:2]), saddle_volume) > objective(
-        (0.5, 0.5), saddle_volume
-    )
-    assert objective(tuple(math.exp(value) for value in backtracked_seed[:2]), saddle_volume) < objective(
-        (0.5, 0.5), saddle_volume
-    )
+    assert objective(
+        tuple(math.exp(value) for value in coarse_seed[:2]), saddle_volume
+    ) > objective((0.5, 0.5), saddle_volume)
+    assert objective(
+        tuple(math.exp(value) for value in backtracked_seed[:2]), saddle_volume
+    ) < objective((0.5, 0.5), saddle_volume)
     assert objective(tuple(native["amounts"]), native["volume_m3"]) < objective(
         (0.5, 0.5), saddle_volume
     )
+
+
+def test_manufactured_nonconvex_search_retains_and_selects_distinct_basins() -> None:
+    spec = {**_base_system(), "ln_k": (math.log(1.1),)}
+    _bind_record(spec)
+
+    native = _equilibrium._chemical_solve_manufactured_nonconvex(
+        spec,
+        trace_floor=1.0e-12,
+        max_iterations=200,
+    )
+
+    search = native["search"]
+    assert search["status"] == "certified_local_minimum"
+    assert search["continuation_status"] == "not_used"
+    assert search["primary_budget"] == 25
+    assert search["primary_attempt_count"] == 5
+    assert tuple(prefix["primary_budget"] for prefix in search["budget_prefixes"]) == (
+        1,
+        5,
+    )
+    assert len(search["attempts"]) >= search["primary_attempt_count"]
+    assert len(search["basins"]) == 2
+    objectives = tuple(basin["objective"] for basin in search["basins"])
+    assert objectives[0] != pytest.approx(objectives[1], abs=1.0e-10)
+    selected = search["selected_basin_ordinal"]
+    assert search["selected_objective"] == pytest.approx(min(objectives))
+    assert search["basins"][selected]["objective"] == pytest.approx(min(objectives))
+    assert all(attempt["terminal_status"] for attempt in search["attempts"])
+    repeated = _equilibrium._chemical_solve_manufactured_nonconvex(
+        spec,
+        trace_floor=1.0e-12,
+        max_iterations=200,
+    )
+    assert repeated["search"] == search
+
+
+def test_manufactured_search_distinguishes_no_feasible_start_from_infeasibility() -> None:
+    spec = _base_system()
+    _bind_record(spec)
+
+    native = _equilibrium._chemical_equilibrium(
+        None,
+        spec,
+        None,
+        None,
+        0.6,
+    )
+
+    search = native["search"]
+    assert native["accepted"] is False
+    assert search["status"] == "no_feasible_start_found"
+    assert search["status"] != "infeasible_certified"
+    assert search["primary_attempt_count"] == 1
+    assert search["attempts"][0]["terminal_status"] == "boundary_unadjudicated"
+    assert search["basins"] == []
 
 
 def test_reduced_hessian_counterexample_returns_certified_direction() -> None:
@@ -758,6 +834,9 @@ def test_manufactured_reaction_with_ill_conditioned_kkt_has_no_sensitivity() -> 
     assert sensitivities["parameter_order"] == ()
     assert sensitivities["amount_derivatives"] == ()
     assert sensitivities["volume_derivatives"] == ()
+    assert native["accepted"] is False
+    assert native["local_minimum_status"] == "second_order_inconclusive"
+    assert native["search"]["status"] == "second_order_inconclusive"
 
 
 @pytest.mark.parametrize("trace_floor", (1.0e-50, 1.0e-55))
@@ -1168,6 +1247,12 @@ def test_manufactured_solver_rejects_trace_false_success() -> None:
     assert diagnostics.trace_status == "at_or_below_floor"
     assert diagnostics.chemical_certification_level == "FEASIBLE_ONLY"
     assert diagnostics.globality_status == "not_guaranteed"
+    assert diagnostics.search.status == "boundary_unadjudicated"
+    assert diagnostics.search.selected_basin_ordinal is None
+    assert all(
+        attempt.terminal_status == "boundary_unadjudicated"
+        for attempt in diagnostics.search.attempts
+    )
     native = _equilibrium._chemical_equilibrium(
         None, trace, None, None, 1.0e-8
     )
@@ -1410,12 +1495,13 @@ def _linear_reference_capsule(
     provider_table = ctypes.cast(
         provider_pointer, ctypes.POINTER(_ChemicalSdkTable)
     ).contents
-    assert provider_table.table_size == ctypes.sizeof(_ChemicalSdkTable)
+    assert provider_table.table_size >= ctypes.sizeof(_ChemicalSdkTable)
     assert len(pressure_derivatives_per_pa) == provider_table.neutral_reference_basis_row_count
 
     table = _ChemicalSdkTable.from_buffer_copy(
         ctypes.string_at(provider_pointer, provider_table.table_size)
     )
+    table.table_size = ctypes.sizeof(_ChemicalSdkTable)
     provider_value = _NeutralReferenceCallback(table.evaluate_neutral_reference)
     provider_derivatives = _NeutralReferenceDerivativeCallback(
         table.evaluate_neutral_reference_derivatives
@@ -1657,7 +1743,9 @@ def test_source_reference_pressure_is_distinct_from_trial_pressure(
             "pressure_pa": source_pressure_pa,
         },
     )
-    spec["ln_k"] = (spec["ln_k"][0] + 50.0,)
+    # Keep this derivative tracer on one observed basin; basin selection is
+    # covered independently by the nonconvex search tests.
+    spec["ln_k"] = (spec["ln_k"][0] + 48.0,)
     spec["pressure_pa"] = trial_pressure_pa
     capsule, keepalive = _linear_reference_capsule(model, reference_derivatives)
     monkeypatch.setattr(

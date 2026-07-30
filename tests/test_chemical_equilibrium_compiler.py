@@ -97,7 +97,7 @@ def _nearly_dependent_system(
     return spec
 
 
-def test_scaled_nearly_dependent_reactions_are_stable_until_rank_is_lost() -> None:
+def test_scaled_nearly_dependent_reactions_are_stable_within_condition_limit() -> None:
     expected = (
         2.0 / (1.0 + math.exp(2.0)),
         2.0 * math.exp(2.0) / (1.0 + math.exp(2.0)),
@@ -111,7 +111,7 @@ def test_scaled_nearly_dependent_reactions_are_stable_until_rank_is_lost() -> No
         (1.0e8, True),
     ):
         result = _solve(
-            _nearly_dependent_system(scale, 1.0e-6, reverse_order=reverse_order)
+            _nearly_dependent_system(scale, 1.5e-6, reverse_order=reverse_order)
         )
         assert result.amounts_mol == pytest.approx(expected, rel=2.0e-8)
 

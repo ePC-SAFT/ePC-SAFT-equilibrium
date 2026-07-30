@@ -66,6 +66,13 @@ def test_public_chemical_equilibrium_solves_one_typed_ideal_problem() -> None:
     assert result.diagnostics.physical_status == "passed"
     assert result.diagnostics.predictive_status == "not_adjudicated"
     assert result.diagnostics.globality_status == "not_guaranteed"
+    assert result.diagnostics.search.status == "certified_local_minimum"
+    assert result.diagnostics.search.continuation_status == "not_used"
+    assert result.diagnostics.search.primary_attempt_count == 5
+    assert result.diagnostics.search.selected_objective is not None
+    assert result.diagnostics.search.selected_basin_ordinal == 0
+    assert len(result.diagnostics.search.attempts) == 5
+    assert len(result.diagnostics.search.basins) == 1
     assert result.local_scope == "fixed_TP_single_homogeneous_phase"
     assert result.provider_parameter_fingerprint is None
     assert result.response_kind == "value_only"
@@ -147,6 +154,10 @@ def test_public_chemical_equilibrium_exports_typed_value_and_jacobian_contract()
         "ChemicalEquilibriumSensitivity",
         "ChemicalEquilibriumSensitivityParameter",
         "ChemicalEquilibriumSensitivityRequest",
+        "ChemicalEquilibriumAttempt",
+        "ChemicalEquilibriumBasin",
+        "ChemicalEquilibriumBudgetPrefix",
+        "ChemicalEquilibriumSearch",
         "ChemicalStandardState",
         "IdealGasPhase",
         "ProviderPhase",
