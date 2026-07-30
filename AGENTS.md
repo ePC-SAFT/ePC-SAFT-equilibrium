@@ -50,17 +50,25 @@ without a separately admitted slice.
 
 ## Agent skills
 
+Available Matt disciplines are `grilling`, `tdd`, `diagnosing-bugs`,
+`research`, `domain-modeling`, `prototype`, `resolving-merge-conflicts`,
+`code-review`, `cutthroat-code-cleanup`, `minimize-code-surface`, and
+`scientific-coding-and-testing`.
+
+<!-- project-truss:setup:start -->
+### Project Truss
+
+Use `project-truss:setup` once, then `project-truss:start` to begin or resume Matt-first engineering work. All six Project Truss skills are callable; Start normally invokes the relevant Matt disciplines and routes each stage until verified closeout.
+
 ### Issue tracker
 
-Issues and PRDs are tracked in this repository's GitHub Issues using `gh`.
-See `docs/agents/issue-tracker.md`.
+Project Truss uses GitHub-native root and leaf issues. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Use the canonical Matt triage labels without aliases.
-See `docs/agents/triage-labels.md`.
+Matt triage roles map to descriptive labels only. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Use the single-context layout: root `CONTEXT.md` plus repository-wide ADRs
-under `docs/adr/`. See `docs/agents/domain.md`.
+Read the configured domain context and ADRs. See `docs/agents/domain.md`.
+<!-- project-truss:setup:end -->

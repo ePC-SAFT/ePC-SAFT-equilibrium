@@ -1,24 +1,13 @@
 # Domain Docs
 
-The engineering skills use this repository's single-context domain
+The managed contract below defines this repository's domain layout. If a
+configured context location is absent, proceed without creating speculative
 documentation.
 
 ## Before exploring
 
 - Read the root `CONTEXT.md`.
 - Read ADRs under `docs/adr/` that affect the work.
-- If either location is absent, proceed without creating speculative
-  documentation.
-
-## Layout
-
-```text
-/
-├── CONTEXT.md
-├── docs/
-│   └── adr/
-└── src/
-```
 
 ## Vocabulary
 
@@ -30,3 +19,13 @@ real modeling gap.
 
 Surface any proposed work that contradicts an existing ADR. Do not silently
 override the recorded decision.
+
+<!-- project-truss:setup:start -->
+## Project Truss domain contract
+
+Layout: `single-context`.
+
+Use one root `CONTEXT.md` and root `docs/adr/`.
+
+Read the nearest applicable context before shaping or implementation. Keep durable terminology, invariants, ownership, and accepted decisions there; do not mirror lifecycle state.
+<!-- project-truss:setup:end -->
