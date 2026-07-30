@@ -754,6 +754,23 @@ py::dict manufactured_reduced_hessian_evidence(
     return result;
 }
 
+std::vector<double> manufactured_balance_retraction_evidence(
+    const py::dict& spec,
+    const std::vector<double>& seed,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    double trace_floor
+) {
+    const ReactionSystemInput input = reaction_system_input(spec);
+    return retract_manufactured_balance(
+        compile_reaction_system(input),
+        seed,
+        lower,
+        upper,
+        trace_floor
+    );
+}
+
 std::vector<double> manufactured_recovery_displacement_evidence(
     const std::vector<double>& variables,
     const std::vector<double>& lower,
@@ -817,6 +834,15 @@ void bind_chemical_equilibrium(py::module_& module) {
         "_chemical_analyze_manufactured_reduced_hessian",
         &manufactured_reduced_hessian_evidence,
         py::arg("hessian")
+    );
+    module.def(
+        "_chemical_retract_manufactured_balance",
+        &manufactured_balance_retraction_evidence,
+        py::arg("spec"),
+        py::arg("seed"),
+        py::arg("lower"),
+        py::arg("upper"),
+        py::arg("trace_floor")
     );
     module.def(
         "_chemical_manufactured_recovery_displacement",

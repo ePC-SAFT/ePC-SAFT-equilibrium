@@ -240,6 +240,14 @@ struct SourceStandardStateResult {
 [[nodiscard]] ManufacturedReducedHessianEvidence
 analyze_manufactured_reduced_hessian(const std::vector<double>& hessian);
 
+[[nodiscard]] std::vector<double> retract_manufactured_balance(
+    const CompiledReactionSystem& system,
+    const std::vector<double>& seed,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    double trace_floor
+);
+
 [[nodiscard]] std::vector<double> manufactured_recovery_displacement(
     const std::vector<double>& variables,
     const std::vector<double>& lower,
