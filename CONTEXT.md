@@ -10,6 +10,33 @@ compatible installed provider artifact.
 
 Canonical local doctrine: `../ePC-SAFT-organization/GOVERNANCE.md`.
 
+## Language
+
+**Reactive liquid-liquid equilibrium (reactive LLE)**:
+A fixed-temperature, fixed-pressure equilibrium in which chemical reaction and
+distribution across exactly two liquid phases are solved simultaneously.
+_Avoid_: Sequential speciation-then-flash, reactive flash
+
+**Homogeneous chemical equilibrium**:
+A fixed-temperature, fixed-pressure chemical equilibrium constrained to one
+physical phase; it makes no phase-stability or phase-discovery claim.
+_Avoid_: Stable one-phase equilibrium
+
+**Reactive phase equilibrium**:
+A fixed-temperature, fixed-pressure equilibrium in which reaction and phase
+allocation are solved simultaneously with phase discovery.
+_Avoid_: Homogeneous chemical equilibrium, sequential reaction-then-flash
+
+**Neutral reactive LLE**:
+Reactive liquid-liquid equilibrium in which every modeled species is
+electrically neutral; it does not establish electrolyte behavior.
+_Avoid_: Electrolyte reactive LLE
+
+**Electrolyte reactive LLE**:
+Reactive liquid-liquid equilibrium containing charged species and requiring
+phase-specific electroneutrality and electrolyte reference-state evidence.
+_Avoid_: Neutral reactive LLE
+
 Equilibrium owns both its package evidence and execution of assigned
 installed-artifact campaigns in the sibling Validation repository. The task
 remains based here; Validation remains the durable black-box evidence home and
@@ -20,7 +47,12 @@ not change scientific admission or runtime authority.
 Canonical package-local phase-equilibrium documentation is indexed in
 `docs/phase-equilibrium.md`. The detailed current Perdomo formulation owner is
 `docs/designs/2026-07-24-held2-paper-algorithm.md`; its implementation plan is
-`docs/plans/2026-07-24-held2-paper-rewrite.md`. The accepted
+`docs/plans/2026-07-24-held2-paper-rewrite.md`. Its publication-facing
+companion is
+`docs/designs/2026-07-29-held2-publication-algorithm.md`. The normative future
+coupled-equilibrium contract is
+`docs/designs/2026-07-28-grepe-reactive-phase-equilibrium.md`, with execution
+sequenced by `docs/plans/2026-07-29-grepe-reactive-lle-plan.md`. The accepted
 pure-saturation and frozen neutral-HELD designs retain their existing
 ownership.
 

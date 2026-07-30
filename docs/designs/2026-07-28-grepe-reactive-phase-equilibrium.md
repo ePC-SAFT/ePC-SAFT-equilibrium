@@ -1,8 +1,9 @@
 # GREPE Reactive Phase Equilibrium
 
-Status: package-local design; no runtime capability or authority effect
+Status: normative future implementation contract; no runtime capability or
+authority effect
 
-Date: 2026-07-28
+Date: 2026-07-29
 
 Reviewed source: `GREPE_algorithm_notation_refined.md`, SHA-256
 `e8c5459890fa086056984373d945d70ac34d4dedb2fc5087b55b39a5ccf2fc4d`
@@ -17,6 +18,7 @@ the package's current HELD2 workflow.
 
 The nonreactive implementation remains owned by the
 [HELD2 algorithm](2026-07-24-held2-paper-algorithm.md),
+[publication companion](2026-07-29-held2-publication-algorithm.md),
 [condition map](2026-07-28-held2-necessary-condition-map.md), and
 [validated baseline](2026-07-28-held2-validated-working-baseline.md).
 Reaction-free strong-electrolyte inputs continue to dispatch to the single
@@ -31,11 +33,35 @@ remain owned by the
 [GREPE homogeneous layer](2026-07-27-grepe-homogeneous-chemical-layer.md).
 The coupled design composes those owners; it does not copy them.
 
+The public-facade decision is recorded in
+[ADR 0001](../adr/0001-one-equilibrate-facade-over-specialized-owners.md).
+The first physical evidence subjects are ranked in the
+[reactive-LLE benchmark review](2026-07-29-reactive-lle-benchmark-review.md).
+
 ## Claim boundary
 
-This is a design for future fixed-\(T,P\), bulk-fluid reactive phase
-equilibrium, not an implemented or admitted route. Solids, surfaces, double
-layers, kinetics, regression, and chemistry databases are out of scope.
+The first executable slice is fixed-\(T,P\) phase discovery over at most two
+liquid phases using one installed Provider model for both phases. The planned
+controller returns one liquid only when the declared search completes without
+a negative pricing witness and every one-phase evidence check passes. It
+returns two liquids when the complete coupled evidence accepts a split and
+otherwise fails closed. The caller does not label phases as aqueous or organic
+and does not prescribe a phase count.
+
+Every compiler-accessible species is admitted in both liquids. Arbitrarily
+small positive amounts remain physical; species are never retired by
+magnitude. A phase-specific exact structural zero that cannot be certified
+through the installed Provider contract fails closed.
+
+The first physical benchmark is neutral reactive LLE. Electrolyte reactive LLE
+is a later capability slice requiring a source-complete charged-species
+subject, phase-specific electroneutrality, electrolyte reference-state
+evidence, and unchanged neutral results. Neutral evidence cannot imply the
+electrolyte claim.
+
+Solids, vapor, surfaces, double layers, kinetics, regression, chemistry
+databases, arbitrary phase families, and more than two liquids are out of the
+first implementation scope.
 
 Finite deterministic search is not a proof of global phase stability. Until a
 separate implementation supplies valid global pricing lower bounds over every
@@ -46,6 +72,31 @@ globality_certificate = "not_guaranteed"
 ```
 
 and may claim only local equilibrium plus the declared finite-search result.
+
+## One facade, specialized numerical owners
+
+The future public concept is one typed `equilibrate` operation with distinct
+problem variants:
+
+1. a constrained homogeneous reacting problem delegates to the existing
+   chemical-equilibrium owner and makes no phase-stability claim;
+2. a qualifying nonreactive phase-discovery problem delegates to the existing
+   HELD or HELD2 owner with unchanged qualification and rejection behavior;
+   and
+3. a reactive phase-discovery problem runs this simultaneous GREPE controller,
+   even when its accepted result contains one phase.
+
+`tp_flash` and `chemical_equilibrium` remain frozen public operations
+during development. The private facade delegates to the same native owners and
+must prove parity; it does not copy either implementation. Public `equilibrate`
+exposure and any later removal of the existing operations are separate
+promotion decisions after physical reactive-LLE evidence.
+Using the facade does not admit a nonreactive system that the corresponding
+existing route rejects.
+
+A homogeneous chemical result is a Stage-1 seed for reactive phase discovery,
+not proof that the reactive system is stable as one phase. GREPE never
+speciates once and then treats a phase-only flash as the coupled solution.
 
 ## Shared thermodynamic ownership
 
@@ -79,8 +130,14 @@ equations or reconstruct Provider parameters.
 
 ## Compiled chemistry and conserved totals
 
-On the accessible species face, let \(\mathbf B\) be the full-row-rank
-conserved-component matrix including mass, \(\mathbf z\) the charge vector,
+The typed chemistry input supplies ordered species feed amounts, source
+reactions and equilibrium constants, and a physical conserved-component
+matrix. It does not supply optimization bases or reduced coordinates. The
+existing compiler audits the supplied conservation semantics, removes
+redundant rows and reactions, and derives every internal chart.
+
+On the accessible species face, let \(\mathbf B\) be the compiled full-row-rank
+conserved-component matrix, \(\mathbf z\) the charge vector,
 \(\boldsymbol\nu\) the independent reaction basis, and
 \(\mathbf b=\mathbf B\mathbf n^F\) the feed totals.
 
@@ -93,7 +150,7 @@ The compiler must verify
 \mathbf z^T
 \end{bmatrix}
 =
-\operatorname{range}(\boldsymbol\nu)
+\operatorname{row}(\boldsymbol\nu)
 \]
 
 The feed is globally electroneutral. Only independently certified structural
@@ -144,6 +201,13 @@ The normalization is a mathematical representation for the phase master and
 pricing problem. Changing between two valid positive conserved scaling rows
 rescales columns and phase weights but does not alter the underlying extensive
 equilibrium. It does not impose a positive physical minimum phase amount.
+
+One formulation-owned nondimensionalization contract is derived from the
+physical problem and reused by every GREPE stage. It uses a conserved feed
+scale for amounts, normalized Provider-bounded log volume, and thermal-energy
+scales for objectives and multipliers. Master constraints, pricing residuals,
+the final NLP, derivative tests, and diagnostics all report in that same
+contract. Callers cannot provide stage-specific solver scales.
 
 ## Semi-infinite master interpretation
 
@@ -252,7 +316,7 @@ The native manufactured workflow owns an executable algebraic check of this
 identity. The public Perdomo and Khudaida gates protect the complete
 nonreactive reduction.
 
-## Pricing search policy
+## Pricing search policy and shared mechanism
 
 Reactive phase pricing reuses the successful HELD2 numerical policy:
 
@@ -273,6 +337,13 @@ Reactive phase pricing reuses the successful HELD2 numerical policy:
 Complete pressure-root enumeration remains mandatory when a homogeneous feed
 reference must be selected. It is a different scientific decision from
 searching for one feasible negative reduced-cost state.
+
+HELD2 and GREPE share only a small formulation-neutral deterministic search
+mechanism: normalized box exploration, stable candidate ordering, callback and
+budget accounting, and termination plumbing. HELD2 owns its modified
+composition and TPD; GREPE owns its conserved-coordinate chart and reduced
+cost. Each caller independently recertifies its witnesses. Neither controller
+calls or translates the other's scientific search.
 
 DIRECT-L is used only when the chart maps the complete assigned finite-search
 domain into a true box. A different phase family may require another
@@ -295,9 +366,11 @@ box and call the result globally complete.
 ### Stage 1: generate physical seed columns
 
 Use the existing homogeneous reacting-phase solver to generate one or more
-locally certified seeds for each applicable phase family. Previous
-continuation states and source-bound seeds may be added, but they remain
-initialization evidence.
+locally certified seeds for the one applicable Provider liquid family.
+Initialize the homogeneous solves from every distinct mechanically stable
+feed-density root and retain distinct locally certified reacting states.
+Previous continuation states and source-bound seeds may be added, but they
+remain initialization evidence.
 
 In the nonreactive strong-electrolyte reduction, dispatch to the existing
 HELD2 Steps 1--10 rather than entering a parallel GREPE seed path.
@@ -333,6 +406,11 @@ Tolerance proximity is not transitive. Visit immutable IDs in stable order
 and form a greedy maximal pairwise-distinct set. Do not use union-find or
 nearest-composition reconstruction.
 
+For the first slice, select at most two distinct liquid candidates. This is an
+output capability bound, not a caller-supplied topology and not a reason to
+discard a third discovered state as though the problem were solved. Evidence
+for more than two material phases returns a typed scope-exceeded result.
+
 ### Stage 5: final simultaneous reactive multiphase Ipopt NLP
 
 Instantiate the semi-infinite master formulation above on the selected finite
@@ -348,8 +426,8 @@ electrochemical, and mechanical equilibrium.
 The final NLP must:
 
 - start from the actual feasible master/HiGHS phase amounts and compositions;
-- use exact Provider tensors, Equilibrium chain rules, and gradient-based NLP
-  scaling;
+- use exact Provider tensors, Equilibrium chain rules, analytic gradients,
+  exact Lagrangian Hessians, and the one derived scaling contract;
 - keep phase amounts nonlogarithmic so inactive phases can reach zero;
 - never clip or retire a phase or species because its value is small;
 - retain HELD2's linear ordinary coordinates for its nonreactive reduction and
@@ -424,9 +502,11 @@ checksums. A mismatch invalidates the pricing evidence and forces repricing.
 Checksums detect stale evidence; they do not replace physical comparison,
 certification, or immutable scientific inputs.
 
-## Required evidence before implementation
+## Evidence gates
 
-The nonreactive behavior freeze consists of:
+### Gate A: frozen standalone behavior
+
+Before HELD2 or chemistry internals are shared, freeze and run:
 
 1. the native manufactured Steps 1--10 workflow;
 2. the complete Perdomo numerical matrix;
@@ -434,20 +514,76 @@ The nonreactive behavior freeze consists of:
 4. native/Python diagnostic parity;
 5. unchanged named tolerances, resource budgets, and
    `globality_certificate="not_guaranteed"`; and
-6. the executable HELD2-TPD/GREPE-reduced-cost identity.
+6. the executable HELD2-TPD/GREPE-reduced-cost identity;
+7. the complete chemistry compiler, support, reaction-basis, species-order,
+   sensitivity, and fail-closed tests; and
+8. the public ideal and installed-Provider homogeneous chemical sentinels.
 
-A future reactive implementation additionally requires:
+The HELD2 Step-5 original-coordinate KKT audit and validated Step-8 Farkas
+evidence must be completed as an isolated, regression-gated prerequisite before
+the shared search mechanism is extracted.
+
+### Gate B: coupled manufactured evidence
+
+The private reactive implementation requires:
 
 - reaction-basis, species-order, feed-scale, and gauge invariance;
 - a manufactured analytic reactive two-phase equilibrium;
+- the source-derived Ascani \(A+B\rightleftharpoons C\) topology case;
 - a narrow negative reactive-pricing basin;
 - multiple-density-root reference selection;
 - exact feasible master-to-NLP initialization;
 - inactive-phase KKT retirement followed by a complete reduced re-solve;
 - a stale-revision rejection test;
 - negative final repricing that returns to phase generation; and
-- installed public-Provider evidence before any predictive or capability
-  claim.
+- exact reduction parity for constrained homogeneous and nonreactive
+  phase-discovery variants.
+
+Search budgets are expressed in actual Provider callbacks and counted local
+solves. Wall time is recorded but not used as a hardware-dependent correctness
+assertion. No stage may hide a complete pressure-envelope solve inside every
+joint-search trial.
+
+### Gate C: neutral reactive-LLE physical evidence
+
+Before public exposure or a capability claim, reproduce the
+Ascani--Senina acetic-acid/1-pentanol/pentyl-acetate/water subject through an
+exact installed Provider artifact for Ascani's four-species PC-SAFT model
+hypothesis. Record that \(K_a=43.99\) was calibrated by Ascani from one Senina
+homogeneous equilibrium composition using PC-SAFT activity coefficients, so
+that datum is calibration rather than validation evidence. Also record that
+Senina used less than \(2\ \mathrm{wt}\%\) aqueous HCl while Ascani omitted the
+catalyst from the four-species calculation as an approximation. Compare
+calculated endpoints against the nine tabulated experimental reactive
+tie-lines at their source \(T,P\). Construct any flash feed from a declared
+convex weight applied to the two tabulated endpoint compositions and retain
+that provenance;
+do not claim reproduction of unpublished Ascani calculated endpoints. Record
+phase compositions, phase amounts, volumes, reaction residuals, transfer
+residuals, pressure residuals, final reduced costs, Provider calls, and wall
+time in an immutable Validation campaign.
+
+### Gate D: electrolyte extension
+
+Electrolyte reactive LLE begins only after Gate C and requires a separate
+source-complete installed-Provider case. It reruns every neutral and
+nonreactive regression and additionally proves phase-specific charge,
+electrolyte standard-state conversion, charged trace behavior, and charged
+coordinate invariance.
+
+## Implementation order
+
+1. Publish the HELD2 paper companion and freeze the standalone gates.
+2. Close the two isolated HELD2 evidence gaps.
+3. Extract the formulation-neutral deterministic joint-search mechanism and
+   prove unchanged HELD2 results and budgets.
+4. Add private typed `equilibrate` variants that delegate limiting cases.
+5. Implement GREPE Stages 0--4 for the at-most-two-liquid slice.
+6. Implement Stages 5--8 with exact derivatives and revision-bound evidence.
+7. Complete Gate B, then Gate C in Validation.
+8. Consider public `equilibrate` only after stable Gate-C evidence.
+9. Treat electrolyte reactive LLE as the separately evidenced Gate-D
+   extension.
 
 ## Rejected designs
 

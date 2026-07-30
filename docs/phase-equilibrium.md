@@ -18,11 +18,11 @@ replace a formulation owner.
 | --- | --- | --- |
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
-| Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Public development dispatch over one native core with fail-closed installed evidence; no admitted electrolyte LLE capability |
+| Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), [publication companion](designs/2026-07-29-held2-publication-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Public development dispatch over one native core with fail-closed installed evidence; no admitted electrolyte LLE capability |
 | Homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md) and [GREPE homogeneous layer](designs/2026-07-27-grepe-homogeneous-chemical-layer.md) | Public typed local value operation with optional conditioned state-input sensitivities; Belov trace evidence plus one source-complete Held/IAPWS installed-Provider value case; no predictive or global admission |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
-| Coupled multiphase chemical equilibrium | [GREPE reactive phase equilibrium](designs/2026-07-28-grepe-reactive-phase-equilibrium.md) | Package-local design only; no public schema or runtime route |
+| Coupled multiphase chemical equilibrium | [GREPE reactive phase equilibrium](designs/2026-07-28-grepe-reactive-phase-equilibrium.md), [implementation plan](plans/2026-07-29-grepe-reactive-lle-plan.md), and [benchmark review](designs/2026-07-29-reactive-lle-benchmark-review.md) | Normative future implementation contract for an at-most-two-liquid first slice; no public schema or runtime route |
 
 The only accepted capability is `pure-component-saturation-v1`. A public
 symbol, a local candidate, an installed campaign, or a converged local solve is
@@ -350,9 +350,9 @@ Step 8 merges numerical phase copies using physical composition plus molar
 volume; log-volume difference is only the dimensionless representation of
 relative volume in the two volume-based identities.
 
-## Closed future formulations
+## Future formulation boundaries
 
-### Ascani counterion-pair equilibrium
+### Closed Ascani counterion-pair equilibrium
 
 Ascani's independent counterion-pair residual formulation is a separate
 scientific family with different coordinates and stationarity conditions. The
@@ -373,8 +373,12 @@ The package-local
 preserves those requirements and revises phase discovery around the validated
 HELD2 joint composition/log-volume search, immutable candidate identity,
 master-to-NLP initialization, active-set re-solves, and fail-closed evidence
-rules. It is a design only. No public coupled reactive-phase schema or runtime
-route is admitted.
+rules. Its first physical subject is the neutral Ascani--Senina esterification
+case selected in the
+[benchmark review](designs/2026-07-29-reactive-lle-benchmark-review.md);
+electrolyte reactive LLE is a separately evidenced later slice. The GREPE file
+is the normative future implementation contract, not a runtime or capability
+claim. No public coupled reactive-phase schema or runtime route is admitted.
 
 ## Historical and scientific provenance
 
