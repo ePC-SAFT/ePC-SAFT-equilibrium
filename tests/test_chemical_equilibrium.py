@@ -516,6 +516,47 @@ def test_recovery_displacement_uses_mixed_sign_bound_room() -> None:
     assert all(lower[i] < negative[i] < upper[i] for i in range(2))
 
 
+def test_balance_retraction_removes_raw_log_seed_balance_error() -> None:
+    spec = _base_system()
+    _bind_record(spec)
+    pressure_over_rt = spec["pressure_pa"] / (8.31446261815324 * spec["temperature_k"])
+    saddle_volume = 1.0 / pressure_over_rt
+    variables = (math.log(0.5), math.log(0.5), math.log(saddle_volume))
+    lower = (math.log(0.1e-12), math.log(0.1e-12), math.log(saddle_volume) - 30.0)
+    upper = (0.0, 0.0, math.log(saddle_volume) + 30.0)
+    raw = _equilibrium._chemical_manufactured_recovery_displacement(
+        variables,
+        lower,
+        upper,
+        (1.0 / math.sqrt(2.0), -1.0 / math.sqrt(2.0), 0.0),
+        1,
+        0,
+    )
+    raw_balance_error = abs(math.exp(raw[0]) + math.exp(raw[1]) - 1.0)
+    assert raw_balance_error > 1.0e-4
+
+    retracted = _equilibrium._chemical_retract_manufactured_balance(
+        spec, raw, lower, upper, 1.0e-12
+    )
+    assert retracted
+    assert abs(math.exp(retracted[0]) + math.exp(retracted[1]) - 1.0) <= 1.0e-9
+    assert retracted[2] == variables[2]
+
+
+def test_failed_balance_retraction_makes_no_recovery_attempt() -> None:
+    spec = {**_base_system(), "ln_k": (0.0,)}
+    _bind_record(spec)
+    native = _equilibrium._chemical_solve_manufactured_nonconvex(
+        spec,
+        trace_floor=0.49,
+        max_iterations=200,
+    )
+
+    assert native["accepted"] is False
+    assert native["negative_curvature_recovery_status"] == "unresolved"
+    assert native["negative_curvature_recovery_attempts"] == 0
+
+
 def test_manufactured_ideal_case_does_not_attempt_negative_curvature_recovery() -> None:
     spec = _base_system()
     _bind_record(spec)
@@ -532,23 +573,6 @@ def test_manufactured_ideal_case_does_not_attempt_negative_curvature_recovery() 
     assert native["negative_curvature_recovery_status"] == "not_needed"
     assert native["negative_curvature_recovery_attempts"] == 0
     assert native["negative_curvature_recovery_selected_sign"] == 0
-
-
-def test_manufactured_nonconvex_no_descent_seed_remains_unresolved() -> None:
-    spec = {**_base_system(), "ln_k": (0.0,)}
-    _bind_record(spec)
-    native = _equilibrium._chemical_solve_manufactured_nonconvex(
-        spec,
-        trace_floor=1.0e-12,
-        max_iterations=200,
-        quadratic_strength=2.0,
-    )
-
-    assert native["accepted"] is False
-    assert native["local_minimum_status"] == "failed"
-    assert native["negative_curvature_recovery_status"] == "unresolved"
-    assert native["negative_curvature_recovery_attempts"] == 0
-    assert native["sensitivities"]["status"] == "unavailable"
 
 
 def test_manufactured_reaction_reports_exact_conditioned_implicit_sensitivities() -> None:

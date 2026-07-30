@@ -1192,6 +1192,190 @@ bool solve_equilibrated_square_system(
     });
 }
 
+std::vector<double> balance_feasible_retraction(
+    const AmountChart& chart,
+    const ConstraintRows& balances,
+    const std::vector<double>& seed,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    double trace_floor
+) {
+    const std::size_t amount_dimension = chart.coordinate_count();
+    const std::size_t variable_count = amount_dimension + 1;
+    const std::size_t balance_count = balances.matrix.rows;
+    if (seed.size() != variable_count
+        || lower.size() != variable_count
+        || upper.size() != variable_count
+        || balances.matrix.columns != chart.charges.size()
+        || balances.matrix.values.size()
+            != balance_count * chart.charges.size()
+        || !std::isfinite(trace_floor)
+        || trace_floor <= 0.0) {
+        return {};
+    }
+    auto strict_candidate = [&](const std::vector<double>& candidate) {
+        if (!std::all_of(
+                candidate.begin(),
+                candidate.end(),
+                [](double value) { return std::isfinite(value); }
+            )) {
+            return false;
+        }
+        for (std::size_t variable = 0;
+             variable < variable_count;
+             ++variable) {
+            if (candidate[variable] <= lower[variable]
+                || candidate[variable] >= upper[variable]) {
+                return false;
+            }
+        }
+        const AmountChartEvaluation amount_chart = evaluate_amount_chart(
+            chart,
+            std::vector<double>(
+                candidate.begin(),
+                candidate.begin() + static_cast<std::ptrdiff_t>(amount_dimension)
+            )
+        );
+        return amount_chart.minimum_amount > trace_floor;
+    };
+    if (!strict_candidate(seed)) {
+        return {};
+    }
+    std::vector<double> current = seed;
+    auto residual_and_jacobian = [&](const std::vector<double>& candidate,
+                                     std::vector<double>& residual,
+                                     std::vector<double>& jacobian) {
+        const AmountChartEvaluation amount_chart = evaluate_amount_chart(
+            chart,
+            std::vector<double>(
+                candidate.begin(),
+                candidate.begin() + static_cast<std::ptrdiff_t>(amount_dimension)
+            )
+        );
+        residual.assign(balance_count, 0.0);
+        jacobian.assign(balance_count * variable_count, 0.0);
+        for (std::size_t row = 0; row < balance_count; ++row) {
+            residual[row] = -balances.totals[row];
+            for (std::size_t species = 0;
+                 species < balances.matrix.columns;
+                 ++species) {
+                residual[row] += balances.matrix(row, species)
+                    * amount_chart.amounts[species];
+                for (std::size_t coordinate = 0;
+                     coordinate < amount_dimension;
+                     ++coordinate) {
+                    jacobian[row * variable_count + coordinate] +=
+                        balances.matrix(row, species)
+                        * amount_chart.jacobian[
+                            species * amount_dimension + coordinate
+                        ];
+                }
+            }
+        }
+    };
+    for (std::size_t iteration = 0; iteration < 8; ++iteration) {
+        std::vector<double> residual;
+        std::vector<double> jacobian;
+        try {
+            residual_and_jacobian(current, residual, jacobian);
+        } catch (const std::exception&) {
+            return {};
+        }
+        const double residual_norm = vector_inf_norm(residual);
+        if (!std::isfinite(residual_norm)) {
+            return {};
+        }
+        if (residual_norm <= kBalanceTolerance) {
+            return current;
+        }
+        std::vector<std::vector<double>> row_basis;
+        for (std::size_t row = 0; row < balance_count; ++row) {
+            if (!add_independent_row(
+                    std::vector<double>(
+                        jacobian.begin()
+                            + static_cast<std::ptrdiff_t>(row * variable_count),
+                        jacobian.begin()
+                            + static_cast<std::ptrdiff_t>((row + 1) * variable_count)
+                    ),
+                    row_basis
+                )) {
+                return {};
+            }
+        }
+        const std::size_t kkt_dimension = variable_count + balance_count;
+        std::vector<double> kkt(
+            kkt_dimension * kkt_dimension, 0.0
+        );
+        std::vector<double> right_hand_side(kkt_dimension, 0.0);
+        for (std::size_t variable = 0;
+             variable < variable_count;
+             ++variable) {
+            kkt[variable * kkt_dimension + variable] = 1.0;
+        }
+        for (std::size_t row = 0; row < balance_count; ++row) {
+            right_hand_side[variable_count + row] = -residual[row];
+            for (std::size_t variable = 0;
+                 variable < variable_count;
+                 ++variable) {
+                kkt[variable * kkt_dimension + variable_count + row] =
+                    jacobian[row * variable_count + variable];
+                kkt[(variable_count + row) * kkt_dimension + variable] =
+                    jacobian[row * variable_count + variable];
+            }
+        }
+        const EquilibratedSquareSystem equilibrated =
+            equilibrate_square_system(kkt);
+        if (equilibrated.analysis.rank != kkt_dimension) {
+            return {};
+        }
+        std::vector<double> correction;
+        if (!solve_equilibrated_square_system(
+                equilibrated, right_hand_side, correction
+            )) {
+            return {};
+        }
+        bool accepted_step = false;
+        for (std::size_t alpha_index = 0; alpha_index < 8; ++alpha_index) {
+            const double alpha = std::ldexp(1.0, -static_cast<int>(alpha_index));
+            std::vector<double> candidate = current;
+            for (std::size_t variable = 0;
+                 variable < amount_dimension;
+                 ++variable) {
+                candidate[variable] += alpha * correction[variable];
+            }
+            candidate.back() = current.back();
+            if (!strict_candidate(candidate)) {
+                continue;
+            }
+            std::vector<double> candidate_residual;
+            std::vector<double> candidate_jacobian;
+            try {
+                residual_and_jacobian(
+                    candidate, candidate_residual, candidate_jacobian
+                );
+            } catch (const std::exception&) {
+                continue;
+            }
+            const double candidate_norm = vector_inf_norm(candidate_residual);
+            if (!std::isfinite(candidate_norm)) {
+                continue;
+            }
+            if (candidate_norm <= kBalanceTolerance) {
+                return candidate;
+            }
+            if (candidate_norm < residual_norm) {
+                current = std::move(candidate);
+                accepted_step = true;
+                break;
+            }
+        }
+        if (!accepted_step) {
+            return {};
+        }
+    }
+    return {};
+}
+
 ChemicalSensitivityResult evaluate_implicit_sensitivities(
     const AmountChart& chart,
     const ConstraintRows& balances,
@@ -2209,6 +2393,23 @@ ManufacturedReducedHessianEvidence analyze_manufactured_reduced_hessian(
     return result;
 }
 
+std::vector<double> retract_manufactured_balance(
+    const CompiledReactionSystem& system,
+    const std::vector<double>& seed,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    double trace_floor
+) {
+    return balance_feasible_retraction(
+        make_amount_chart(system.charges),
+        ConstraintRows{system.balance_matrix, system.balance_totals},
+        seed,
+        lower,
+        upper,
+        trace_floor
+    );
+}
+
 std::vector<double> manufactured_recovery_displacement(
     const std::vector<double>& variables,
     const std::vector<double>& lower,
@@ -2903,6 +3104,17 @@ ChemicalSolveResult solve_reaction(
                 if (!changed) {
                     continue;
                 }
+                const std::vector<double> retracted = balance_feasible_retraction(
+                    chart,
+                    balances,
+                    displaced,
+                    lower,
+                    upper,
+                    trace_floor
+                );
+                if (retracted.empty()) {
+                    continue;
+                }
                 ReactionNlpEvaluation seed;
                 try {
                     seed = evaluate_reaction_nlp(
@@ -2913,7 +3125,7 @@ ChemicalSolveResult solve_reaction(
                         pressure_pa,
                         phase_evaluator,
                         domain,
-                        displaced,
+                        retracted,
                         std::vector<double>(
                             reaction_constraint_count(balances, domain), 0.0
                         ),
@@ -2936,7 +3148,7 @@ ChemicalSolveResult solve_reaction(
                     || !(seed.objective < selected_objective)) {
                     continue;
                 }
-                selected_seed = displaced;
+                selected_seed = retracted;
                 selected_evaluation = std::move(seed);
                 selected_objective = selected_evaluation.objective;
             }
