@@ -303,7 +303,8 @@ py::dict solve_manufactured(const py::dict& spec, double trace_floor) {
 py::dict solve_manufactured_nonconvex(
     const py::dict& spec,
     double trace_floor,
-    int max_iterations
+    int max_iterations,
+    double quadratic_strength
 ) {
     const ReactionSystemInput input = reaction_system_input(spec);
     const CompiledReactionSystem compiled = compile_reaction_system(input);
@@ -314,7 +315,8 @@ py::dict solve_manufactured_nonconvex(
             input.pressure_pa,
             {},
             trace_floor,
-            max_iterations
+            max_iterations,
+            quadratic_strength
         )
     );
 }
@@ -757,10 +759,11 @@ std::vector<double> manufactured_recovery_displacement_evidence(
     const std::vector<double>& lower,
     const std::vector<double>& upper,
     const std::vector<double>& direction,
-    int sign
+    int sign,
+    std::size_t backtrack_index
 ) {
     return manufactured_recovery_displacement(
-        variables, lower, upper, direction, sign
+        variables, lower, upper, direction, sign, backtrack_index
     );
 }
 
@@ -822,14 +825,16 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("lower"),
         py::arg("upper"),
         py::arg("direction"),
-        py::arg("sign")
+        py::arg("sign"),
+        py::arg("backtrack_index") = 0
     );
     module.def(
         "_chemical_solve_manufactured_nonconvex",
         &solve_manufactured_nonconvex,
         py::arg("spec"),
         py::arg("trace_floor") = 1.0e-12,
-        py::arg("max_iterations") = 500
+        py::arg("max_iterations") = 500,
+        py::arg("quadratic_strength") = 2.3
     );
     bind_chemical_observation(module);
 }

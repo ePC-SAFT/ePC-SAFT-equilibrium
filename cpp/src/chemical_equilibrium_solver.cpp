@@ -410,8 +410,8 @@ PhaseEvaluator ideal_phase_evaluator() {
     return evaluate_ideal_phase_block;
 }
 
-PhaseEvaluator manufactured_nonconvex_phase_evaluator() {
-    return [](
+PhaseEvaluator manufactured_nonconvex_phase_evaluator(double quadratic_strength) {
+    return [quadratic_strength](
         double temperature_k,
         const std::vector<double>& amounts,
         double volume
@@ -424,7 +424,6 @@ PhaseEvaluator manufactured_nonconvex_phase_evaluator() {
         PhaseBlockEvaluation result = evaluate_ideal_phase_block(
             temperature_k, amounts, volume
         );
-        constexpr double quadratic_strength = 2.0;
         constexpr double quartic_strength = 2.0;
         const double difference = amounts[0] - amounts[1];
         const double difference_gradient = -2.0 * quadratic_strength * difference
@@ -2215,13 +2214,15 @@ std::vector<double> manufactured_recovery_displacement(
     const std::vector<double>& lower,
     const std::vector<double>& upper,
     const std::vector<double>& direction,
-    int sign
+    int sign,
+    std::size_t backtrack_index
 ) {
     if (variables.empty()
         || variables.size() != lower.size()
         || variables.size() != upper.size()
         || variables.size() != direction.size()
-        || (sign != 1 && sign != -1)) {
+        || (sign != 1 && sign != -1)
+        || backtrack_index > 3) {
         return {};
     }
     double step_limit = std::numeric_limits<double>::infinity();
@@ -2255,7 +2256,8 @@ std::vector<double> manufactured_recovery_displacement(
     if (!has_direction || !std::isfinite(step_limit) || step_limit <= 0.0) {
         return {};
     }
-    const double step = std::min(0.25 * step_limit, 1.0);
+    const double step = std::min(0.25 * step_limit, 1.0)
+        * std::ldexp(1.0, -static_cast<int>(backtrack_index));
     std::vector<double> displaced = variables;
     for (std::size_t variable = 0;
          variable < displaced.size();
@@ -2838,57 +2840,119 @@ ChemicalSolveResult solve_reaction(
                 return std::numeric_limits<double>::quiet_NaN();
             }
         };
-        const double original_objective = fixed_objective(result);
+        const double original_objective = equality_evaluation.objective;
         if (std::isfinite(original_objective)) {
             best_objective = original_objective;
         }
+        auto seed_domain_valid = [&](const ReactionNlpEvaluation& seed) {
+            if (domain.enforce_packing || volume_transform != nullptr) {
+                if (!seed.phase.has_packing
+                    || !std::isfinite(seed.phase.packing.value)
+                    || seed.phase.packing.value < domain.packing_min
+                    || seed.phase.packing.value > domain.packing_max) {
+                    return false;
+                }
+            }
+            if (std::isfinite(domain.total_ion_fraction_max)) {
+                double ionic = 0.0;
+                double total = 0.0;
+                for (std::size_t species = 0;
+                     species < seed.amount_chart.amounts.size();
+                     ++species) {
+                    total += seed.amount_chart.amounts[species];
+                    if (system.charges[species] != 0) {
+                        ionic += seed.amount_chart.amounts[species];
+                    }
+                }
+                if (!std::isfinite(total) || total <= 0.0
+                    || ionic / total > domain.total_ion_fraction_max + 1.0e-12) {
+                    return false;
+                }
+            }
+            return seed.amount_chart.minimum_amount > trace_floor
+                && std::isfinite(seed.volume)
+                && seed.volume > 0.0
+                && std::isfinite(seed.objective);
+        };
         for (const int sign : {1, -1}) {
             if (!std::isfinite(original_objective)) {
                 break;
             }
-            const std::vector<double> displaced =
-                manufactured_recovery_displacement(
-                    variables,
-                    lower,
-                    upper,
-                    negative_curvature_direction,
-                    sign
-                );
-            if (displaced.empty()) {
-                continue;
+            std::vector<double> selected_seed;
+            ReactionNlpEvaluation selected_evaluation;
+            double selected_objective = std::numeric_limits<double>::infinity();
+            for (std::size_t backtrack = 0; backtrack < 4; ++backtrack) {
+                const std::vector<double> displaced =
+                    manufactured_recovery_displacement(
+                        variables,
+                        lower,
+                        upper,
+                        negative_curvature_direction,
+                        sign,
+                        backtrack
+                    );
+                if (displaced.empty()) {
+                    continue;
+                }
+                bool changed = false;
+                for (std::size_t variable = 0;
+                     variable < displaced.size();
+                     ++variable) {
+                    changed = changed || displaced[variable] != variables[variable];
+                }
+                if (!changed) {
+                    continue;
+                }
+                ReactionNlpEvaluation seed;
+                try {
+                    seed = evaluate_reaction_nlp(
+                        chart,
+                        balances,
+                        g_ref,
+                        temperature_k,
+                        pressure_pa,
+                        phase_evaluator,
+                        domain,
+                        displaced,
+                        std::vector<double>(
+                            reaction_constraint_count(balances, domain), 0.0
+                        ),
+                        volume_transform
+                    );
+                } catch (const std::exception&) {
+                    continue;
+                }
+                if (!seed_domain_valid(seed)) {
+                    continue;
+                }
+                const double resolution_guard = 64.0
+                    * std::numeric_limits<double>::epsilon()
+                    * std::max({
+                        1.0,
+                        std::abs(original_objective),
+                        std::abs(seed.objective),
+                    });
+                if (!(seed.objective < original_objective - resolution_guard)
+                    || !(seed.objective < selected_objective)) {
+                    continue;
+                }
+                selected_seed = displaced;
+                selected_evaluation = std::move(seed);
+                selected_objective = selected_evaluation.objective;
             }
-            ReactionNlpEvaluation displaced_evaluation;
-            try {
-                displaced_evaluation = evaluate_reaction_nlp(
-                    chart,
-                    balances,
-                    g_ref,
-                    temperature_k,
-                    pressure_pa,
-                    phase_evaluator,
-                    domain,
-                    displaced,
-                    std::vector<double>(
-                        reaction_constraint_count(balances, domain), 0.0
-                    ),
-                    volume_transform
-                );
-            } catch (const std::exception&) {
-                continue;
-            }
-            if (displaced_evaluation.amount_chart.minimum_amount <= trace_floor) {
+            if (selected_seed.empty()) {
                 continue;
             }
             MaxMinInitializationResult recovery_initialization = initialization;
             recovery_initialization.amounts =
-                displaced_evaluation.amount_chart.amounts;
+                selected_evaluation.amount_chart.amounts;
             recovery_initialization.strict_positive_feasible = true;
             ++result.negative_curvature_recovery_attempts;
             VolumeCoordinateTransform displaced_transform;
             const VolumeCoordinateTransform* recovery_transform = volume_transform;
             if (volume_transform != nullptr) {
                 displaced_transform = *volume_transform;
-                displaced_transform.initial_coordinate = displaced.back();
+                displaced_transform.initial_coordinate = selected_seed.back();
                 recovery_transform = &displaced_transform;
             }
             ChemicalSolveResult candidate;
@@ -2903,7 +2967,7 @@ ChemicalSolveResult solve_reaction(
                     recovery_initialization,
                     phase_evaluator,
                     domain,
-                    displaced_evaluation.volume,
+                    selected_evaluation.volume,
                     ln_k_pressure_derivatives_per_pa,
                     ln_k_parameter_derivatives,
                     volume_bounds,
@@ -3118,7 +3182,8 @@ ChemicalSolveResult solve_manufactured_nonconvex_reaction(
     double pressure_pa,
     const std::vector<double>& gauge_coefficients,
     double trace_floor,
-    int max_iterations
+    int max_iterations,
+    double quadratic_strength
 ) {
     const MaxMinInitializationResult initialization = max_min_initialization(
         system.balance_matrix,
@@ -3135,7 +3200,7 @@ ChemicalSolveResult solve_manufactured_nonconvex_reaction(
         trace_floor,
         max_iterations,
         initialization,
-        manufactured_nonconvex_phase_evaluator(),
+        manufactured_nonconvex_phase_evaluator(quadratic_strength),
         ReactionDomain{},
         std::numeric_limits<double>::quiet_NaN(),
         {},

@@ -454,10 +454,34 @@ def test_manufactured_nonconvex_saddle_recovers_certified_lower_minimum() -> Non
             for amount in amounts
         )
         difference = amounts[0] - amounts[1]
-        value += -2.0 * difference * difference + 2.0 * difference**4
+        value += -2.3 * difference * difference + 2.0 * difference**4
         return value + pressure_over_rt * volume
 
     saddle_volume = 1.0 / pressure_over_rt
+    saddle_coordinates = (
+        math.log(0.5),
+        math.log(0.5),
+        math.log(saddle_volume),
+    )
+    lower = (
+        math.log(0.1e-12),
+        math.log(0.1e-12),
+        math.log(saddle_volume) - 30.0,
+    )
+    upper = (0.0, 0.0, math.log(saddle_volume) + 30.0)
+    tangent = (1.0 / math.sqrt(2.0), -1.0 / math.sqrt(2.0), 0.0)
+    coarse_seed = _equilibrium._chemical_manufactured_recovery_displacement(
+        saddle_coordinates, lower, upper, tangent, 1, 0
+    )
+    backtracked_seed = _equilibrium._chemical_manufactured_recovery_displacement(
+        saddle_coordinates, lower, upper, tangent, 1, 3
+    )
+    assert objective(tuple(math.exp(value) for value in coarse_seed[:2]), saddle_volume) > objective(
+        (0.5, 0.5), saddle_volume
+    )
+    assert objective(tuple(math.exp(value) for value in backtracked_seed[:2]), saddle_volume) < objective(
+        (0.5, 0.5), saddle_volume
+    )
     assert objective(tuple(native["amounts"]), native["volume_m3"]) < objective(
         (0.5, 0.5), saddle_volume
     )
@@ -508,6 +532,23 @@ def test_manufactured_ideal_case_does_not_attempt_negative_curvature_recovery() 
     assert native["negative_curvature_recovery_status"] == "not_needed"
     assert native["negative_curvature_recovery_attempts"] == 0
     assert native["negative_curvature_recovery_selected_sign"] == 0
+
+
+def test_manufactured_nonconvex_no_descent_seed_remains_unresolved() -> None:
+    spec = {**_base_system(), "ln_k": (0.0,)}
+    _bind_record(spec)
+    native = _equilibrium._chemical_solve_manufactured_nonconvex(
+        spec,
+        trace_floor=1.0e-12,
+        max_iterations=200,
+        quadratic_strength=2.0,
+    )
+
+    assert native["accepted"] is False
+    assert native["local_minimum_status"] == "failed"
+    assert native["negative_curvature_recovery_status"] == "unresolved"
+    assert native["negative_curvature_recovery_attempts"] == 0
+    assert native["sensitivities"]["status"] == "unavailable"
 
 
 def test_manufactured_reaction_reports_exact_conditioned_implicit_sensitivities() -> None:
