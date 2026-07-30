@@ -27,7 +27,7 @@ done
 git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
 canonical_repo_root="$(dirname "$git_common_dir")"
 project_root="$(dirname "$canonical_repo_root")"
-default_eos_wheel="${project_root}/artifacts/objects/sha256/ceffbec2d8975fe105461f0af4fb6601a4e2e1b65fd2f6cbf47a877edfef99cb/epcsaft-0.2.0.dev0-cp313-cp313-linux_x86_64.whl"
+default_eos_wheel="${project_root}/artifacts/objects/sha256/66b7ea8fb29e0a268b555cbdf401c3502517c088669a4157e8f64ab985b59ce9/epcsaft-0.2.0.dev0-cp313-cp313-linux_x86_64.whl"
 eos_wheel="${EPCSAFT_EOS_WHEEL:-$default_eos_wheel}"
 if [[ ! -f "$eos_wheel" ]]; then
     echo "missing required hash-addressed EOS wheel: $eos_wheel" >&2
