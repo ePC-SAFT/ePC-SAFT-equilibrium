@@ -1,8 +1,8 @@
 # ePC-SAFT Equilibrium
 
 `epcsaft-equilibrium` owns bounded equilibrium formulations over an installed
-`epcsaft` provider. The accepted first capability solves a pure-component
-saturation boundary for the provider-approved methane, ethane, or propane
+`epcsaft` EOS. The accepted first capability solves a pure-component
+saturation boundary for the EOS-approved methane, ethane, or propane
 model under promotion receipt `promotion-0018-equilibrium-pure-saturation-v1`.
 The package also contains a non-authoritative local candidate for one bounded
 neutral methane/ethane HELD `T,P,z` calculation.
@@ -30,7 +30,7 @@ confirmed state that passes the local physical checks.
 The result reports solver convergence, numerical confirmation, and physical
 acceptance as separate fields. It checks pressure and chemical-potential
 equality, positive distinct phase states, local mechanical stability, bounds,
-finite values, and the provider fingerprint. It carries no globality or phase
+finite values, and the EOS fingerprint. It carries no globality or phase
 discovery certificate.
 
 ## Local neutral HELD candidate
@@ -60,7 +60,7 @@ The controller admits only the reviewed binary fingerprint inside the
 rectangular May et al. (2015), Table 5 source domain: 203.22--243.61 K,
 2.124--6.885 MPa, and methane feed fraction 0.4661--0.66705. It returns one or
 two phases after the declared finite Stage-I/II/III search. `FlashError`
-retains invalid-input, provider, exhausted-search, scope, and indeterminate
+retains invalid-input, EOS, exhausted-search, scope, and indeterminate
 diagnostics. Every result reports `globality_certificate="not_guaranteed"`;
 the accepted pure-saturation authority above is unchanged. HELD diagnostics
 classify solver, numerical, and physical evidence independently as `passed`,
@@ -74,7 +74,7 @@ The retained Pereira source is the permanent-lab Markdown at commit
 test, validation, or runtime dependency.
 
 The non-production development route extends the same public `tp_flash`
-operation to qualifying installed Provider electrolyte SDKs and the Perdomo
+operation to qualifying installed EOS electrolyte SDKs and the Perdomo
 HELD2 Steps 1--10 controller. Dispatch is capability-driven rather than case-
 or component-name-driven. It includes
 the deterministic pressure-root envelope, DIRECT-L Stage I, HiGHS Stage-II
@@ -106,7 +106,7 @@ homogeneous phase and a cross-EOS source-topology disagreement. It does not admi
 electrolyte LLE or reproduce Perdomo's SAFT-gamma-Mie numerical endpoints. The
 admission gate remains one source-complete installed ePC-SAFT case that reaches
 and passes Stage II and Stage III with two distinct liquids. It requires an
-exact corrected Provider artifact and independent installed-artifact evidence.
+exact corrected EOS artifact and independent installed-artifact evidence.
 
 The HELD2 algorithm is specified in
 `docs/designs/2026-07-24-held2-paper-algorithm.md` and implemented by
@@ -121,7 +121,7 @@ Installed two-liquid evidence and capability admission remain outside the
 landed scope.
 
 The development-only native diagnostic is the live-progress route. After
-exporting the installed Provider model configuration, run:
+exporting the installed EOS model configuration, run:
 
 ```bash
 build/epcsaft-equilibrium-diagnostic \
@@ -156,15 +156,15 @@ DIRECT-L explores the reduced HELD2 envelopes, HiGHS solves Problem (64), and
 Ipopt refines smooth Stage-II and Stage-III NLPs. The HELD candidate consumes
 the reviewed mixture value/gradient/Hessian tail;
 the pure route continues to consume the accepted prefix. The extension
-compiles against the declaration header installed by the provider wheel. It
-does not link provider implementation symbols, compile provider sources, or
-import private provider modules.
+compiles against the declaration header installed by the EOS wheel. It
+does not link EOS implementation symbols, compile EOS sources, or
+import private EOS modules.
 
 Source builds require Python 3.13, CMake, a C++17 compiler, pkg-config, Ipopt,
 network or populated FetchContent caches for the pinned NLopt 2.11.0 and
 HiGHS 1.15.1 archives and the header-only Boost 1.88.0 archive, and the
-non-editable provider wheel installed in the build environment. The
-local candidate gate hashes the exact provider wheel before creating an
+non-editable EOS wheel installed in the build environment. The
+local candidate gate hashes the exact EOS wheel before creating an
 isolated build environment. Candidate wheels are retained as read-only files
 under a commit-bound `artifacts/equilibrium-neutral-held-v1/<commit>/`
 directory and are never overwritten by a correction. The exact candidate
@@ -198,31 +198,31 @@ and landed task record is
 `docs/plans/2026-07-24-held2-paper-rewrite.md`. The D-028 homogeneous
 reacting-phase foundation is documented separately in
 `docs/designs/2026-07-21-private-reacting-phase-kernel.md`. It currently has
-Belov trace evidence, installed-Provider-manufactured evidence, and one
+Belov trace evidence, installed-EOS-manufactured evidence, and one
 source-complete Held/IAPWS water self-ionization value case. The public typed
 `chemical_equilibrium` operation reports a local fixed-`T,P` homogeneous value
 and optionally returns exact conditioned derivatives with respect to compiled
-balance totals, final Provider-basis `ln(K)`, and pressure. Value-only and
+balance totals, final EOS-basis `ln(K)`, and pressure. Value-only and
 value-plus-Jacobian responses are explicit. Requested unsupported columns fail
 closed. A source standard state's reference pressure remains immutable
-provenance, while the Provider reference is re-evaluated and the transformed
-Provider-basis record is bound at each actual trial pressure. Exact
+provenance, while the EOS reference is re-evaluated and the transformed
+EOS-basis record is bound at each actual trial pressure. Exact
 source-reference pressure derivatives are included in the returned pressure
 column when the installed derivative tail and its branch certificates are
 available. Typed active-parameter requests consume only coordinates advertised
-by the installed Provider and require one atomic callback to supply the
+by the installed EOS and require one atomic callback to supply the
 active-model Helmholtz, packing, pressure, chemical-potential, and
 neutral-reference derivative blocks. Unsupported or incomplete requests fail
 closed; no derivative is approximated. Results bind species/parameter order, units, chart topology,
-Provider fingerprint, installed distribution RECORD fingerprints, and Provider
+EOS fingerprint, installed distribution RECORD fingerprints, and EOS
 SDK ABI identity. The reported `condition_number_inf` is the deterministic
 infinity-norm condition number of the four-pass row/column-equilibrated KKT
 system and is the one numerical conditioning metric used by the sensitivity
 gate; no second or unscaled condition metric is reported. The operation has no predictive admission, coupled
 phase-equilibrium claim, or globality proof.
-Migration receipt
+Accepted receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
 production owner of that exact local boundary capability. One local boundary
 solve is not a phase-discovery or global-stability proof. The local HELD
 candidate has authority effect `none` until separate review, validation,
-provider-tail promotion, equilibrium promotion, and explicit user approval.
+EOS-tail promotion, equilibrium promotion, and explicit user approval.

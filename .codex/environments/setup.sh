@@ -27,10 +27,25 @@ done
 git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
 canonical_repo_root="$(dirname "$git_common_dir")"
 project_root="$(dirname "$canonical_repo_root")"
-default_provider_wheel="${project_root}/ePC-SAFT-EoS/dist/epcsaft-0.2.0.dev0-cp313-cp313-linux_x86_64.whl"
-provider_wheel="${EPCSAFT_PROVIDER_WHEEL:-$default_provider_wheel}"
-if [[ ! -f "$provider_wheel" ]]; then
-    echo "missing required Provider wheel: $provider_wheel" >&2
+default_eos_wheel="${project_root}/artifacts/provider-deea-ordinary-sigma-sdk-v1/ceffbec2d897/epcsaft-0.2.0.dev0-cp313-cp313-linux_x86_64.whl"
+eos_wheel="${EPCSAFT_EOS_WHEEL:-$default_eos_wheel}"
+if [[ ! -f "$eos_wheel" ]]; then
+    echo "missing required hash-addressed EOS wheel: $eos_wheel" >&2
+    echo "set EPCSAFT_EOS_WHEEL to an immutable artifact-root wheel" >&2
+    exit 1
+fi
+
+eos_wheel="$(realpath "$eos_wheel")"
+if [[ "$eos_wheel" == */dist/* ]]; then
+    echo "mutable EOS dist/ wheels are forbidden: $eos_wheel" >&2
+    exit 1
+fi
+
+eos_wheel_sha256="$(sha256sum "$eos_wheel" | awk '{print $1}')"
+eos_artifact_key="$(basename "$(dirname "$eos_wheel")")"
+if [[ ! "$eos_artifact_key" =~ ^[0-9a-f]{12,64}$ ]] \
+    || [[ "$eos_wheel_sha256" != "$eos_artifact_key"* ]]; then
+    echo "EOS wheel is not stored under its SHA-256 prefix: $eos_wheel" >&2
     exit 1
 fi
 
@@ -39,7 +54,7 @@ if [[ ! -x .venv/bin/python ]]; then
 fi
 
 uv pip install --python .venv/bin/python \
-    "$provider_wheel" \
+    "$eos_wheel" \
     mypy \
     pint \
     pybind11 \
@@ -49,20 +64,37 @@ uv pip install --python .venv/bin/python \
 uv pip install --python .venv/bin/python --no-build-isolation --editable .
 
 pybind11_cmake_dir="$(.venv/bin/python -m pybind11 --cmakedir)"
-cmake -S . -B build -G Ninja \
+cmake -S . -B .codex-build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DPython_EXECUTABLE="$repo_root/.venv/bin/python" \
     -Dpybind11_DIR="$pybind11_cmake_dir"
-cmake --build build -j2
+cmake --build .codex-build -j2
 
-.venv/bin/python - <<'PY'
+.venv/bin/python - "$eos_wheel" "$eos_wheel_sha256" <<'PY'
 from importlib import metadata
 import json
+from pathlib import Path
+import sys
+from urllib.parse import unquote, urlparse
 
-provider = metadata.distribution("epcsaft")
-direct_url = json.loads(provider.read_text("direct_url.json") or "{}")
-if provider.version != "0.2.0.dev0":
-    raise SystemExit(f"epcsaft version mismatch: {provider.version}")
+expected_wheel = Path(sys.argv[1]).resolve()
+expected_sha256 = sys.argv[2]
+eos = metadata.distribution("epcsaft")
+direct_url = json.loads(eos.read_text("direct_url.json") or "{}")
+if eos.version != "0.2.0.dev0":
+    raise SystemExit(f"epcsaft version mismatch: {eos.version}")
 if direct_url.get("dir_info", {}).get("editable", False):
-    raise SystemExit("editable epcsaft provider is forbidden")
+    raise SystemExit("editable epcsaft EOS install is forbidden")
+installed_url = direct_url.get("url", "")
+installed_wheel = Path(unquote(urlparse(installed_url).path)).resolve()
+if installed_wheel != expected_wheel:
+    raise SystemExit(
+        f"installed EOS wheel mismatch: {installed_wheel} != {expected_wheel}"
+    )
+archive_info = direct_url.get("archive_info", {})
+installed_sha256 = archive_info.get("hash", "").removeprefix("sha256=")
+if installed_sha256 and installed_sha256 != expected_sha256:
+    raise SystemExit(
+        f"installed EOS hash mismatch: {installed_sha256} != {expected_sha256}"
+    )
 PY

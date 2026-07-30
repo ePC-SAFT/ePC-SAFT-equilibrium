@@ -1,14 +1,14 @@
 # Equilibrium Repository Context
 
 This repository is the production owner of the accepted pure-component
-saturation slice recorded by migration receipt
+saturation slice recorded by promotion receipt
 `promotion-0018-equilibrium-pure-saturation-v1`. The accepted scope is one
 local fixed-temperature methane, ethane, or propane saturation boundary over a
-compatible installed provider artifact.
+compatible installed EOS artifact.
 
-`governance_doctrine_revision: 4`
+`governance_doctrine_revision: 5`
 
-Canonical local doctrine: `../ePC-SAFT-organization/GOVERNANCE.md`.
+Canonical local doctrine: `../ePC-SAFT-management/GOVERNANCE.md`.
 
 ## Language
 
@@ -40,7 +40,7 @@ _Avoid_: Neutral reactive LLE
 Equilibrium owns both its package evidence and execution of assigned
 installed-artifact campaigns in the sibling Validation repository. The task
 remains based here; Validation remains the durable black-box evidence home and
-has no resident worker. Migration serializes exact campaign subjects and
+has no resident worker. Management serializes exact campaign subjects and
 dispatches a separate reviewer only when required. This execution model does
 not change scientific admission or runtime authority.
 
@@ -74,7 +74,7 @@ Stage-I/II/III controller and returns one or two phases without a caller-
 supplied phase count or phase guesses. Finite search cannot prove global
 stability: every result retains
 `globality_certificate="not_guaranteed"`, and search exhaustion, unsupported
-trace or third-phase cases, provider failures, and indeterminate states fail
+trace or third-phase cases, EOS failures, and indeterminate states fail
 closed. HELD diagnostics report solver, numerical, and physical evidence on
 independent `passed`, `failed`, or `not_adjudicated` axes. The accepted pure-
 saturation route and authority are unchanged.
@@ -91,8 +91,8 @@ the permanent lab at commit
 `dde7f02d4c93cce86804a8e6b62d37602990ac21` and
 `5d6b6322a5c9d8c964f7ef08ed79831f243a2698`; the Perdomo Markdown SHA-256 is
 `522cba2efb44c6404b3b8b75eefb90c50a84cc4110333f30aa1f0eb1a21380d5`.
-Those sources are provenance only; the clean package has no lab, migration,
-sibling-source, or provider-implementation dependency.
+Those sources are provenance only; the clean package has no lab,
+sibling-source, or EOS-implementation dependency.
 
 The archived installed Perdomo Table 3 public-route evidence retains three
 detected homogeneous pressure roots, two mechanically stable roots, complete
@@ -119,7 +119,7 @@ active.
 D-028 separately binds a private, non-production homogeneous reacting-phase
 foundation, now deepened by the private GREPE homogeneous chemical layer. The
 implementation is intentionally reachable only through underscored native test
-seams. It compiles redundant supplied reactions only after Provider-basis
+seams. It compiles redundant supplied reactions only after EOS-basis
 provenance, mass, charge, span, and converted-cycle checks; classifies
 homogeneous species support using HiGHS candidates plus independent exact
 binary-rational primal or dual certificates; and recompiles reaction
@@ -127,30 +127,30 @@ combinations on the accessible species face. The existing positive
 electroneutral chart, fixed-`T,P` exact-Hessian Ipopt minimization, and generic
 strictly-interior KKT polish remain the only optimization path. Manufactured
 ideal structural faces restore certified zeros exactly and can emit
-`LOCAL_EQUILIBRIUM`. Installed Provider structural faces fail before any
+`LOCAL_EQUILIBRIUM`. Installed EOS structural faces fail before any
 reduced-component callback with `BOUNDARY_DIRECTION_UNRESOLVED`, because SDK
 v1 has no reduced-topology or boundary-direction contract.
 
 Final equality multipliers and certificates are rebuilt from the accepted
 physical state. The public typed `chemical_equilibrium` value operation routes
-through one underscored native bridge to this same owner. The Provider path
+through one underscored native bridge to this same owner. The EOS path
 consumes only the installed
-Provider's Helmholtz, pressure, volume-domain, packing, and derivative
+EOS's Helmholtz, pressure, volume-domain, packing, and derivative
 callbacks. A source-derived Belov-Aristova gas restriction supplies algorithm
 and trace-range evidence through the seam and remains
 `manufactured_nonpredictive`. A source-complete Held-2008/IAPWS
-R11-07(2019) water self-ionization sentinel exercises the installed Provider
+R11-07(2019) water self-ionization sentinel exercises the installed EOS
 neutral-reference transport through the same solver at 298.15 K and
 1 bar. It establishes one local fixed-state value result, not application
 chemistry, predictive, phase-stability, coupled-equilibrium, or globality.
 The public operation optionally returns exact conditioned derivatives for
-compiled totals, final Provider-basis reaction constants, and pressure. A
+compiled totals, final EOS-basis reaction constants, and pressure. A
 source standard state's declared reference pressure remains provenance; the
-neutral reference and transformed Provider-basis records are evaluated and
+neutral reference and transformed EOS-basis records are evaluated and
 bound at the actual system pressure. The pressure column includes exact
 source-reference pressure derivatives when the installed derivative tail and
 branch certificates are available. A typed active-parameter request is also
-available when the installed Provider advertises the exact coordinate and its
+available when the installed EOS advertises the exact coordinate and its
 atomic active-model Helmholtz, packing, pressure, chemical-potential, and
 neutral-reference derivative blocks. Unsupported coordinates, incomplete
 blocks, active bounds, or unavailable KKT columns fail closed. D-026 remains
@@ -223,7 +223,7 @@ The implemented design is `docs/designs/2026-07-17-neutral-held-v1.md`. It
 replaced the unpromoted fixed-two-phase route and its duplicate public/result
 surface without an alias. The complete controller still adds no accepted
 capability or authority until independent review, installed-artifact
-validation, ordered provider-tail and equilibrium promotion receipts, and
+validation, ordered EOS-tail and equilibrium promotion receipts, and
 explicit user approval all complete.
 
 `implemented_local_design: neutral-held-v1`
@@ -237,7 +237,7 @@ proof, and review checkpoints. Tasks 1--7 remain frozen executed-v1 provenance;
 Task 8 records the smallest post-validation controller correction, but the
 Perdomo HELD2 pivot defers it. Its local status is
 `controller_redesign_design_deferred`; the plan and
-candidate receipt do not admit the provider mixture tail or create an accepted
+candidate receipt do not admit the EOS mixture tail or create an accepted
 equilibrium capability.
 
 `implementation_plan_status: controller_redesign_design_deferred`

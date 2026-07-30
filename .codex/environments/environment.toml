@@ -8,7 +8,7 @@ script = "bash .codex/environments/setup.sh"
 [[actions]]
 name = "Build"
 icon = "run"
-command = "cmake --build build -j2"
+command = "cmake --build .codex-build -j2"
 platform = "linux"
 
 [[actions]]
