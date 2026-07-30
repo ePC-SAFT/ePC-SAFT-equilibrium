@@ -27,7 +27,7 @@ done
 git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
 canonical_repo_root="$(dirname "$git_common_dir")"
 project_root="$(dirname "$canonical_repo_root")"
-default_eos_wheel="${project_root}/artifacts/provider-deea-ordinary-sigma-sdk-v1/ceffbec2d897/epcsaft-0.2.0.dev0-cp313-cp313-linux_x86_64.whl"
+default_eos_wheel="${project_root}/artifacts/objects/sha256/ceffbec2d8975fe105461f0af4fb6601a4e2e1b65fd2f6cbf47a877edfef99cb/epcsaft-0.2.0.dev0-cp313-cp313-linux_x86_64.whl"
 eos_wheel="${EPCSAFT_EOS_WHEEL:-$default_eos_wheel}"
 if [[ ! -f "$eos_wheel" ]]; then
     echo "missing required hash-addressed EOS wheel: $eos_wheel" >&2
@@ -43,9 +43,9 @@ fi
 
 eos_wheel_sha256="$(sha256sum "$eos_wheel" | awk '{print $1}')"
 eos_artifact_key="$(basename "$(dirname "$eos_wheel")")"
-if [[ ! "$eos_artifact_key" =~ ^[0-9a-f]{12,64}$ ]] \
-    || [[ "$eos_wheel_sha256" != "$eos_artifact_key"* ]]; then
-    echo "EOS wheel is not stored under its SHA-256 prefix: $eos_wheel" >&2
+if [[ ! "$eos_artifact_key" =~ ^[0-9a-f]{64}$ ]] \
+    || [[ "$eos_wheel_sha256" != "$eos_artifact_key" ]]; then
+    echo "EOS wheel is not stored under its full SHA-256: $eos_wheel" >&2
     exit 1
 fi
 
