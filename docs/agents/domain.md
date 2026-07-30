@@ -1,24 +1,13 @@
 # Domain Docs
 
-The engineering skills use this repository's single-context domain
+The managed contract below defines this repository's domain layout. If a
+configured context location is absent, proceed without creating speculative
 documentation.
 
 ## Before exploring
 
 - Read the root `CONTEXT.md`.
 - Read ADRs under `docs/adr/` that affect the work.
-- If either location is absent, proceed without creating speculative
-  documentation.
-
-## Layout
-
-```text
-/
-├── CONTEXT.md
-├── docs/
-│   └── adr/
-└── src/
-```
 
 ## Vocabulary
 

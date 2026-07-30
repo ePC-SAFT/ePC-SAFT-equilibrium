@@ -48,20 +48,10 @@ without a separately admitted slice.
 
 ## Agent skills
 
-### Issue tracker
-
-Issues and PRDs are tracked in this repository's GitHub Issues using `gh`.
-See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Use the canonical Matt triage labels without aliases.
-See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Use the single-context layout: root `CONTEXT.md` plus repository-wide ADRs
-under `docs/adr/`. See `docs/agents/domain.md`.
+Available Matt disciplines are `grilling`, `tdd`, `diagnosing-bugs`,
+`research`, `domain-modeling`, `prototype`, `resolving-merge-conflicts`,
+`code-review`, `cutthroat-code-cleanup`, `minimize-code-surface`, and
+`scientific-coding-and-testing`.
 
 <!-- project-truss:setup:start -->
 ### Project Truss

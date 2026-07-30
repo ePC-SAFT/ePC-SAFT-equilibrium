@@ -32,14 +32,6 @@ Create a GitHub issue.
 
 Run `gh issue view <number> --comments`.
 
-## Wayfinding operations
-
-Use one GitHub issue as the map and native sub-issues as its tickets. Use native
-GitHub issue dependencies for blocking relationships. A ticket is available
-when it is open, unassigned, and has no open blocker. Claim it by assigning the
-driving developer, and resolve it through a recorded answer and verified issue
-closure.
-
 <!-- project-truss:setup:start -->
 ## Project Truss tracker contract
 
