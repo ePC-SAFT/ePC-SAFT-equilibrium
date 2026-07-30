@@ -4,8 +4,10 @@ Repository Profile: scientific-computing
 
 Accepted capability: pure-component-saturation-v1.
 
-Before work, read doctrine revision 5 at
-`../ePC-SAFT-management/GOVERNANCE.md`. Its published home is
+Before work, read doctrine revision 5 and the machine-readable access contract
+from `../ePC-SAFT-management/GOVERNANCE.md` and
+`../ePC-SAFT-management/manifests/management.json`. During the local checkout
+transition, resolve both files from `../ePC-SAFT-organization/`. Their published home is
 `https://github.com/ePC-SAFT/ePC-SAFT-management/blob/main/GOVERNANCE.md`.
 Local policy may narrow that doctrine but must not contradict it.
 
@@ -24,9 +26,9 @@ are scientific and transition provenance, not current package authority.
   of equilibrium formulations, phase discovery, equilibrium-solver execution,
   certification, diagnostics, and equilibrium result contracts.
 - When Management assigns a bounded Equilibrium campaign, this same agent uses
-  the target-owned `.worktrees/equilibrium-access` worktree in the sibling
-  Validation repository to author and execute it. Its task home does not move
-  to Validation.
+  a target-owned Validation worktree created on demand under Validation's
+  `.worktrees/` directory for a task-specific branch and path. Its task home
+  does not move to Validation.
 - Validation work must use exact immutable installed EOS and Equilibrium
   public artifacts. It must not import either source checkout, use private
   adapters, copy EOS or controller logic, or tune package behavior from the

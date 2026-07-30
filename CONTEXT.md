@@ -9,6 +9,9 @@ compatible installed EOS artifact.
 `governance_doctrine_revision: 5`
 
 Canonical local doctrine: `../ePC-SAFT-management/GOVERNANCE.md`.
+During the local checkout transition, resolve doctrine and the access manifest
+from `../ePC-SAFT-organization/GOVERNANCE.md` and
+`../ePC-SAFT-organization/manifests/management.json`.
 
 ## Language
 
