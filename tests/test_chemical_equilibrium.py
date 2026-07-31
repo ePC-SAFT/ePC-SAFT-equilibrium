@@ -458,8 +458,8 @@ def test_manufactured_nonconvex_saddle_recovers_certified_lower_minimum() -> Non
     assert tuple(
         attempt["start_identity"] for attempt in recovery_attempts
     ) == (
-        "negative_curvature;sign=1",
-        "negative_curvature;sign=-1",
+        "negative_curvature;sign=1;seed=0",
+        "negative_curvature;sign=-1;seed=0",
     )
     assert all(
         attempt["terminal_status"] == "certified_local_minimum"
@@ -528,6 +528,13 @@ def test_manufactured_nonconvex_search_retains_and_selects_distinct_basins() -> 
     )
     assert len(search["attempts"]) >= search["primary_attempt_count"]
     assert len(search["basins"]) == 2
+    certified_attempts = tuple(
+        attempt
+        for attempt in search["attempts"]
+        if attempt["terminal_status"] == "certified_local_minimum"
+    )
+    assert len(certified_attempts) > len(search["basins"])
+    assert len({attempt["basin_ordinal"] for attempt in certified_attempts}) == 2
     objectives = tuple(basin["objective"] for basin in search["basins"])
     assert objectives[0] != pytest.approx(objectives[1], abs=1.0e-10)
     selected = search["selected_basin_ordinal"]
@@ -631,6 +638,32 @@ def test_failed_balance_retraction_makes_no_recovery_attempt() -> None:
     assert native["accepted"] is False
     assert native["negative_curvature_recovery_status"] == "unresolved"
     assert native["negative_curvature_recovery_attempts"] == 0
+    assert native["search"]["status"] == "search_exhausted_no_certified_candidate"
+    primary = native["search"]["attempts"][0]
+    assert primary["terminal_status"] == "saddle_observed"
+    assert primary["recovery_seed_count"] == 8
+    assert primary["recovery_solve_count"] == 0
+
+
+def test_manufactured_search_reports_exhausted_solver_budget() -> None:
+    spec = _base_system()
+    _bind_record(spec)
+
+    native = _equilibrium._chemical_solve_manufactured_nonconvex(
+        spec,
+        trace_floor=1.0e-12,
+        max_iterations=0,
+        quadratic_strength=0.0,
+    )
+
+    assert native["accepted"] is False
+    assert native["search"]["status"] == "search_exhausted_no_certified_candidate"
+    assert native["search"]["basins"] == []
+    terminal_statuses = {
+        attempt["terminal_status"] for attempt in native["search"]["attempts"]
+    }
+    assert "solver_failed" in terminal_statuses
+    assert "certified_local_minimum" not in terminal_statuses
 
 
 def test_manufactured_ideal_case_does_not_attempt_negative_curvature_recovery() -> None:
@@ -1593,6 +1626,7 @@ def _provider_native(
     model: epcsaft.Mixture,
     spec: dict[str, object],
     source_standard_state: dict[str, object] | None = None,
+    packing_fraction_bounds: tuple[float, float] = (1.0e-6, 0.74),
 ) -> dict[str, object]:
     native_spec = copy.deepcopy(spec)
     if "conserved_totals" not in native_spec:
@@ -1609,7 +1643,7 @@ def _provider_native(
         epcsaft.native_sdk(model),
         native_spec,
         source_standard_state,
-        (1.0e-6, 0.74),
+        packing_fraction_bounds,
         1.0e-12,
     )
 
@@ -2325,6 +2359,18 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
     assert result.diagnostics.boundary_status == "strict_interior"
     assert 1.0e-6 < result.diagnostics.packing_fraction < 0.74
     assert result.diagnostics.globality_status == "not_guaranteed"
+
+    rejected = _provider_native(
+        model,
+        spec,
+        packing_fraction_bounds=(0.73, 0.74),
+    )
+    assert rejected["accepted"] is False
+    assert rejected["search"]["status"] == "domain_rejected"
+    assert rejected["search"]["primary_attempt_count"] == 1
+    assert rejected["search"]["attempts"][0]["start_construction_status"] == "rejected"
+    assert rejected["search"]["attempts"][0]["provider_domain_status"] == "failed"
+    assert rejected["search"]["attempts"][0]["terminal_status"] == "domain_rejected"
 
 
 def test_installed_provider_pressure_sensitivity_matches_independent_resolves() -> None:

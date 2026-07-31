@@ -1,9 +1,12 @@
 # Chemical basin-search validation handoff
 
 This handoff binds the generic homogeneous chemical-equilibrium implementation
-from issue #96 to the immutable installed artifact used by downstream
-Validation #18 and Regression #16. It does not transfer chemistry ownership,
-define an MEA campaign, or claim global or phase stability.
+from [Equilibrium issue #96](https://github.com/ePC-SAFT/ePC-SAFT-equilibrium/issues/96)
+to the immutable installed artifact used by downstream
+[Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
+and [Regression issue #16](https://github.com/ePC-SAFT/ePC-SAFT-regression/issues/16).
+It does not transfer chemistry ownership, define an MEA campaign, or claim
+global or phase stability.
 
 ## Immutable subject
 
@@ -69,10 +72,11 @@ The application-owned source subject remains:
   `93510b66543e4e9e49c409a658b1bf7a01599ccd9ce3feef41bbab6b6eb668ab`.
 
 The Equilibrium repository does not copy the application chemistry or source
-rows. Validation #18 must consume those immutable application inputs and the
-two installed wheels above through public package boundaries. It must retain
-the complete search receipt even when the sentinel remains a saddle or no
-certified basin is found.
+rows. [Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
+must consume those immutable application inputs and the two installed wheels
+above through public package boundaries. It must retain the complete search
+receipt even when the sentinel remains a saddle or no certified basin is
+found.
 
 ## Interpretation boundary
 
@@ -82,4 +86,3 @@ unobserved basin, phase stability, reactive phase equilibrium, global
 thermodynamic stability, kinetics, predictive validity, or regression
 readiness. Finite search failure never emits `infeasible_certified`; that
 status remains reserved for a future independent feasibility certificate.
-

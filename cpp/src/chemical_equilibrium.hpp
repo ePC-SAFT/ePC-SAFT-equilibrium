@@ -180,6 +180,7 @@ struct ChemicalSolveResult {
     std::string provider_domain_status = "not_adjudicated";
     std::string local_minimum_status = "not_adjudicated";
     std::string negative_curvature_recovery_status = "not_needed";
+    std::size_t negative_curvature_recovery_seed_count = 0;
     std::size_t negative_curvature_recovery_attempts = 0;
     int negative_curvature_recovery_selected_sign = 0;
     std::string trace_status = "not_adjudicated";

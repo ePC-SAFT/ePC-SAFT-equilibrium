@@ -322,11 +322,23 @@ public_surface:
   distribution: epcsaft-equilibrium
   package: epcsaft_equilibrium
   exports:
+    - ChemicalArtifactIdentity
+    - ChemicalEquilibriumActiveParameter
+    - ChemicalEquilibriumAttempt
+    - ChemicalEquilibriumBasin
+    - ChemicalEquilibriumBudgetPrefix
     - ChemicalEquilibriumConstant
     - ChemicalEquilibriumDiagnostics
     - ChemicalEquilibriumError
     - ChemicalEquilibriumProblem
     - ChemicalEquilibriumResult
+    - ChemicalEquilibriumSearch
+    - ChemicalEquilibriumSensitivity
+    - ChemicalEquilibriumSensitivityParameter
+    - ChemicalEquilibriumSensitivityRequest
+    - ChemicalObservationContext
+    - ChemicalObservationPrimitive
+    - ChemicalObservationRow
     - ChemicalStandardState
     - FlashError
     - HeldDiagnostics
@@ -339,6 +351,7 @@ public_surface:
     - SolverAttemptDiagnostics
     - TpFlashResult
     - chemical_equilibrium
+    - chemical_observation_context
     - saturation
     - tp_flash
   native_modules: [epcsaft_equilibrium._equilibrium]

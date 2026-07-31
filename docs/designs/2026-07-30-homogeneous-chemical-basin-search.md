@@ -307,8 +307,20 @@ Package evidence must cover these claim groups:
 
 The frozen Hilliard/Böttinger sentinel runs only after this record is committed.
 It either returns a reproducible certified local minimum or remains a blocker
-with the complete finite-search receipt. Validation #18 owns the later
-preregistered MEA matrix over immutable installed artifacts.
+with the complete finite-search receipt.
+[Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
+owns the preregistered MEA matrix over immutable installed artifacts.
+
+### Post-design ownership clarification
+
+The user subsequently confirmed that MEA testing is a downstream application
+of this generic capability. The package leaf therefore freezes the immutable
+artifact, public receipt, and exact sentinel identity, while
+[Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
+owns both the first installed-artifact sentinel execution and the broader
+matrix. This clarification supersedes only the execution owner implied by the
+preceding paragraph; it does not change any formulation, start, solver,
+tolerance, certification, or failure-accounting rule.
 
 ## Out of scope
 

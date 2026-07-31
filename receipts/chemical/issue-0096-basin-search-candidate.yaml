@@ -25,8 +25,8 @@ installed_proof:
   manufactured_nonconvex_certified_basins: 2
   manufactured_nonconvex_selection: lowest_observed_certified_local_value
 downstream:
-  validation_issue: ePC-SAFT-validation#18
-  regression_issue: ePC-SAFT-regression#16
+  validation_issue: https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18
+  regression_issue: https://github.com/ePC-SAFT/ePC-SAFT-regression/issues/16
   handoff: docs/designs/2026-07-30-chemical-basin-search-validation-handoff.md
 claim_limit: >-
   One deterministic finite search for the lowest observed certified strict
