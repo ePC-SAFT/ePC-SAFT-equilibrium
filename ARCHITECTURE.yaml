@@ -20,6 +20,7 @@ documentation:
   perdomo_held2_implementation_plan: docs/plans/2026-07-24-held2-paper-rewrite.md
   homogeneous_reacting_phase_design: docs/designs/2026-07-21-private-reacting-phase-kernel.md
   homogeneous_chemical_basin_search_design: docs/designs/2026-07-30-homogeneous-chemical-basin-search.md
+  homogeneous_chemical_basin_search_handoff: docs/designs/2026-07-30-chemical-basin-search-validation-handoff.md
   historical_lab_m4_role: scientific-and-migration-provenance
 
 accepted_capability:
