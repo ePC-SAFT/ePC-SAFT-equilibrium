@@ -1,19 +1,22 @@
 # Chemical basin-search validation handoff
 
 This handoff binds the generic homogeneous chemical-equilibrium implementation
-from issue #96 to the immutable installed artifact used by downstream
-Validation #18 and Regression #16. It does not transfer chemistry ownership,
-define an MEA campaign, or claim global or phase stability.
+from [Equilibrium issue #96](https://github.com/ePC-SAFT/ePC-SAFT-equilibrium/issues/96)
+to the immutable installed artifact used by downstream
+[Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
+and [Regression issue #16](https://github.com/ePC-SAFT/ePC-SAFT-regression/issues/16).
+It does not transfer chemistry ownership, define an MEA campaign, or claim
+global or phase stability.
 
 ## Immutable subject
 
 | Item | Identity |
 | --- | --- |
-| Equilibrium implementation commit | `ae851a2e95f19c15d237a3e59140c37c91df7f59` |
-| Equilibrium implementation tree | `8ec04899c4106054dcc4795a4d5e888a312edc6e` |
+| Equilibrium implementation commit | `f433e4f706301c50e88c93572c3933e0bb702fef` |
+| Equilibrium implementation tree | `9c8ade799876a01fec1460f56f71c7f93bca9f52` |
 | Equilibrium wheel | `epcsaft_equilibrium-0.2.0.dev0-cp313-cp313-linux_x86_64.whl` |
-| Equilibrium wheel SHA-256 | `625565e1c995f73c8e2b7ec65f77e4eb1a561f59146701d392da9dbd43791d8b` |
-| Installed-artifact `RECORD` SHA-256 | `1611f67131143e1c619c459df0d43139459fa93773b43dc5f475ac34c4f5bfa3` |
+| Equilibrium wheel SHA-256 | `adf241cfdc8a8e1aa186419440adf36f0405ce195f403a9c0461932ba345e198` |
+| Installed-artifact `RECORD` SHA-256 | `235b8b8f111c98baff0273e2fb2f26be951554fa155c5da69b3c894640a7bcc1` |
 | Provider wheel SHA-256 | `66b7ea8fb29e0a268b555cbdf401c3502517c088669a4157e8f64ab985b59ce9` |
 | Ipopt / linear solver | `3.11.9` / MUMPS |
 
@@ -69,10 +72,11 @@ The application-owned source subject remains:
   `93510b66543e4e9e49c409a658b1bf7a01599ccd9ce3feef41bbab6b6eb668ab`.
 
 The Equilibrium repository does not copy the application chemistry or source
-rows. Validation #18 must consume those immutable application inputs and the
-two installed wheels above through public package boundaries. It must retain
-the complete search receipt even when the sentinel remains a saddle or no
-certified basin is found.
+rows. [Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
+must consume those immutable application inputs and the two installed wheels
+above through public package boundaries. It must retain the complete search
+receipt even when the sentinel remains a saddle or no certified basin is
+found.
 
 ## Interpretation boundary
 
@@ -82,4 +86,3 @@ unobserved basin, phase stability, reactive phase equilibrium, global
 thermodynamic stability, kinetics, predictive validity, or regression
 readiness. Finite search failure never emits `infeasible_certified`; that
 status remains reserved for a future independent feasibility certificate.
-

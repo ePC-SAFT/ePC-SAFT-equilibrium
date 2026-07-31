@@ -2,14 +2,14 @@ schema_version: 1
 issue: 96
 status: candidate_retained
 implementation:
-  commit: ae851a2e95f19c15d237a3e59140c37c91df7f59
-  tree: 8ec04899c4106054dcc4795a4d5e888a312edc6e
+  commit: f433e4f706301c50e88c93572c3933e0bb702fef
+  tree: 9c8ade799876a01fec1460f56f71c7f93bca9f52
 artifact:
   filename: epcsaft_equilibrium-0.2.0.dev0-cp313-cp313-linux_x86_64.whl
-  sha256: 625565e1c995f73c8e2b7ec65f77e4eb1a561f59146701d392da9dbd43791d8b
-  size_bytes: 3588891
+  sha256: adf241cfdc8a8e1aa186419440adf36f0405ce195f403a9c0461932ba345e198
+  size_bytes: 3594225
   mode: read_only
-  installed_record_sha256: 1611f67131143e1c619c459df0d43139459fa93773b43dc5f475ac34c4f5bfa3
+  installed_record_sha256: 235b8b8f111c98baff0273e2fb2f26be951554fa155c5da69b3c894640a7bcc1
 provider:
   filename: epcsaft-0.2.0.dev0-cp313-cp313-linux_x86_64.whl
   sha256: 66b7ea8fb29e0a268b555cbdf401c3502517c088669a4157e8f64ab985b59ce9
@@ -25,8 +25,8 @@ installed_proof:
   manufactured_nonconvex_certified_basins: 2
   manufactured_nonconvex_selection: lowest_observed_certified_local_value
 downstream:
-  validation_issue: ePC-SAFT-validation#18
-  regression_issue: ePC-SAFT-regression#16
+  validation_issue: https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18
+  regression_issue: https://github.com/ePC-SAFT/ePC-SAFT-regression/issues/16
   handoff: docs/designs/2026-07-30-chemical-basin-search-validation-handoff.md
 claim_limit: >-
   One deterministic finite search for the lowest observed certified strict

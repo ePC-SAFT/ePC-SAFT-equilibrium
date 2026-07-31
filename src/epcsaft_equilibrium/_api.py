@@ -957,6 +957,174 @@ def _empty_chemical_search(status: str = "not_evaluated") -> ChemicalEquilibrium
     )
 
 
+_CHEMICAL_SEARCH_STATUSES = {
+    "certified_local_minimum",
+    "saddle_observed",
+    "second_order_inconclusive",
+    "boundary_unadjudicated",
+    "domain_rejected",
+    "no_feasible_start_found",
+    "search_exhausted_no_certified_candidate",
+    "infeasible_certified",
+    "not_evaluated",
+}
+_CHEMICAL_TERMINAL_STATUSES = _CHEMICAL_SEARCH_STATUSES | {"solver_failed"}
+
+
+def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
+    if search.status not in _CHEMICAL_SEARCH_STATUSES:
+        raise ValueError("native chemical search has an invalid status")
+    if search.continuation_status != "not_used":
+        raise ValueError("native chemical search has an invalid continuation status")
+    if search.selection_label != "lowest_observed_certified_local_value":
+        raise ValueError("native chemical search has an invalid selection label")
+    if not 0 <= search.primary_attempt_count <= search.primary_budget <= 25:
+        raise ValueError("native chemical search has an invalid primary budget")
+    if tuple(attempt.ordinal for attempt in search.attempts) != tuple(
+        range(len(search.attempts))
+    ):
+        raise ValueError("native chemical search attempt ordinals are inconsistent")
+    if len(search.attempts) < search.primary_attempt_count or any(
+        attempt.kind != "primary"
+        or attempt.primary_ordinal != attempt.ordinal
+        or attempt.parent_ordinal is not None
+        for attempt in search.attempts[: search.primary_attempt_count]
+    ):
+        raise ValueError("native chemical search primary lineage is inconsistent")
+    for attempt in search.attempts:
+        if attempt.kind not in {"primary", "recovery"}:
+            raise ValueError("native chemical search has an invalid attempt kind")
+        if not 0 <= attempt.primary_ordinal < search.primary_attempt_count:
+            raise ValueError("native chemical search primary ordinal is out of range")
+        if attempt.kind == "recovery" and (
+            attempt.parent_ordinal != attempt.primary_ordinal
+            or attempt.parent_ordinal >= search.primary_attempt_count
+        ):
+            raise ValueError("native chemical search recovery lineage is inconsistent")
+        if attempt.start_construction_status not in {
+            "accepted",
+            "rejected",
+            "not_evaluated",
+        }:
+            raise ValueError("native chemical search has an invalid start status")
+        if attempt.retraction_status not in {
+            "not_needed",
+            "passed",
+            "failed",
+            "balance_preserved_by_reaction_extent",
+        }:
+            raise ValueError("native chemical search has an invalid retraction status")
+        if attempt.continuation_status != "not_used":
+            raise ValueError("native chemical attempt has an invalid continuation status")
+        if attempt.provider_domain_status not in {
+            "passed",
+            "failed",
+            "not_applicable",
+            "not_adjudicated",
+        }:
+            raise ValueError("native chemical attempt has an invalid Provider-domain status")
+        if attempt.terminal_status not in _CHEMICAL_TERMINAL_STATUSES:
+            raise ValueError("native chemical search has an invalid terminal status")
+        if attempt.local_minimum_status not in {
+            "passed",
+            "saddle_observed",
+            "second_order_inconclusive",
+            "not_adjudicated",
+        }:
+            raise ValueError("native chemical attempt has an invalid curvature status")
+        if attempt.trace_status not in {
+            "interior",
+            "at_or_below_floor",
+            "not_adjudicated",
+        }:
+            raise ValueError("native chemical attempt has an invalid trace status")
+        optional_values = (
+            attempt.volume_m3,
+            attempt.objective,
+            attempt.balance_inf_norm,
+            attempt.charge_inf_norm,
+            attempt.pressure_relative_residual,
+            attempt.reaction_affinity_inf_norm,
+            attempt.kkt_stationarity_inf_norm,
+            attempt.complementarity_inf_norm,
+            attempt.condition_number_inf,
+        )
+        if any(value is not None and not math.isfinite(value) for value in optional_values):
+            raise ValueError("native chemical attempt contains a nonfinite value")
+        if any(not math.isfinite(value) or value < 0.0 for value in attempt.amounts_mol):
+            raise ValueError("native chemical attempt contains invalid amounts")
+        if attempt.volume_m3 is not None and attempt.volume_m3 <= 0.0:
+            raise ValueError("native chemical attempt contains an invalid volume")
+        if (
+            attempt.kkt_dimension < 0
+            or attempt.kkt_rank < 0
+            or attempt.kkt_rank > attempt.kkt_dimension
+            or attempt.recovery_seed_count < 0
+            or attempt.recovery_seed_count < attempt.recovery_solve_count
+            or attempt.recovery_solve_count < 0
+        ):
+            raise ValueError("native chemical attempt counters are inconsistent")
+        if attempt.basin_ordinal is not None and not (
+            0 <= attempt.basin_ordinal < len(search.basins)
+        ):
+            raise ValueError("native chemical attempt basin reference is out of range")
+    if tuple(basin.ordinal for basin in search.basins) != tuple(
+        range(len(search.basins))
+    ):
+        raise ValueError("native chemical basin ordinals are inconsistent")
+    for basin in search.basins:
+        if not 0 <= basin.representative_attempt_ordinal < len(search.attempts):
+            raise ValueError("native chemical basin representative is out of range")
+        representative = search.attempts[basin.representative_attempt_ordinal]
+        if (
+            representative.terminal_status != "certified_local_minimum"
+            or representative.basin_ordinal != basin.ordinal
+            or not basin.amounts_mol
+            or any(not math.isfinite(value) or value <= 0.0 for value in basin.amounts_mol)
+            or not math.isfinite(basin.volume_m3)
+            or basin.volume_m3 <= 0.0
+            or not math.isfinite(basin.objective)
+        ):
+            raise ValueError("native chemical basin evidence is inconsistent")
+    if (search.selected_basin_ordinal is None) != (search.selected_objective is None):
+        raise ValueError("native chemical search selection is incomplete")
+    if search.selected_basin_ordinal is None:
+        if search.status == "certified_local_minimum":
+            raise ValueError("native chemical search omitted its certified selection")
+    else:
+        if not 0 <= search.selected_basin_ordinal < len(search.basins):
+            raise ValueError("native chemical search selection is out of range")
+        selected = search.basins[search.selected_basin_ordinal]
+        if (
+            search.status != "certified_local_minimum"
+            or search.selected_objective != selected.objective
+        ):
+            raise ValueError("native chemical search selection is inconsistent")
+    previous_budget = 0
+    previous_selection: int | None = None
+    for index, prefix in enumerate(search.budget_prefixes):
+        if (
+            prefix.primary_budget <= previous_budget
+            or prefix.primary_budget > search.primary_attempt_count
+            or prefix.attempted_primary_ordinals
+            != tuple(range(prefix.primary_budget))
+            or len(set(prefix.basin_ordinals)) != len(prefix.basin_ordinals)
+            or any(not 0 <= ordinal < len(search.basins) for ordinal in prefix.basin_ordinals)
+            or (
+                prefix.selected_basin_ordinal is not None
+                and prefix.selected_basin_ordinal not in prefix.basin_ordinals
+            )
+            or prefix.selection_changed
+            != (
+                index > 0
+                and prefix.selected_basin_ordinal != previous_selection
+            )
+        ):
+            raise ValueError("native chemical search budget prefix is inconsistent")
+        previous_budget = prefix.primary_budget
+        previous_selection = prefix.selected_basin_ordinal
+
+
 def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
     payload = cast(Mapping[str, object], native["search"])
     attempts = tuple(
@@ -1047,7 +1215,7 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
         )
         for record in cast(Sequence[Mapping[str, object]], payload["budget_prefixes"])
     )
-    return ChemicalEquilibriumSearch(
+    search = ChemicalEquilibriumSearch(
         status=str(payload["status"]),
         continuation_status=str(payload["continuation_status"]),
         primary_budget=int(cast(int, payload["primary_budget"])),
@@ -1063,6 +1231,8 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
         selected_objective=_optional_float(payload, "selected_objective"),
         selection_label=str(payload["selection_label"]),
     )
+    _validate_chemical_search(search)
+    return search
 
 
 def _failed_chemical_diagnostics(

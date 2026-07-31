@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import inspect
 import math
 
@@ -139,6 +140,50 @@ def test_public_chemical_equilibrium_rejects_incomplete_jacobian_payload(
             200_000.0 * epcsaft.unit_registry.pascal,
             _ideal_problem(),
             sensitivity_request=epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("unknown_status", "invalid status"),
+        ("nonfinite_attempt", "nonfinite value"),
+        ("inconsistent_prefix", "budget prefix"),
+    ),
+)
+def test_public_chemical_equilibrium_rejects_malformed_search_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    message: str,
+) -> None:
+    native_solve = epcsaft_equilibrium._equilibrium._chemical_equilibrium
+
+    def malformed_search(*args: object) -> dict[str, object]:
+        native = native_solve(*args)
+        search = copy.deepcopy(native["search"])
+        if mutation == "unknown_status":
+            search["status"] = "unknown"
+        elif mutation == "nonfinite_attempt":
+            search["attempts"][0]["objective"] = math.nan
+        else:
+            search["budget_prefixes"][-1]["attempted_primary_ordinals"] = (0,)
+        native["search"] = search
+        return native
+
+    monkeypatch.setattr(
+        epcsaft_equilibrium._equilibrium,
+        "_chemical_equilibrium",
+        malformed_search,
+    )
+    with pytest.raises(
+        epcsaft_equilibrium.ChemicalEquilibriumError,
+        match=message,
+    ):
+        epcsaft_equilibrium.chemical_equilibrium(
+            _ideal_phase(),
+            350.0 * epcsaft.unit_registry.kelvin,
+            200_000.0 * epcsaft.unit_registry.pascal,
+            _ideal_problem(),
         )
 
 
