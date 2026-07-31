@@ -17,12 +17,22 @@ struct Held2LpCertificate {
     double complementarity_inf = std::numeric_limits<double>::infinity();
 };
 
+struct Held2Step4CutEvidence {
+    int id = -1;
+    double intercept = std::numeric_limits<double>::quiet_NaN();
+    std::vector<double> slopes;
+};
+
 struct Held2Step4Result {
     std::string status = "indeterminate";
     std::string reason = "not_run";
+    int major_iteration = -1;
+    int upper_solve_count = -1;
     std::optional<double> upper_bound;
     std::optional<std::vector<double>> multipliers;
     std::vector<int> active_cut_ids;
+    std::vector<Held2Step4CutEvidence> cut_snapshot;
+    std::optional<Held2Coordinates> coordinate_snapshot;
     std::optional<Held2LpCertificate> certificate;
     Held2StepTiming timing;
 };

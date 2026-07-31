@@ -200,6 +200,8 @@ Held2Step4Result run_held2_step4(
     Held2ProgressObserver* observer
 ) {
     Held2Step4Result result;
+    result.major_iteration = state.major_iteration;
+    result.coordinate_snapshot = state.coordinates;
     result.timing.invocation_count = 1;
     const std::size_t dimension = state.feed.size();
     std::vector<UpperCut> cuts;
@@ -218,6 +220,12 @@ Held2Step4Result run_held2_step4(
     cuts.push_back({
         -1, state.feed_reduced_gibbs, std::vector<double>(dimension, 0.0),
     });
+    result.cut_snapshot.reserve(cuts.size());
+    for (const UpperCut& cut : cuts) {
+        result.cut_snapshot.push_back({
+            cut.id, cut.intercept, cut.slopes,
+        });
+    }
     const UpperResult upper = solve_upper_highs(cuts, dimension);
     result.certificate = Held2LpCertificate{
         upper.primal_feasible,
@@ -235,6 +243,7 @@ Held2Step4Result run_held2_step4(
     state.upper_bound = upper.upper_bound;
     state.multipliers = upper.multipliers;
     ++state.upper_solve_count;
+    result.upper_solve_count = state.upper_solve_count;
     result.status = "complete";
     result.reason = "step4_complete";
     result.upper_bound = upper.upper_bound;

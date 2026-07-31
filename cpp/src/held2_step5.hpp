@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "held2_step4.hpp"
+#include "held2_certificates.hpp"
 
 namespace epcsaft_equilibrium {
 
@@ -24,7 +25,9 @@ struct Held2ResourceProfile {
 struct Held2LocalCertificate {
     std::uint64_t start_ordinal = 0;
     std::string solver_status;
+    std::optional<double> local_value;
     bool finite_and_in_domain = false;
+    std::optional<Held2Step5KktCertificate> kkt;
     bool accepted = false;
 };
 

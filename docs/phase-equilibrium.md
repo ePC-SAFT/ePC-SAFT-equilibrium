@@ -323,6 +323,7 @@ to the solver and never substitute for scientific acceptance.
 | Stage I | materially negative reduced TPD | `< -1e-8`; `[-1e-8,1e-8]` is inconclusive |
 | Stage-II LP | primal, dual, complementarity, active-cut diagnostic | `1e-9 + 1e-8*scale`, `1e-9 + 1e-8*scale`, `1e-8`, `1e-7` |
 | Stage-II KKT | primal, dual sign, pullback, stationarity, complementarity | `1e-8`, `1e-9`, `1e-9 + 1e-9*scale`, `1e-7`, `1e-8` |
+| Stage-III feasibility LP | Farkas row sign, column dual feasibility, strict contradiction margin | `1e-10`, `1e-10`, `>1e-9 + 1e-9*scale` |
 | Step 6 | gap; fixed-volume gradient | `1e-8`; `1e-8 + 1e-7*scale` |
 | Generic candidate identity | numerical duplicate; confidently distinct | `<=1e-7`; either physical composition or log-volume distance `>1e-5` |
 | HELD2 persistent \(\mathcal M\) identity | modified composition and relative molar-volume numerical copy | `<=1e-8` in every modified-composition coordinate and log-volume difference |

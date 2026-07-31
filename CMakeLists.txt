@@ -97,6 +97,7 @@ add_library(
   cpp/src/held_stage_ii.cpp
   cpp/src/held_stage_iii.cpp
   cpp/src/held2.cpp
+  cpp/src/held2_certificates.cpp
   cpp/src/held2_algorithm.cpp
   cpp/src/held2_progress.cpp
   cpp/src/held2_step1.cpp

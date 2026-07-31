@@ -117,6 +117,11 @@ Held2StateEvaluation evaluate_manufactured_state_impl(
         state.objective - composition * gradient[0] + common_volume_term,
         state.objective + (1.0 - composition) * gradient[0] + common_volume_term,
     };
+    state.chemical_potentials_over_rt = {
+        state.modified_potentials[0],
+        2.0 * state.modified_potentials[1],
+        0.0,
+    };
     state.pressure_stationarity_relative = gradient[1];
     state.pressure_stationarity_derivative_log_volume = 5.0 * state.volume;
     return state;
@@ -428,11 +433,15 @@ Held2StateEvaluation search_state(
     }
     Held2StateEvaluation state;
     state.modified_fractions = {1.0 - composition, composition};
-    state.physical_amounts = state.modified_fractions;
+    state.physical_amounts = {
+        1.0 - composition, 0.5 * composition, 0.5 * composition,
+    };
     state.volume = std::exp(log_volume);
     state.objective = objective + 0.5 * log_volume * log_volume;
     state.gradient = {gradient, log_volume};
     state.hessian = {curvature, 0.0, 0.0, 1.0};
+    state.chemical_potentials_over_rt = {0.0, 2.0 * gradient, 0.0};
+    state.modified_potentials = {0.0, gradient};
     state.pressure_stationarity_relative = -log_volume;
     state.pressure_stationarity_derivative_log_volume = -1.0;
     return state;
@@ -940,17 +949,359 @@ void run_held2_step5_checks() {
         },
         {0, 8, 10}
     );
+    std::string step5_failure =
+        "Step-5 certified persistent multistart changed";
+    if (!result.attempts.empty() && result.attempts.back().kkt) {
+        step5_failure += " (last KKT: "
+            + result.attempts.back().kkt->reason + ")";
+    }
     require(
         result.status == "complete" && result.lower_value <= step4.upper_bound
             && !result.attempts.empty()
             && result.attempts.back().accepted
+            && result.attempts.back().kkt
+            && result.attempts.back().kkt->accepted
+            && result.attempts.back().kkt->same_major_iteration
+            && result.attempts.back().kkt->step4_binding_valid
             && state.next_start_ordinal == result.starts_consumed,
-        "Step-5 certified persistent multistart changed"
+        step5_failure.c_str()
     );
     require(
         result.timing.provider_evaluations
             == state_evaluations + volume_evaluations,
         "Step-5 Provider evaluation accounting changed"
+    );
+
+    Held2PersistentState missing_certificate_state =
+        std::move(*appendix_c_result().state);
+    Held2Step4Result missing_certificate_step4 =
+        run_held2_step4(missing_certificate_state);
+    missing_certificate_step4.certificate.reset();
+    const Held2Step5Result missing_certificate = run_held2_step5(
+        prepared,
+        missing_certificate_step4,
+        missing_certificate_state,
+        [](const auto& composition, double log_volume) {
+            return search_state(composition, log_volume, false);
+        },
+        {0, 8, 10}
+    );
+    require(
+        missing_certificate.status == "indeterminate"
+            && missing_certificate.reason == "invalid_step5_input"
+            && missing_certificate.attempts.empty(),
+        "Step-5 accepted a missing Step-4 certificate"
+    );
+
+    Held2PersistentState corrupt_cut_state =
+        std::move(*appendix_c_result().state);
+    Held2Step4Result corrupt_cut_step4 =
+        run_held2_step4(corrupt_cut_state);
+    corrupt_cut_step4.active_cut_ids.push_back(
+        corrupt_cut_step4.active_cut_ids.front()
+    );
+    const Held2Step5Result corrupt_cut = run_held2_step5(
+        prepared,
+        corrupt_cut_step4,
+        corrupt_cut_state,
+        [](const auto& composition, double log_volume) {
+            return search_state(composition, log_volume, false);
+        },
+        {0, 8, 10}
+    );
+    require(
+        corrupt_cut.status == "indeterminate"
+            && !corrupt_cut.attempts.empty()
+            && std::none_of(
+                corrupt_cut.attempts.begin(),
+                corrupt_cut.attempts.end(),
+                [](const Held2LocalCertificate& attempt) {
+                    return attempt.accepted;
+                }
+            ),
+        "Step-5 accepted corrupted Step-4 active-cut identity"
+    );
+
+    Held2PersistentState mutated_cut_state =
+        std::move(*appendix_c_result().state);
+    const Held2Step4Result mutated_cut_step4 =
+        run_held2_step4(mutated_cut_state);
+    mutated_cut_state.M.front().reduced_gibbs += 0.25;
+    const Held2Step5Result mutated_cut = run_held2_step5(
+        prepared,
+        mutated_cut_step4,
+        mutated_cut_state,
+        [](const auto& composition, double log_volume) {
+            return search_state(composition, log_volume, false);
+        },
+        {0, 8, 10}
+    );
+    require(
+        mutated_cut.status == "indeterminate"
+            && !mutated_cut.attempts.empty()
+            && std::none_of(
+                mutated_cut.attempts.begin(),
+                mutated_cut.attempts.end(),
+                [](const Held2LocalCertificate& attempt) {
+                    return attempt.accepted;
+                }
+            ),
+        "Step-5 accepted mutated Step-4 cut data"
+    );
+
+    Held2PersistentState invalid_physical_state =
+        std::move(*appendix_c_result().state);
+    const Held2Step4Result invalid_physical_step4 =
+        run_held2_step4(invalid_physical_state);
+    const Held2Step5Result invalid_physical = run_held2_step5(
+        prepared,
+        invalid_physical_step4,
+        invalid_physical_state,
+        [](const auto& composition, double log_volume) {
+            Held2StateEvaluation evaluated =
+                search_state(composition, log_volume, false);
+            const double shift =
+                0.1 * evaluated.physical_amounts[1];
+            evaluated.physical_amounts[0] += 2.0 * shift;
+            evaluated.physical_amounts[1] -= shift;
+            evaluated.physical_amounts[2] -= shift;
+            return evaluated;
+        },
+        {0, 8, 10}
+    );
+    require(
+        invalid_physical.status == "indeterminate"
+            && !invalid_physical.attempts.empty()
+            && std::none_of(
+                invalid_physical.attempts.begin(),
+                invalid_physical.attempts.end(),
+                [](const Held2LocalCertificate& attempt) {
+                    return attempt.accepted;
+                }
+            ),
+        "Step-5 accepted invalid physical composition evidence"
+    );
+
+    const double local_volume_target =
+        1.0 - state.M.back().independent_modified_fractions.front();
+    const Held2Step1Result local_volume_prepared = step1(
+        {0.0, 1.0, -1.0},
+        {0.50, 0.25, 0.25},
+        [local_volume_target](const std::vector<double>& composition) {
+            return std::abs(
+                composition.front() - local_volume_target
+            ) < 1.0e-6
+                ? std::array<double, 2>{2.0, 3.0}
+                : std::array<double, 2>{
+                    std::exp(-1.5), std::exp(1.5),
+                };
+        }
+    );
+    Held2PersistentState local_volume_state =
+        std::move(*appendix_c_result().state);
+    const Held2Step4Result local_volume_step4 =
+        run_held2_step4(local_volume_state);
+    const Held2Step5Result local_volume = run_held2_step5(
+        local_volume_prepared,
+        local_volume_step4,
+        local_volume_state,
+        [](const auto& composition, double log_volume) {
+            return search_state(composition, log_volume, false);
+        },
+        {0, 8, 10}
+    );
+    require(
+        local_volume.status == "indeterminate"
+            && !local_volume.attempts.empty()
+            && std::none_of(
+                local_volume.attempts.begin(),
+                local_volume.attempts.end(),
+                [](const Held2LocalCertificate& attempt) {
+                    return attempt.accepted;
+                }
+            ),
+        "Step-5 certified against sampled rather than terminal volume bounds"
+    );
+
+    Held2PersistentState gauged_state =
+        std::move(*appendix_c_result().state);
+    const Held2Step4Result gauged_step4 =
+        run_held2_step4(gauged_state);
+    const Held2Step5Result gauged = run_held2_step5(
+        prepared,
+        gauged_step4,
+        gauged_state,
+        [](const auto& composition, double log_volume) {
+            Held2StateEvaluation evaluated =
+                search_state(composition, log_volume, false);
+            const std::vector<double> charges{0.0, 1.0, -1.0};
+            for (std::size_t index = 0;
+                 index < charges.size();
+                 ++index) {
+                evaluated.chemical_potentials_over_rt[index] +=
+                    19.0 * charges[index];
+            }
+            return evaluated;
+        },
+        {0, 8, 10}
+    );
+    require(
+        gauged.status == "complete"
+            && gauged.attempts.back().kkt
+            && gauged.attempts.back().kkt->accepted
+            && gauged.attempts.back().kkt
+                    ->physical_stationarity_residual_inf
+                <= kHeld2Stage2KktStationarity.atol,
+        "Step-5 physical KKT certificate changed under a Galvani gauge"
+    );
+
+    Held2PersistentState polished_state =
+        std::move(*appendix_c_result().state);
+    const Held2Step4Result polished_step4 =
+        run_held2_step4(polished_state);
+    const Held2Step5Result polished = run_held2_step5(
+        prepared,
+        polished_step4,
+        polished_state,
+        [](const auto& composition, double log_volume) {
+            Held2StateEvaluation evaluated =
+                search_state(composition, log_volume, false);
+            evaluated.pressure_stationarity_relative += 5.0e-8;
+            return evaluated;
+        },
+        {0, 8, 10}
+    );
+    const auto polished_attempt = std::find_if(
+        polished.attempts.begin(),
+        polished.attempts.end(),
+        [](const Held2LocalCertificate& attempt) {
+            return attempt.accepted
+                && attempt.solver_status.find("_pressure_polished")
+                    != std::string::npos;
+        }
+    );
+    require(
+        polished.status == "complete"
+            && polished_attempt != polished.attempts.end()
+            && polished_attempt->kkt
+            && polished_attempt->kkt->solver_variables
+                != polished_attempt->kkt->audited_variables,
+        "Step-5 pressure polish obscured raw solver-variable provenance"
+    );
+
+    const Held2Step1Result reordered_prepared = step1(
+        {1.0, -1.0, 0.0},
+        {0.25, 0.25, 0.50},
+        [](const std::vector<double>&) {
+            return std::array<double, 2>{
+                std::exp(-1.5), std::exp(1.5),
+            };
+        }
+    );
+    const Held2StateEvaluator reordered_evaluator =
+        [](const auto& composition, double log_volume) {
+            Held2StateEvaluation evaluated =
+                search_state(composition, log_volume, false);
+            evaluated.physical_amounts = {
+                evaluated.physical_amounts[1],
+                evaluated.physical_amounts[2],
+                evaluated.physical_amounts[0],
+            };
+            evaluated.chemical_potentials_over_rt = {
+                evaluated.chemical_potentials_over_rt[1],
+                evaluated.chemical_potentials_over_rt[2],
+                evaluated.chemical_potentials_over_rt[0],
+            };
+            return evaluated;
+        };
+    Held2PersistentState mismatched_chart_state =
+        std::move(*appendix_c_result().state);
+    const Held2Step4Result mismatched_chart_step4 =
+        run_held2_step4(mismatched_chart_state);
+    const Held2Step5Result mismatched_chart = run_held2_step5(
+        reordered_prepared,
+        mismatched_chart_step4,
+        mismatched_chart_state,
+        reordered_evaluator,
+        {0, 8, 10}
+    );
+    require(
+        mismatched_chart.status == "indeterminate"
+            && mismatched_chart.reason == "invalid_step5_input"
+            && mismatched_chart.attempts.empty(),
+        "Step-5 accepted a mismatched Step-1 coordinate chart"
+    );
+    Held2PersistentState reordered_state =
+        std::move(*appendix_c_result().state);
+    reordered_state.coordinates = *reordered_prepared.coordinates;
+    const Held2Step4Result reordered_step4 =
+        run_held2_step4(reordered_state);
+    const Held2Step5Result reordered = run_held2_step5(
+        reordered_prepared,
+        reordered_step4,
+        reordered_state,
+        reordered_evaluator,
+        {0, 8, 10}
+    );
+    require(
+        reordered.status == "complete"
+            && reordered.attempts.back().kkt
+            && reordered.attempts.back().kkt->accepted
+            && reordered.attempts.back().kkt
+                    ->physical_stationarity_residual_inf
+                <= kHeld2Stage2KktStationarity.atol,
+        "Step-5 physical KKT certificate changed under species reordering"
+    );
+
+    Held2PersistentState bound_state;
+    bound_state.coordinates = *prepared.coordinates;
+    bound_state.feed = {0.5};
+    bound_state.feed_reduced_gibbs = 10.0;
+    bound_state.M = {
+        {1, {0.2}, 1.0, 0.0, 1.0, {}, "master"},
+        {2, {0.8}, 1.0, 0.0, 2.0, {}, "master"},
+    };
+    const Held2Step4Result bound_step4 =
+        run_held2_step4(bound_state);
+    const Held2Step5Result active_bound = run_held2_step5(
+        prepared,
+        bound_step4,
+        bound_state,
+        [](const auto& composition, double log_volume) {
+            return search_state(composition, log_volume, false);
+        },
+        {0, 8, 10}
+    );
+    std::string active_bound_failure =
+        "Step-5 active composition bound was double-counted";
+    if (!active_bound.attempts.empty()
+        && active_bound.attempts.back().kkt) {
+        active_bound_failure += " (last KKT: "
+            + active_bound.attempts.back().kkt->reason
+            + ", active="
+            + std::to_string(
+                active_bound.attempts.back().kkt
+                    ->active_constraint_count
+            )
+            + ", rank="
+            + std::to_string(
+                active_bound.attempts.back().kkt
+                    ->active_jacobian_rank
+            )
+            + ")";
+    }
+    require(
+        active_bound.status == "complete"
+            && active_bound.attempts.back().kkt
+            && active_bound.attempts.back().kkt->accepted
+            && active_bound.attempts.back().kkt
+                    ->active_constraint_count
+                == active_bound.attempts.back().kkt
+                    ->active_jacobian_rank
+            && active_bound.attempts.back().kkt
+                    ->active_constraint_count
+                >= 1,
+        active_bound_failure.c_str()
     );
 }
 
@@ -1075,7 +1426,12 @@ void run_held2_step8_checks() {
     const Held2Step8Result infeasible =
         manufactured_step8(prepared, candidates);
     require(
-        infeasible.outcome == Held2Step8Outcome::CertifiedInfeasible,
+        infeasible.outcome == Held2Step8Outcome::CertifiedInfeasible
+            && infeasible.farkas
+            && infeasible.farkas->accepted
+            && !infeasible.nlp
+            && infeasible.farkas->contradiction_margin
+                > infeasible.farkas->contradiction_threshold,
         "Step-8 Eq. (67) infeasibility did not return through Step 7"
     );
 
@@ -1332,6 +1688,15 @@ void run_workflow_check() {
         {298.15, 100000.0, {0.5, 0.25, 0.25}},
         {200, 20, 10}
     );
+    std::string workflow_failure =
+        "manufactured HELD2 Steps 1-10 failed at "
+        + result.failure_stage + ": " + result.failure_reason;
+    if (!result.step5_history.empty()
+        && !result.step5_history.back().attempts.empty()
+        && result.step5_history.back().attempts.back().kkt) {
+        workflow_failure += " (last KKT: "
+            + result.step5_history.back().attempts.back().kkt->reason + ")";
+    }
     require(
         result.outcome == "physical_equilibrium_accepted"
             && result.step10
@@ -1339,7 +1704,7 @@ void run_workflow_check() {
             && result.phases.size() == 2
             && result.step10->final_certificate->accepted
             && result.globality_certificate == "not_guaranteed",
-        "manufactured HELD2 Steps 1-10 failed"
+        workflow_failure.c_str()
     );
 }
 

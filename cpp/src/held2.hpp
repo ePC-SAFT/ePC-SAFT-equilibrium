@@ -5,8 +5,11 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <string>
 #include <vector>
+
+#include "held2_certificates.hpp"
 
 namespace epcsaft_equilibrium {
 
@@ -222,6 +225,7 @@ struct Held2Problem67Result {
     std::vector<std::size_t> candidate_indices;
     std::vector<Held2Problem67Phase> phases;
     std::vector<double> solution_variables;
+    std::optional<Held2FarkasCertificate> feasibility_certificate;
 };
 
 [[nodiscard]] Held2StateEvaluation evaluate_held2_phase_block(

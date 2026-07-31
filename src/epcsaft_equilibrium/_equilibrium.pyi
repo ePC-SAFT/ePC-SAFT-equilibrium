@@ -37,6 +37,36 @@ def _solve_tp_flash(
     *,
     trace: bool = ...,
 ) -> dict[str, Any]: ...
+def _held2_audit_farkas_certificate(
+    matrix: list[list[float]],
+    row_lower: list[float],
+    row_upper: list[float],
+    column_lower: list[float],
+    column_upper: list[float],
+    row_ray: list[float],
+) -> dict[str, Any]: ...
+def _held2_audit_step5_kkt(
+    variables: list[float],
+    lower: list[float],
+    upper: list[float],
+    objective_gradient: list[float],
+    constraints: list[list[float]],
+    constraint_upper: list[float],
+    lower_bound_multipliers: list[float],
+    upper_bound_multipliers: list[float],
+    constraint_multipliers: list[float],
+    pullback_residual: float,
+    pullback_scale: float,
+    pressure_residual: float,
+    same_major_iteration: bool,
+    step4_binding_valid: bool,
+    pressure_branch_valid: bool,
+) -> dict[str, Any]: ...
+def _held2_adjudicate_farkas_status(
+    solver_infeasible: bool,
+    has_certificate: bool,
+    certificate_accepted: bool,
+) -> str: ...
 def _chemical_equilibrium(
     capsule: object | None,
     spec: dict[str, object],
