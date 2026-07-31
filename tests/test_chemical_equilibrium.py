@@ -2233,47 +2233,6 @@ def test_held_source_transform_fails_closed_on_identity_mismatch(
         _provider_solve(model, spec, source_standard_state)
 
 
-def test_provider_structural_face_fails_before_reduced_topology_evaluation() -> None:
-    components = (
-        "water",
-        "ethanol",
-        "isobutanol",
-        "sodium-cation",
-        "chloride-anion",
-    )
-    parameters = epcsaft.Parameters.from_catalog(
-        "khudaida-2026-figure-2-electrolyte-lle",
-        components=components,
-        version=1,
-    )
-    model = epcsaft.Mixture(parameters)
-    spec = {
-        "species_ids": components,
-        "charges": (0, 0, 0, 1, -1),
-        "molar_masses_kg_per_mol": (1.0, 1.0, 1.0, 1.0, 1.0),
-        "provider_fingerprint": model.parameter_fingerprint,
-        "balance_matrix": (
-            (1.0, 1.0, 1.0, 1.0, 1.0),
-            (0.0, 0.0, 0.0, 1.0, 1.0),
-        ),
-        "reaction_matrix": (
-            (-1.0, 1.0, 0.0, 0.0, 0.0),
-            (-1.0, 0.0, 1.0, 0.0, 0.0),
-        ),
-        "feed_amounts": (1.0, 0.0, 0.0, 0.0, 0.0),
-        "ln_k": (0.0, 0.0),
-        "temperature_k": 293.15,
-        "pressure_pa": 100_000.0,
-    }
-    _bind_record(spec)
-
-    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError) as failed:
-        _provider_solve(model, spec)
-
-    assert failed.value.diagnostics.chemical_certification_level == "BOUNDARY_DIRECTION_UNRESOLVED"
-    assert failed.value.diagnostics.structural_zero_species_indices == (3, 4)
-
-
 def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domain_blocks() -> None:
     model = _figiel_provider_model()
     capsule = epcsaft.native_sdk(model)

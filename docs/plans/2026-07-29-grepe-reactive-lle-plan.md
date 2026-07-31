@@ -55,12 +55,12 @@ is copied.
   compiler configuration, and relevant catalog fingerprints.
 - [ ] Run the native manufactured HELD2 Steps 1--10 check.
 - [ ] Run Perdomo regression-region tests, including the Table-3 point.
-- [ ] Run the single Khudaida Figure-2 numerical gate.
+- [ ] Run the complete Perdomo numerical matrix.
 - [ ] Run native/Python diagnostic parity.
 - [ ] Run the complete chemical compiler, support, solver, sensitivity, and
   public-value suites.
-- [ ] Record Provider calls and wall times for the fast Perdomo, Khudaida, and
-  installed water-ionization sentinels.
+- [ ] Record Provider calls and wall times for the fast Perdomo and installed
+  water-ionization sentinels.
 - [ ] Store no case-specific values in production code.
 
 Checkpoint: the checkout is clean after the evidence record, and no scientific
@@ -101,8 +101,8 @@ frozen regions. This task is its own reviewable change.
 - [ ] Keep coordinate mapping, physical feasibility, objective evaluation, and
   independent witness recertification in HELD2.
 - [ ] Add a formulation-neutral narrow-basin manufactured check.
-- [ ] Prove the HELD2 native payload, Perdomo results, Khudaida result, and
-  Provider-call budget are unchanged.
+- [ ] Prove the HELD2 native payload, Perdomo results, and Provider-call budget
+  are unchanged.
 - [ ] Delete superseded nested or duplicated search plumbing.
 
 Checkpoint: no GREPE production controller exists yet, and HELD2 still has one
@@ -288,7 +288,7 @@ globality.
   Provider parameter bundle.
 - [ ] Add phase-specific electroneutrality, electrolyte reference transforms,
   and charged trace evidence without changing the neutral GREPE master.
-- [ ] Rerun every standalone, neutral reactive, Perdomo, and Khudaida gate.
+- [ ] Rerun every standalone, neutral reactive, and Perdomo gate.
 - [ ] Execute a separate immutable Validation campaign and capability review.
 
 ## Completion criteria

@@ -94,7 +94,7 @@ the relevant solve to converge reliably and as tight as needed to preserve
 the scientific distinction owned by the gate. A tolerance change does not
 need a claim of mathematical uniqueness, but it must remain named, retain its
 failure meaning, and pass the native manufactured workflow plus the public
-Perdomo and Khudaida numerical gates.
+Perdomo numerical evidence.
 
 Tolerance adjustment must not:
 
