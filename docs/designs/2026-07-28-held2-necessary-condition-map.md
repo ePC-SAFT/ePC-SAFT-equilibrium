@@ -43,10 +43,10 @@ Provider public SDK.
 | 2 | Minimize the tangent-plane distance jointly over admissible modified composition and volume, Problem (63) | Complete feed pressure-root enumeration selects the reference; DIRECT-L searches \(C-2\) modified-composition coordinates plus normalized log volume; every strict-negative witness is independently re-evaluated | Pressure stationarity is not required to prove negative TPD. A promising witness may be locally refined to a stable pressure root only for downstream initialization. The finite search cannot certify global absence, so every result retains `globality_certificate="not_guaranteed"` |
 | 3 | Initialize the upper problem and persistent \(\mathcal M\) using Appendix C | Reproduce the Appendix-C endpoints and feed state; store immutable IDs with \((V,\bar{\mathbf{x}}^{(EC)})\) | A Step-2 witness is additionally retained only when it adds multivariate information not already supplied by the complete one-dimensional construction |
 | 4 | Solve upper LP (64) | HiGHS solve with independent primal, dual, and complementarity audit | Optimizer status is evidence input, not the certificate |
-| 5 | Solve nonconvex lower problem (65) and stop when the best qualified lower value is no greater than the upper bound | Deterministic Ipopt multistart; retain the best finite in-domain terminal; append only if it is not the same modified-composition/molar-volume state | Independent original-coordinate KKT and dual-reconstruction certification remains planned work; packing fraction is not persistent-\(\mathcal M\) identity |
+| 5 | Solve nonconvex lower problem (65) and stop when the best qualified lower value is no greater than the upper bound | Deterministic Ipopt multistart; retain Ipopt bound and polytope multipliers; independently lift the audited chart variables back to physical composition and audit that reconstruction, physical-volume KKT, the terminal composition's Provider volume bounds, normalization/charge gauge multipliers, pressure closure, primal/dual feasibility, complementarity, chart pullback, and active-set rank. Bind the terminal to the exact Step-1 coordinate snapshot and same-major Step-4 certificate, upper-solve identity, immutable cut snapshot, recomputed active-cut IDs, upper bound, and multipliers before it may enter \(\mathcal M\) | Numerically equivalent polytope and variable bounds are canonicalized once, with their dual force preserved. A qualifying terminal may receive bounded exact-derivative composition/pressure polishing before the independent audit; diagnostics keep raw solver variables separate from the audited terminal. Missing, stale, nonfinite, rank-deficient, or inconsistent evidence is indeterminate; packing fraction is not persistent-\(\mathcal M\) identity |
 | 6 | Search all of \(\mathcal M\) using the gap, gradient, and distinctness conditions in Eq. (66) | Re-evaluate every eligible member; use actual Provider packing fraction and modified composition as the two distinctness axes | Packing fraction belongs here only. It is never replaced by log-volume |
 | 7 | Advance the HELD2 major iteration | Persistent major counter and the next unused deterministic Step-5 start ordinal | Resource caps are declared finite-work policy, not paper convergence conditions |
-| 8 | Solve total-Gibbs Problem (67); remove numerical duplicate phases with the same composition and volume | Exact perspective-form LP start followed by Ipopt; independent balances, pressure, KKT, and phase-identity audits; duplicate identity uses physical composition plus relative molar volume | Log-volume difference is a dimensionless relative-volume measure, not a packing proxy. Independently validated Farkas evidence for an infeasible LP remains planned work |
+| 8 | Solve total-Gibbs Problem (67); remove numerical duplicate phases with the same composition and volume | Exact perspective-form LP start followed by Ipopt; an infeasible HiGHS status is independently checked with a normalized Farkas ray against the original row matrix and row/column bounds; feasible NLP terminals retain independent balances, pressure, KKT, and phase-identity audits | Log-volume difference is a dimensionless relative-volume measure, not a packing proxy. Missing, malformed, sign-inconsistent, dual-infeasible, or marginal Farkas evidence is indeterminate |
 | 9 | Apply free-energy and modified-potential convergence tests, Eqs. (68)–(69) | Evaluate both paper gates and preserve independent balance, pressure, domain, KKT, and identity axes | Passing paper ratios cannot erase a failed physical certificate |
 | 10 | Refine trace electrolyte compositions and recheck the equilibrium | Refine only strictly positive charged trace coordinates in \(\log_{10}x_i\), reconstruct all phases, and repeat the full physical and numerical audit | This is the only logarithmic composition coordinate. Small accurate phase or component amounts are not retired |
 
@@ -103,16 +103,11 @@ Tolerance adjustment must not:
 - turn missing independent evidence into a pass; or
 - clip or retire a valid state because a composition is small.
 
-## Remaining focused work
+## Closed focused evidence work
 
-Two evidence improvements remain intentionally separate from the working
-algorithm:
-
-1. independently certify the Step-5 terminal in original physical coordinates,
-   including KKT, bound-multiplier signs, complementarity, and dual
-   reconstruction; and
-2. validate Farkas evidence before treating Step-8 LP infeasibility as a
-   certified return to Stage II.
+The Step-5 original-physical-coordinate KKT/dual-reconstruction audit and the
+Step-8 Farkas infeasibility audit are implemented as separate fail-closed
+certificates. Solver status is only an evidence input in both paths.
 
 SAFT-\(\gamma\) Mie support is a stretch goal for Provider. Equilibrium should
 consume it only through a separately admitted installed Provider capability;

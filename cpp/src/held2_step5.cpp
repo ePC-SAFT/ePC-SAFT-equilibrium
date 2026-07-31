@@ -73,10 +73,180 @@ bool representation_equivalent(
     );
 }
 
+bool same_coordinates(
+    const Held2Coordinates& left,
+    const Held2Coordinates& right
+) {
+    if (left.charges != right.charges
+        || left.eliminated_index != right.eliminated_index
+        || left.dependent_index != right.dependent_index
+        || left.paper_to_provider_indices
+            != right.paper_to_provider_indices
+        || left.provider_to_paper_indices
+            != right.provider_to_paper_indices
+        || left.compact_to_paper_indices
+            != right.compact_to_paper_indices
+        || left.retained_indices != right.retained_indices
+        || left.independent_indices != right.independent_indices
+        || left.modified_factors != right.modified_factors
+        || left.independent_lower_bounds
+            != right.independent_lower_bounds
+        || left.independent_upper_bounds
+            != right.independent_upper_bounds
+        || left.polytope_constraints.size()
+            != right.polytope_constraints.size()) {
+        return false;
+    }
+    for (std::size_t index = 0;
+         index < left.polytope_constraints.size();
+         ++index) {
+        const Held2PolytopeConstraint& left_constraint =
+            left.polytope_constraints[index];
+        const Held2PolytopeConstraint& right_constraint =
+            right.polytope_constraints[index];
+        if (left_constraint.name != right_constraint.name
+            || left_constraint.coefficients
+                != right_constraint.coefficients
+            || left_constraint.upper_bound
+                != right_constraint.upper_bound) {
+            return false;
+        }
+    }
+    return true;
+}
+
+double maximum_abs(const std::vector<double>& values) {
+    double result = 0.0;
+    for (double value : values) {
+        result = std::max(result, std::abs(value));
+    }
+    return result;
+}
+
+std::optional<std::vector<double>> solve_dense_system(
+    std::vector<double> matrix,
+    std::vector<double> right_hand_side
+) {
+    const std::size_t dimension = right_hand_side.size();
+    if (matrix.size() != dimension * dimension) {
+        return std::nullopt;
+    }
+    for (std::size_t column = 0; column < dimension; ++column) {
+        std::size_t pivot = column;
+        for (std::size_t row = column + 1; row < dimension; ++row) {
+            if (std::abs(matrix[row * dimension + column])
+                > std::abs(matrix[pivot * dimension + column])) {
+                pivot = row;
+            }
+        }
+        if (!std::isfinite(matrix[pivot * dimension + column])
+            || std::abs(matrix[pivot * dimension + column]) < 1.0e-14) {
+            return std::nullopt;
+        }
+        for (std::size_t local = column; local < dimension; ++local) {
+            std::swap(
+                matrix[column * dimension + local],
+                matrix[pivot * dimension + local]
+            );
+        }
+        std::swap(right_hand_side[column], right_hand_side[pivot]);
+        for (std::size_t row = column + 1; row < dimension; ++row) {
+            const double factor =
+                matrix[row * dimension + column]
+                / matrix[column * dimension + column];
+            for (std::size_t local = column; local < dimension; ++local) {
+                matrix[row * dimension + local] -=
+                    factor * matrix[column * dimension + local];
+            }
+            right_hand_side[row] -= factor * right_hand_side[column];
+        }
+    }
+    std::vector<double> solution(dimension, 0.0);
+    for (std::size_t reverse = 0; reverse < dimension; ++reverse) {
+        const std::size_t row = dimension - reverse - 1;
+        double value = right_hand_side[row];
+        for (std::size_t column = row + 1;
+             column < dimension;
+             ++column) {
+            value -= matrix[row * dimension + column] * solution[column];
+        }
+        solution[row] = value / matrix[row * dimension + row];
+    }
+    if (!std::all_of(solution.begin(), solution.end(), [](double value) {
+            return std::isfinite(value);
+        })) {
+        return std::nullopt;
+    }
+    return solution;
+}
+
+struct EqualityGaugeFit {
+    double residual_inf = std::numeric_limits<double>::infinity();
+    double normalization_multiplier =
+        std::numeric_limits<double>::quiet_NaN();
+    double charge_multiplier = std::numeric_limits<double>::quiet_NaN();
+};
+
+EqualityGaugeFit fit_physical_equality_gauges(
+    const std::vector<double>& covector,
+    const std::vector<double>& charges
+) {
+    EqualityGaugeFit result;
+    if (covector.size() != charges.size() || covector.empty()
+        || !std::all_of(covector.begin(), covector.end(), [](double value) {
+            return std::isfinite(value);
+        })
+        || !std::all_of(charges.begin(), charges.end(), [](double value) {
+            return std::isfinite(value);
+        })) {
+        return result;
+    }
+    const double count = static_cast<double>(covector.size());
+    const double charge_sum =
+        std::accumulate(charges.begin(), charges.end(), 0.0);
+    const double charge_square_sum = std::inner_product(
+        charges.begin(), charges.end(), charges.begin(), 0.0
+    );
+    const double covector_sum =
+        std::accumulate(covector.begin(), covector.end(), 0.0);
+    const double charge_covector_sum = std::inner_product(
+        charges.begin(), charges.end(), covector.begin(), 0.0
+    );
+    const double determinant =
+        count * charge_square_sum - charge_sum * charge_sum;
+    if (!std::isfinite(determinant)
+        || determinant <= kHeld2Stage2KktRankPivot.atol) {
+        return result;
+    }
+    result.normalization_multiplier = (
+        -covector_sum * charge_square_sum
+        + charge_covector_sum * charge_sum
+    ) / determinant;
+    result.charge_multiplier = (
+        -count * charge_covector_sum
+        + charge_sum * covector_sum
+    ) / determinant;
+    result.residual_inf = 0.0;
+    for (std::size_t index = 0; index < covector.size(); ++index) {
+        result.residual_inf = std::max(
+            result.residual_inf,
+            std::abs(
+                covector[index]
+                + result.normalization_multiplier
+                + result.charge_multiplier * charges[index]
+            )
+        );
+    }
+    return result;
+}
+
 struct Step5LocalRun {
     bool converged = false;
     std::string status = "not_run";
     std::vector<double> variables;
+    std::vector<double> lower_bound_multipliers;
+    std::vector<double> upper_bound_multipliers;
+    std::vector<double> constraint_multipliers;
     int iterations = 0;
 };
 
@@ -309,11 +479,10 @@ public:
         const Ipopt::IpoptData*,
         Ipopt::IpoptCalculatedQuantities*
     ) override {
-        static_cast<void>(z_lower);
-        static_cast<void>(z_upper);
-        static_cast<void>(m);
-        static_cast<void>(lambda);
         variables_.assign(x, x + n);
+        lower_bound_multipliers_.assign(z_lower, z_lower + n);
+        upper_bound_multipliers_.assign(z_upper, z_upper + n);
+        constraint_multipliers_.assign(lambda, lambda + m);
         converged_ = status == Ipopt::SUCCESS
             || status == Ipopt::STOP_AT_ACCEPTABLE_POINT;
         status_ = status == Ipopt::SUCCESS
@@ -328,6 +497,9 @@ public:
             converged_,
             status_,
             variables_,
+            lower_bound_multipliers_,
+            upper_bound_multipliers_,
+            constraint_multipliers_,
             iterations_,
         };
     }
@@ -363,8 +535,579 @@ private:
     bool converged_ = false;
     std::string status_ = "not_run";
     std::vector<double> variables_;
+    std::vector<double> lower_bound_multipliers_;
+    std::vector<double> upper_bound_multipliers_;
+    std::vector<double> constraint_multipliers_;
     int iterations_ = 0;
 };
+
+Held2Step5KktCertificate certify_step5_terminal(
+    const Held2Coordinates& coordinates,
+    const Held2Step4Result& step4,
+    const Held2PersistentState& state,
+    std::uint64_t start_ordinal,
+    const Step5LocalRun& run,
+    const std::vector<double>& audited_solver_variables,
+    const Held2StateEvaluation& terminal,
+    const std::vector<double>& composition_lower,
+    const std::vector<double>& composition_upper,
+    const std::array<double, 2>& volume_bounds
+) {
+    const std::size_t dimension = composition_lower.size();
+    std::vector<double> variables(
+        audited_solver_variables.begin(),
+        audited_solver_variables.end() - 1
+    );
+    variables.push_back(terminal.volume);
+    std::vector<double> lower = composition_lower;
+    std::vector<double> upper = composition_upper;
+    lower.push_back(volume_bounds[0]);
+    upper.push_back(volume_bounds[1]);
+    std::vector<std::vector<double>> constraints;
+    std::vector<double> constraint_upper;
+    std::vector<std::size_t> constraint_indices;
+    struct CanonicalBoundConstraint {
+        std::size_t constraint_index;
+        std::size_t coordinate;
+        double coefficient;
+    };
+    std::vector<CanonicalBoundConstraint> canonical_bound_constraints;
+    constraints.reserve(coordinates.polytope_constraints.size());
+    constraint_upper.reserve(coordinates.polytope_constraints.size());
+    constraint_indices.reserve(coordinates.polytope_constraints.size());
+    canonical_bound_constraints.reserve(
+        coordinates.polytope_constraints.size()
+    );
+    const auto canonical_variable_bound = [
+        &composition_lower, &composition_upper, dimension
+    ](const Held2PolytopeConstraint& constraint)
+        -> std::optional<std::pair<std::size_t, double>> {
+        if (constraint.coefficients.size() != dimension) {
+            return std::nullopt;
+        }
+        std::optional<std::size_t> candidate;
+        for (std::size_t coordinate = 0;
+             coordinate < dimension;
+             ++coordinate) {
+            if (std::abs(constraint.coefficients[coordinate])
+                <= kHeld2PolytopeFeasibility.atol) {
+                continue;
+            }
+            if (candidate) {
+                return std::nullopt;
+            }
+            candidate = coordinate;
+        }
+        if (!candidate) {
+            return std::nullopt;
+        }
+        const double coefficient =
+            constraint.coefficients[*candidate];
+        const double implied_bound =
+            constraint.upper_bound / coefficient;
+        const double variable_bound = coefficient > 0.0
+            ? composition_upper[*candidate]
+            : composition_lower[*candidate];
+        if (!std::isfinite(implied_bound)
+            || !std::isfinite(variable_bound)
+            || !audit_held2_tolerance(
+                kHeld2BoundActivity,
+                implied_bound - variable_bound
+            ).passed) {
+            return std::nullopt;
+        }
+        return std::pair{*candidate, coefficient};
+    };
+    for (std::size_t index = 0;
+         index < coordinates.polytope_constraints.size();
+         ++index) {
+        const Held2PolytopeConstraint& constraint =
+            coordinates.polytope_constraints[index];
+        if (const auto canonical = canonical_variable_bound(constraint)) {
+            canonical_bound_constraints.push_back({
+                index, canonical->first, canonical->second,
+            });
+            continue;
+        }
+        std::vector<double> coefficients = constraint.coefficients;
+        coefficients.push_back(0.0);
+        constraints.push_back(std::move(coefficients));
+        constraint_upper.push_back(constraint.upper_bound);
+        constraint_indices.push_back(index);
+    }
+
+    std::vector<double> lower_multipliers =
+        run.lower_bound_multipliers;
+    std::vector<double> upper_multipliers =
+        run.upper_bound_multipliers;
+    const bool volume_dual_convertible =
+        terminal.volume > 0.0 && std::isfinite(terminal.volume)
+        && lower_multipliers.size() == dimension + 1
+        && upper_multipliers.size() == dimension + 1;
+    if (volume_dual_convertible) {
+        lower_multipliers.back() /= terminal.volume;
+        upper_multipliers.back() /= terminal.volume;
+    }
+    if (lower_multipliers.size() == variables.size()
+        && upper_multipliers.size() == variables.size()) {
+        for (std::size_t index = 0; index < variables.size(); ++index) {
+            if (!audit_held2_tolerance(
+                    kHeld2BoundActivity,
+                    variables[index] - lower[index]
+                ).passed
+                && std::isfinite(lower_multipliers[index])
+                && (
+                    std::abs(run.lower_bound_multipliers[index])
+                        <= kHeld2Stage2KktDualSign.atol
+                    || audit_held2_tolerance(
+                        kHeld2Stage2KktComplementarity,
+                        lower_multipliers[index]
+                            * (variables[index] - lower[index])
+                    ).passed
+                )) {
+                lower_multipliers[index] = 0.0;
+            }
+            if (!audit_held2_tolerance(
+                    kHeld2BoundActivity,
+                    upper[index] - variables[index]
+                ).passed
+                && std::isfinite(upper_multipliers[index])
+                && (
+                    std::abs(run.upper_bound_multipliers[index])
+                        <= kHeld2Stage2KktDualSign.atol
+                    || audit_held2_tolerance(
+                        kHeld2Stage2KktComplementarity,
+                        upper_multipliers[index]
+                            * (upper[index] - variables[index])
+                    ).passed
+                )) {
+                upper_multipliers[index] = 0.0;
+            }
+        }
+    }
+    std::vector<double> constraint_multipliers;
+    if (run.constraint_multipliers.size()
+        == coordinates.polytope_constraints.size()) {
+        constraint_multipliers.reserve(constraint_indices.size());
+        for (std::size_t index : constraint_indices) {
+            constraint_multipliers.push_back(
+                run.constraint_multipliers[index]
+            );
+        }
+    } else {
+        constraint_multipliers = run.constraint_multipliers;
+    }
+    if (run.constraint_multipliers.size()
+            == coordinates.polytope_constraints.size()
+        && lower_multipliers.size() == variables.size()
+        && upper_multipliers.size() == variables.size()) {
+        for (const auto& canonical : canonical_bound_constraints) {
+            double multiplier =
+                run.constraint_multipliers[
+                    canonical.constraint_index
+                ];
+            const Held2PolytopeConstraint& constraint =
+                coordinates.polytope_constraints[
+                    canonical.constraint_index
+                ];
+            const double slack = constraint.upper_bound
+                - canonical.coefficient
+                    * variables[canonical.coordinate];
+            if (!audit_held2_tolerance(
+                    kHeld2BoundActivity, slack
+                ).passed
+                && std::isfinite(multiplier)
+                && audit_held2_tolerance(
+                    kHeld2Stage2KktComplementarity,
+                    multiplier * slack
+                ).passed) {
+                multiplier = 0.0;
+            }
+            if (canonical.coefficient > 0.0) {
+                upper_multipliers[canonical.coordinate] +=
+                    multiplier * canonical.coefficient;
+            } else {
+                lower_multipliers[canonical.coordinate] -=
+                    multiplier * canonical.coefficient;
+            }
+        }
+    }
+    if (constraint_multipliers.size() == constraints.size()) {
+        for (std::size_t row = 0; row < constraints.size(); ++row) {
+            const double value = std::inner_product(
+                constraints[row].begin(), constraints[row].end(),
+                variables.begin(), 0.0
+            );
+            if (!audit_held2_tolerance(
+                    kHeld2BoundActivity,
+                    constraint_upper[row] - value
+                ).passed
+                && std::isfinite(constraint_multipliers[row])
+                && audit_held2_tolerance(
+                    kHeld2Stage2KktComplementarity,
+                    constraint_multipliers[row]
+                        * (constraint_upper[row] - value)
+                ).passed) {
+                constraint_multipliers[row] = 0.0;
+            }
+        }
+    }
+
+    std::vector<double> objective_gradient(dimension + 1, 0.0);
+    double pullback_residual = std::numeric_limits<double>::infinity();
+    double pullback_scale = 0.0;
+    try {
+        const std::vector<double> modified_potentials =
+            held2_transform_modified_potentials(
+                coordinates, terminal.chemical_potentials_over_rt
+            );
+        const auto dependent = std::find(
+            coordinates.retained_indices.begin(),
+            coordinates.retained_indices.end(),
+            coordinates.dependent_index
+        );
+        if (dependent == coordinates.retained_indices.end()
+            || terminal.gradient.size() != dimension + 1
+            || state.multipliers.size() != dimension) {
+            throw std::invalid_argument(
+                "HELD2 Step-5 pullback dimensions changed"
+            );
+        }
+        const std::size_t dependent_position =
+            static_cast<std::size_t>(
+                dependent - coordinates.retained_indices.begin()
+            );
+        pullback_residual = 0.0;
+        for (std::size_t coordinate = 0;
+             coordinate < dimension;
+             ++coordinate) {
+            const auto independent = std::find(
+                coordinates.retained_indices.begin(),
+                coordinates.retained_indices.end(),
+                coordinates.independent_indices[coordinate]
+            );
+            if (independent == coordinates.retained_indices.end()) {
+                throw std::invalid_argument(
+                    "HELD2 Step-5 independent chart changed"
+                );
+            }
+            const std::size_t independent_position =
+                static_cast<std::size_t>(
+                    independent - coordinates.retained_indices.begin()
+                );
+            const double reconstructed =
+                modified_potentials[independent_position]
+                - modified_potentials[dependent_position];
+            pullback_residual = std::max(
+                pullback_residual,
+                std::abs(reconstructed - terminal.gradient[coordinate])
+            );
+            pullback_scale = std::max(
+                {pullback_scale, std::abs(reconstructed),
+                 std::abs(terminal.gradient[coordinate])}
+            );
+            objective_gradient[coordinate] =
+                reconstructed - state.multipliers[coordinate];
+        }
+        objective_gradient.back() =
+            terminal.gradient.back() / terminal.volume;
+    } catch (...) {
+        objective_gradient.clear();
+    }
+    const bool pressure_branch_valid =
+        volume_dual_convertible
+        && std::isfinite(volume_bounds[0])
+        && std::isfinite(volume_bounds[1])
+        && volume_bounds[0] > 0.0
+        && volume_bounds[0] < volume_bounds[1]
+        && audited_solver_variables.size() == dimension + 1
+        && audit_held2_tolerance(
+            kHeld2JointVolumeConsistency,
+            audited_solver_variables.back()
+                - std::log(terminal.volume)
+        ).passed;
+    bool step4_certificate_valid = false;
+    if (step4.certificate) {
+        try {
+            step4_certificate_valid =
+                step4.certificate->primal_feasible
+                && step4.certificate->dual_feasible
+                && audit_held2_tolerance(
+                    kHeld2LpPrimal,
+                    step4.certificate->primal_residual_inf
+                ).passed
+                && audit_held2_tolerance(
+                    kHeld2LpDual,
+                    step4.certificate->dual_residual_inf
+                ).passed
+                && audit_held2_tolerance(
+                    kHeld2LpComplementarity,
+                    step4.certificate->complementarity_inf
+                ).passed;
+        } catch (...) {
+            step4_certificate_valid = false;
+        }
+    }
+    bool cut_snapshot_valid = false;
+    bool active_cut_ids_valid = false;
+    try {
+        if (step4.cut_snapshot.size() == state.M.size() + 1
+            && step4.upper_bound && step4.multipliers
+            && step4.multipliers->size() == dimension) {
+            cut_snapshot_valid = true;
+            std::vector<int> reconstructed_active_ids;
+            for (std::size_t index = 0;
+                 index < step4.cut_snapshot.size();
+                 ++index) {
+                const Held2Step4CutEvidence& cut =
+                    step4.cut_snapshot[index];
+                int expected_id = -1;
+                double expected_intercept =
+                    state.feed_reduced_gibbs;
+                std::vector<double> expected_slopes(dimension, 0.0);
+                if (index < state.M.size()) {
+                    const Held2MPoint& point = state.M[index];
+                    expected_id =
+                        static_cast<int>(point.insertion_id);
+                    expected_intercept = point.reduced_gibbs;
+                    if (point.independent_modified_fractions.size()
+                        != dimension) {
+                        cut_snapshot_valid = false;
+                        break;
+                    }
+                    for (std::size_t coordinate = 0;
+                         coordinate < dimension;
+                         ++coordinate) {
+                        expected_slopes[coordinate] =
+                            state.feed[coordinate]
+                            - point.independent_modified_fractions[
+                                coordinate
+                            ];
+                    }
+                }
+                if (cut.id != expected_id
+                    || cut.intercept != expected_intercept
+                    || cut.slopes != expected_slopes) {
+                    cut_snapshot_valid = false;
+                    break;
+                }
+                double value = cut.intercept;
+                for (std::size_t coordinate = 0;
+                     coordinate < dimension;
+                     ++coordinate) {
+                    value += cut.slopes[coordinate]
+                        * (*step4.multipliers)[coordinate];
+                }
+                if (audit_held2_tolerance(
+                        kHeld2LpActiveCut,
+                        value - *step4.upper_bound
+                    ).passed) {
+                    reconstructed_active_ids.push_back(cut.id);
+                }
+            }
+            active_cut_ids_valid = cut_snapshot_valid
+                && !reconstructed_active_ids.empty()
+                && reconstructed_active_ids
+                    == step4.active_cut_ids;
+        }
+    } catch (...) {
+        cut_snapshot_valid = false;
+        active_cut_ids_valid = false;
+    }
+    const bool step4_binding_valid =
+        step4.upper_bound && step4.multipliers
+        && state.coordinates && step4.coordinate_snapshot
+        && same_coordinates(coordinates, *state.coordinates)
+        && same_coordinates(
+            coordinates, *step4.coordinate_snapshot
+        )
+        && step4_certificate_valid && cut_snapshot_valid
+        && active_cut_ids_valid
+        && step4.upper_solve_count == state.upper_solve_count
+        && *step4.upper_bound == state.upper_bound
+        && *step4.multipliers == state.multipliers;
+    Held2Step5KktCertificate certificate = audit_held2_step5_kkt(
+        variables,
+        lower,
+        upper,
+        objective_gradient,
+        constraints,
+        constraint_upper,
+        lower_multipliers,
+        upper_multipliers,
+        constraint_multipliers,
+        pullback_residual,
+        pullback_scale,
+        terminal.pressure_stationarity_relative,
+        step4.major_iteration == state.major_iteration,
+        step4_binding_valid,
+        pressure_branch_valid
+    );
+    EqualityGaugeFit physical_stationarity;
+    double physical_composition_residual =
+        std::numeric_limits<double>::infinity();
+    try {
+        if (terminal.physical_amounts.size()
+                != coordinates.charges.size()
+            || terminal.chemical_potentials_over_rt.size()
+                != coordinates.charges.size()
+            || lower_multipliers.size() < dimension
+            || upper_multipliers.size() < dimension
+            || constraint_multipliers.size() != constraints.size()) {
+            throw std::invalid_argument(
+                "HELD2 Step-5 physical evidence dimensions changed"
+            );
+        }
+        const double normalization = std::accumulate(
+            terminal.physical_amounts.begin(),
+            terminal.physical_amounts.end(),
+            0.0
+        );
+        const double charge = std::inner_product(
+            terminal.physical_amounts.begin(),
+            terminal.physical_amounts.end(),
+            coordinates.charges.begin(),
+            0.0
+        );
+        physical_composition_residual = std::max(
+            std::abs(normalization - 1.0), std::abs(charge)
+        );
+        const std::vector<double> audited_composition(
+            audited_solver_variables.begin(),
+            audited_solver_variables.begin()
+                + static_cast<std::ptrdiff_t>(dimension)
+        );
+        const std::vector<double> reconstructed_physical =
+            held2_lift_independent_fractions(
+                coordinates, audited_composition
+            );
+        if (reconstructed_physical.size()
+            != terminal.physical_amounts.size()) {
+            throw std::invalid_argument(
+                "HELD2 Step-5 reconstructed composition changed"
+            );
+        }
+        for (double amount : terminal.physical_amounts) {
+            if (!std::isfinite(amount)) {
+                throw std::invalid_argument(
+                    "HELD2 Step-5 physical composition is nonfinite"
+                );
+            }
+            physical_composition_residual = std::max(
+                physical_composition_residual, -amount
+            );
+        }
+        for (std::size_t index = 0;
+             index < reconstructed_physical.size();
+             ++index) {
+            physical_composition_residual = std::max(
+                physical_composition_residual,
+                std::abs(
+                    terminal.physical_amounts[index]
+                    - reconstructed_physical[index]
+                )
+            );
+        }
+
+        std::vector<double> physical_covector =
+            terminal.chemical_potentials_over_rt;
+        std::vector<double> reduced_dual_force(dimension, 0.0);
+        for (std::size_t coordinate = 0;
+             coordinate < dimension;
+             ++coordinate) {
+            reduced_dual_force[coordinate] =
+                -lower_multipliers[coordinate]
+                + upper_multipliers[coordinate];
+        }
+        for (std::size_t row = 0; row < constraints.size(); ++row) {
+            for (std::size_t coordinate = 0;
+                 coordinate < dimension;
+                 ++coordinate) {
+                reduced_dual_force[coordinate] +=
+                    constraint_multipliers[row]
+                    * constraints[row][coordinate];
+            }
+        }
+        for (std::size_t coordinate = 0;
+             coordinate < dimension;
+             ++coordinate) {
+            const std::size_t component =
+                coordinates.independent_indices[coordinate];
+            const auto retained = std::find(
+                coordinates.retained_indices.begin(),
+                coordinates.retained_indices.end(),
+                component
+            );
+            if (retained == coordinates.retained_indices.end()) {
+                throw std::invalid_argument(
+                    "HELD2 Step-5 physical pullback chart changed"
+                );
+            }
+            const std::size_t retained_position =
+                static_cast<std::size_t>(
+                    retained - coordinates.retained_indices.begin()
+                );
+            physical_covector[component] +=
+                coordinates.modified_factors[retained_position]
+                * (
+                    -state.multipliers[coordinate]
+                    + reduced_dual_force[coordinate]
+                );
+        }
+        physical_stationarity = fit_physical_equality_gauges(
+            physical_covector, coordinates.charges
+        );
+    } catch (...) {
+        physical_composition_residual =
+            std::numeric_limits<double>::infinity();
+    }
+    certificate.physical_composition_residual_inf =
+        physical_composition_residual;
+    certificate.physical_stationarity_residual_inf =
+        physical_stationarity.residual_inf;
+    certificate.normalization_multiplier =
+        physical_stationarity.normalization_multiplier;
+    certificate.charge_multiplier =
+        physical_stationarity.charge_multiplier;
+    if (certificate.accepted) {
+        if (!std::isfinite(physical_composition_residual)
+            || !audit_held2_tolerance(
+                kHeld2CompositionSum,
+                physical_composition_residual
+            ).passed) {
+            certificate.reason = "physical_composition_failed";
+            certificate.accepted = false;
+        } else if (!std::isfinite(physical_stationarity.residual_inf)
+            || !audit_held2_tolerance(
+                kHeld2Stage2KktStationarity,
+                physical_stationarity.residual_inf
+            ).passed) {
+            certificate.reason = "physical_stationarity_failed";
+            certificate.accepted = false;
+        }
+    }
+    certificate.major_iteration = state.major_iteration;
+    certificate.start_ordinal = start_ordinal;
+    certificate.step4_upper_bound = state.upper_bound;
+    certificate.step4_multipliers = state.multipliers;
+    certificate.step4_active_cut_ids = step4.active_cut_ids;
+    certificate.solver_variables = run.variables;
+    certificate.audited_variables = audited_solver_variables;
+    certificate.solver_lower_bound_multipliers =
+        run.lower_bound_multipliers;
+    certificate.solver_upper_bound_multipliers =
+        run.upper_bound_multipliers;
+    certificate.solver_constraint_multipliers =
+        run.constraint_multipliers;
+    certificate.lower_bound_multipliers = lower_multipliers;
+    certificate.upper_bound_multipliers = upper_multipliers;
+    certificate.constraint_multipliers = constraint_multipliers;
+    certificate.physical_volume_lower = volume_bounds[0];
+    certificate.physical_volume_upper = volume_bounds[1];
+    certificate.pressure_derivative_log_volume =
+        terminal.pressure_stationarity_derivative_log_volume;
+    return certificate;
+}
 
 Step5LocalRun solve_step5_local(
     Held2StateEvaluator objective,
@@ -441,7 +1184,19 @@ Held2Step5Result run_held2_step5(
 ) {
     Held2Step5Result result;
     result.timing.invocation_count = 1;
-    if (step4.status != "complete" || !step1.coordinates
+    if (step4.status != "complete" || !step4.certificate
+        || !step4.certificate->primal_feasible
+        || !step4.certificate->dual_feasible
+        || step4.major_iteration != state.major_iteration
+        || step4.upper_solve_count != state.upper_solve_count
+        || !step1.coordinates || !state.coordinates
+        || !step4.coordinate_snapshot
+        || !same_coordinates(
+            *step1.coordinates, *state.coordinates
+        )
+        || !same_coordinates(
+            *step1.coordinates, *step4.coordinate_snapshot
+        )
         || !step1.volume_bounds || !evaluator
         || resources.step5_start_cap < 1) {
         result.reason = "invalid_step5_input";
@@ -557,7 +1312,7 @@ Held2Step5Result run_held2_step5(
             }
             return evaluated;
         };
-        const Step5LocalRun run = solve_step5_local(
+        Step5LocalRun run = solve_step5_local(
             objective,
             coordinates.polytope_constraints,
             initial,
@@ -568,27 +1323,253 @@ Held2Step5Result run_held2_step5(
         result.timing.optimizer_iterations +=
             static_cast<std::uint64_t>(run.iterations);
         certificate.solver_status = run.status;
-        if (!run.converged || run.variables.size() != dimension + 1) {
+        if (!run.converged || run.variables.size() != dimension + 1
+            || !std::all_of(
+                run.variables.begin(), run.variables.end(),
+                [](double value) { return std::isfinite(value); }
+            )) {
+            if (run.converged) {
+                certificate.kkt = Held2Step5KktCertificate{};
+                certificate.kkt->reason = "nonfinite_evidence";
+            }
             result.attempts.push_back(certificate);
             continue;
         }
-        const std::vector<double> independent(
+        std::vector<double> audited_variables = run.variables;
+        std::vector<double> independent(
             run.variables.begin(), run.variables.end() - 1
         );
-        const Held2StateEvaluation terminal =
-            counted_evaluator(independent, run.variables.back());
-        double value = terminal.objective;
-        for (std::size_t coordinate = 0;
-             coordinate < dimension;
-             ++coordinate) {
-            value += state.multipliers[coordinate]
-                * (state.feed[coordinate] - independent[coordinate]);
+        Held2StateEvaluation terminal;
+        try {
+            terminal = counted_evaluator(
+                independent, run.variables.back()
+            );
+        } catch (...) {
+            certificate.kkt = Held2Step5KktCertificate{};
+            certificate.kkt->reason = "terminal_evaluation_failed";
+            result.attempts.push_back(certificate);
+            continue;
         }
-        certificate.finite_and_in_domain =
-            std::isfinite(value)
-            && terminal.volume >= solve_volume_bounds[0]
-            && terminal.volume <= solve_volume_bounds[1];
-        certificate.accepted = certificate.finite_and_in_domain;
+        double value = 0.0;
+        const auto assess_terminal = [&]() {
+            value = terminal.objective;
+            for (std::size_t coordinate = 0;
+                 coordinate < dimension;
+                 ++coordinate) {
+                value += state.multipliers[coordinate]
+                    * (state.feed[coordinate] - independent[coordinate]);
+            }
+            certificate.local_value = value;
+            std::array<double, 2> terminal_volume_bounds;
+            try {
+                terminal_volume_bounds =
+                    counted_volume_bounds(independent);
+            } catch (...) {
+                certificate.finite_and_in_domain = false;
+                certificate.accepted = false;
+                certificate.kkt = Held2Step5KktCertificate{};
+                certificate.kkt->reason =
+                    "terminal_volume_bounds_failed";
+                return;
+            }
+            certificate.finite_and_in_domain =
+                std::isfinite(value)
+                && terminal.volume >= terminal_volume_bounds[0]
+                && terminal.volume <= terminal_volume_bounds[1];
+            certificate.kkt = certify_step5_terminal(
+                coordinates,
+                step4,
+                state,
+                ordinal,
+                run,
+                audited_variables,
+                terminal,
+                lower,
+                upper,
+                terminal_volume_bounds
+            );
+            certificate.accepted = certificate.finite_and_in_domain
+                && certificate.kkt->accepted;
+        };
+        assess_terminal();
+        if (!certificate.accepted && certificate.kkt
+            && certificate.kkt->reason == "pressure_stationarity_failed"
+            && assess_step5(state.upper_bound, value, true).qualified) {
+            try {
+                std::vector<double> polished = run.variables;
+                for (int polish = 0; polish < 12; ++polish) {
+                    const std::vector<double> composition(
+                        polished.begin(), polished.end() - 1
+                    );
+                    const Held2StateEvaluation polished_state =
+                        objective(composition, polished.back());
+                    const double derivative =
+                        polished_state
+                            .pressure_stationarity_derivative_log_volume;
+                    if (!audit_held2_tolerance(
+                            kHeld2RootPressure,
+                            polished_state.pressure_stationarity_relative
+                        ).passed) {
+                        if (!std::isfinite(derivative)
+                            || std::abs(derivative) < 1.0e-12) {
+                            break;
+                        }
+                        const double correction = std::clamp(
+                            -polished_state.pressure_stationarity_relative
+                                / derivative,
+                            -1.0,
+                            1.0
+                        );
+                        polished.back() = std::clamp(
+                            polished.back() + correction,
+                            solver_lower.back(),
+                            solver_upper.back()
+                        );
+                    }
+                    const Held2StateEvaluation composition_state =
+                        objective(
+                            std::vector<double>(
+                                polished.begin(), polished.end() - 1
+                            ),
+                            polished.back()
+                        );
+                    std::vector<double> composition_gradient(
+                        composition_state.gradient.begin(),
+                        composition_state.gradient.begin()
+                            + static_cast<std::ptrdiff_t>(dimension)
+                    );
+                    if (audit_held2_tolerance(
+                            kHeld2Stage2KktStationarity,
+                            maximum_abs(composition_gradient)
+                        ).passed
+                        && audit_held2_tolerance(
+                            kHeld2RootPressure,
+                            composition_state.pressure_stationarity_relative
+                        ).passed) {
+                        break;
+                    }
+                    std::vector<double> composition_hessian(
+                        dimension * dimension, 0.0
+                    );
+                    for (std::size_t row = 0; row < dimension; ++row) {
+                        for (std::size_t column = 0;
+                             column < dimension;
+                             ++column) {
+                            composition_hessian[row * dimension + column] =
+                                composition_state.hessian[
+                                    row * (dimension + 1) + column
+                                ];
+                        }
+                    }
+                    for (double& value : composition_gradient) {
+                        value = -value;
+                    }
+                    const auto direction = solve_dense_system(
+                        std::move(composition_hessian),
+                        std::move(composition_gradient)
+                    );
+                    if (!direction) {
+                        break;
+                    }
+                    double step_scale = 1.0;
+                    const double maximum_step = maximum_abs(*direction);
+                    if (maximum_step > 0.1) {
+                        step_scale = 0.1 / maximum_step;
+                    }
+                    bool advanced = false;
+                    for (int line_search = 0;
+                         line_search < 16;
+                         ++line_search) {
+                        std::vector<double> candidate(
+                            polished.begin(), polished.end() - 1
+                        );
+                        for (std::size_t coordinate = 0;
+                             coordinate < dimension;
+                             ++coordinate) {
+                            candidate[coordinate] +=
+                                step_scale * (*direction)[coordinate];
+                        }
+                        bool feasible = true;
+                        for (std::size_t coordinate = 0;
+                             coordinate < dimension;
+                             ++coordinate) {
+                            feasible = feasible
+                                && candidate[coordinate] >= lower[coordinate]
+                                && candidate[coordinate] <= upper[coordinate];
+                        }
+                        for (const Held2PolytopeConstraint& constraint :
+                             coordinates.polytope_constraints) {
+                            feasible = feasible
+                                && std::inner_product(
+                                    constraint.coefficients.begin(),
+                                    constraint.coefficients.end(),
+                                    candidate.begin(),
+                                    0.0
+                                ) <= constraint.upper_bound;
+                        }
+                        if (feasible) {
+                            std::copy(
+                                candidate.begin(), candidate.end(),
+                                polished.begin()
+                            );
+                            advanced = true;
+                            break;
+                        }
+                        step_scale *= 0.5;
+                    }
+                    if (!advanced) {
+                        break;
+                    }
+                }
+                for (int pressure_polish = 0;
+                     pressure_polish < 8;
+                     ++pressure_polish) {
+                    const std::vector<double> composition(
+                        polished.begin(), polished.end() - 1
+                    );
+                    const Held2StateEvaluation pressure_state =
+                        counted_evaluator(composition, polished.back());
+                    if (audit_held2_tolerance(
+                            kHeld2RootPressure,
+                            pressure_state.pressure_stationarity_relative
+                        ).passed) {
+                        break;
+                    }
+                    const double derivative =
+                        pressure_state
+                            .pressure_stationarity_derivative_log_volume;
+                    if (!std::isfinite(derivative)
+                        || std::abs(derivative) < 1.0e-12) {
+                        break;
+                    }
+                    polished.back() = std::clamp(
+                        polished.back()
+                            - pressure_state.pressure_stationarity_relative
+                                / derivative,
+                        solver_lower.back(),
+                        solver_upper.back()
+                    );
+                }
+                const std::vector<double> polished_composition(
+                    polished.begin(), polished.end() - 1
+                );
+                const Held2StateEvaluation polished_terminal =
+                    counted_evaluator(polished_composition, polished.back());
+                if (audit_held2_tolerance(
+                        kHeld2RootPressure,
+                        polished_terminal.pressure_stationarity_relative
+                    ).passed) {
+                    audited_variables = std::move(polished);
+                    certificate.solver_status =
+                        run.status + "_pressure_polished";
+                    independent = polished_composition;
+                    terminal = polished_terminal;
+                    assess_terminal();
+                }
+            } catch (...) {
+                // Preserve the original rejected certificate.
+            }
+        }
         result.attempts.push_back(certificate);
         Held2ProgressEvent progress;
         progress.kind = Held2ProgressKind::Certificate;

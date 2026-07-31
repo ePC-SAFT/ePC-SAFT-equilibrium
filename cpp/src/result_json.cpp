@@ -691,6 +691,77 @@ JsonValue paper_physical_certificate_to_json(
     return result;
 }
 
+JsonValue held2_farkas_certificate_to_json(
+    const Held2FarkasCertificate& value
+) {
+    JsonValue result = JsonValue::object();
+    result["reason"] = value.reason;
+    result["row_multipliers"] = value.row_multipliers;
+    result["normalization"] = value.normalization;
+    result["row_sign_violation_inf"] = value.row_sign_violation_inf;
+    result["dual_feasibility_violation_inf"] =
+        value.dual_feasibility_violation_inf;
+    result["contradiction_margin"] = value.contradiction_margin;
+    result["contradiction_scale"] = value.contradiction_scale;
+    result["contradiction_threshold"] = value.contradiction_threshold;
+    result["accepted"] = value.accepted;
+    return result;
+}
+
+JsonValue held2_step5_kkt_certificate_to_json(
+    const Held2Step5KktCertificate& value
+) {
+    JsonValue result = JsonValue::object();
+    result["reason"] = value.reason;
+    result["major_iteration"] = value.major_iteration;
+    result["start_ordinal"] = value.start_ordinal;
+    result["step4_upper_bound"] = value.step4_upper_bound;
+    result["step4_multipliers"] = value.step4_multipliers;
+    result["step4_active_cut_ids"] = value.step4_active_cut_ids;
+    result["solver_variables"] = value.solver_variables;
+    result["audited_variables"] = value.audited_variables;
+    result["solver_lower_bound_multipliers"] =
+        value.solver_lower_bound_multipliers;
+    result["solver_upper_bound_multipliers"] =
+        value.solver_upper_bound_multipliers;
+    result["solver_constraint_multipliers"] =
+        value.solver_constraint_multipliers;
+    result["lower_bound_multipliers"] =
+        value.lower_bound_multipliers;
+    result["upper_bound_multipliers"] =
+        value.upper_bound_multipliers;
+    result["constraint_multipliers"] =
+        value.constraint_multipliers;
+    result["physical_volume_lower"] = value.physical_volume_lower;
+    result["physical_volume_upper"] = value.physical_volume_upper;
+    result["primal_residual_inf"] = value.primal_residual_inf;
+    result["dual_sign_violation_inf"] =
+        value.dual_sign_violation_inf;
+    result["pullback_residual_inf"] = value.pullback_residual_inf;
+    result["pullback_scale"] = value.pullback_scale;
+    result["physical_composition_residual_inf"] =
+        value.physical_composition_residual_inf;
+    result["physical_stationarity_residual_inf"] =
+        value.physical_stationarity_residual_inf;
+    result["normalization_multiplier"] =
+        value.normalization_multiplier;
+    result["charge_multiplier"] = value.charge_multiplier;
+    result["pressure_residual"] = value.pressure_residual;
+    result["pressure_derivative_log_volume"] =
+        value.pressure_derivative_log_volume;
+    result["stationarity_residual_inf"] =
+        value.stationarity_residual_inf;
+    result["complementarity_inf"] = value.complementarity_inf;
+    result["active_constraint_count"] =
+        value.active_constraint_count;
+    result["active_jacobian_rank"] = value.active_jacobian_rank;
+    result["same_major_iteration"] = value.same_major_iteration;
+    result["step4_binding_valid"] = value.step4_binding_valid;
+    result["pressure_branch_valid"] = value.pressure_branch_valid;
+    result["accepted"] = value.accepted;
+    return result;
+}
+
 JsonValue paper_step8_to_json(const Held2Step8Result& step) {
     JsonValue result = JsonValue::object();
     result["outcome"] =
@@ -713,6 +784,9 @@ JsonValue paper_step8_to_json(const Held2Step8Result& step) {
         phases.append(paper_phase_to_json(phase));
     }
     result["active_phases"] = std::move(phases);
+    result["farkas"] = step.farkas
+        ? held2_farkas_certificate_to_json(*step.farkas)
+        : JsonValue(nullptr);
     if (step.nlp) {
         JsonValue certificate = JsonValue::object();
         certificate["solver_status"] = step.nlp->solver_status;
@@ -894,6 +968,8 @@ JsonValue paper_algorithm_to_json(
         JsonValue item = JsonValue::object();
         item["status"] = value.status;
         item["reason"] = value.reason;
+        item["major_iteration"] = value.major_iteration;
+        item["upper_solve_count"] = value.upper_solve_count;
         item["upper_bound"] = value.upper_bound
             ? JsonValue(*value.upper_bound) : JsonValue(nullptr);
         item["multipliers"] = value.multipliers
@@ -913,6 +989,22 @@ JsonValue paper_algorithm_to_json(
         item["terminal"] = value.terminal
             ? paper_m_point_to_json(*value.terminal) : JsonValue(nullptr);
         item["starts_consumed"] = value.starts_consumed;
+        JsonValue attempts = JsonValue::array();
+        for (const Held2LocalCertificate& attempt : value.attempts) {
+            JsonValue certificate = JsonValue::object();
+            certificate["start_ordinal"] = attempt.start_ordinal;
+            certificate["solver_status"] = attempt.solver_status;
+            certificate["local_value"] = attempt.local_value
+                ? JsonValue(*attempt.local_value) : JsonValue(nullptr);
+            certificate["finite_and_in_domain"] =
+                attempt.finite_and_in_domain;
+            certificate["kkt"] = attempt.kkt
+                ? held2_step5_kkt_certificate_to_json(*attempt.kkt)
+                : JsonValue(nullptr);
+            certificate["accepted"] = attempt.accepted;
+            attempts.append(std::move(certificate));
+        }
+        item["attempts"] = std::move(attempts);
         item["timing"] = paper_timing_to_json(value.timing);
         step5_history.append(std::move(item));
     }

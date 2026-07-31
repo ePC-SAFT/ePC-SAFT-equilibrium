@@ -217,7 +217,16 @@ recorded without inventing a new cut.
 
 The completed implementation must certify the terminal in original physical
 coordinates, including primal feasibility, KKT stationarity, bound-multiplier
-signs, complementarity, and dual reconstruction.
+signs, complementarity, normalization and charge gauge multipliers, and dual
+reconstruction. The certificate is valid only for the exact same-major Step-4
+upper solve, immutable cut snapshot, recomputed active-cut IDs, upper bound,
+and multiplier vector and the exact Step-1 coordinate snapshot carried by the
+persistent state. It independently lifts the audited chart variables and
+compares that result with the reported physical composition, then reevaluates
+the Provider volume bounds there. Numerically equivalent polytope and variable
+bounds are represented once in the active-set rank audit while preserving
+their combined dual force. If a bounded polish is audited, diagnostics retain
+both the raw solver variables and the distinct audited terminal variables.
 
 **Step 6: select eligible phase candidates.**
 
@@ -355,15 +364,15 @@ algorithm auditable for the installed Provider:
 These additions do not alter the EOS, claim global optimization, or introduce
 a sequential chemistry calculation.
 
-## Evidence required before reuse in GREPE
+## Evidence completed before reuse in GREPE
 
 The working HELD2 behavior is frozen by the native Steps 1--10 workflow,
 Perdomo numerical regressions, and native/Python diagnostic parity. Before
 shared numerical machinery is extracted for GREPE,
-two documented evidence gaps must be closed in isolation:
+the following two evidence gaps were closed in isolation:
 
 1. the Step-5 original-physical-coordinate KKT and dual-reconstruction audit;
 2. validated Farkas evidence for Step-8 LP infeasibility.
 
-Both changes must preserve the frozen numerical results and fail closed when
+Both certificates preserve the frozen numerical results and fail closed when
 the additional evidence cannot be established.

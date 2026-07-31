@@ -110,6 +110,51 @@ inline constexpr Held2Tolerance kHeld2LpActiveCut{
     "lp_active_cut", "stage_ii_lp_diagnostic", "cut is not diagnostically active",
     Held2ToleranceRelation::AbsAtMost, 1.0e-7, 0.0,
 };
+inline constexpr Held2Tolerance kHeld2Stage2KktPrimal{
+    "stage2_kkt_primal", "stage_ii_kkt",
+    "Step-5 original-coordinate primal feasibility failed",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2Stage2KktDualSign{
+    "stage2_kkt_dual_sign", "stage_ii_kkt",
+    "Step-5 bound or inequality multiplier sign failed",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-9, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2Stage2KktPullback{
+    "stage2_kkt_pullback", "stage_ii_kkt",
+    "Step-5 physical-to-modified dual reconstruction failed",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-9, 1.0e-9,
+};
+inline constexpr Held2Tolerance kHeld2Stage2KktStationarity{
+    "stage2_kkt_stationarity", "stage_ii_kkt",
+    "Step-5 original-coordinate stationarity failed",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-7, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2Stage2KktComplementarity{
+    "stage2_kkt_complementarity", "stage_ii_kkt",
+    "Step-5 bound or inequality complementarity failed",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2Stage2KktRankPivot{
+    "stage2_kkt_rank_pivot", "stage_ii_kkt",
+    "Step-5 active-constraint Jacobian is rank deficient",
+    Held2ToleranceRelation::GreaterThan, 1.0e-12, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2FarkasRowSign{
+    "farkas_row_sign", "stage_iii_lp_certificate",
+    "Step-8 Farkas row multiplier has the wrong bound sign",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-10, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2FarkasDual{
+    "farkas_dual", "stage_iii_lp_certificate",
+    "Step-8 Farkas column dual is incompatible with variable bounds",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-10, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2FarkasContradiction{
+    "farkas_contradiction", "stage_iii_lp_certificate",
+    "Step-8 Farkas contradiction margin is not strict",
+    Held2ToleranceRelation::GreaterThan, 1.0e-9, 1.0e-9,
+};
 inline constexpr Held2Tolerance kHeld2Step6Gap{
     "step6_gap", "stage_ii_step6", "same-major upper/lower gap failed",
     Held2ToleranceRelation::AbsAtMost, 1.0e-8, 0.0,

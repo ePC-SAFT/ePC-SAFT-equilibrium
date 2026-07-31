@@ -251,7 +251,12 @@ Held2Step8Result run_held2_step8(
     result.electroneutrality_inf = solved.phase_charge_inf_norm;
     result.electroneutrality_scale = solved.phase_charge_scale;
     result.pressure_residual_inf = solved.pressure_stationarity_inf_norm;
-    const bool nlp_accepted = audit_held2_tolerance(
+    result.farkas = solved.feasibility_certificate;
+    const bool nlp_attempted =
+        solved.numerical_status != "not_adjudicated";
+    const bool nlp_accepted = nlp_attempted
+        && solved.numerical_status == "converged"
+        && audit_held2_tolerance(
         kHeld2Stage3ModifiedBalance, solved.modified_balance_inf_norm
     ).passed && audit_held2_tolerance(
         kHeld2Stage3Stationarity, solved.kkt_stationarity_inf_norm
@@ -261,16 +266,19 @@ Held2Step8Result run_held2_step8(
         kHeld2Stage3Complementarity,
         solved.bound_complementarity_inf_norm
     ).passed;
-    result.nlp = Held2NlpCertificate{
-        solved.solver_status,
-        solved.modified_balance_inf_norm,
-        solved.kkt_stationarity_inf_norm,
-        solved.dual_sign_violation_inf_norm,
-        solved.bound_complementarity_inf_norm,
-        nlp_accepted,
-    };
+    if (nlp_attempted) {
+        result.nlp = Held2NlpCertificate{
+            solved.solver_status,
+            solved.modified_balance_inf_norm,
+            solved.kkt_stationarity_inf_norm,
+            solved.dual_sign_violation_inf_norm,
+            solved.bound_complementarity_inf_norm,
+            nlp_accepted,
+        };
+    }
 
-    if (solved.solver_status == "infeasible_problem_detected") {
+    if (solved.solver_status == "infeasible_problem_detected"
+        && result.farkas && result.farkas->accepted) {
         result.outcome = Held2Step8Outcome::CertifiedInfeasible;
         result.reason = "problem_67_infeasible";
         result.timing.terminal_status = "complete";

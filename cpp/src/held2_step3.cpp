@@ -72,6 +72,7 @@ Held2Step3Result run_held2_step3(
     const Held2Coordinates& coordinates = *step1.coordinates;
     const std::size_t dimension = coordinates.independent_indices.size();
     Held2PersistentState state;
+    state.coordinates = coordinates;
     state.feed = *step1.independent_feed;
     state.feed_reduced_gibbs = step2.reference->objective;
     state.upper_bound = state.feed_reduced_gibbs;

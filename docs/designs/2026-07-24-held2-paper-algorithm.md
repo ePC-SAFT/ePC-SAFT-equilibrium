@@ -700,9 +700,18 @@ implementation policy and are emitted in diagnostics.
 
 Track the best independently certified local solution. Certification requires
 a finite in-domain physical state, pressure stationarity, primal feasibility,
-original-coordinate first-order KKT stationarity, valid bound-multiplier
-signs, complementarity, and coordinate-to-physical dual reconstruction. A
-library success status alone is not a solved Problem (65).
+original-coordinate first-order KKT stationarity with explicit normalization
+and charge gauge multipliers, valid bound-multiplier signs, complementarity,
+and coordinate-to-physical dual reconstruction. The evidence must bind to the
+same major iteration and exact Step-4 upper solve, active cuts, upper bound,
+and multipliers, including an immutable cut snapshot and independently
+recomputed active IDs, plus the exact Step-1 coordinate snapshot carried by
+the persistent state. The audited chart variables are independently lifted
+and compared with the reported physical composition before Provider volume
+bounds are reevaluated there. Numerically equivalent polytope and variable
+bounds are canonicalized without discarding their dual force. Raw solver
+variables remain distinct from any subsequently polished terminal used by
+the audit. A library success status alone is not a solved Problem (65).
 
 Stop the multistart search as soon as the best certified local solution
 satisfies
@@ -722,6 +731,9 @@ be reported as a new cut.
 - solve Eq. (65) directly in the \(C-2\) modified-composition variables and
   one volume variable;
 - use exact Provider derivatives and an exact-Hessian local NLP;
+- for a numerically qualifying terminal whose scaled solver coordinates leave
+  physical stationarity unresolved, apply a bounded exact-derivative
+  composition/pressure polish, then rerun the full independent certificate;
 - use the repository’s named physical KKT and dual-reconstruction tolerances
   for the independent local-solution certificate;
 - maintain one tight physical-state equivalence rule for \(\mathcal M\)

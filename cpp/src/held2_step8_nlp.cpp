@@ -627,6 +627,7 @@ struct Problem67FeasibilityResult {
     std::string status = "indeterminate";
     std::vector<double> phase_fractions;
     std::vector<std::vector<double>> compositions;
+    std::optional<Held2FarkasCertificate> certificate;
 };
 
 Problem67FeasibilityResult problem67_feasibility(
@@ -749,7 +750,85 @@ Problem67FeasibilityResult problem67_feasibility(
         return result;
     }
     if (highs.getModelStatus() == HighsModelStatus::kInfeasible) {
-        result.status = "infeasible";
+        bool has_dual_ray = false;
+        std::vector<double> raw_ray(
+            static_cast<std::size_t>(model.lp_.num_row_), 0.0
+        );
+        if (highs.getDualRay(has_dual_ray, raw_ray.data())
+                == HighsStatus::kError
+            || !has_dual_ray) {
+            result.certificate = Held2FarkasCertificate{};
+            result.certificate->reason = "missing_solver_ray";
+            return result;
+        }
+        std::vector<std::vector<double>> matrix(
+            static_cast<std::size_t>(model.lp_.num_row_),
+            std::vector<double>(
+                static_cast<std::size_t>(model.lp_.num_col_), 0.0
+            )
+        );
+        for (HighsInt row_index = 0;
+             row_index < model.lp_.num_row_;
+             ++row_index) {
+            const HighsInt begin =
+                model.lp_.a_matrix_.start_[static_cast<std::size_t>(
+                    row_index
+                )];
+            const HighsInt end =
+                model.lp_.a_matrix_.start_[static_cast<std::size_t>(
+                    row_index + 1
+                )];
+            for (HighsInt position = begin; position < end; ++position) {
+                matrix[static_cast<std::size_t>(row_index)][
+                    static_cast<std::size_t>(
+                        model.lp_.a_matrix_.index_[
+                            static_cast<std::size_t>(position)
+                        ]
+                    )
+                ] = model.lp_.a_matrix_.value_[
+                    static_cast<std::size_t>(position)
+                ];
+            }
+        }
+        const auto finite_bound = [](double value) {
+            if (value <= -0.5 * kHighsInf) {
+                return -std::numeric_limits<double>::infinity();
+            }
+            if (value >= 0.5 * kHighsInf) {
+                return std::numeric_limits<double>::infinity();
+            }
+            return value;
+        };
+        std::vector<double> row_lower = model.lp_.row_lower_;
+        std::vector<double> row_upper = model.lp_.row_upper_;
+        std::vector<double> column_lower = model.lp_.col_lower_;
+        std::vector<double> column_upper = model.lp_.col_upper_;
+        for (double& value : row_lower) {
+            value = finite_bound(value);
+        }
+        for (double& value : row_upper) {
+            value = finite_bound(value);
+        }
+        for (double& value : column_lower) {
+            value = finite_bound(value);
+        }
+        for (double& value : column_upper) {
+            value = finite_bound(value);
+        }
+        for (double& value : raw_ray) {
+            value = -value;
+        }
+        result.certificate = audit_held2_farkas_certificate(
+            matrix,
+            row_lower,
+            row_upper,
+            column_lower,
+            column_upper,
+            raw_ray
+        );
+        result.status = adjudicate_held2_farkas_status(
+            true, result.certificate
+        );
         return result;
     }
     const HighsSolution& solution = highs.getSolution();
@@ -957,7 +1036,8 @@ Held2Problem67Result solve_held2_problem67(
         problem67_feasibility(
         coordinates, feed, candidates
     );
-    if (feasibility.status == "infeasible") {
+    result.feasibility_certificate = feasibility.certificate;
+    if (feasibility.status == "certified_infeasible") {
         result.solver_status = "infeasible_problem_detected";
         result.failure_reason = "problem_67_infeasible";
         return result;

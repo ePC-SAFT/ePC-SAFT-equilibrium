@@ -17,6 +17,7 @@
 #include <epcsaft/native_sdk_v1.h>
 
 #include "held.hpp"
+#include "held2_certificates.hpp"
 #include "flash.hpp"
 #include "result_json.hpp"
 #include "saturation.hpp"
@@ -1070,6 +1071,102 @@ py::dict solve_tp_flash(
         ).cast<py::dict>();
 }
 
+py::dict held2_audit_farkas_certificate(
+    const std::vector<std::vector<double>>& matrix,
+    const std::vector<double>& row_lower,
+    const std::vector<double>& row_upper,
+    const std::vector<double>& column_lower,
+    const std::vector<double>& column_upper,
+    const std::vector<double>& row_ray
+) {
+    const auto audit =
+        epcsaft_equilibrium::audit_held2_farkas_certificate(
+            matrix,
+            row_lower,
+            row_upper,
+            column_lower,
+            column_upper,
+            row_ray
+        );
+    py::dict result;
+    result["reason"] = audit.reason;
+    result["row_multipliers"] = audit.row_multipliers;
+    result["normalization"] = audit.normalization;
+    result["row_sign_violation_inf"] = audit.row_sign_violation_inf;
+    result["dual_feasibility_violation_inf"] =
+        audit.dual_feasibility_violation_inf;
+    result["contradiction_margin"] = audit.contradiction_margin;
+    result["contradiction_scale"] = audit.contradiction_scale;
+    result["contradiction_threshold"] = audit.contradiction_threshold;
+    result["accepted"] = audit.accepted;
+    return result;
+}
+
+py::dict held2_audit_step5_kkt(
+    const std::vector<double>& variables,
+    const std::vector<double>& lower,
+    const std::vector<double>& upper,
+    const std::vector<double>& objective_gradient,
+    const std::vector<std::vector<double>>& constraints,
+    const std::vector<double>& constraint_upper,
+    const std::vector<double>& lower_bound_multipliers,
+    const std::vector<double>& upper_bound_multipliers,
+    const std::vector<double>& constraint_multipliers,
+    double pullback_residual,
+    double pullback_scale,
+    double pressure_residual,
+    bool same_major_iteration,
+    bool step4_binding_valid,
+    bool pressure_branch_valid
+) {
+    const auto audit = epcsaft_equilibrium::audit_held2_step5_kkt(
+        variables,
+        lower,
+        upper,
+        objective_gradient,
+        constraints,
+        constraint_upper,
+        lower_bound_multipliers,
+        upper_bound_multipliers,
+        constraint_multipliers,
+        pullback_residual,
+        pullback_scale,
+        pressure_residual,
+        same_major_iteration,
+        step4_binding_valid,
+        pressure_branch_valid
+    );
+    py::dict result;
+    result["reason"] = audit.reason;
+    result["primal_residual_inf"] = audit.primal_residual_inf;
+    result["dual_sign_violation_inf"] = audit.dual_sign_violation_inf;
+    result["pullback_residual_inf"] = audit.pullback_residual_inf;
+    result["pullback_scale"] = audit.pullback_scale;
+    result["pressure_residual"] = audit.pressure_residual;
+    result["stationarity_residual_inf"] =
+        audit.stationarity_residual_inf;
+    result["complementarity_inf"] = audit.complementarity_inf;
+    result["active_constraint_count"] = audit.active_constraint_count;
+    result["active_jacobian_rank"] = audit.active_jacobian_rank;
+    result["accepted"] = audit.accepted;
+    return result;
+}
+
+std::string held2_adjudicate_farkas_status(
+    bool solver_infeasible,
+    bool has_certificate,
+    bool certificate_accepted
+) {
+    std::optional<epcsaft_equilibrium::Held2FarkasCertificate> certificate;
+    if (has_certificate) {
+        certificate = epcsaft_equilibrium::Held2FarkasCertificate{};
+        certificate->accepted = certificate_accepted;
+    }
+    return epcsaft_equilibrium::adjudicate_held2_farkas_status(
+        solver_infeasible, certificate
+    );
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_equilibrium, module) {
@@ -1240,6 +1337,42 @@ PYBIND11_MODULE(_equilibrium, module) {
         py::arg("expected_fingerprint"),
         py::kw_only(),
         py::arg("trace") = false
+    );
+    module.def(
+        "_held2_audit_farkas_certificate",
+        &held2_audit_farkas_certificate,
+        py::arg("matrix"),
+        py::arg("row_lower"),
+        py::arg("row_upper"),
+        py::arg("column_lower"),
+        py::arg("column_upper"),
+        py::arg("row_ray")
+    );
+    module.def(
+        "_held2_audit_step5_kkt",
+        &held2_audit_step5_kkt,
+        py::arg("variables"),
+        py::arg("lower"),
+        py::arg("upper"),
+        py::arg("objective_gradient"),
+        py::arg("constraints"),
+        py::arg("constraint_upper"),
+        py::arg("lower_bound_multipliers"),
+        py::arg("upper_bound_multipliers"),
+        py::arg("constraint_multipliers"),
+        py::arg("pullback_residual"),
+        py::arg("pullback_scale"),
+        py::arg("pressure_residual"),
+        py::arg("same_major_iteration"),
+        py::arg("step4_binding_valid"),
+        py::arg("pressure_branch_valid")
+    );
+    module.def(
+        "_held2_adjudicate_farkas_status",
+        &held2_adjudicate_farkas_status,
+        py::arg("solver_infeasible"),
+        py::arg("has_certificate"),
+        py::arg("certificate_accepted")
     );
     module.def(
         "evaluate_phase",
