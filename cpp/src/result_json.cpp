@@ -704,6 +704,8 @@ JsonValue held2_farkas_certificate_to_json(
     result["contradiction_margin"] = value.contradiction_margin;
     result["contradiction_scale"] = value.contradiction_scale;
     result["contradiction_threshold"] = value.contradiction_threshold;
+    result["solver_ray_recovered_without_presolve"] =
+        value.solver_ray_recovered_without_presolve;
     result["accepted"] = value.accepted;
     return result;
 }
@@ -764,6 +766,8 @@ JsonValue held2_step5_kkt_certificate_to_json(
 
 JsonValue paper_step8_to_json(const Held2Step8Result& step) {
     JsonValue result = JsonValue::object();
+    result["problem_scope"] =
+        "current_candidate_restricted_problem_67";
     result["outcome"] =
         step.outcome == Held2Step8Outcome::CertifiedFeasible
         ? "certified_feasible"
@@ -772,7 +776,12 @@ JsonValue paper_step8_to_json(const Held2Step8Result& step) {
             : step.outcome == Held2Step8Outcome::InsufficientCandidates
                 ? "insufficient_candidates" : "indeterminate";
     result["reason"] = step.reason;
+    result["problem_candidate_ids"] = step.problem_candidate_ids;
+    result["problem_candidate_variables"] =
+        step.problem_candidate_variables;
+    result["attempted_candidate_ids"] = step.attempted_candidate_ids;
     result["candidate_ids"] = step.candidate_ids;
+    result["candidate_variables"] = step.candidate_variables;
     result["total_reduced_gibbs"] = step.total_reduced_gibbs
         ? JsonValue(*step.total_reduced_gibbs) : JsonValue(nullptr);
     result["ordinary_balance_inf"] = step.ordinary_balance_inf;
@@ -808,6 +817,8 @@ JsonValue paper_step8_to_json(const Held2Step8Result& step) {
 
 JsonValue paper_step9_to_json(const Held2Step9Result& step) {
     JsonValue result = JsonValue::object();
+    result["gap_scope"] =
+        "finite_cut_upper_minus_restricted_problem_67";
     result["outcome"] = step.outcome == Held2Step9Outcome::Converged
         ? "converged"
         : step.outcome == Held2Step9Outcome::PaperConvergenceFailed
@@ -884,6 +895,14 @@ JsonValue paper_algorithm_to_json(
     result["failure_reason"] = solve.failure_reason.empty()
         ? JsonValue(nullptr) : JsonValue(solve.failure_reason);
     result["globality_certificate"] = solve.globality_certificate;
+    result["stability_search_status"] = !solve.step2
+        ? "not_adjudicated"
+        : solve.step2->outcome == Held2Step2Outcome::NegativeWitness
+            ? "negative_witness_found"
+            : solve.step2->outcome
+                    == Held2Step2Outcome::NoNegativeWitnessDetected
+                ? "finite_search_completed_no_negative_witness"
+                : "not_adjudicated";
     result["phase_enumeration_certificate"] =
         solve.phase_enumeration_certificate;
     result["upper_solve_count"] = solve.upper_solve_count;
@@ -972,6 +991,7 @@ JsonValue paper_algorithm_to_json(
         item["upper_solve_count"] = value.upper_solve_count;
         item["upper_bound"] = value.upper_bound
             ? JsonValue(*value.upper_bound) : JsonValue(nullptr);
+        item["bound_scope"] = "finite_cut_dual_upper";
         item["multipliers"] = value.multipliers
             ? JsonValue(*value.multipliers) : JsonValue(nullptr);
         item["active_cut_ids"] = value.active_cut_ids;
@@ -986,6 +1006,8 @@ JsonValue paper_algorithm_to_json(
         item["reason"] = value.reason;
         item["lower_value"] = value.lower_value
             ? JsonValue(*value.lower_value) : JsonValue(nullptr);
+        item["value_scope"] =
+            "best_certified_local_problem_65_value";
         item["terminal"] = value.terminal
             ? paper_m_point_to_json(*value.terminal) : JsonValue(nullptr);
         item["starts_consumed"] = value.starts_consumed;
@@ -993,6 +1015,7 @@ JsonValue paper_algorithm_to_json(
         for (const Held2LocalCertificate& attempt : value.attempts) {
             JsonValue certificate = JsonValue::object();
             certificate["start_ordinal"] = attempt.start_ordinal;
+            certificate["start_family"] = attempt.start_family;
             certificate["solver_status"] = attempt.solver_status;
             certificate["local_value"] = attempt.local_value
                 ? JsonValue(*attempt.local_value) : JsonValue(nullptr);

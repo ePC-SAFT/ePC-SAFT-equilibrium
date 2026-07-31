@@ -565,7 +565,8 @@ private:
                     value += constraint.coefficients[coordinate]
                         * x[offset + 1 + coordinate];
                 }
-                if (value > constraint.upper_bound) {
+                if (value - constraint.upper_bound
+                    > kHeld2IpoptConstraint.atol) {
                     return false;
                 }
             }
@@ -739,27 +740,58 @@ Problem67FeasibilityResult problem67_feasibility(
             row(-kHighsInf, 0.0);
         }
     }
+    const auto run_feasibility_lp = [&model](
+        Highs& solver, bool disable_presolve
+    ) {
+        return solver.setOptionValue("output_flag", false)
+                != HighsStatus::kError
+            && solver.setOptionValue("threads", 1)
+                != HighsStatus::kError
+            && solver.setOptionValue(
+                "primal_feasibility_tolerance",
+                kHeld2IpoptConstraint.atol
+            ) != HighsStatus::kError
+            && (!disable_presolve
+                || solver.setOptionValue("presolve", "off")
+                    != HighsStatus::kError)
+            && solver.passModel(model) != HighsStatus::kError
+            && solver.run() != HighsStatus::kError;
+    };
+    const auto extract_dual_ray = [&model](
+        Highs& solver, std::vector<double>& ray
+    ) {
+        bool has_dual_ray = false;
+        if (solver.getDualRay(has_dual_ray, nullptr)
+                == HighsStatus::kError
+            || !has_dual_ray) {
+            return false;
+        }
+        ray.assign(
+            static_cast<std::size_t>(model.lp_.num_row_), 0.0
+        );
+        bool extracted_dual_ray = false;
+        return solver.getDualRay(extracted_dual_ray, ray.data())
+                != HighsStatus::kError
+            && extracted_dual_ray;
+    };
     Highs highs;
-    if (highs.setOptionValue("output_flag", false) == HighsStatus::kError
-        || highs.setOptionValue("threads", 1) == HighsStatus::kError
-        || highs.setOptionValue(
-            "primal_feasibility_tolerance", kHeld2IpoptConstraint.atol
-        ) == HighsStatus::kError
-        || highs.passModel(model) == HighsStatus::kError
-        || highs.run() == HighsStatus::kError) {
+    if (!run_feasibility_lp(highs, false)) {
         return result;
     }
     if (highs.getModelStatus() == HighsModelStatus::kInfeasible) {
-        bool has_dual_ray = false;
-        std::vector<double> raw_ray(
-            static_cast<std::size_t>(model.lp_.num_row_), 0.0
-        );
-        if (highs.getDualRay(has_dual_ray, raw_ray.data())
-                == HighsStatus::kError
-            || !has_dual_ray) {
-            result.certificate = Held2FarkasCertificate{};
-            result.certificate->reason = "missing_solver_ray";
-            return result;
+        bool recovered_without_presolve = false;
+        std::vector<double> raw_ray;
+        if (!extract_dual_ray(highs, raw_ray)) {
+            Highs recovery;
+            if (!run_feasibility_lp(recovery, true)
+                || recovery.getModelStatus()
+                    != HighsModelStatus::kInfeasible
+                || !extract_dual_ray(recovery, raw_ray)) {
+                result.certificate = Held2FarkasCertificate{};
+                result.certificate->reason = "missing_solver_ray";
+                return result;
+            }
+            recovered_without_presolve = true;
         }
         std::vector<std::vector<double>> matrix(
             static_cast<std::size_t>(model.lp_.num_row_),
@@ -826,6 +858,8 @@ Problem67FeasibilityResult problem67_feasibility(
             column_upper,
             raw_ray
         );
+        result.certificate->solver_ray_recovered_without_presolve =
+            recovered_without_presolve;
         result.status = adjudicate_held2_farkas_status(
             true, result.certificate
         );
@@ -996,9 +1030,17 @@ Held2Problem67Result solve_held2_problem67(
     const Held2StateEvaluator& evaluator,
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
     std::vector<double> variables,
-    const Held2StateValueEvaluator& value_evaluator
+    const Held2StateValueEvaluator& value_evaluator,
+    int stage_iii_solve_budget,
+    bool allow_feasibility_support_retry
 ) {
     Held2Problem67Result result;
+    if (stage_iii_solve_budget < 1) {
+        result.solver_status = "resource_limit";
+        result.numerical_status = "not_converged";
+        result.failure_reason = "stage_iii_solve_budget_exhausted";
+        return result;
+    }
     result.stage_iii_solve_count = 1;
     for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
         result.candidate_indices.push_back(phase);
@@ -1161,6 +1203,65 @@ Held2Problem67Result solve_held2_problem67(
     result.solver_status = ipopt_status(status);
     result.optimizer_iteration_count = raw->iterations();
     if (!raw->converged()) {
+        std::vector<std::size_t> feasibility_support;
+        for (std::size_t phase = 0;
+             phase < feasibility.phase_fractions.size(); ++phase) {
+            if (feasibility.phase_fractions[phase]
+                > kHeld2Stage3ExplicitBalance.atol) {
+                feasibility_support.push_back(phase);
+            }
+        }
+        if (allow_feasibility_support_retry
+            && feasibility_support.size() >= 2
+            && feasibility_support.size() < candidates.size()) {
+            if (stage_iii_solve_budget == 1) {
+                result.numerical_status = "not_converged";
+                result.failure_reason =
+                    "stage_iii_solve_budget_exhausted";
+                return result;
+            }
+            std::vector<Held2StageIICandidate> supported_candidates;
+            std::vector<std::array<double, 2>> supported_bounds;
+            supported_candidates.reserve(feasibility_support.size());
+            supported_bounds.reserve(feasibility_support.size());
+            for (std::size_t phase : feasibility_support) {
+                supported_candidates.push_back(candidates[phase]);
+                supported_bounds.push_back(phase_coordinate_bounds[phase]);
+            }
+            Held2Problem67Result supported = solve_held2_problem67(
+                coordinates,
+                physical_feed,
+                supported_candidates,
+                evaluator,
+                supported_bounds,
+                {},
+                value_evaluator,
+                stage_iii_solve_budget - 1,
+                false
+            );
+            supported.stage_iii_solve_count +=
+                result.stage_iii_solve_count;
+            supported.optimizer_iteration_count +=
+                result.optimizer_iteration_count;
+            if (supported.numerical_status == "converged") {
+                std::vector<std::size_t> candidate_indices;
+                candidate_indices.reserve(
+                    supported.candidate_indices.size()
+                );
+                for (std::size_t phase : supported.candidate_indices) {
+                    candidate_indices.push_back(
+                        feasibility_support.at(phase)
+                    );
+                }
+                supported.candidate_indices =
+                    std::move(candidate_indices);
+                return supported;
+            }
+            result.stage_iii_solve_count =
+                supported.stage_iii_solve_count;
+            result.optimizer_iteration_count =
+                supported.optimizer_iteration_count;
+        }
         result.numerical_status = "not_converged";
         result.failure_reason = "stage_iii_solver_not_converged";
         return result;
@@ -1343,8 +1444,10 @@ Held2Problem67Result solve_held2_problem67(
             retained_candidates,
             evaluator,
             retained_bounds,
-            std::move(retained_variables),
-            value_evaluator
+            retained_variables,
+            value_evaluator,
+            stage_iii_solve_budget - 1,
+            allow_feasibility_support_retry
         );
         if (refined.numerical_status == "converged") {
             std::vector<std::size_t> candidate_indices;
@@ -1360,8 +1463,22 @@ Held2Problem67Result solve_held2_problem67(
                 result.optimizer_iteration_count;
             return refined;
         }
+        result.candidate_indices.clear();
+        result.candidate_indices.reserve(candidates.size() - 1);
+        for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+            if (phase != retired_index) {
+                result.candidate_indices.push_back(phase);
+            }
+        }
+        result.solution_variables = std::move(retained_variables);
+        result.stage_iii_solve_count += refined.stage_iii_solve_count;
+        result.optimizer_iteration_count +=
+            refined.optimizer_iteration_count;
         result.numerical_status = "not_converged";
-        result.failure_reason = "stage_iii_active_set_resolve_failed";
+        result.failure_reason =
+            refined.failure_reason == "stage_iii_solve_budget_exhausted"
+            ? refined.failure_reason
+            : "stage_iii_active_set_resolve_failed";
         return result;
     }
     if (retired_index < candidates.size()) {
@@ -1370,71 +1487,128 @@ Held2Problem67Result solve_held2_problem67(
         return result;
     }
 
-    result.objective = objective;
-    const std::vector<std::size_t> source_candidate_indices =
-        result.candidate_indices;
-    std::vector<std::size_t> active_candidate_indices;
+    std::vector<Held2StateEvaluation> solved_states;
+    solved_states.reserve(candidates.size());
     for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
         const std::size_t offset = phase * block_size;
-        const double fraction = variables[offset];
         const std::vector<double> independent(
             variables.begin() + static_cast<std::ptrdiff_t>(offset + 1),
             variables.begin() + static_cast<std::ptrdiff_t>(
                 offset + 1 + dimension
             )
         );
-        const Held2StateEvaluation state = evaluator(
+        solved_states.push_back(evaluator(
             independent, variables[offset + 1 + dimension]
+        ));
+    }
+    std::size_t duplicate_retained = candidates.size();
+    std::size_t duplicate_removed = candidates.size();
+    for (std::size_t left = 0; left < candidates.size(); ++left) {
+        for (std::size_t right = left + 1;
+             right < candidates.size(); ++right) {
+            if (std::max(
+                    maximum_difference(
+                        solved_states[left].physical_amounts,
+                        solved_states[right].physical_amounts
+                    ),
+                    std::abs(
+                        std::log(solved_states[left].volume)
+                        - std::log(solved_states[right].volume)
+                    )
+                ) > kHeld2PhaseMerge.atol) {
+                continue;
+            }
+            const double left_fraction = variables[left * block_size];
+            const double right_fraction = variables[right * block_size];
+            duplicate_retained =
+                right_fraction > left_fraction ? right : left;
+            duplicate_removed =
+                duplicate_retained == left ? right : left;
+            break;
+        }
+        if (duplicate_removed < candidates.size()) {
+            break;
+        }
+    }
+    if (duplicate_removed < candidates.size()) {
+        if (candidates.size() == 2) {
+            result.numerical_status = "not_converged";
+            result.failure_reason = "collapsed_phase_set";
+            return result;
+        }
+        if (stage_iii_solve_budget == 1) {
+            result.numerical_status = "not_converged";
+            result.failure_reason = "stage_iii_solve_budget_exhausted";
+            return result;
+        }
+        std::vector<Held2StageIICandidate> distinct_candidates;
+        std::vector<std::array<double, 2>> distinct_bounds;
+        distinct_candidates.reserve(candidates.size() - 1);
+        distinct_bounds.reserve(candidates.size() - 1);
+        for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+            if (phase == duplicate_removed) {
+                continue;
+            }
+            distinct_candidates.push_back(candidates[phase]);
+            distinct_bounds.push_back(phase_coordinate_bounds[phase]);
+        }
+        Held2Problem67Result refined = solve_held2_problem67(
+            coordinates,
+            physical_feed,
+            distinct_candidates,
+            evaluator,
+            distinct_bounds,
+            {},
+            value_evaluator,
+            stage_iii_solve_budget - 1,
+            allow_feasibility_support_retry
         );
+        if (refined.numerical_status == "converged") {
+            std::vector<std::size_t> candidate_indices;
+            candidate_indices.reserve(refined.candidate_indices.size());
+            for (std::size_t phase : refined.candidate_indices) {
+                candidate_indices.push_back(
+                    phase < duplicate_removed ? phase : phase + 1
+                );
+            }
+            refined.candidate_indices = std::move(candidate_indices);
+            refined.stage_iii_solve_count += result.stage_iii_solve_count;
+            refined.optimizer_iteration_count +=
+                result.optimizer_iteration_count;
+            return refined;
+        }
+        result.candidate_indices.clear();
+        result.candidate_indices.reserve(candidates.size() - 1);
+        for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+            if (phase != duplicate_removed) {
+                result.candidate_indices.push_back(phase);
+            }
+        }
+        result.solution_variables = std::move(refined.solution_variables);
+        result.stage_iii_solve_count += refined.stage_iii_solve_count;
+        result.optimizer_iteration_count +=
+            refined.optimizer_iteration_count;
+        result.numerical_status = "not_converged";
+        result.failure_reason =
+            refined.failure_reason == "stage_iii_solve_budget_exhausted"
+            ? refined.failure_reason
+            : "stage_iii_duplicate_resolve_failed";
+        return result;
+    }
+
+    result.objective = objective;
+    for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
+        const std::size_t offset = phase * block_size;
+        const double fraction = variables[offset];
+        const Held2StateEvaluation& state = solved_states[phase];
         Held2Problem67Phase current{
             fraction,
             state.modified_fractions,
             state.physical_amounts,
             state.volume,
         };
-        auto duplicate = std::find_if(
-            result.phases.begin(),
-            result.phases.end(),
-            [&](const Held2Problem67Phase& known) {
-                return std::max(
-                    maximum_difference(
-                        known.physical_fractions,
-                        current.physical_fractions
-                    ),
-                    std::abs(
-                        std::log(known.volume)
-                        - std::log(current.volume)
-                    )
-                ) <= kHeld2PhaseMerge.atol;
-            }
-        );
-        if (duplicate == result.phases.end()) {
-            result.phases.push_back(std::move(current));
-            active_candidate_indices.push_back(
-                source_candidate_indices.at(phase)
-            );
-        } else {
-            const std::size_t retained = static_cast<std::size_t>(
-                duplicate - result.phases.begin()
-            );
-            const double combined =
-                duplicate->phase_fraction + current.phase_fraction;
-            if (!(combined > 0.0)) {
-                result.failure_reason =
-                    "stage_iii_zero_weight_duplicate";
-                return result;
-            }
-            if (current.phase_fraction > duplicate->phase_fraction) {
-                current.phase_fraction = combined;
-                *duplicate = std::move(current);
-                active_candidate_indices[retained] =
-                    source_candidate_indices.at(phase);
-            } else {
-                duplicate->phase_fraction = combined;
-            }
-        }
+        result.phases.push_back(std::move(current));
     }
-    result.candidate_indices = std::move(active_candidate_indices);
     if (result.phases.size() < 2) {
         result.failure_reason = "collapsed_phase_set";
         return result;

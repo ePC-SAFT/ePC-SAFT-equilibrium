@@ -56,7 +56,7 @@ Provider public SDK.
 |---|---|---|---|
 | Persistent \(\mathcal M\) numerical equivalence | Modified composition and molar volume | `m_representation_equivalent`; componentwise modified-composition difference and log-volume difference `<=1e-8` | Appendix C stores \((V,\bar{\mathbf{x}}^{(EC)})\); this prevents accumulation of numerical copies |
 | Step-6 candidate distinctness | Modified composition and Provider packing fraction | Perdomo Eq. (66); either difference `>=1e-3` | This is a deliberately looser phase-discovery gate, not storage identity |
-| Step-8 numerical phase merge | Physical composition and molar volume | `phase_merge`; maximum physical-composition or log-volume difference `<=1e-6` | The paper removes phases with the same composition and volume after Problem (67) |
+| Step-8 numerical phase merge | Physical composition and molar volume | `phase_merge`; maximum physical-composition or log-volume difference `<=1e-5`, followed by a complete reduced Problem-(67) re-solve | The paper removes phases with the same composition and volume after Problem (67); pre-reduction weights and states are not accepted as the reduced solution |
 
 The two volume identities use a log-volume difference because
 \(\lvert\log V_1-\log V_2\rvert\) measures relative rather than

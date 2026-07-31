@@ -3,6 +3,9 @@
 #include "held2_step7.hpp"
 #include "held2_step10.hpp"
 
+#include <cstddef>
+#include <string_view>
+
 namespace epcsaft_equilibrium {
 
 struct FlashInput {
@@ -46,6 +49,20 @@ struct Held2AlgorithmResult {
     std::vector<Held2StepTiming> step_timings;
     int upper_solve_count = 0;
 };
+
+[[nodiscard]] bool held2_step8_failure_returns_to_stage_ii(
+    std::string_view reason
+);
+
+[[nodiscard]] bool held2_insufficient_candidate_recovery_required(
+    std::string_view step5_reason,
+    std::size_t candidate_count
+);
+
+[[nodiscard]] bool retain_held2_step8_feedback(
+    Held2PersistentState& state,
+    const Held2Step8Result& step8
+);
 
 [[nodiscard]] Held2AlgorithmResult run_held2_algorithm(
     const Held2ThermodynamicAccess& thermodynamics,

@@ -41,10 +41,13 @@ auto run_step(
     return result;
 }
 
-void retain_step8_feedback(
+}  // namespace
+
+bool retain_held2_step8_feedback(
     Held2PersistentState& state,
     const Held2Step8Result& step8
 ) {
+    bool changed = false;
     for (const Held2Phase& phase : step8.active_phases) {
         Held2MPoint feedback{
             0,
@@ -55,11 +58,24 @@ void retain_step8_feedback(
             phase.reduced_gibbs_gradient,
             "step8_feedback",
         };
-        static_cast<void>(retain_held2_m_point(state, feedback));
+        changed = retain_held2_m_point(state, feedback) || changed;
     }
+    return changed;
 }
 
-}  // namespace
+bool held2_step8_failure_returns_to_stage_ii(std::string_view reason) {
+    return reason == "problem_67_not_converged"
+        || reason == "stage_iii_solver_not_converged"
+        || reason == "stage_iii_active_set_resolve_failed"
+        || reason == "stage_iii_active_set_balance_failed";
+}
+
+bool held2_insufficient_candidate_recovery_required(
+    std::string_view step5_reason,
+    std::size_t candidate_count
+) {
+    return candidate_count < 2 && step5_reason == "equivalent_member";
+}
 
 Held2AlgorithmResult run_held2_algorithm(
     const Held2ThermodynamicAccess& thermodynamics,
@@ -205,6 +221,10 @@ Held2AlgorithmResult run_held2_algorithm(
             return result.step7_history.back().status == "complete";
         };
         if (step6.candidates.size() < 2) {
+            state.step5_requires_new_member =
+                held2_insufficient_candidate_recovery_required(
+                    step5.reason, step6.candidates.size()
+                );
             if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail("step7", result.step7_history.back().reason);
@@ -213,21 +233,7 @@ Held2AlgorithmResult run_held2_algorithm(
         }
         const Held2Step8Result* previous = result.step8_history.empty()
             ? nullptr : &result.step8_history.back();
-        std::vector<std::uint64_t> candidate_ids;
-        for (const Held2MPoint& candidate : step6.candidates) {
-            candidate_ids.push_back(candidate.insertion_id);
-        }
         result.step8_history.push_back(run_step(8, [&] {
-            if (previous && previous->candidate_ids == candidate_ids) {
-                Held2Step8Result unchanged = *previous;
-                unchanged.timing = {};
-                unchanged.timing.invocation_count = 1;
-                unchanged.timing.terminal_status = "complete";
-                unchanged.timing.terminal_reason =
-                    "unchanged_problem_67";
-                unchanged.timing.next_step = 9;
-                return unchanged;
-            }
             return run_held2_step8(
                 result.step1,
                 step6,
@@ -239,12 +245,26 @@ Held2AlgorithmResult run_held2_algorithm(
         }, observer));
         result.step_timings.push_back(result.step8_history.back().timing);
         const Held2Step8Result& step8 = result.step8_history.back();
-        if (step8.outcome == Held2Step8Outcome::Indeterminate) {
+        if (step8.outcome == Held2Step8Outcome::Indeterminate
+            && !held2_step8_failure_returns_to_stage_ii(step8.reason)) {
             result.final_state = state;
             return fail("step8", step8.reason);
         }
+        if (step8.outcome == Held2Step8Outcome::Indeterminate) {
+            state.step5_requires_new_member =
+                step8.timing.terminal_reason == "unchanged_problem_67";
+            if (!continue_stage_ii()) {
+                result.final_state = state;
+                return fail(
+                    "step7", result.step7_history.back().reason
+                );
+            }
+            continue;
+        }
         if (step8.outcome == Held2Step8Outcome::CertifiedInfeasible
             || step8.outcome == Held2Step8Outcome::InsufficientCandidates) {
+            state.step5_requires_new_member =
+                step8.timing.terminal_reason == "unchanged_problem_67";
             if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail(
@@ -266,7 +286,8 @@ Held2AlgorithmResult run_held2_algorithm(
             return fail("step9", step9.reason);
         }
         if (step9.next_action == Held2Step9Action::ReturnStageII) {
-            retain_step8_feedback(state, step8);
+            state.step5_requires_new_member =
+                !retain_held2_step8_feedback(state, step8);
             if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail(
@@ -289,7 +310,8 @@ Held2AlgorithmResult run_held2_algorithm(
         result.step_timings.push_back(result.step10->timing);
         if (result.step10->next_action
             == Held2Step10Action::ReturnStageII) {
-            retain_step8_feedback(state, step8);
+            state.step5_requires_new_member =
+                !retain_held2_step8_feedback(state, step8);
             if (!continue_stage_ii()) {
                 result.final_state = state;
                 return fail(

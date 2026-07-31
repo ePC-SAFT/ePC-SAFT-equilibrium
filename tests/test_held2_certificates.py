@@ -63,6 +63,7 @@ def test_farkas_audit_certifies_infeasibility_across_bound_and_scaling_conventio
         ray,
     )
     assert audit["accepted"] is True
+    assert audit["solver_ray_recovered_without_presolve"] is False
     assert audit["contradiction_margin"] > audit["contradiction_threshold"]
 
 
@@ -236,15 +237,41 @@ def test_farkas_audit_rejects_overflowed_derived_evidence() -> None:
 
 def test_farkas_audit_rejects_tiny_wrong_sign_on_unbounded_column_side() -> None:
     audit = _farkas(
-        [[1.0e-11]],
+        [[2.0e-10]],
+        [float("-inf")],
+        [-1.0],
+        [float("-inf")],
+        [-1.0e11],
+        [1.0],
+    )
+    assert audit["accepted"] is False
+    assert audit["reason"] == "dual_feasibility_failed"
+
+
+def test_farkas_audit_projects_row_roundoff_but_rejects_unbounded_dual() -> None:
+    row_audit = _farkas(
+        [[1.0], [1.0], [0.0]],
+        [float("-inf"), 1.0, 0.0],
+        [0.0, float("inf"), float("inf")],
+        [0.0],
+        [1.0],
+        [1.0, -1.0, 5.0e-11],
+    )
+    dual_audit = _farkas(
+        [[5.0e-11]],
         [float("-inf")],
         [-1.0],
         [float("-inf")],
         [-1.0e12],
         [1.0],
     )
-    assert audit["accepted"] is False
-    assert audit["reason"] == "dual_feasibility_failed"
+
+    assert row_audit["accepted"] is True
+    assert row_audit["row_sign_violation_inf"] == pytest.approx(5.0e-11)
+    assert row_audit["row_multipliers"][2] == 0.0
+    assert dual_audit["accepted"] is False
+    assert dual_audit["reason"] == "dual_feasibility_failed"
+    assert dual_audit["dual_feasibility_violation_inf"] == pytest.approx(5.0e-11)
 
 
 def test_farkas_audit_rejects_overflowed_contradiction_margin() -> None:

@@ -228,7 +228,7 @@ inline constexpr Held2Tolerance kHeld2PhaseRetirementMargin{
 };
 inline constexpr Held2Tolerance kHeld2PhaseMerge{
     "phase_merge", "phase_identity", "phases are not numerical duplicates",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-6, 0.0,
+    Held2ToleranceRelation::AbsAtMost, 1.0e-5, 0.0,
 };
 inline constexpr Held2Tolerance kHeld2IpoptTarget{
     "ipopt_target", "solver", "Ipopt target tolerance was not met",

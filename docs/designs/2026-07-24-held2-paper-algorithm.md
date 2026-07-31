@@ -33,8 +33,10 @@ That map explains differences; it does not relax this specification.
 
 Step 8 retires at most one KKT-inactive candidate at a time and re-solves
 Problem (67) on the retained candidate neighborhoods. A failed reduced solve
-terminates indeterminate; it is not accepted through phase-fraction recovery
-and is not converted into Stage-II feedback.
+is never accepted through phase-fraction recovery. It preserves the
+independently certified retirement as rejected acceleration evidence and
+returns to bounded Stage II; malformed or uncertified retirement evidence
+terminates indeterminate instead.
 
 ## Scope
 
@@ -498,9 +500,11 @@ composition-dependent \(V_L,V_U\). Each joint trial therefore consumes one
 Provider bounds query and one state evaluation at the explicit mapped volume.
 The deterministic search allowance is 6500 such Provider callbacks, rather
 than 50 composition points that each trigger a new 64-interval pressure-root
-enumeration. Complete pressure-root enumeration remains mandatory at the feed
-because selecting the homogeneous reference is a different scientific
-decision.
+search. The complete declared finite pressure-envelope search remains
+mandatory at the feed because selecting the homogeneous reference is a
+different scientific decision. It detects and refines all roots exposed by
+that finite scan and subdivision policy; it does not prove exhaustive root
+enumeration.
 
 The first strict-negative joint state stops the instability search and is
 freshly re-evaluated before it can become evidence. All Step-1 polytope,
@@ -667,7 +671,9 @@ certificate before entering Step 5. Increment
 in Step 4.
 
 **Output:** current \(UBD^V\), \(\bar\lambda^k\), active cuts, residuals, and
-solver status.
+solver status. `UBD^V` is the certified optimum of the current finite-cut LP
+and an upper approximation to the dual optimum; it is not proof that the
+complete semi-infinite dual has been solved.
 
 **Failure:** a nonoptimal, infeasible, unbounded, or uncertified LP terminates
 indeterminate at Step 4.
@@ -698,6 +704,26 @@ paper's random interior starts and the retained HELD shifted-previous and
 near-pure profiles; the exact schedule and resource budget are named
 implementation policy and are emitted in diagnostics.
 
+The nominal installed schedule consumes the paper's fixed
+`random_interior` stream. The bounded recovery pass activates when exact
+memoization proves that the same rejected Problem-(67) candidate-ID vector has
+recurred unchanged, or when Step 6 still has fewer than two candidates after
+Step 5 returns an equivalent existing member. It also activates when a failed
+Step-9 or Step-10 convergence return retains no new Step-8 feedback member.
+These conditions prevent a finite major loop from replaying the same
+non-progress terminal or candidate solution. Recovery
+fills its declared 2048-start ceiling from the same never-reset random stream
+while reserving room for each of the \(4d\) `boundary_aware`
+face/direction/density profiles and up to one `shifted_retained` start per
+persistent member.
+Shifted starts are convex
+interior perturbations of persistent members; boundary-aware starts approach
+each polytope face and alternate dense and lower-density volume regions. The
+schedule depends only on the complete Step-1 polytope, persistent states,
+controller state, and fixed random stream—not component names, feed
+fingerprints, or campaign point identities. Each local certificate records
+its start family.
+
 Track the best independently certified local solution. Certification requires
 a finite in-domain physical state, pressure stationarity, primal feasibility,
 original-coordinate first-order KKT stationarity with explicit normalization
@@ -712,6 +738,10 @@ bounds are reevaluated there. Numerically equivalent polytope and variable
 bounds are canonicalized without discarding their dual force. Raw solver
 variables remain distinct from any subsequently polished terminal used by
 the audit. A library success status alone is not a solved Problem (65).
+The serialized `lower_value` is therefore the best certified *local*
+Problem-(65) value from the declared finite start schedule. It is not a
+Mitsos-Barton dual lower bound \(q(\bar\lambda^k)\), which would require a
+proven global minimum of the nonconvex inner problem.
 
 Stop the multistart search as soon as the best certified local solution
 satisfies
@@ -742,18 +772,26 @@ be reported as a new cut.
   through log-volume difference as a dimensionless relative-volume measure;
   keep Eq. (66) Provider-packing-fraction distinctness as a separate, looser
   rule;
-- if the qualifying solution is representation-equivalent, proceed through
-  Steps 6–7 without claiming a new cut; the next major consumes the next
-  unused start ordinal rather than replaying the same search; and
+- if exact memoization proves that Stage III has rejected the same unchanged
+  candidate hull and a qualifying solution is representation-equivalent,
+  retain its attempt evidence and continue the current bounded recovery pass
+  until a qualifying terminal changes persistent \(\mathcal M\) or the pass
+  is exhausted; and
 - if the declared multistart budget ends first, terminate indeterminate at
   Step 5.
 
-Within one invocation, this step does not seek two candidates and does not
-continue merely to find a different basin after its stop condition has been
-met. Algorithm 1 can return through Step 7 with an unchanged \(\mathcal M\);
-the persistent start ordinal makes that later invocation new work. An audit
-confirmed that forcing all 128 default starts after the paper stop condition
-adds substantial work and changes later candidate selection; it is prohibited.
+Within one invocation, this step does not seek a quota of phase candidates.
+It normally stops at the paper's first independently certified qualifying
+terminal. Only after Stage III has retained exact evidence that the same
+candidate hull is unchanged and unusable does the controller explicitly
+require a new mathematical member of \(\mathcal M\); an equivalent terminal is
+then evidence of an already-owned cut, not Stage-II progress, and cannot by
+itself consume another upper solve.
+If that bounded pass finds only equivalent qualifying terminals, the unchanged
+set and every consumed start remain explicit and Step 5 terminates
+indeterminate with `step5_recovery_exhausted`; the structured pass is never
+repeated in later major iterations. A successful new insertion or retained
+certified Step-8 feedback clears the requirement.
 
 ### Step 6 — search all of \(\mathcal M\)
 
@@ -850,12 +888,17 @@ upper-level problems solved. Local NLP iterations and multistart attempts are
 separate work counters.
 
 **Implementation policy:** a configured major-iteration limit is a resource
-limit, not part of HELD2.0. The native validation profile permits 80 upper
-solves and 128 Step-5 starts. The upper-solve budget is shared across feeds
-and accounts for the installed ePC-SAFT model rather than treating Table 5's
-SAFT-\(\gamma\) Mie iteration counts as an equivalent resource bound.
-Reaching either limit terminates indeterminate and reports the last completed
-step.
+limit, not part of HELD2.0. The native validation profile permits 128 upper
+solves and 128 nominal Step-5 starts. An exactly repeated unchanged rejected
+Stage-III hull activates one separately named recovery pass with a 2048-start
+hard ceiling. It preserves all 128 nominal random starts, visits each generic
+boundary profile once, and then visits persistent members in stable insertion
+order until the ceiling; it does not repeat the finite structured profiles.
+The
+upper-solve budget is shared across feeds and accounts for the installed
+ePC-SAFT model rather than treating Table 5's SAFT-\(\gamma\) Mie iteration
+counts as an equivalent resource bound. Reaching either applicable limit
+terminates indeterminate and reports the last completed step.
 
 ## Stage III — acceleration and convergence
 
@@ -902,6 +945,15 @@ included. The volume intervals are checked separately for nonemptiness.
 Only a certified LP infeasibility status with a validated Farkas certificate
 is `certified_infeasible`. A feasible presolve supplies a deterministic
 Problem-(67) start. Ipopt failure is never an infeasibility certificate.
+If HiGHS proves infeasibility in presolve but does not expose a dual ray, rerun
+the identical feasibility LP once with presolve disabled solely to recover a
+ray; solver status still supplies no certificate by itself. Normalize the raw
+row ray, project only within-tolerance one-sided row-sign noise to the exact
+admissible cone, and recompute every column dual, support value, and
+contradiction margin from that projected ray. A wrong-sign dual on an
+unbounded column is rejected strictly because no finite residual bound can
+make that direction safe. Diagnostics state whether the ray required the
+presolve-disabled recovery.
 
 **Transition:**
 
@@ -910,9 +962,28 @@ Problem-(67) start. Ipopt failure is never an infeasibility certificate.
 - feasible, independently certified nonlinear solve: finalize the active
   phase set as below, update \(mp\), and proceed to Step 9.
 
-A Provider failure, optimizer failure, invalid terminal, or inability to
-certify either feasibility or infeasibility terminates indeterminate at
-Step 8. It is not Stage-II feedback.
+A Provider failure, malformed terminal, invalid certificate, or inability to
+certify the linear feasibility decision terminates indeterminate at Step 8.
+A nonlinear optimizer nonconvergence, generic post-solve KKT rejection, or
+failed inactive-candidate reduction is rejected acceleration evidence: it is
+never accepted as a phase result, but the controller may retain its attempted
+candidate identities and return to the bounded Stage-II search. The explicit
+recoverable reasons are `problem_67_not_converged`,
+`stage_iii_solver_not_converged`,
+`stage_iii_active_set_resolve_failed`, and
+`stage_iii_active_set_balance_failed`; every other indeterminate Step-8 reason
+remains terminal.
+
+Before returning a full-hull Ipopt nonconvergence to Stage II, Step 8 may make
+one bounded retry on the strict positive support of the independently solved
+linear feasibility start when that support contains at least two and fewer
+than all candidates. This is a generic active-set initialization, not phase
+acceptance: the reduced nonlinear problem must independently converge and pass
+the complete KKT and physical audits, and all solver work remains counted.
+The support retry cannot recurse. One top-level Problem-(67) attempt and its
+certified one-at-a-time retirement chain share a 32-solve ceiling; the separate
+declared cold retry receives the same finite ceiling. Exhaustion is terminal
+`stage_iii_solve_budget_exhausted` evidence, not Stage-II progress.
 
 Duplicate removal is part of Step 8. It may not be performed earlier to
 manufacture a Step-6 candidate count.
@@ -924,10 +995,13 @@ manufacture a Step-6 candidate count.
    composition and molar volume, matching the paper's “same composition and
    volume” duplicate rule. Use log-volume difference only as a dimensionless
    relative-volume measure; do not apply a nontransitive equivalence-class
-   algorithm. Retain the larger-weight numerical representative of a
-   duplicate pair; break equal-weight ties by stable ID.
-2. Sum a removed numerical duplicate's phase fraction into its retained
-   representative and re-run the full balance and physical certificates.
+   algorithm. Nominate the smaller-weight numerical representative of the
+   first duplicate pair for removal; break equal-weight ties by stable ID.
+2. Remove at most one nominated duplicate and re-solve the complete reduced
+   Problem (67), including its feasibility LP, nonlinear solve, KKT audit,
+   balances, pressure, charge, and phase-identity tests. Repeat one pair at a
+   time under the shared Stage-III solve budget. Never manufacture a retained
+   state by summing weights into one of the pre-reduction representatives.
 3. Do not retire a distinct phase because its amount or any component
    fraction is small. Trace component fractions remain valid linear Step-8
    variables and do not trigger phase identity changes.
@@ -947,20 +1021,39 @@ manufacture a Step-6 candidate count.
 
 **Implementation policy for repeated Stage-III work:** persistent
 \(\mathcal M\) is append-only, and a stable insertion ID identifies an
-immutable physical cut. After a Stage-III return, initialize the next
-Problem-(67) candidate problem from the previously retained active IDs plus
-the newest currently eligible Step-6 ID. If that selection contains fewer
-than two candidates, use the complete current \(\mathcal M^*\). Surviving
-candidate neighborhoods may be recentered only under the boundary rule above.
+immutable physical cut. Step 8 records separately (a) the ordered candidate
+IDs in the current Problem-(67) invocation, (b) every ID already attempted by
+the continuation, and (c) the ordered IDs in the terminal retained problem
+after independently certified inactive-candidate retirements. After a
+certified feasible Stage-III return, initialize the next candidate problem
+from the terminal active IDs plus the newest currently eligible Step-6 ID, as
+specified by the paper continuation policy. After rejected nonlinear
+acceleration evidence, retain its terminal candidate IDs and add the newest
+eligible ID only if that ID has not already been attempted. If either
+selection contains fewer than two candidates, use the complete current
+\(\mathcal M^*\). This preserves certified retirement progress without
+changing the accepted continuation path, and prevents an already-retired
+newest member from being reintroduced as new evidence after a rejected solve.
+Surviving candidate neighborhoods may be recentered only under the boundary
+rule above.
 
-If the resulting ordered stable-ID vector is exactly unchanged from the
-previous Step-8 solve, reuse that certified Problem-(67) result instead of
-replaying the same nonlinear problem. This is exact memoization, not scientific
-acceptance: the feed and immutable candidate states are unchanged, and
-Problem (67) contains neither the Step-4 multipliers nor \(UBD^V\). Step 9 is
-still executed against the current Step-4 upper bound. Any new cut, changed
-eligibility, changed stable-ID order, or uncertified previous result requires
-a new Step-8 solve.
+If the resulting ordered stable-ID vector and effective neighborhood centers
+are exactly the terminal problem already solved, reuse that Step-8 result
+instead of replaying the same nonlinear problem. The effective state uses the
+prior invocation center for an untouched neighborhood and the independently
+solved terminal phase state for a neighborhood that the declared boundary
+rule recenters. Thus deterministic recentering does not manufacture new work,
+while a genuinely changed recentered state invalidates the memo. Reuse of a
+certified feasible result still proceeds to
+Step 9 against the current Step-4 upper bound. Reuse of rejected acceleration
+evidence does not accept a phase result; it records
+`unchanged_problem_67`, returns to Stage II, and activates the bounded
+new-member recovery policy in Step 5. Any newly attempted cut, changed
+eligibility that alters the selected vector, or changed stable-ID order
+requires a fresh Step-8 solve. The diagnostics expose
+`problem_candidate_ids`, `problem_candidate_variables`,
+`attempted_candidate_ids`, terminal `candidate_ids`, and terminal
+`candidate_variables` so this distinction is auditable.
 
 Step 8 remains in linear phase amounts and modified composition coordinates.
 Logarithmic coordinates would remove the exact zero needed for inactive phase
@@ -976,6 +1069,9 @@ Apply both tests to the Step-8 solution.
 
 The reported Eq. (68) gap remains signed. Its numerical lower-bound test
 allows negative roundoff up to \(\epsilon_g\); larger negative gaps fail.
+It is a finite-candidate convergence gap between the current finite-cut
+Step-4 value and the candidate-restricted Problem-(67) solution. It is not the
+theorem-level global duality gap of Mitsos-Barton Algorithm 1.
 
 Order active phases by stable candidate ID before evaluating adjacent pairs.
 This ordering is deterministic and does not change the all-phases equality
@@ -1207,7 +1303,7 @@ Shared low-level primitives may remain in focused modules:
 - installed Provider model transport and lifetime;
 - EOS state and derivative evaluation;
 - modified-coordinate transformation;
-- pressure-root enumeration;
+- finite pressure-root detection and refinement;
 - HiGHS and Ipopt adapters;
 - progress events and result serialization; and
 - named tolerance contracts.
@@ -1392,7 +1488,7 @@ neutral/electrolyte postprocessing gate, or recompute scientific results.
 The rewrite must not contain:
 
 - a target of two Step-6 candidates from one major iteration;
-- continuation after Step 5 solely to find another basin;
+- a same-major quota of two or more new Step-5 basins;
 - Step-6 eligibility restricted to Step-5 KKT-certified origins;
 - Step-6 search restricted to current-major terminals;
 - Stage-I witnesses inserted unconditionally or used to replace Appendix-C

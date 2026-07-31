@@ -39,7 +39,11 @@ struct Held2NlpCertificate {
 struct Held2Step8Result {
     Held2Step8Outcome outcome = Held2Step8Outcome::Indeterminate;
     std::string reason = "not_run";
+    std::vector<std::uint64_t> problem_candidate_ids;
+    std::vector<double> problem_candidate_variables;
+    std::vector<std::uint64_t> attempted_candidate_ids;
     std::vector<std::uint64_t> candidate_ids;
+    std::vector<double> candidate_variables;
     std::vector<double> continuation_variables;
     std::optional<double> total_reduced_gibbs;
     double ordinary_balance_inf = std::numeric_limits<double>::infinity();

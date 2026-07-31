@@ -125,9 +125,7 @@ Held2FarkasCertificate audit_held2_farkas_certificate(
         value /= result.normalization;
     }
 
-    double row_support = 0.0;
     result.row_sign_violation_inf = 0.0;
-    std::vector<double> column_dual(columns, 0.0);
     for (std::size_t row = 0; row < rows; ++row) {
         const double multiplier = result.row_multipliers[row];
         const bool has_lower = std::isfinite(row_lower[row]);
@@ -145,6 +143,34 @@ Held2FarkasCertificate audit_held2_farkas_certificate(
                 result.row_sign_violation_inf, multiplier
             );
         }
+    }
+    if (!audit_held2_tolerance(
+            kHeld2FarkasRowSign, result.row_sign_violation_inf
+        ).passed) {
+        result.reason = "row_sign_failed";
+        return result;
+    }
+    for (std::size_t row = 0; row < rows; ++row) {
+        double& multiplier = result.row_multipliers[row];
+        const bool has_lower = std::isfinite(row_lower[row]);
+        const bool has_upper = std::isfinite(row_upper[row]);
+        if ((!has_lower && !has_upper)
+            || (!has_lower && multiplier < 0.0)
+            || (!has_upper && multiplier > 0.0)) {
+            multiplier = 0.0;
+        }
+    }
+    if (maximum_abs(result.row_multipliers) == 0.0) {
+        result.reason = "zero_ray_after_sign_projection";
+        return result;
+    }
+
+    double row_support = 0.0;
+    std::vector<double> column_dual(columns, 0.0);
+    for (std::size_t row = 0; row < rows; ++row) {
+        const double multiplier = result.row_multipliers[row];
+        const bool has_lower = std::isfinite(row_lower[row]);
+        const bool has_upper = std::isfinite(row_upper[row]);
         if (multiplier > 0.0 && has_upper) {
             row_support += multiplier * row_upper[row];
         } else if (multiplier < 0.0 && has_lower) {
@@ -156,13 +182,6 @@ Held2FarkasCertificate audit_held2_farkas_certificate(
     }
     if (!std::isfinite(row_support) || !finite_values(column_dual)) {
         result.reason = "nonfinite_derived_evidence";
-        return result;
-    }
-    if (result.row_sign_violation_inf > 0.0
-        || !audit_held2_tolerance(
-            kHeld2FarkasRowSign, result.row_sign_violation_inf
-        ).passed) {
-        result.reason = "row_sign_failed";
         return result;
     }
 

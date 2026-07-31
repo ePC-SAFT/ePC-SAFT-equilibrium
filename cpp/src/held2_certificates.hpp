@@ -19,6 +19,7 @@ struct Held2FarkasCertificate {
     double contradiction_margin = -std::numeric_limits<double>::infinity();
     double contradiction_scale = 0.0;
     double contradiction_threshold = std::numeric_limits<double>::infinity();
+    bool solver_ray_recovered_without_presolve = false;
     bool accepted = false;
 };
 

@@ -26,6 +26,7 @@ struct Held2PersistentState {
     double upper_bound = 0.0;
     double lower_value = -std::numeric_limits<double>::infinity();
     std::uint64_t next_start_ordinal = 0;
+    bool step5_requires_new_member = false;
     std::optional<std::array<double, 2>> step5_volume_bounds;
     std::optional<Held2Coordinates> coordinates;
     std::vector<double> feed;

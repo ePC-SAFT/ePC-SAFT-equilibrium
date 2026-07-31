@@ -77,8 +77,15 @@ The working state depends on these invariants:
    freeze compositions and repair only phase fractions.
 7. Step 8 may retry cold after a failed warm continuation, with both solves
    included in the work accounting.
-8. A non-converged Ipopt return is fail-closed even if Ipopt supplied a finite
-   iterate. It terminates as `stage_iii_solver_not_converged`.
+8. A non-converged Ipopt return is never accepted even if Ipopt supplied a
+   finite iterate. Because Step 8 is an acceleration, the failed evidence is
+   retained and the controller returns to finite Stage II search. Malformed or
+   uncertified feasibility evidence remains terminal and indeterminate. A
+   failed reduced-active-set solve or balance reconstruction is likewise
+   rejected acceleration evidence and returns to Stage II; it is not a phase
+   result. Candidate retirements certified by preceding converged KKT audits
+   remain valid acceleration state: the next attempt starts from the terminal
+   retained IDs and adds only a genuinely unattempted newest eligible cut.
 9. Steps 5 and 8 use Ipopt gradient-based NLP scaling. Physical phase amounts
    and modified compositions remain linear optimization variables; small,
    valid compositions are neither clipped nor retired merely because of their
@@ -224,8 +231,9 @@ certificate meanings are scientific changes and require separate evidence.
 The post-checkpoint review classified the following behavior as essential to
 the successful path rather than cleanup debris:
 
-- append-only \(\mathcal M\) membership and exact Step-8 reuse when the
-  ordered immutable candidate IDs are unchanged;
+- append-only \(\mathcal M\) membership, explicit attempted/terminal Step-8
+  candidate identities and neighborhood variables, and exact reuse when the
+  ordered effective Problem-(67) state is unchanged;
 - active-set retirement followed by a complete reduced Problem-(67) solve;
 - conditional neighborhood recentering and one cold retry;
 - Step-8 phase feedback after a Step-9/10 return to Stage II; and
