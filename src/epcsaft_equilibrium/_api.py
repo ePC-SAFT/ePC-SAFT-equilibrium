@@ -190,6 +190,79 @@ class ChemicalEquilibriumProblem:
 
 
 @dataclass(frozen=True)
+class ChemicalEquilibriumAttempt:
+    """One deterministic primary or recovery terminal in the finite search."""
+
+    ordinal: int
+    primary_ordinal: int
+    kind: str
+    parent_ordinal: int | None
+    start_identity: str
+    start_construction_status: str
+    retraction_status: str
+    continuation_status: str
+    provider_domain_status: str
+    solver_status: str
+    callback_error: str
+    terminal_status: str
+    amounts_mol: tuple[float, ...]
+    volume_m3: float | None
+    objective: float | None
+    balance_inf_norm: float | None
+    charge_inf_norm: float | None
+    pressure_relative_residual: float | None
+    reaction_affinity_inf_norm: float | None
+    kkt_stationarity_inf_norm: float | None
+    complementarity_inf_norm: float | None
+    kkt_dimension: int
+    kkt_rank: int
+    condition_number_inf: float | None
+    local_minimum_status: str
+    trace_status: str
+    basin_ordinal: int | None
+    recovery_seed_count: int
+    recovery_solve_count: int
+
+
+@dataclass(frozen=True)
+class ChemicalEquilibriumBasin:
+    """One materially distinct certified strict local minimum."""
+
+    ordinal: int
+    representative_attempt_ordinal: int
+    amounts_mol: tuple[float, ...]
+    volume_m3: float
+    objective: float
+
+
+@dataclass(frozen=True)
+class ChemicalEquilibriumBudgetPrefix:
+    """A projection of the fixed run at one nested primary-start budget."""
+
+    primary_budget: int
+    attempted_primary_ordinals: tuple[int, ...]
+    basin_ordinals: tuple[int, ...]
+    selected_basin_ordinal: int | None
+    selection_changed: bool
+
+
+@dataclass(frozen=True)
+class ChemicalEquilibriumSearch:
+    """Complete deterministic finite-basin search receipt."""
+
+    status: str
+    continuation_status: str
+    primary_budget: int
+    primary_attempt_count: int
+    attempts: tuple[ChemicalEquilibriumAttempt, ...]
+    basins: tuple[ChemicalEquilibriumBasin, ...]
+    budget_prefixes: tuple[ChemicalEquilibriumBudgetPrefix, ...]
+    selected_basin_ordinal: int | None
+    selected_objective: float | None
+    selection_label: str
+
+
+@dataclass(frozen=True)
 class ChemicalEquilibriumDiagnostics:
     """Independent local chemical-equilibrium admission axes and residuals."""
 
@@ -209,6 +282,7 @@ class ChemicalEquilibriumDiagnostics:
     negative_curvature_recovery_selected_sign: int
     trace_status: str
     globality_status: str
+    search: ChemicalEquilibriumSearch
     balance_inf_norm: float | None
     charge_inf_norm: float | None
     pressure_relative_residual: float | None
@@ -868,6 +942,129 @@ def tp_flash(
         ) from error
 
 
+def _empty_chemical_search(status: str = "not_evaluated") -> ChemicalEquilibriumSearch:
+    return ChemicalEquilibriumSearch(
+        status=status,
+        continuation_status="not_used",
+        primary_budget=25,
+        primary_attempt_count=0,
+        attempts=(),
+        basins=(),
+        budget_prefixes=(),
+        selected_basin_ordinal=None,
+        selected_objective=None,
+        selection_label="lowest_observed_certified_local_value",
+    )
+
+
+def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
+    payload = cast(Mapping[str, object], native["search"])
+    attempts = tuple(
+        ChemicalEquilibriumAttempt(
+            ordinal=int(cast(int, record["ordinal"])),
+            primary_ordinal=int(cast(int, record["primary_ordinal"])),
+            kind=str(record["kind"]),
+            parent_ordinal=(
+                int(cast(int, record["parent_ordinal"]))
+                if record["parent_ordinal"] is not None
+                else None
+            ),
+            start_identity=str(record["start_identity"]),
+            start_construction_status=str(record["start_construction_status"]),
+            retraction_status=str(record["retraction_status"]),
+            continuation_status=str(record["continuation_status"]),
+            provider_domain_status=str(record["provider_domain_status"]),
+            solver_status=str(record["solver_status"]),
+            callback_error=str(record["callback_error"]),
+            terminal_status=str(record["terminal_status"]),
+            amounts_mol=tuple(
+                float(value) for value in cast(Sequence[float], record["amounts"])
+            ),
+            volume_m3=_optional_float(record, "volume_m3"),
+            objective=_optional_float(record, "objective"),
+            balance_inf_norm=_optional_float(record, "balance_inf_norm"),
+            charge_inf_norm=_optional_float(record, "charge_inf_norm"),
+            pressure_relative_residual=_optional_float(
+                record, "pressure_relative_residual"
+            ),
+            reaction_affinity_inf_norm=_optional_float(
+                record, "reaction_affinity_inf_norm"
+            ),
+            kkt_stationarity_inf_norm=_optional_float(
+                record, "kkt_stationarity_inf_norm"
+            ),
+            complementarity_inf_norm=_optional_float(
+                record, "complementarity_inf_norm"
+            ),
+            kkt_dimension=int(cast(int, record["kkt_dimension"])),
+            kkt_rank=int(cast(int, record["kkt_rank"])),
+            condition_number_inf=_optional_float(record, "condition_number_inf"),
+            local_minimum_status=str(record["local_minimum_status"]),
+            trace_status=str(record["trace_status"]),
+            basin_ordinal=(
+                int(cast(int, record["basin_ordinal"]))
+                if record["basin_ordinal"] is not None
+                else None
+            ),
+            recovery_seed_count=int(cast(int, record["recovery_seed_count"])),
+            recovery_solve_count=int(cast(int, record["recovery_solve_count"])),
+        )
+        for record in cast(Sequence[Mapping[str, object]], payload["attempts"])
+    )
+    basins = tuple(
+        ChemicalEquilibriumBasin(
+            ordinal=int(cast(int, record["ordinal"])),
+            representative_attempt_ordinal=int(
+                cast(int, record["representative_attempt_ordinal"])
+            ),
+            amounts_mol=tuple(
+                float(value) for value in cast(Sequence[float], record["amounts"])
+            ),
+            volume_m3=float(cast(float, record["volume_m3"])),
+            objective=float(cast(float, record["objective"])),
+        )
+        for record in cast(Sequence[Mapping[str, object]], payload["basins"])
+    )
+    prefixes = tuple(
+        ChemicalEquilibriumBudgetPrefix(
+            primary_budget=int(cast(int, record["primary_budget"])),
+            attempted_primary_ordinals=tuple(
+                int(value)
+                for value in cast(
+                    Sequence[int], record["attempted_primary_ordinals"]
+                )
+            ),
+            basin_ordinals=tuple(
+                int(value)
+                for value in cast(Sequence[int], record["basin_ordinals"])
+            ),
+            selected_basin_ordinal=(
+                int(cast(int, record["selected_basin_ordinal"]))
+                if record["selected_basin_ordinal"] is not None
+                else None
+            ),
+            selection_changed=bool(record["selection_changed"]),
+        )
+        for record in cast(Sequence[Mapping[str, object]], payload["budget_prefixes"])
+    )
+    return ChemicalEquilibriumSearch(
+        status=str(payload["status"]),
+        continuation_status=str(payload["continuation_status"]),
+        primary_budget=int(cast(int, payload["primary_budget"])),
+        primary_attempt_count=int(cast(int, payload["primary_attempt_count"])),
+        attempts=attempts,
+        basins=basins,
+        budget_prefixes=prefixes,
+        selected_basin_ordinal=(
+            int(cast(int, payload["selected_basin_ordinal"]))
+            if payload["selected_basin_ordinal"] is not None
+            else None
+        ),
+        selected_objective=_optional_float(payload, "selected_objective"),
+        selection_label=str(payload["selection_label"]),
+    )
+
+
 def _failed_chemical_diagnostics(
     status: str, failure_reason: str
 ) -> ChemicalEquilibriumDiagnostics:
@@ -888,6 +1085,7 @@ def _failed_chemical_diagnostics(
         negative_curvature_recovery_selected_sign=0,
         trace_status="not_adjudicated",
         globality_status="not_adjudicated",
+        search=_empty_chemical_search(),
         balance_inf_norm=None,
         charge_inf_norm=None,
         pressure_relative_residual=None,
@@ -927,13 +1125,14 @@ def _chemical_diagnostics(
             native.get("negative_curvature_recovery_status", "not_needed")
         ),
         negative_curvature_recovery_attempts=int(
-            native.get("negative_curvature_recovery_attempts", 0)
+            cast(int, native.get("negative_curvature_recovery_attempts", 0))
         ),
         negative_curvature_recovery_selected_sign=int(
-            native.get("negative_curvature_recovery_selected_sign", 0)
+            cast(int, native.get("negative_curvature_recovery_selected_sign", 0))
         ),
         trace_status=str(native["trace_status"]),
         globality_status=str(native["globality_certificate"]),
+        search=_chemical_search(native),
         balance_inf_norm=float(cast(float, native["balance_inf_norm"])),
         charge_inf_norm=float(cast(float, native["charge_inf_norm"])),
         pressure_relative_residual=float(cast(float, native["pressure_relative_residual"])),

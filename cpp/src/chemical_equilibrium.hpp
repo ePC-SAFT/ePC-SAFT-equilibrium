@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -106,6 +107,67 @@ struct ChemicalSensitivityResult {
     std::string reference_parameter_failure_reason;
 };
 
+struct ChemicalSearchAttempt {
+    std::size_t ordinal = 0;
+    std::size_t primary_ordinal = 0;
+    std::string kind = "primary";
+    long parent_ordinal = -1;
+    std::string start_identity;
+    std::string start_construction_status = "not_evaluated";
+    std::string retraction_status = "not_needed";
+    std::string continuation_status = "not_used";
+    std::string provider_domain_status = "not_adjudicated";
+    std::string solver_status;
+    std::string callback_error;
+    std::string terminal_status = "not_evaluated";
+    std::vector<double> amounts;
+    double volume_m3 = std::numeric_limits<double>::quiet_NaN();
+    double objective = std::numeric_limits<double>::quiet_NaN();
+    double balance_inf_norm = std::numeric_limits<double>::quiet_NaN();
+    double charge_inf_norm = std::numeric_limits<double>::quiet_NaN();
+    double pressure_relative_residual = std::numeric_limits<double>::quiet_NaN();
+    double reaction_affinity_inf_norm = std::numeric_limits<double>::quiet_NaN();
+    double kkt_stationarity_inf_norm = std::numeric_limits<double>::quiet_NaN();
+    double complementarity_inf_norm = std::numeric_limits<double>::quiet_NaN();
+    std::size_t kkt_dimension = 0;
+    std::size_t kkt_rank = 0;
+    double condition_number_inf = std::numeric_limits<double>::infinity();
+    std::string local_minimum_status = "not_adjudicated";
+    std::string trace_status = "not_adjudicated";
+    long basin_ordinal = -1;
+    std::size_t recovery_seed_count = 0;
+    std::size_t recovery_solve_count = 0;
+};
+
+struct ChemicalSearchBasin {
+    std::size_t ordinal = 0;
+    std::size_t representative_attempt_ordinal = 0;
+    std::vector<double> amounts;
+    double volume_m3 = std::numeric_limits<double>::quiet_NaN();
+    double objective = std::numeric_limits<double>::quiet_NaN();
+};
+
+struct ChemicalSearchBudgetPrefix {
+    std::size_t primary_budget = 0;
+    std::vector<std::size_t> attempted_primary_ordinals;
+    std::vector<std::size_t> basin_ordinals;
+    long selected_basin_ordinal = -1;
+    bool selection_changed = false;
+};
+
+struct ChemicalSearchEvidence {
+    std::string status = "not_evaluated";
+    std::string continuation_status = "not_used";
+    std::size_t primary_budget = 25;
+    std::size_t primary_attempt_count = 0;
+    std::vector<ChemicalSearchAttempt> attempts;
+    std::vector<ChemicalSearchBasin> basins;
+    std::vector<ChemicalSearchBudgetPrefix> budget_prefixes;
+    long selected_basin_ordinal = -1;
+    double selected_objective = std::numeric_limits<double>::quiet_NaN();
+    std::string selection_label = "lowest_observed_certified_local_value";
+};
+
 struct ChemicalSolveResult {
     bool accepted = false;
     std::string solver_status;
@@ -130,6 +192,10 @@ struct ChemicalSolveResult {
     double packing_fraction = 0.0;
     double kkt_stationarity_inf_norm = 0.0;
     double complementarity_inf_norm = 0.0;
+    std::size_t kkt_dimension = 0;
+    std::size_t kkt_rank = 0;
+    double condition_number_inf = std::numeric_limits<double>::infinity();
+    ChemicalSearchEvidence search;
     ChemicalSensitivityResult sensitivities;
 };
 
