@@ -330,12 +330,12 @@ to the solver and never substitute for scientific acceptance.
 | HELD2 Step-6 distinctness | Perdomo Eq. (66) Provider packing fraction or modified composition | either difference `>=1e-3` |
 | Stage III | modified/explicit balances, scaled charge, pressure | `1e-8`, `1e-8`, `1e-9`, `1e-8` |
 | Stage III | modified potentials; KKT, dual sign, complementarity, free-energy gap | `1e-8 + 1e-7*scale`, `1e-7`, `1e-9`, `1e-8`, `1e-8` |
-| Phase identity | active, retirement evidence, merge, confidently distinct | `>1e-8`, `>1e-8`, `<=1e-6`, `>1e-4` |
+| Phase identity | active, retirement evidence, merge, confidently distinct | `>1e-8`, `>1e-8`, `<=1e-5`, `>1e-4` |
 | Step 10 trace | charged physical mole-fraction interval; potential residual | `[1e-300, 5e-10]`; `1e-8` absolute |
 | Ipopt | target, disabled acceptable target, constraint target | `1e-10`, `1e-9`, `1e-10`; zero bound relaxation |
 
 Candidate distances between `1e-7` and `1e-5`, and phase distances between
-`1e-6` and `1e-4`, are unresolved identity bands and fail closed. Marginal
+`1e-5` and `1e-4`, are unresolved identity bands and fail closed. Marginal
 roots, unresolved stable-root ordering, and unavailable evidence likewise do
 not become acceptance. Direct invalid user input remains invalid; the
 representation allowances apply only to validated transformations and solver

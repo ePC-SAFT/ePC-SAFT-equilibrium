@@ -7,6 +7,8 @@
 #include "held2_step9.hpp"
 #include "held2_step10.hpp"
 #include "held2_tolerances.hpp"
+#include "flash.hpp"
+#include "result_json.hpp"
 
 #include <array>
 #include <cmath>
@@ -959,6 +961,7 @@ void run_held2_step5_checks() {
         result.status == "complete" && result.lower_value <= step4.upper_bound
             && !result.attempts.empty()
             && result.attempts.back().accepted
+            && result.attempts.front().start_family == "random_interior"
             && result.attempts.back().kkt
             && result.attempts.back().kkt->accepted
             && result.attempts.back().kkt->same_major_iteration
@@ -971,7 +974,83 @@ void run_held2_step5_checks() {
             == state_evaluations + volume_evaluations,
         "Step-5 Provider evaluation accounting changed"
     );
-
+    Held2PersistentState recovery_state = state;
+    recovery_state.step5_requires_new_member = true;
+    const Held2Step4Result recovery_step4 = run_held2_step4(recovery_state);
+    const Held2MPoint recovery_target = recovery_state.M.front();
+    const double recovery_multiplier = recovery_state.multipliers.front();
+    const double recovery_offset = recovery_state.upper_bound
+        - 100.0 * (1.0 + std::abs(recovery_multiplier));
+    Held2ResourceProfile recovery_resources;
+    recovery_resources.step5_start_cap = 1;
+    recovery_resources.step5_recovery_start_cap = 8;
+    const Held2Step5Result exhausted_recovery = run_held2_step5(
+        prepared,
+        recovery_step4,
+        recovery_state,
+        [recovery_target, recovery_multiplier, recovery_offset](
+            const auto& composition, double log_volume
+        ) {
+            const double delta = composition.front()
+                - recovery_target.independent_modified_fractions.front();
+            const double log_volume_delta = log_volume
+                - std::log(recovery_target.volume);
+            const double composition_gradient =
+                recovery_multiplier + 2.0 * delta;
+            Held2StateEvaluation evaluated;
+            evaluated.modified_fractions = {
+                1.0 - composition.front(), composition.front()
+            };
+            evaluated.physical_amounts = {
+                1.0 - composition.front(),
+                0.5 * composition.front(),
+                0.5 * composition.front(),
+            };
+            evaluated.volume = std::exp(log_volume);
+            evaluated.objective = recovery_offset
+                + recovery_multiplier * delta + delta * delta
+                + 0.5 * log_volume_delta * log_volume_delta;
+            evaluated.gradient = {
+                composition_gradient, log_volume_delta
+            };
+            evaluated.hessian = {2.0, 0.0, 0.0, 1.0};
+            evaluated.chemical_potentials_over_rt = {
+                0.0, 2.0 * composition_gradient, 0.0
+            };
+            evaluated.modified_potentials = {
+                0.0, composition_gradient
+            };
+            evaluated.pressure_stationarity_relative = -log_volume_delta;
+            evaluated.pressure_stationarity_derivative_log_volume = -1.0;
+            return evaluated;
+        },
+        recovery_resources
+    );
+    const std::string recovery_failure =
+        "Step-5 repeated an exhausted unchanged-hull recovery pass (status="
+        + exhausted_recovery.status + ", reason="
+        + exhausted_recovery.reason + ", starts="
+        + std::to_string(exhausted_recovery.starts_consumed) + ")";
+    require(
+        exhausted_recovery.status == "indeterminate"
+            && exhausted_recovery.reason == "step5_recovery_exhausted"
+            && exhausted_recovery.starts_consumed > 1
+            && exhausted_recovery.lower_value
+            && *exhausted_recovery.lower_value == *std::min_element(
+                exhausted_recovery.attempts.begin(),
+                exhausted_recovery.attempts.end(),
+                [](const Held2LocalCertificate& left,
+                   const Held2LocalCertificate& right) {
+                    return left.local_value.value_or(
+                        std::numeric_limits<double>::infinity()
+                    ) < right.local_value.value_or(
+                        std::numeric_limits<double>::infinity()
+                    );
+                }
+            )->local_value
+            && recovery_state.step5_requires_new_member,
+        recovery_failure.c_str()
+    );
     Held2PersistentState missing_certificate_state =
         std::move(*appendix_c_result().state);
     Held2Step4Result missing_certificate_step4 =
@@ -1363,6 +1442,74 @@ void run_held2_step7_checks() {
 }
 
 void run_held2_step8_checks() {
+    Held2Step5Result equivalent_step5;
+    equivalent_step5.status = "complete";
+    equivalent_step5.reason = "equivalent_member";
+    Held2Step6Result insufficient_step6;
+    insufficient_step6.status = "complete";
+    insufficient_step6.candidates.push_back(
+        {7, {0.20}, 1.0, 0.20, 0.0, {}, "manufactured"}
+    );
+    require(
+        held2_insufficient_candidate_recovery_required(
+            equivalent_step5.reason, insufficient_step6.candidates.size()
+        ),
+        "Step-6 equivalent-member stall did not activate Step-5 recovery"
+    );
+    insufficient_step6.candidates.push_back(
+        {9, {0.80}, 1.0, 0.80, 0.0, {}, "manufactured"}
+    );
+    require(
+        !held2_insufficient_candidate_recovery_required(
+            equivalent_step5.reason, insufficient_step6.candidates.size()
+        ),
+        "Step-5 recovery activated for a complete Step-6 candidate set"
+    );
+    Held2PersistentState feedback_state;
+    Held2Step8Result feedback;
+    feedback.active_phases.push_back({
+        7,
+        0.5,
+        {0.20},
+        {0.80, 0.10, 0.10},
+        1.0,
+        0.2,
+        -1.0,
+        100000.0,
+        {-1.0, -1.0, -1.0},
+        -0.9,
+        {0.0},
+    });
+    require(
+        retain_held2_step8_feedback(feedback_state, feedback)
+            && !retain_held2_step8_feedback(feedback_state, feedback)
+            && feedback_state.M.size() == 1,
+        "Step-8 feedback did not distinguish progress from an unchanged set"
+    );
+
+    for (std::string_view reason : {
+             "problem_67_not_converged",
+             "stage_iii_solver_not_converged",
+             "stage_iii_active_set_resolve_failed",
+             "stage_iii_active_set_balance_failed",
+         }) {
+        require(
+            held2_step8_failure_returns_to_stage_ii(reason),
+            "Step-8 rejected acceleration failure became terminal"
+        );
+    }
+    require(
+        !held2_step8_failure_returns_to_stage_ii(
+            "problem_67_feasibility_indeterminate"
+        )
+            && !held2_step8_failure_returns_to_stage_ii(
+                "stage_iii_pressure_refinement_failed"
+            )
+            && !held2_step8_failure_returns_to_stage_ii(
+                "stage_iii_solve_budget_exhausted"
+            ),
+        "Step-8 malformed or uncertified evidence entered Stage II"
+    );
     auto [prepared, candidates] = stage_iii_fixture();
     const Held2Step8Result result =
         manufactured_step8(prepared, candidates);
@@ -1376,6 +1523,21 @@ void run_held2_step8_checks() {
         "Step-8 Eq. (67) solve changed"
     );
 
+    Held2Step6Result numerical_duplicates = candidates;
+    numerical_duplicates.candidates.push_back(
+        {10, {0.200004}, 1.0, 0.200004, 0.0, {}, "manufactured"}
+    );
+    const Held2Step8Result duplicate_reduced =
+        manufactured_step8(prepared, numerical_duplicates);
+    require(
+        duplicate_reduced.outcome == Held2Step8Outcome::CertifiedFeasible
+            && duplicate_reduced.active_phases.size() == 2
+            && duplicate_reduced.timing.optimizer_solves >= 2
+            && duplicate_reduced.ordinary_balance_inf
+                <= kHeld2Stage3ExplicitBalance.atol,
+        "Step-8 did not re-solve a numerical duplicate phase set"
+    );
+
     candidates.candidates.push_back(
         {10, {0.50}, 1.0, 0.50, 0.0, {}, "manufactured"}
     );
@@ -1384,6 +1546,8 @@ void run_held2_step8_checks() {
     require(
         expanded.outcome == Held2Step8Outcome::CertifiedFeasible
             && expanded.timing.optimizer_solves == 2
+            && expanded.problem_candidate_ids
+                == std::vector<std::uint64_t>{7, 9, 10}
             && expanded.candidate_ids
                 == std::vector<std::uint64_t>{7, 9}
             && expanded.continuation_variables.size()
@@ -1391,6 +1555,104 @@ void run_held2_step8_checks() {
             && expanded.ordinary_balance_inf
                 <= kHeld2Stage3ExplicitBalance.atol,
         "Step-8 inactive-phase re-solve lost its active-set state"
+    );
+    Held2Step8Result stable_previous = expanded;
+    for (Held2Phase& phase : stable_previous.active_phases) {
+        phase.independent_modified_fractions = {
+            phase.stable_id == 7 ? 0.20 : 0.80
+        };
+        phase.volume = 1.0;
+    }
+    std::uint64_t replay_evaluations = 0;
+    const Held2Step8Result replayed = run_held2_step8(
+        prepared,
+        candidates,
+        [coordinates = *prepared.coordinates, &replay_evaluations](
+            const auto& composition, double log_volume
+        ) {
+            ++replay_evaluations;
+            return evaluate_manufactured_state_impl(
+                coordinates, composition, log_volume
+            );
+        },
+        [&replay_evaluations](const auto& composition, double) {
+            ++replay_evaluations;
+            return composition.front();
+        },
+        &stable_previous
+    );
+    require(
+        replayed.outcome == Held2Step8Outcome::CertifiedFeasible
+            && replayed.candidate_ids
+                == std::vector<std::uint64_t>{7, 9}
+            && replayed.problem_candidate_ids
+                == std::vector<std::uint64_t>{7, 9, 10}
+            && replayed.timing.terminal_reason
+                == "unchanged_problem_67"
+            && replay_evaluations == 0,
+        "Step-8 replayed an already-solved retained candidate problem"
+    );
+    Held2Step8Result recentered_previous = stable_previous;
+    recentered_previous.active_phases.front()
+        .independent_modified_fractions.front() =
+            0.20 + kHeld2Problem67Radius;
+    replay_evaluations = 0;
+    const Held2Step8Result recentered = run_held2_step8(
+        prepared,
+        candidates,
+        [coordinates = *prepared.coordinates, &replay_evaluations](
+            const auto& composition, double log_volume
+        ) {
+            ++replay_evaluations;
+            return evaluate_manufactured_state_impl(
+                coordinates, composition, log_volume
+            );
+        },
+        [&replay_evaluations](const auto& composition, double) {
+            ++replay_evaluations;
+            return composition.front();
+        },
+        &recentered_previous
+    );
+    require(
+        recentered.timing.terminal_reason != "unchanged_problem_67"
+            && replay_evaluations > 0,
+        "Step-8 memoization ignored a recentered candidate neighborhood"
+    );
+    Held2Step8Result failed_reduction = expanded;
+    failed_reduction.outcome = Held2Step8Outcome::Indeterminate;
+    failed_reduction.reason = "problem_67_not_converged";
+    failed_reduction.nlp->accepted = false;
+    failed_reduction.active_phases.clear();
+    failed_reduction.total_reduced_gibbs.reset();
+    failed_reduction.candidate_variables = {0.20, 1.0, 0.80, 1.0};
+    replay_evaluations = 0;
+    const Held2Step8Result failed_replay = run_held2_step8(
+        prepared,
+        candidates,
+        [coordinates = *prepared.coordinates, &replay_evaluations](
+            const auto& composition, double log_volume
+        ) {
+            ++replay_evaluations;
+            return evaluate_manufactured_state_impl(
+                coordinates, composition, log_volume
+            );
+        },
+        [&replay_evaluations](const auto& composition, double) {
+            ++replay_evaluations;
+            return composition.front();
+        },
+        &failed_reduction
+    );
+    require(
+        failed_replay.outcome == Held2Step8Outcome::Indeterminate
+            && failed_replay.problem_candidate_ids
+                == std::vector<std::uint64_t>{7, 9}
+            && failed_replay.timing.terminal_reason
+                == "unchanged_problem_67"
+            && failed_replay.timing.terminal_status == "indeterminate"
+            && replay_evaluations == 0,
+        "Step-8 discarded certified retirement progress after NLP failure"
     );
     candidates.candidates.push_back(
         {11, {0.55}, 1.0, 0.55, 0.0, {}, "manufactured"}
@@ -1412,6 +1674,8 @@ void run_held2_step8_checks() {
     );
     require(
         continued.outcome == Held2Step8Outcome::CertifiedFeasible
+            && continued.problem_candidate_ids
+                == std::vector<std::uint64_t>{7, 9, 11}
             && std::find(
                 continued.candidate_ids.begin(),
                 continued.candidate_ids.end(),
@@ -1429,10 +1693,25 @@ void run_held2_step8_checks() {
         infeasible.outcome == Held2Step8Outcome::CertifiedInfeasible
             && infeasible.farkas
             && infeasible.farkas->accepted
+            && infeasible.farkas
+                ->solver_ray_recovered_without_presolve
             && !infeasible.nlp
             && infeasible.farkas->contradiction_margin
                 > infeasible.farkas->contradiction_threshold,
         "Step-8 Eq. (67) infeasibility did not return through Step 7"
+    );
+    Held2AlgorithmResult serialized_infeasible;
+    serialized_infeasible.step8_history.push_back(infeasible);
+    const std::string serialized_farkas = flash_result_to_json({
+        {298.15, 100000.0, {0.5, 0.25, 0.25}},
+        "sha256:manufactured",
+        serialized_infeasible,
+    });
+    require(
+        serialized_farkas.find(
+            "\"solver_ray_recovered_without_presolve\":true"
+        ) != std::string::npos,
+        "Step-8 presolve-disabled Farkas recovery was not serialized"
     );
 
     candidates.candidates[0].independent_modified_fractions = {0.4998};

@@ -45,10 +45,16 @@ Held2Step8Result run_held2_step8(
         return result;
     }
     std::vector<Held2MPoint> selected_points;
-    const bool continue_active_set = previous
+    const bool continue_certified_active_set = previous
         && previous->outcome == Held2Step8Outcome::CertifiedFeasible
         && previous->nlp && previous->nlp->accepted
         && !previous->candidate_ids.empty();
+    const bool continue_rejected_candidate_problem = previous
+        && previous->outcome == Held2Step8Outcome::Indeterminate
+        && !previous->candidate_ids.empty();
+    const bool continue_candidate_problem =
+        continue_certified_active_set
+        || continue_rejected_candidate_problem;
     const std::uint64_t newest_id = std::max_element(
         step6.candidates.begin(),
         step6.candidates.end(),
@@ -56,24 +62,54 @@ Held2Step8Result run_held2_step8(
             return left.insertion_id < right.insertion_id;
         }
     )->insertion_id;
+    const std::vector<std::uint64_t>& previously_attempted =
+        previous && !previous->attempted_candidate_ids.empty()
+        ? previous->attempted_candidate_ids
+        : previous && !previous->problem_candidate_ids.empty()
+            ? previous->problem_candidate_ids
+            : previous ? previous->candidate_ids
+                       : result.attempted_candidate_ids;
+    const bool newest_is_unattempted = continue_candidate_problem
+        && std::find(
+            previously_attempted.begin(),
+            previously_attempted.end(),
+            newest_id
+        ) == previously_attempted.end();
     for (const Held2MPoint& point : step6.candidates) {
-        const bool active = continue_active_set
-            && std::any_of(
-                previous->active_phases.begin(),
-                previous->active_phases.end(),
-                [&point](const Held2Phase& phase) {
-                    return phase.stable_id == point.insertion_id;
-                }
-            );
-        if (!continue_active_set || active
-            || point.insertion_id == newest_id) {
+        const bool retained = continue_candidate_problem
+            && std::find(
+                previous->candidate_ids.begin(),
+                previous->candidate_ids.end(),
+                point.insertion_id
+            ) != previous->candidate_ids.end();
+        if (!continue_candidate_problem || retained
+            || (continue_certified_active_set
+                && point.insertion_id == newest_id)
+            || (continue_rejected_candidate_problem
+                && newest_is_unattempted
+                && point.insertion_id == newest_id)) {
             selected_points.push_back(point);
         }
     }
     if (selected_points.size() < 2) {
         selected_points = step6.candidates;
     }
-    if (continue_active_set) {
+    for (const Held2MPoint& point : selected_points) {
+        result.problem_candidate_ids.push_back(point.insertion_id);
+    }
+    result.attempted_candidate_ids = previously_attempted;
+    for (std::uint64_t id : result.problem_candidate_ids) {
+        if (std::find(
+                result.attempted_candidate_ids.begin(),
+                result.attempted_candidate_ids.end(),
+                id
+            ) == result.attempted_candidate_ids.end()) {
+            result.attempted_candidate_ids.push_back(id);
+        }
+    }
+    std::vector<double> previous_effective_problem_variables = previous
+        ? previous->problem_candidate_variables : std::vector<double>{};
+    if (continue_certified_active_set) {
         for (Held2MPoint& point : selected_points) {
             const auto refined = std::find_if(
                 previous->active_phases.begin(),
@@ -104,13 +140,91 @@ Held2Step8Result run_held2_step8(
                     point.independent_modified_fractions =
                         refined->independent_modified_fractions;
                     point.volume = refined->volume;
+                    const auto terminal_id = std::find(
+                        previous->candidate_ids.begin(),
+                        previous->candidate_ids.end(),
+                        point.insertion_id
+                    );
+                    const auto problem_id = std::find(
+                        previous->problem_candidate_ids.begin(),
+                        previous->problem_candidate_ids.end(),
+                        point.insertion_id
+                    );
+                    const std::size_t block_size =
+                        point.independent_modified_fractions.size() + 1;
+                    if (terminal_id != previous->candidate_ids.end()
+                        && problem_id
+                            != previous->problem_candidate_ids.end()
+                        && previous->candidate_variables.size()
+                            == previous->candidate_ids.size()
+                                * block_size
+                        && previous_effective_problem_variables.size()
+                            == previous->problem_candidate_ids.size()
+                                * block_size) {
+                        const std::size_t source = static_cast<std::size_t>(
+                            terminal_id - previous->candidate_ids.begin()
+                        ) * block_size;
+                        const std::size_t destination =
+                            static_cast<std::size_t>(
+                                problem_id
+                                - previous->problem_candidate_ids.begin()
+                            ) * block_size;
+                        std::copy_n(
+                            previous->candidate_variables.begin() + source,
+                            block_size,
+                            previous_effective_problem_variables.begin()
+                                + destination
+                        );
+                    }
                 }
             }
         }
     }
     for (const Held2MPoint& point : selected_points) {
+        result.problem_candidate_variables.insert(
+            result.problem_candidate_variables.end(),
+            point.independent_modified_fractions.begin(),
+            point.independent_modified_fractions.end()
+        );
+        result.problem_candidate_variables.push_back(point.volume);
+    }
+    const bool same_as_previous_problem = previous
+        && result.problem_candidate_ids == previous->problem_candidate_ids
+        && result.problem_candidate_variables
+            == previous->problem_candidate_variables;
+    const bool same_as_rejected_terminal = previous
+        && previous->outcome == Held2Step8Outcome::Indeterminate
+        && result.problem_candidate_ids == previous->candidate_ids
+        && result.problem_candidate_variables
+            == previous->candidate_variables;
+    const bool same_as_certified_effective_problem = previous
+        && previous->outcome == Held2Step8Outcome::CertifiedFeasible
+        && result.problem_candidate_ids
+            == previous->problem_candidate_ids
+        && result.problem_candidate_variables
+            == previous_effective_problem_variables;
+    if (same_as_previous_problem || same_as_rejected_terminal
+        || same_as_certified_effective_problem) {
+        Held2Step8Result unchanged = *previous;
+        unchanged.problem_candidate_ids = result.problem_candidate_ids;
+        unchanged.problem_candidate_variables =
+            result.problem_candidate_variables;
+        unchanged.attempted_candidate_ids = result.attempted_candidate_ids;
+        unchanged.timing = {};
+        unchanged.timing.invocation_count = 1;
+        unchanged.timing.terminal_status =
+            unchanged.outcome == Held2Step8Outcome::Indeterminate
+            ? "indeterminate" : "complete";
+        unchanged.timing.terminal_reason = "unchanged_problem_67";
+        unchanged.timing.next_step =
+            unchanged.outcome == Held2Step8Outcome::CertifiedFeasible
+            ? 9 : 7;
+        return unchanged;
+    }
+    for (const Held2MPoint& point : selected_points) {
         result.candidate_ids.push_back(point.insertion_id);
     }
+    result.candidate_variables = result.problem_candidate_variables;
 
     std::vector<Held2StageIICandidate> candidates;
     std::vector<std::array<double, 2>> bounds;
@@ -154,8 +268,7 @@ Held2Step8Result run_held2_step8(
     const std::size_t dimension =
         step1.coordinates->independent_indices.size();
     const std::size_t block_size = dimension + 2;
-    if (previous
-        && previous->outcome == Held2Step8Outcome::CertifiedFeasible
+    if (continue_certified_active_set
         && previous->continuation_variables.size()
             == previous->candidate_ids.size() * block_size) {
         initial.resize(candidates.size() * block_size);
@@ -224,9 +337,29 @@ Held2Step8Result run_held2_step8(
             std::move(start), counted_value
         );
     };
+    const auto accepted_nlp_evidence = [](const Held2Problem67Result& value) {
+        return value.numerical_status == "converged"
+            && audit_held2_tolerance(
+                kHeld2Stage3ModifiedBalance,
+                value.modified_balance_inf_norm
+            ).passed
+            && audit_held2_tolerance(
+                kHeld2Stage3Stationarity,
+                value.kkt_stationarity_inf_norm
+            ).passed
+            && audit_held2_tolerance(
+                kHeld2Stage3DualSign,
+                value.dual_sign_violation_inf_norm
+            ).passed
+            && audit_held2_tolerance(
+                kHeld2Stage3Complementarity,
+                value.bound_complementarity_inf_norm
+            ).passed;
+    };
     Held2Problem67Result solved = solve(std::move(initial));
     if (warm_started
-        && solved.failure_reason == "stage_iii_solver_not_converged") {
+        && solved.numerical_status != "not_adjudicated"
+        && (!accepted_nlp_evidence(solved) || solved.phases.size() < 2)) {
         Held2Problem67Result cold = solve({});
         cold.stage_iii_solve_count += solved.stage_iii_solve_count;
         cold.optimizer_iteration_count +=
@@ -240,9 +373,20 @@ Held2Step8Result run_held2_step8(
         static_cast<std::uint64_t>(solved.optimizer_iteration_count);
     if (!solved.candidate_indices.empty()) {
         result.candidate_ids.clear();
+        result.candidate_variables.clear();
         for (std::size_t index : solved.candidate_indices) {
             result.candidate_ids.push_back(
                 selected_points.at(index).insertion_id
+            );
+            result.candidate_variables.insert(
+                result.candidate_variables.end(),
+                selected_points.at(index)
+                    .independent_modified_fractions.begin(),
+                selected_points.at(index)
+                    .independent_modified_fractions.end()
+            );
+            result.candidate_variables.push_back(
+                selected_points.at(index).volume
             );
         }
     }
@@ -255,17 +399,7 @@ Held2Step8Result run_held2_step8(
     const bool nlp_attempted =
         solved.numerical_status != "not_adjudicated";
     const bool nlp_accepted = nlp_attempted
-        && solved.numerical_status == "converged"
-        && audit_held2_tolerance(
-        kHeld2Stage3ModifiedBalance, solved.modified_balance_inf_norm
-    ).passed && audit_held2_tolerance(
-        kHeld2Stage3Stationarity, solved.kkt_stationarity_inf_norm
-    ).passed && audit_held2_tolerance(
-        kHeld2Stage3DualSign, solved.dual_sign_violation_inf_norm
-    ).passed && audit_held2_tolerance(
-        kHeld2Stage3Complementarity,
-        solved.bound_complementarity_inf_norm
-    ).passed;
+        && accepted_nlp_evidence(solved);
     if (nlp_attempted) {
         result.nlp = Held2NlpCertificate{
             solved.solver_status,
@@ -337,6 +471,15 @@ Held2Step8Result run_held2_step8(
             return left.stable_id < right.stable_id;
         }
     );
+    result.candidate_variables.clear();
+    for (const Held2Phase& phase : result.active_phases) {
+        result.candidate_variables.insert(
+            result.candidate_variables.end(),
+            phase.independent_modified_fractions.begin(),
+            phase.independent_modified_fractions.end()
+        );
+        result.candidate_variables.push_back(phase.volume);
+    }
     result.outcome = Held2Step8Outcome::CertifiedFeasible;
     result.reason = "step8_complete";
     result.total_reduced_gibbs = solved.objective;

@@ -245,7 +245,9 @@ struct Held2Problem67Result {
     const Held2StateEvaluator& evaluator,
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
     std::vector<double> initial = {},
-    const Held2StateValueEvaluator& value_evaluator = {}
+    const Held2StateValueEvaluator& value_evaluator = {},
+    int stage_iii_solve_budget = 32,
+    bool allow_feasibility_support_retry = true
 );
 
 }  // namespace epcsaft_equilibrium

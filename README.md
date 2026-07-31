@@ -110,8 +110,8 @@ exact corrected EOS artifact and independent installed-artifact evidence.
 
 The HELD2 algorithm is specified in
 `docs/designs/2026-07-24-held2-paper-algorithm.md` and implemented by
-`docs/plans/2026-07-24-held2-paper-rewrite.md`. It assigns
-deterministic pressure-root enumeration to homogeneous and trial-composition
+`docs/plans/2026-07-24-held2-paper-rewrite.md`. It assigns deterministic finite
+pressure-root detection and refinement to homogeneous and trial-composition
 density topology, NLopt DIRECT-L to the reduced Stage-I TPD search, HiGHS to
 the Stage-II upper LP, deterministic capped-multistart exact-Hessian Ipopt to
 Step 5, and exact-Hessian Ipopt to Problem (67) in Step 8. SLSQP is not the

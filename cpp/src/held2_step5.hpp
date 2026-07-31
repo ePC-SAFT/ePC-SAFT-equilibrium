@@ -19,11 +19,13 @@ using Held2PackingFractionEvaluator = std::function<double(
 struct Held2ResourceProfile {
     int step2_provider_evaluation_budget = 6500;
     int step5_start_cap = 128;
-    int step7_major_iteration_cap = 80;
+    int step7_major_iteration_cap = 128;
+    int step5_recovery_start_cap = 2048;
 };
 
 struct Held2LocalCertificate {
     std::uint64_t start_ordinal = 0;
+    std::string start_family;
     std::string solver_status;
     std::optional<double> local_value;
     bool finite_and_in_domain = false;

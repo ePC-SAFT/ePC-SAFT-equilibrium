@@ -1098,6 +1098,8 @@ py::dict held2_audit_farkas_certificate(
     result["contradiction_margin"] = audit.contradiction_margin;
     result["contradiction_scale"] = audit.contradiction_scale;
     result["contradiction_threshold"] = audit.contradiction_threshold;
+    result["solver_ray_recovered_without_presolve"] =
+        audit.solver_ray_recovered_without_presolve;
     result["accepted"] = audit.accepted;
     return result;
 }

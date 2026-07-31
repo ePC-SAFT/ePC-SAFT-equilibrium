@@ -23,6 +23,12 @@ struct Step5Assessment {
     std::string reason;
 };
 
+struct Step5Start {
+    std::vector<double> independent;
+    double log_volume = 0.0;
+    const char* family = "random_interior";
+};
+
 Step5Assessment assess_step5(
     double upper_bound,
     double local_value,
@@ -71,6 +77,87 @@ bool representation_equivalent(
             ).passed;
         }
     );
+}
+
+Step5Start make_step5_start(
+    const Held2Coordinates& coordinates,
+    const Held2PersistentState& state,
+    const std::vector<double>& random_point,
+    const std::array<double, 2>& volume_bounds,
+    double total_ion_mole_fraction_max,
+    int attempt,
+    int random_start_cap
+) {
+    const std::size_t dimension = state.feed.size();
+    const std::vector<double> random_independent =
+        held2_map_unit_cube_to_independent_fractions(
+            coordinates,
+            std::vector<double>(
+                random_point.begin(),
+                random_point.begin()
+                    + static_cast<std::ptrdiff_t>(dimension)
+            ),
+            total_ion_mole_fraction_max
+        );
+    const double lower_log_volume = std::log(volume_bounds[0]);
+    const double upper_log_volume = std::log(volume_bounds[1]);
+    const double random_log_volume = lower_log_volume
+        + random_point.back()
+            * (upper_log_volume - lower_log_volume);
+    if (!state.step5_requires_new_member
+        || attempt < random_start_cap || state.M.empty()) {
+        return {random_independent, random_log_volume, "random_interior"};
+    }
+    const std::uint64_t structured_ordinal = static_cast<std::uint64_t>(
+        attempt - random_start_cap
+    );
+    const std::uint64_t boundary_start_count =
+        4 * static_cast<std::uint64_t>(dimension);
+    if (structured_ordinal >= boundary_start_count) {
+        const std::uint64_t retained_ordinal =
+            structured_ordinal
+            - boundary_start_count;
+        const Held2MPoint& retained = state.M[
+            static_cast<std::size_t>(retained_ordinal)
+                % state.M.size()
+        ];
+        std::vector<double> shifted(dimension, 0.0);
+        for (std::size_t index = 0; index < dimension; ++index) {
+            shifted[index] = 0.99
+                    * retained.independent_modified_fractions[index]
+                + 0.01 * random_independent[index];
+        }
+        const double retained_log_volume = std::clamp(
+            std::log(retained.volume), lower_log_volume, upper_log_volume
+        );
+        return {
+            std::move(shifted),
+            0.99 * retained_log_volume + 0.01 * random_log_volume,
+            "shifted_retained",
+        };
+    }
+    std::vector<double> boundary_cube(dimension, 0.5);
+    const std::uint64_t boundary_ordinal = structured_ordinal;
+    boundary_cube[
+        static_cast<std::size_t>(boundary_ordinal) % dimension
+    ] = ((boundary_ordinal / dimension) % 2 == 0) ? 0.0 : 1.0;
+    const std::vector<double> boundary =
+        held2_map_unit_cube_to_independent_fractions(
+            coordinates, boundary_cube, total_ion_mole_fraction_max
+        );
+    std::vector<double> boundary_aware(dimension, 0.0);
+    for (std::size_t index = 0; index < dimension; ++index) {
+        boundary_aware[index] = 0.999 * boundary[index]
+            + 0.001 * random_independent[index];
+    }
+    const double volume_fraction =
+        ((boundary_ordinal / (2 * dimension)) % 2 == 0) ? 0.05 : 0.95;
+    return {
+        std::move(boundary_aware),
+        lower_log_volume
+            + volume_fraction * (upper_log_volume - lower_log_volume),
+        "boundary_aware",
+    };
 }
 
 bool same_coordinates(
@@ -1198,12 +1285,30 @@ Held2Step5Result run_held2_step5(
             *step1.coordinates, *step4.coordinate_snapshot
         )
         || !step1.volume_bounds || !evaluator
-        || resources.step5_start_cap < 1) {
+        || resources.step5_start_cap < 1
+        || resources.step5_recovery_start_cap
+            < resources.step5_start_cap) {
         result.reason = "invalid_step5_input";
         return result;
     }
     const Held2Coordinates& coordinates = *step1.coordinates;
     const std::size_t dimension = state.feed.size();
+    const std::size_t recovery_capacity = static_cast<std::size_t>(
+        resources.step5_recovery_start_cap
+    );
+    const std::size_t nominal_capacity = static_cast<std::size_t>(
+        resources.step5_start_cap
+    );
+    const std::size_t structured_capacity = std::min(
+        4 * dimension + state.M.size(),
+        recovery_capacity - nominal_capacity
+    );
+    const int attempt_cap = state.step5_requires_new_member
+        ? resources.step5_recovery_start_cap
+        : resources.step5_start_cap;
+    const int random_start_cap = state.step5_requires_new_member
+        ? static_cast<int>(recovery_capacity - structured_capacity)
+        : resources.step5_start_cap;
     std::vector<double> lower = coordinates.independent_lower_bounds;
     std::vector<double> upper = coordinates.independent_upper_bounds;
     const std::size_t begin =
@@ -1212,7 +1317,7 @@ Held2Step5Result run_held2_step5(
     random.discard(begin * (dimension + 1));
     std::uniform_real_distribution<double> unit;
     std::vector<std::vector<double>> starts(
-        static_cast<std::size_t>(resources.step5_start_cap),
+        static_cast<std::size_t>(attempt_cap),
         std::vector<double>(dimension + 1)
     );
     for (std::vector<double>& start : starts) {
@@ -1238,7 +1343,7 @@ Held2Step5Result run_held2_step5(
             std::numeric_limits<double>::infinity(), 0.0
         };
         try {
-            for (int index = 0; index < resources.step5_start_cap; ++index) {
+            for (int index = 0; index < attempt_cap; ++index) {
                 const std::vector<double>& point =
                     starts[static_cast<std::size_t>(index)];
                 const std::array<double, 2> local = counted_volume_bounds(
@@ -1261,37 +1366,51 @@ Held2Step5Result run_held2_step5(
         }
         state.step5_volume_bounds = bounds;
     }
-    const std::array<double, 2>& solve_volume_bounds =
-        *state.step5_volume_bounds;
     double best = std::numeric_limits<double>::infinity();
     Held2MPoint best_point;
+    std::optional<Held2MPoint> selected_new_point;
     for (int attempt = 0;
-         attempt < resources.step5_start_cap;
+         attempt < attempt_cap;
         ++attempt) {
         const std::vector<double>& point =
             starts[static_cast<std::size_t>(attempt)];
         const std::uint64_t ordinal = state.next_start_ordinal++;
         ++result.starts_consumed;
-        const std::vector<double> start =
-            held2_map_unit_cube_to_independent_fractions(
-                coordinates,
-                std::vector<double>(
-                    point.begin(),
-                    point.begin()
-                        + static_cast<std::ptrdiff_t>(dimension)
-                ),
-                step1.total_ion_mole_fraction_max
-            );
+        Step5Start start = make_step5_start(
+            coordinates,
+            state,
+            point,
+            *state.step5_volume_bounds,
+            step1.total_ion_mole_fraction_max,
+            attempt,
+            random_start_cap
+        );
         Held2LocalCertificate certificate;
         certificate.start_ordinal = ordinal;
-        const double initial_log_volume =
-            std::log(solve_volume_bounds[0])
-            + point.back()
-                * std::log(
-                    solve_volume_bounds[1] / solve_volume_bounds[0]
-                );
-        std::vector<double> initial = start;
-        initial.push_back(initial_log_volume);
+        certificate.start_family = start.family;
+        std::array<double, 2> start_volume_bounds;
+        try {
+            start_volume_bounds = counted_volume_bounds(start.independent);
+        } catch (...) {
+            certificate.solver_status = "start_volume_bounds_failed";
+            result.attempts.push_back(certificate);
+            continue;
+        }
+        (*state.step5_volume_bounds)[0] = std::min(
+            (*state.step5_volume_bounds)[0], start_volume_bounds[0]
+        );
+        (*state.step5_volume_bounds)[1] = std::max(
+            (*state.step5_volume_bounds)[1], start_volume_bounds[1]
+        );
+        const std::array<double, 2> solve_volume_bounds =
+            *state.step5_volume_bounds;
+        start.log_volume = std::clamp(
+            start.log_volume,
+            std::log(start_volume_bounds[0]),
+            std::log(start_volume_bounds[1])
+        );
+        std::vector<double> initial = start.independent;
+        initial.push_back(start.log_volume);
         std::vector<double> solver_lower = lower;
         std::vector<double> solver_upper = upper;
         solver_lower.push_back(std::log(solve_volume_bounds[0]));
@@ -1589,8 +1708,7 @@ Held2Step5Result run_held2_step5(
             ).qualified) {
             continue;
         }
-        best = value;
-        best_point = {
+        Held2MPoint qualified_point{
             static_cast<std::uint64_t>(state.M.size()),
             independent,
             terminal.volume,
@@ -1599,21 +1717,50 @@ Held2Step5Result run_held2_step5(
             terminal.gradient,
             "step5_local",
         };
-        break;
+        if (value < best) {
+            best = value;
+            best_point = qualified_point;
+        }
+        const bool changes_persistent_set = std::none_of(
+            state.M.begin(),
+            state.M.end(),
+            [&qualified_point](const Held2MPoint& member) {
+                return representation_equivalent(member, qualified_point);
+            }
+        );
+        if (changes_persistent_set) {
+            selected_new_point = std::move(qualified_point);
+            state.step5_requires_new_member = false;
+            break;
+        }
+        if (!state.step5_requires_new_member) {
+            break;
+        }
     }
     if (!std::isfinite(best)) {
         result.reason = "step5_start_budget_exhausted";
         return result;
     }
+    if (state.step5_requires_new_member) {
+        best_point.origin = "step5_equivalent_member";
+        result.lower_value = best;
+        result.terminal = best_point;
+        result.reason = "step5_recovery_exhausted";
+        result.timing.terminal_status = result.status;
+        result.timing.terminal_reason = result.reason;
+        return result;
+    }
+    Held2MPoint terminal_point = selected_new_point
+        ? std::move(*selected_new_point) : best_point;
     state.lower_value = best;
     result.lower_value = best;
-    if (!retain_held2_m_point(state, best_point)) {
-        best_point.origin = "step5_equivalent_member";
+    if (!retain_held2_m_point(state, terminal_point)) {
+        terminal_point.origin = "step5_equivalent_member";
         result.reason = "equivalent_member";
     } else {
         result.reason = "step5_complete";
     }
-    result.terminal = best_point;
+    result.terminal = terminal_point;
     result.status = "complete";
     result.timing.terminal_status = result.status;
     result.timing.terminal_reason = result.reason;
