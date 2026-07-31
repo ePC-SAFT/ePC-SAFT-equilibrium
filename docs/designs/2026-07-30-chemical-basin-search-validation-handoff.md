@@ -12,11 +12,11 @@ global or phase stability.
 
 | Item | Identity |
 | --- | --- |
-| Equilibrium implementation commit | `ae851a2e95f19c15d237a3e59140c37c91df7f59` |
-| Equilibrium implementation tree | `8ec04899c4106054dcc4795a4d5e888a312edc6e` |
+| Equilibrium implementation commit | `f433e4f706301c50e88c93572c3933e0bb702fef` |
+| Equilibrium implementation tree | `9c8ade799876a01fec1460f56f71c7f93bca9f52` |
 | Equilibrium wheel | `epcsaft_equilibrium-0.2.0.dev0-cp313-cp313-linux_x86_64.whl` |
-| Equilibrium wheel SHA-256 | `625565e1c995f73c8e2b7ec65f77e4eb1a561f59146701d392da9dbd43791d8b` |
-| Installed-artifact `RECORD` SHA-256 | `1611f67131143e1c619c459df0d43139459fa93773b43dc5f475ac34c4f5bfa3` |
+| Equilibrium wheel SHA-256 | `adf241cfdc8a8e1aa186419440adf36f0405ce195f403a9c0461932ba345e198` |
+| Installed-artifact `RECORD` SHA-256 | `235b8b8f111c98baff0273e2fb2f26be951554fa155c5da69b3c894640a7bcc1` |
 | Provider wheel SHA-256 | `66b7ea8fb29e0a268b555cbdf401c3502517c088669a4157e8f64ab985b59ce9` |
 | Ipopt / linear solver | `3.11.9` / MUMPS |
 
