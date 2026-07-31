@@ -23,26 +23,18 @@ This document supersedes the Stage-II same-major search behavior described in
 `docs/designs/2026-07-22-held2-installed-completion.md`. In particular, HELD2.0
 does not require two new candidates from one major iteration.
 
-The first implementation state demonstrated against both the Perdomo
-electrolyte cases and one Khudaida Figure-2 electrolyte LLE case is frozen in
-[`2026-07-28-held2-validated-working-baseline.md`](2026-07-28-held2-validated-working-baseline.md).
-That evidence checkpoint is the regression guardrail for later cleanup and
-performance work; it does not replace this specification.
+The installed Perdomo regression matrix is the current evidence checkpoint for
+later cleanup and performance work; it does not replace this specification.
 
 The paper conditions, package certificates, and deliberate implementation
 policies are cross-referenced in the
 [`2026-07-28-held2-necessary-condition-map.md`](2026-07-28-held2-necessary-condition-map.md).
 That map explains differences; it does not relax this specification.
 
-The 2026-07-28 Khudaida Figure-2 investigation supersedes the earlier Step-8
-prohibition on a
-same-major active-set re-solve. Multiplier-only deletion followed by a
-phase-fraction LP removed phases carrying material and froze the surviving
-compositions, so the reduced state could not satisfy the unchanged balance
-gate. Step 8 now retires at most one KKT-inactive candidate at a time and
-re-solves Problem (67) on the retained candidate neighborhoods. A failed
-reduced solve terminates indeterminate; it is not accepted through
-phase-fraction recovery and is not converted into Stage-II feedback.
+Step 8 retires at most one KKT-inactive candidate at a time and re-solves
+Problem (67) on the retained candidate neighborhoods. A failed reduced solve
+terminates indeterminate; it is not accepted through phase-fraction recovery
+and is not converted into Stage-II feedback.
 
 ## Scope
 
@@ -747,10 +739,9 @@ be reported as a new cut.
 Within one invocation, this step does not seek two candidates and does not
 continue merely to find a different basin after its stop condition has been
 met. Algorithm 1 can return through Step 7 with an unchanged \(\mathcal M\);
-the persistent start ordinal makes that later invocation new work. The
-Khudaida Figure-2 audit confirmed that forcing all 128 default starts after
-the paper stop condition adds 238--285 seconds per feed and changes later
-candidate selection; it is prohibited.
+the persistent start ordinal makes that later invocation new work. An audit
+confirmed that forcing all 128 default starts after the paper stop condition
+adds substantial work and changes later candidate selection; it is prohibited.
 
 ### Step 6 — search all of \(\mathcal M\)
 

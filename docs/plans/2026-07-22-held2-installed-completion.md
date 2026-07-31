@@ -1,5 +1,9 @@
 # HELD2 Installed Completion Plan
 
+Status: Superseded historical implementation plan. The installed case-study
+comparison described below is retained as provenance only and is not a current
+runtime or validation requirement.
+
 ## Outcome Proof
 
 **Intent:** Turn the private HELD2 controller from a Stage-II-indeterminate installed candidate into a reproducible, physically certified private electrolyte-LLE candidate.

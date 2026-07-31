@@ -313,8 +313,7 @@ phases, but not to prove that a feasible trial lies strictly below the
 reference tangent plane.
 
 The native manufactured workflow owns an executable algebraic check of this
-identity. The public Perdomo and Khudaida gates protect the complete
-nonreactive reduction.
+identity. The public Perdomo gate protects the complete nonreactive reduction.
 
 ## Pricing search policy and shared mechanism
 
@@ -510,14 +509,13 @@ Before HELD2 or chemistry internals are shared, freeze and run:
 
 1. the native manufactured Steps 1--10 workflow;
 2. the complete Perdomo numerical matrix;
-3. the single Khudaida Figure-2 numerical gate;
-4. native/Python diagnostic parity;
-5. unchanged named tolerances, resource budgets, and
+3. native/Python diagnostic parity;
+4. unchanged named tolerances, resource budgets, and
    `globality_certificate="not_guaranteed"`; and
-6. the executable HELD2-TPD/GREPE-reduced-cost identity;
-7. the complete chemistry compiler, support, reaction-basis, species-order,
+5. the executable HELD2-TPD/GREPE-reduced-cost identity;
+6. the complete chemistry compiler, support, reaction-basis, species-order,
    sensitivity, and fail-closed tests; and
-8. the public ideal and installed-Provider homogeneous chemical sentinels.
+7. the public ideal and installed-Provider homogeneous chemical sentinels.
 
 The HELD2 Step-5 original-coordinate KKT audit and validated Step-8 Farkas
 evidence must be completed as an isolated, regression-gated prerequisite before

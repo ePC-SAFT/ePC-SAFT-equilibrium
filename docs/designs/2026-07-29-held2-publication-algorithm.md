@@ -358,8 +358,8 @@ a sequential chemistry calculation.
 ## Evidence required before reuse in GREPE
 
 The working HELD2 behavior is frozen by the native Steps 1--10 workflow,
-Perdomo numerical regressions, one Khudaida Figure-2 split, and native/Python
-diagnostic parity. Before shared numerical machinery is extracted for GREPE,
+Perdomo numerical regressions, and native/Python diagnostic parity. Before
+shared numerical machinery is extracted for GREPE,
 two documented evidence gaps must be closed in isolation:
 
 1. the Step-5 original-physical-coordinate KKT and dual-reconstruction audit;

@@ -2,17 +2,22 @@
 
 ## Purpose and status
 
-This document freezes the first local HELD2.0 implementation state known to
-complete both the Perdomo electrolyte cases and a Khudaida electrolyte LLE
-case in reasonable time. It is an evidence checkpoint for subsequent review,
-cleanup, and performance work. It is not a capability admission, a claim that
-the finite search is globally complete, or authority to tune the Provider EOS
-or parameter bundles.
+This document records the first local HELD2.0 implementation state known to
+complete the Perdomo electrolyte cases and the now-retired Figure-2 electrolyte
+case in reasonable time. It is historical evidence retained for review,
+cleanup, and performance provenance. It is not a capability admission, a claim
+that the finite search is globally complete, or authority to tune the Provider
+EOS or parameter bundles.
+
+The Figure-2 consumer and its numerical gate were retired under Equilibrium
+issue #50 so that the EOS case-study bundle can be removed. The records below
+are not current validation requirements.
 
 The normative scientific workflow remains
 [`2026-07-24-held2-paper-algorithm.md`](2026-07-24-held2-paper-algorithm.md).
-Any later implementation change must preserve the two independent numerical
-gates below before it can replace this checkpoint.
+At the time of this checkpoint, the implementation was evaluated against two
+independent numerical gates; those records are retained as historical
+provenance only.
 The relationship between the paper's necessary conditions and the package
 evidence is recorded in
 [`2026-07-28-held2-necessary-condition-map.md`](2026-07-28-held2-necessary-condition-map.md).
@@ -24,12 +29,12 @@ evidence is recorded in
   (Provider frontend 0.2, PR #76)
 - Tracked production/test working-diff SHA-256:
   `f24031fa81a6612d2befa5ee6709190822893fd1db31ada49df24c2d64a50735`
-- Khudaida numerical-gate SHA-256:
+- Retired Figure-2 numerical-gate SHA-256:
   `25bfc55842052134d62a0c8c9a3448451231e734ee460acbc854f787913825fe`
 
 The tracked-diff digest covers `cpp/src`, `cpp/tests`, and
 `tests/test_perdomo_held2_trace.py` relative to the validated integration base.
-The separate digest covers `tests/test_khudaida_held2_gate.py`.
+The separate digest covers the former Figure-2 numerical gate.
 
 ### Merged recovery anchor
 
@@ -39,7 +44,7 @@ never by overwriting an active checkout. Immediately before the GREPE design
 work, that clean anchor passed:
 
 - native `held2-manufactured`: passed in 0.12 s; and
-- the unchanged Perdomo plus Khudaida public gates: `6 passed in 27.62s`.
+- the unchanged Perdomo plus Figure-2 public gates: `6 passed in 27.62s`.
 
 Together with the fixed values below, these are the behavior freeze. GREPE
 work may add equivalence evidence and design documentation, but may not change
@@ -106,15 +111,15 @@ phase compositions, and phase volumes. Their fixed tolerances are:
 The observer parity test additionally requires tracing to leave the numerical
 result unchanged.
 
-## Numerical gate B: Khudaida Figure 2
+## Retired evidence record: Figure 2 case study
 
-`tests/test_khudaida_held2_gate.py` supplies one deliberately bounded,
-public-API gate:
+The former standalone public-API check supplied one deliberately bounded
+case-study record:
 
 - T = 293.15 K
 - P = 100000 Pa
 - components = water, ethanol, isobutanol, sodium-cation, chloride-anion
-- parameter bundle = `khudaida-2026-figure-2-electrolyte-lle@1`
+- parameter bundle = retired Figure-2 case-study bundle@1
 - parameter fingerprint =
   `sha256:b43fac77754d9d5cca8b3db2cbe709892a786d97b756084b167ce126ab4c3007`
 - feed =
@@ -178,16 +183,17 @@ neither the deterministic work count nor the accepted numerical state.
 At this checkpoint:
 
 - the native manufactured Steps 1–10 workflow passed in about 0.1 s;
-- the five focused Perdomo tests plus the Khudaida public gate passed
+- the five focused Perdomo tests plus the former Figure-2 evidence check passed
   (`6 passed in 42.36s`);
 - the full Python suite passed before the final fail-closed Step-8 adjustment
   (`88 passed in 63.21s`);
-- the exact focused native, Perdomo, and Khudaida paths passed again after that
+- the exact focused native, Perdomo, and former Figure-2 paths passed again
+  after that
   adjustment;
 - after resolving persistent-state identity from Appendix C, the native
   manufactured workflow passed in 0.11 s, the five Perdomo checks plus the
-  Khudaida gate passed (`6 passed in 44.32s`), and the full suite passed
-  (`88 passed in 105.99s`);
+  former Figure-2 evidence check passed (`6 passed in 44.32s`), and the full
+  suite passed (`88 passed in 105.99s`);
 - after the code-surface cleanup, the native manufactured workflow passed in
   0.11 s and the full Python suite passed (`88 passed in 30.93s`);
 - after integration with Provider frontend 0.2, the native manufactured
@@ -195,7 +201,7 @@ At this checkpoint:
   native/Python diagnostic parity cases, passed (`131 passed in 40.01s`);
 - Ruff, mypy, native/Python diagnostics, and repository cleanup checks passed.
 
-The eight-row exploratory Khudaida campaign remains a historical
+The eight-row exploratory Figure-2 campaign remains historical
 `NON_ADMISSION`/`SOLVER_LIMIT` receipt. This single accepted gate does not
 retroactively change that campaign or establish broad Figure-2 coverage.
 
@@ -205,8 +211,7 @@ Cleanup and optimization may remove incidental machinery only when:
 
 1. the native manufactured workflow passes;
 2. the complete Perdomo gate passes without widening its tolerances;
-3. the single Khudaida gate passes without changing its feed, parameters,
-   expected equilibrium, or acceptance criteria;
+3. the former Figure-2 evidence record remains unchanged;
 4. fail-closed and independent-evidence semantics remain intact; and
 5. a measured runtime improvement is not purchased by reducing the declared
    finite search or weakening certification.

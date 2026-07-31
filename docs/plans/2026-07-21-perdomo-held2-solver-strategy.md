@@ -1,6 +1,10 @@
 # Perdomo HELD2 Solver-Strategy Implementation Plan
 
-Status: Tasks 0--6 implemented on `main`; Tasks 7--8 remain bounded future work
+Status: Historical implementation plan; Tasks 0--6 landed on `main`, and
+Tasks 7--8 remain bounded future work outside the current cleanup.
+
+The installed case-study tracer described below is retained as scientific
+provenance only. It is not a current runtime or validation requirement.
 
 Authority effect: none
 

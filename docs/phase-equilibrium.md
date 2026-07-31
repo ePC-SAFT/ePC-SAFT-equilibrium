@@ -109,8 +109,8 @@ electrolyte dispatch remains non-admitted development behavior.
 
 The current charged Steps 1--10 contract is the
 [HELD2.0 Paper Algorithm Specification](designs/2026-07-24-held2-paper-algorithm.md),
-with its first Perdomo/Khudaida working state frozen in the
-[validated working baseline](designs/2026-07-28-held2-validated-working-baseline.md).
+with its installed evidence exercised by the Perdomo regression matrix in
+`tests/test_perdomo_held2_trace.py`.
 The older
 [HELD2 Installed Completion](designs/2026-07-22-held2-installed-completion.md)
 and its implementation plan are superseded investigation provenance. They
