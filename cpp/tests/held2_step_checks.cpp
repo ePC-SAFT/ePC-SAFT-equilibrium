@@ -1537,6 +1537,11 @@ void run_held2_step8_checks() {
         duplicate_reduced.outcome == Held2Step8Outcome::CertifiedFeasible
             && duplicate_reduced.active_phases.size() == 2
             && duplicate_reduced.timing.optimizer_solves >= 2
+            && duplicate_reduced.phase_coalescences.size() == 1
+            && duplicate_reduced.phase_coalescences.front()
+                .tolerance == kHeld2PaperPhaseCoalescence.atol
+            && duplicate_reduced.phase_coalescences.front()
+                .reduced_solve_accepted
             && duplicate_reduced.ordinary_balance_inf
                 <= kHeld2Stage3ExplicitBalance.atol,
         "Step-8 did not re-solve a numerical duplicate phase set"

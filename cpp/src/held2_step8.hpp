@@ -51,6 +51,7 @@ struct Held2Step8Result {
     double electroneutrality_scale = 0.0;
     double pressure_residual_inf = std::numeric_limits<double>::infinity();
     std::vector<Held2Phase> active_phases;
+    std::vector<Held2PhaseCoalescence> phase_coalescences;
     std::optional<Held2FarkasCertificate> farkas;
     std::optional<Held2NlpCertificate> nlp;
     Held2StepTiming timing;

@@ -66,10 +66,32 @@ def _packet_fingerprint(packet_root: Path) -> str:
 def _held_parameter_packet() -> Path:
     with Path(__file__).with_name("data-lock.toml").open("rb") as stream:
         lock = tomllib.load(stream)["held_cameretti_sadowski_2008"]
+    expected_lock = {
+        "data_repository": "ePC-SAFT/ePC-SAFT-data",
+        "data_commit": "c096285415d4d3198b9d00fc75af48b837dd1305",
+        "packet_path": "packets/held-cameretti-sadowski-2008/1",
+        "packet_id": "held-cameretti-sadowski-2008",
+        "packet_version": "1",
+        "packet_fingerprint": (
+            "6850a420751cc323f2700450aef8b900af95aa388b6acb003b1d8eaad04e8dbb"
+        ),
+        "materialization": "byte-for-byte",
+    }
+    if lock != expected_lock:
+        raise AssertionError("HELD parameter packet lock changed")
     default_root = Path(__file__).resolve().parents[2] / "ePC-SAFT-data"
-    data_root = Path(os.environ.get("EPCSAFT_DATA_ROOT", default_root))
+    data_root = Path(os.environ.get("EPCSAFT_DATA_ROOT", default_root)).resolve()
+    data_commit = subprocess.run(
+        ["git", "-C", str(data_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if data_commit != lock["data_commit"]:
+        raise AssertionError("HELD parameter packet checkout commit changed")
     packet = data_root / lock["packet_path"]
-    assert _packet_fingerprint(packet) == lock["packet_fingerprint"]
+    if _packet_fingerprint(packet) != lock["packet_fingerprint"]:
+        raise AssertionError("HELD parameter packet bytes changed")
     return packet
 
 

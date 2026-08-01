@@ -207,6 +207,17 @@ struct Held2Problem67Phase {
     double volume = 0.0;
 };
 
+struct Held2PhaseCoalescence {
+    std::size_t left_candidate_index = 0;
+    std::size_t right_candidate_index = 0;
+    std::size_t retained_candidate_index = 0;
+    std::size_t removed_candidate_index = 0;
+    double physical_composition_inf_norm = 0.0;
+    double log_molar_volume_abs = 0.0;
+    double tolerance = 0.0;
+    bool reduced_solve_accepted = false;
+};
+
 struct Held2Problem67Result {
     std::string solver_status = "not_run";
     std::string numerical_status = "not_adjudicated";
@@ -223,6 +234,7 @@ struct Held2Problem67Result {
     double dual_sign_violation_inf_norm = 0.0;
     double bound_complementarity_inf_norm = 0.0;
     std::vector<std::size_t> candidate_indices;
+    std::vector<Held2PhaseCoalescence> phase_coalescences;
     std::vector<Held2Problem67Phase> phases;
     std::vector<double> solution_variables;
     std::optional<Held2FarkasCertificate> feasibility_certificate;
