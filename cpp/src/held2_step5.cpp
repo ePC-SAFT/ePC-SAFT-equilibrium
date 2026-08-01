@@ -17,11 +17,37 @@
 namespace epcsaft_equilibrium {
 namespace {
 
+inline constexpr double kStep5DiluteFaceMuInitial = 1.0e-16;
+inline constexpr double kStep5DiluteFaceBoundPush = 1.0e-14;
+
 struct Step5Assessment {
     bool qualified = false;
     double gap = 0.0;
     std::string reason;
 };
+
+bool finite_values(const std::vector<double>& values) {
+    return std::all_of(
+        values.begin(), values.end(),
+        [](double value) { return std::isfinite(value); }
+    );
+}
+
+bool finite_step5_terminal(const Held2StateEvaluation& terminal) {
+    return std::isfinite(terminal.volume)
+        && terminal.volume > 0.0
+        && std::isfinite(terminal.objective)
+        && finite_values(terminal.gradient)
+        && finite_values(terminal.hessian)
+        && finite_values(terminal.modified_fractions)
+        && finite_values(terminal.physical_amounts)
+        && finite_values(terminal.modified_potentials)
+        && finite_values(terminal.chemical_potentials_over_rt)
+        && std::isfinite(terminal.pressure_stationarity_relative)
+        && std::isfinite(
+            terminal.pressure_stationarity_derivative_log_volume
+        );
+}
 
 struct Step5Start {
     std::vector<double> independent;
@@ -1201,7 +1227,8 @@ Step5LocalRun solve_step5_local(
     const std::vector<Held2PolytopeConstraint>& constraints,
     const std::vector<double>& initial,
     const std::vector<double>& lower,
-    const std::vector<double>& upper
+    const std::vector<double>& upper,
+    bool near_bound_restart = false
 ) {
     Ipopt::SmartPtr<Step5Tnlp> problem = new Step5Tnlp(
         std::move(objective),
@@ -1232,6 +1259,18 @@ Step5LocalRun solve_step5_local(
         "nlp_scaling_method", "gradient-based"
     );
     application->Options()->SetNumericValue("bound_relax_factor", 0.0);
+    if (near_bound_restart) {
+        application->Options()->SetStringValue("mu_strategy", "monotone");
+        application->Options()->SetNumericValue(
+            "mu_init", kStep5DiluteFaceMuInitial
+        );
+        application->Options()->SetNumericValue(
+            "bound_push", kStep5DiluteFaceBoundPush
+        );
+        application->Options()->SetNumericValue(
+            "bound_frac", kStep5DiluteFaceBoundPush
+        );
+    }
     if (application->Initialize() != Ipopt::Solve_Succeeded) {
         return {};
     }
@@ -1493,6 +1532,7 @@ Held2Step5Result run_held2_step5(
             }
             certificate.finite_and_in_domain =
                 std::isfinite(value)
+                && finite_step5_terminal(terminal)
                 && terminal.volume >= terminal_volume_bounds[0]
                 && terminal.volume <= terminal_volume_bounds[1];
             certificate.kkt = certify_step5_terminal(
@@ -1511,6 +1551,103 @@ Held2Step5Result run_held2_step5(
                 && certificate.kkt->accepted;
         };
         assess_terminal();
+        if (!certificate.accepted && certificate.finite_and_in_domain
+            && certificate.kkt
+            && certificate.kkt->reason == "stationarity_failed"
+            && assess_step5(state.upper_bound, value, true).qualified
+            && run.lower_bound_multipliers.size() == dimension + 1) {
+            std::vector<double> face_initial = run.variables;
+            bool near_dilute_face = false;
+            const double face_radius = std::sqrt(
+                kHeld2Stage2KktComplementarity.atol
+            );
+            Held2DiluteFaceRestartEvidence face_evidence;
+            face_evidence.face_radius = face_radius;
+            face_evidence.bound_activity_atol =
+                kHeld2BoundActivity.atol;
+            face_evidence.dual_sign_atol =
+                kHeld2Stage2KktDualSign.atol;
+            face_evidence.complementarity_atol =
+                kHeld2Stage2KktComplementarity.atol;
+            for (std::size_t coordinate = 0;
+                 coordinate < dimension;
+                 ++coordinate) {
+                const double distance =
+                    run.variables[coordinate] - solver_lower[coordinate];
+                const double multiplier =
+                    run.lower_bound_multipliers[coordinate];
+                if (std::isfinite(distance)
+                    && std::isfinite(multiplier)
+                    && distance > kHeld2BoundActivity.atol
+                    && distance <= face_radius
+                    && multiplier > kHeld2Stage2KktDualSign.atol
+                    && multiplier * distance
+                        <= kHeld2Stage2KktComplementarity.atol) {
+                    face_initial[coordinate] = solver_lower[coordinate];
+                    near_dilute_face = true;
+                    face_evidence.coordinate_indices.push_back(
+                        coordinate
+                    );
+                    face_evidence.lower_bound_distances.push_back(
+                        distance
+                    );
+                    face_evidence.lower_bound_multipliers.push_back(
+                        multiplier
+                    );
+                    face_evidence.complementarity_products.push_back(
+                        multiplier * distance
+                    );
+                }
+            }
+            if (near_dilute_face) {
+                face_evidence.attempted = true;
+                Step5LocalRun face_run = solve_step5_local(
+                    objective,
+                    coordinates.polytope_constraints,
+                    face_initial,
+                    solver_lower,
+                    solver_upper,
+                    true
+                );
+                ++result.timing.optimizer_solves;
+                result.timing.optimizer_iterations +=
+                    static_cast<std::uint64_t>(face_run.iterations);
+                face_evidence.solver_status = face_run.status;
+                if (face_run.converged
+                    && face_run.variables.size() == dimension + 1
+                    && std::all_of(
+                        face_run.variables.begin(),
+                        face_run.variables.end(),
+                        [](double candidate) {
+                            return std::isfinite(candidate);
+                        }
+                    )) {
+                    try {
+                        std::vector<double> face_independent(
+                            face_run.variables.begin(),
+                            face_run.variables.end() - 1
+                        );
+                        Held2StateEvaluation face_terminal =
+                            counted_evaluator(
+                                face_independent,
+                                face_run.variables.back()
+                            );
+                        run = std::move(face_run);
+                        audited_variables = run.variables;
+                        independent = std::move(face_independent);
+                        terminal = std::move(face_terminal);
+                        certificate.solver_status =
+                            run.status + "_dilute_face";
+                        assess_terminal();
+                        face_evidence.accepted = certificate.accepted;
+                    } catch (...) {
+                        // Preserve the original rejected certificate.
+                    }
+                }
+                certificate.dilute_face_restart =
+                    std::move(face_evidence);
+            }
+        }
         if (!certificate.accepted && certificate.kkt
             && certificate.kkt->reason == "pressure_stationarity_failed"
             && assess_step5(state.upper_bound, value, true).qualified) {

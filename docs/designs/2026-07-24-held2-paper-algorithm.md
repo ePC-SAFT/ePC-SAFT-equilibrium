@@ -738,6 +738,24 @@ controller state, and fixed random stream—not component names, feed
 fingerprints, or campaign point identities. Each local certificate records
 its start family.
 
+After an otherwise qualified finite, in-domain local terminal fails only the
+independent stationarity audit, Step 5 may make one dilute-face restart for
+that start. Finite means all retained thermodynamic and reconstructed physical
+state evidence is finite, not only the objective and volume. A composition
+coordinate is eligible only when Ipopt reports a
+positive lower-bound multiplier, its distance from the strictly positive
+finite-search floor is larger than `bound_activity` but no larger than the
+square root of `stage2_kkt_complementarity`, and the multiplier-distance
+product already passes `stage2_kkt_complementarity`. Eligible coordinates are
+projected to their existing positive floors and re-solved with a monotone
+low-barrier Ipopt initialization. The restart is generic, is counted as an
+optimizer solve, and cannot recurse. It changes neither the finite-search
+floor nor any pressure, KKT, physical, or objective-qualification tolerance;
+the independent certificate still decides acceptance. Attempt diagnostics
+retain the eligibility radius and tolerances, eligible coordinate indices,
+raw lower-bound distances and multipliers, complementarity products, restart
+solver status, and independent acceptance result.
+
 Track the best independently certified local solution. Certification requires
 a finite in-domain physical state, pressure stationarity, primal feasibility,
 original-coordinate first-order KKT stationarity with explicit normalization
@@ -1021,8 +1039,18 @@ manufacture a Step-6 candidate count.
 2. Remove at most one nominated duplicate and re-solve the complete reduced
    Problem (67), including its feasibility LP, nonlinear solve, KKT audit,
    balances, pressure, charge, and phase-identity tests. Repeat one pair at a
-   time under the shared Stage-III solve budget. Never manufacture a retained
-   state by summing weights into one of the pre-reduction representatives.
+   time under the shared Stage-III solve budget. Center the reduced
+   neighborhoods on the converged higher-dimensional phase states. Transfer
+   the removed phase amount to the retained candidate, and use the
+   phase-fraction-weighted independent modified composition and log-volume of
+   the nominated pair for that coalesced center and warm start. This preserves
+   the linear modified-composition balance and avoids replaying stale Stage-II
+   neighborhoods. Recompute each reduced neighborhood's Provider volume bounds
+   at its recentered composition and fail closed if those bounds are
+   unavailable, invalid, or exclude the exact converged/weighted log-volume;
+   never clamp or otherwise alter that center. It is optimizer initialization
+   only: it does not manufacture an accepted retained state, and the reduced
+   solve must pass every gate.
 3. Do not retire a distinct phase because its amount or any component
    fraction is small. Trace component fractions remain valid linear Step-8
    variables and do not trigger phase identity changes.
@@ -1058,7 +1086,8 @@ selection contains fewer than two candidates, use the complete current
 changing the accepted continuation path, and prevents an already-retired
 newest member from being reintroduced as new evidence after a rejected solve.
 Surviving candidate neighborhoods may be recentered only under the boundary
-rule above.
+rule above or the conservation-preserving coalescence reduction in duplicate
+policy item 2.
 
 If the resulting ordered stable-ID vector and effective neighborhood centers
 are exactly the terminal problem already solved, reuse that Step-8 result

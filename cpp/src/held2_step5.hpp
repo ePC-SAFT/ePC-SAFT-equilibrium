@@ -23,6 +23,20 @@ struct Held2ResourceProfile {
     int step5_recovery_start_cap = 2048;
 };
 
+struct Held2DiluteFaceRestartEvidence {
+    double face_radius = 0.0;
+    double bound_activity_atol = 0.0;
+    double dual_sign_atol = 0.0;
+    double complementarity_atol = 0.0;
+    std::vector<std::size_t> coordinate_indices;
+    std::vector<double> lower_bound_distances;
+    std::vector<double> lower_bound_multipliers;
+    std::vector<double> complementarity_products;
+    std::string solver_status = "not_run";
+    bool attempted = false;
+    bool accepted = false;
+};
+
 struct Held2LocalCertificate {
     std::uint64_t start_ordinal = 0;
     std::string start_family;
@@ -30,6 +44,7 @@ struct Held2LocalCertificate {
     std::optional<double> local_value;
     bool finite_and_in_domain = false;
     std::optional<Held2Step5KktCertificate> kkt;
+    std::optional<Held2DiluteFaceRestartEvidence> dilute_face_restart;
     bool accepted = false;
 };
 

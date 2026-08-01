@@ -1386,6 +1386,112 @@ void run_held2_step5_checks() {
                 >= 1,
         active_bound_failure.c_str()
     );
+
+    Held2PersistentState dilute_state;
+    dilute_state.coordinates = *prepared.coordinates;
+    dilute_state.feed = {0.5};
+    dilute_state.feed_reduced_gibbs = 10.0;
+    dilute_state.M = {
+        {1, {0.2}, 1.0, 0.0, 0.0, {}, "master"},
+        {2, {0.8}, 1.0, 0.0, 0.0, {}, "master"},
+    };
+    const Held2Step4Result dilute_step4 = run_held2_step4(dilute_state);
+    const double dilute_multiplier = dilute_state.multipliers.front();
+    const double dilute_lower =
+        prepared.coordinates->independent_lower_bounds.front();
+    const double dilute_offset = dilute_state.upper_bound - 1.0;
+    const Held2Step5Result dilute = run_held2_step5(
+        prepared,
+        dilute_step4,
+        dilute_state,
+        [dilute_multiplier, dilute_lower, dilute_offset](
+            const auto& composition, double log_volume
+        ) {
+            constexpr double slope = 2.25e-5;
+            const double delta = composition.front() - dilute_lower;
+            const double composition_gradient =
+                dilute_multiplier + slope + delta;
+            Held2StateEvaluation evaluated;
+            evaluated.modified_fractions = {
+                1.0 - composition.front(), composition.front()
+            };
+            evaluated.physical_amounts = {
+                1.0 - composition.front(),
+                0.5 * composition.front(),
+                0.5 * composition.front(),
+            };
+            evaluated.volume = std::exp(log_volume);
+            evaluated.objective = dilute_offset
+                + dilute_multiplier * delta + slope * delta
+                + 0.5 * delta * delta
+                + 0.5 * log_volume * log_volume;
+            evaluated.gradient = {
+                composition_gradient, log_volume
+            };
+            evaluated.hessian = {1.0, 0.0, 0.0, 1.0};
+            evaluated.chemical_potentials_over_rt = {
+                0.0, 2.0 * composition_gradient, 0.0
+            };
+            evaluated.modified_potentials = {
+                0.0, composition_gradient
+            };
+            evaluated.pressure_stationarity_relative = -log_volume;
+            evaluated.pressure_stationarity_derivative_log_volume = -1.0;
+            return evaluated;
+        },
+        {0, 8, 10}
+    );
+    const std::string dilute_failure =
+        "Step-5 did not resolve a dilute positive finite-search face"
+        " (status=" + dilute.status + ", reason=" + dilute.reason
+        + ", starts=" + std::to_string(dilute.starts_consumed)
+        + (dilute.attempts.empty() || !dilute.attempts.front().kkt
+            ? ")"
+            : ", kkt=" + dilute.attempts.front().kkt->reason
+                + ", x=" + std::to_string(
+                    dilute.attempts.front().kkt
+                        ->audited_variables.front()
+                )
+                + ", x_nano=" + std::to_string(
+                    1.0e9 * dilute.attempts.front().kkt
+                        ->audited_variables.front()
+                )
+                + ", residual=" + std::to_string(
+                    dilute.attempts.front().kkt
+                        ->stationarity_residual_inf
+                )
+                + ", solver_zl=" + std::to_string(
+                    dilute.attempts.front().kkt
+                        ->solver_lower_bound_multipliers.front()
+                )
+                + ", audited_zl=" + std::to_string(
+                    dilute.attempts.front().kkt
+                        ->lower_bound_multipliers.front()
+                ) + ")");
+    require(
+        dilute.status == "complete"
+            && dilute.starts_consumed == 1
+            && dilute.timing.optimizer_solves == 2
+            && dilute.attempts.size() == 1
+            && dilute.attempts.front().accepted
+            && dilute.attempts.front().kkt
+            && dilute.attempts.front().kkt->accepted
+            && dilute.attempts.front().dilute_face_restart
+            && dilute.attempts.front().dilute_face_restart->attempted
+            && dilute.attempts.front().dilute_face_restart->accepted
+            && dilute.attempts.front().dilute_face_restart
+                ->coordinate_indices == std::vector<std::size_t>{0}
+            && dilute.attempts.front().dilute_face_restart
+                ->lower_bound_distances.size() == 1
+            && dilute.attempts.front().dilute_face_restart
+                ->complementarity_products.front()
+                <= kHeld2Stage2KktComplementarity.atol
+            && dilute.attempts.front().kkt->audited_variables.front()
+                > 0.0
+            && dilute.attempts.front().kkt->audited_variables.front()
+                <= dilute_lower + kHeld2BoundActivity.atol,
+        dilute_failure.c_str()
+    );
 }
 
 void run_held2_step6_checks() {
@@ -1573,6 +1679,116 @@ void run_held2_step8_checks() {
             && duplicate_reduced.ordinary_balance_inf
                 <= kHeld2Stage3ExplicitBalance.atol,
         "Step-8 did not re-solve a numerical duplicate phase set"
+    );
+
+    auto recentered_bound_queries =
+        std::make_shared<std::vector<double>>();
+    const Held2Step1Result composition_bounded_prepared = step1(
+        {0.0, 1.0, -1.0},
+        {0.50, 0.25, 0.25},
+        [recentered_bound_queries](const std::vector<double>& composition) {
+            recentered_bound_queries->push_back(composition.front());
+            return std::array<double, 2>{0.5, 1.5};
+        }
+    );
+    const Held2Step8Result composition_bounded_reduced =
+        manufactured_step8(
+            composition_bounded_prepared, numerical_duplicates
+        );
+    const bool queried_weighted_center = std::any_of(
+        recentered_bound_queries->begin(),
+        recentered_bound_queries->end(),
+        [](double composition) {
+            return composition > 0.20 && composition < 0.200004;
+        }
+    );
+    require(
+        composition_bounded_reduced.outcome
+                == Held2Step8Outcome::CertifiedFeasible
+            && queried_weighted_center,
+        "Step-8 did not refresh composition-dependent bounds at the"
+        " weighted coalescence center"
+    );
+
+    auto nonretained_query_count = std::make_shared<int>(0);
+    const Held2Step1Result refreshed_nonretained_prepared = step1(
+        {0.0, 1.0, -1.0},
+        {0.50, 0.25, 0.25},
+        [nonretained_query_count](const std::vector<double>& composition) {
+            if (composition.front() > 0.5) {
+                ++*nonretained_query_count;
+                if (*nonretained_query_count > 1) {
+                    return std::array<double, 2>{0.5, 1.4};
+                }
+            }
+            return std::array<double, 2>{0.5, 1.5};
+        }
+    );
+    const Held2Step8Result refreshed_nonretained =
+        manufactured_step8(
+            refreshed_nonretained_prepared, numerical_duplicates
+        );
+    const std::string nonretained_failure =
+        "Step-8 did not refresh and apply bounds for a recentered"
+        " non-retained phase (outcome="
+        + std::to_string(static_cast<int>(refreshed_nonretained.outcome))
+        + ", queries=" + std::to_string(*nonretained_query_count)
+        + ", reason=" + refreshed_nonretained.reason + ")";
+    require(
+        refreshed_nonretained.outcome
+                == Held2Step8Outcome::CertifiedFeasible
+            && *nonretained_query_count >= 2,
+        nonretained_failure.c_str()
+    );
+
+    const Held2Step1Result rejecting_bounds_prepared = step1(
+        {0.0, 1.0, -1.0},
+        {0.50, 0.25, 0.25},
+        [](const std::vector<double>& composition) {
+            if (composition.front() > 0.20
+                && composition.front() < 0.200004) {
+                throw std::domain_error("manufactured bound failure");
+            }
+            return std::array<double, 2>{0.5, 1.5};
+        }
+    );
+    const Held2Step8Result rejected_recenter = manufactured_step8(
+        rejecting_bounds_prepared, numerical_duplicates
+    );
+    require(
+        rejected_recenter.outcome == Held2Step8Outcome::Indeterminate
+            && rejected_recenter.reason
+                == "stage_iii_recenter_volume_bounds_failed"
+            && rejected_recenter.phase_coalescences.size() == 1
+            && !rejected_recenter.phase_coalescences.front()
+                .reduced_solve_accepted,
+        "Step-8 did not fail closed when recentered Provider bounds failed"
+    );
+
+    const Held2Step1Result excluding_bounds_prepared = step1(
+        {0.0, 1.0, -1.0},
+        {0.50, 0.25, 0.25},
+        [](const std::vector<double>& composition) {
+            if (composition.front() > 0.20
+                && composition.front() < 0.200004) {
+                return std::array<double, 2>{1.1, 1.5};
+            }
+            return std::array<double, 2>{0.5, 1.5};
+        }
+    );
+    const Held2Step8Result excluded_weighted_center =
+        manufactured_step8(
+            excluding_bounds_prepared, numerical_duplicates
+        );
+    require(
+        excluded_weighted_center.outcome
+                == Held2Step8Outcome::Indeterminate
+            && excluded_weighted_center.reason
+                == "stage_iii_recenter_volume_out_of_bounds"
+            && excluded_weighted_center.phase_coalescences.size() == 1
+            && !excluded_weighted_center.phase_coalescences.front()
+                .reduced_solve_accepted,
+        "Step-8 silently changed an out-of-domain weighted center"
     );
 
     std::vector<Held2StageIICandidate> budget_candidates;

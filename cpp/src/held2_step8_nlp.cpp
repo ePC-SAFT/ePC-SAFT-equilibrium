@@ -1049,7 +1049,8 @@ Held2Problem67Result solve_held2_problem67(
     std::vector<double> variables,
     const Held2StateValueEvaluator& value_evaluator,
     int stage_iii_solve_budget,
-    bool allow_feasibility_support_retry
+    bool allow_feasibility_support_retry,
+    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator
 ) {
     Held2Problem67Result result;
     if (stage_iii_solve_budget < 1) {
@@ -1254,7 +1255,8 @@ Held2Problem67Result solve_held2_problem67(
                 {},
                 value_evaluator,
                 stage_iii_solve_budget - 1,
-                false
+                false,
+                volume_bounds_evaluator
             );
             supported.stage_iii_solve_count +=
                 result.stage_iii_solve_count;
@@ -1464,7 +1466,8 @@ Held2Problem67Result solve_held2_problem67(
             retained_variables,
             value_evaluator,
             stage_iii_solve_budget - 1,
-            allow_feasibility_support_retry
+            allow_feasibility_support_retry,
+            volume_bounds_evaluator
         );
         restore_coalescence_candidate_indices(
             refined.phase_coalescences, retired_index
@@ -1587,14 +1590,129 @@ Held2Problem67Result solve_held2_problem67(
         }
         std::vector<Held2StageIICandidate> distinct_candidates;
         std::vector<std::array<double, 2>> distinct_bounds;
+        std::vector<double> distinct_variables;
         distinct_candidates.reserve(candidates.size() - 1);
         distinct_bounds.reserve(candidates.size() - 1);
+        distinct_variables.reserve((candidates.size() - 1) * block_size);
         for (std::size_t phase = 0; phase < candidates.size(); ++phase) {
             if (phase == duplicate_removed) {
                 continue;
             }
-            distinct_candidates.push_back(candidates[phase]);
-            distinct_bounds.push_back(phase_coordinate_bounds[phase]);
+            Held2StageIICandidate refined_candidate = candidates[phase];
+            const std::size_t offset = phase * block_size;
+            refined_candidate.independent_modified_fractions.assign(
+                variables.begin()
+                    + static_cast<std::ptrdiff_t>(offset + 1),
+                variables.begin()
+                    + static_cast<std::ptrdiff_t>(offset + 1 + dimension)
+            );
+            refined_candidate.volume = solved_states[phase].volume;
+            refined_candidate.phase_coordinate =
+                variables[offset + 1 + dimension];
+            if (phase == duplicate_retained) {
+                const double retained_fraction = variables[offset];
+                const std::size_t removed_offset =
+                    duplicate_removed * block_size;
+                const double removed_fraction =
+                    variables[removed_offset];
+                const double merged_fraction =
+                    retained_fraction + removed_fraction;
+                if (merged_fraction > 0.0) {
+                    for (std::size_t coordinate = 0;
+                         coordinate < dimension;
+                         ++coordinate) {
+                        refined_candidate
+                            .independent_modified_fractions[coordinate] = (
+                                retained_fraction
+                                    * variables[offset + 1 + coordinate]
+                                + removed_fraction
+                                    * variables[
+                                        removed_offset + 1 + coordinate
+                                    ]
+                            ) / merged_fraction;
+                    }
+                    refined_candidate.phase_coordinate = (
+                        retained_fraction
+                            * variables[offset + 1 + dimension]
+                        + removed_fraction
+                            * variables[
+                                removed_offset + 1 + dimension
+                            ]
+                    ) / merged_fraction;
+                    refined_candidate.volume = std::exp(
+                        refined_candidate.phase_coordinate
+                    );
+                }
+            }
+            std::array<double, 2> recentered_bounds;
+            if (!volume_bounds_evaluator) {
+                result.phase_coalescences.push_back(event);
+                result.numerical_status = "not_converged";
+                result.failure_reason =
+                    "stage_iii_recenter_volume_bounds_unavailable";
+                return result;
+            }
+            try {
+                const std::array<double, 2> physical_bounds =
+                    volume_bounds_evaluator(
+                        refined_candidate
+                            .independent_modified_fractions
+                    );
+                if (!std::isfinite(physical_bounds[0])
+                    || !std::isfinite(physical_bounds[1])
+                    || physical_bounds[0] <= 0.0
+                    || physical_bounds[0] >= physical_bounds[1]) {
+                    throw std::domain_error(
+                        "invalid recentered volume bounds"
+                    );
+                }
+                recentered_bounds = {
+                    std::log(physical_bounds[0]),
+                    std::log(physical_bounds[1]),
+                };
+            } catch (...) {
+                result.phase_coalescences.push_back(event);
+                result.numerical_status = "not_converged";
+                result.failure_reason =
+                    "stage_iii_recenter_volume_bounds_failed";
+                return result;
+            }
+            if (refined_candidate.phase_coordinate
+                    < recentered_bounds[0]
+                || refined_candidate.phase_coordinate
+                    > recentered_bounds[1]) {
+                result.phase_coalescences.push_back(event);
+                result.numerical_status = "not_converged";
+                result.failure_reason =
+                    "stage_iii_recenter_volume_out_of_bounds";
+                return result;
+            }
+            refined_candidate.volume = std::exp(
+                refined_candidate.phase_coordinate
+            );
+            distinct_candidates.push_back(std::move(refined_candidate));
+            distinct_bounds.push_back(recentered_bounds);
+            const std::size_t destination = distinct_variables.size();
+            distinct_variables.insert(
+                distinct_variables.end(),
+                variables.begin() + static_cast<std::ptrdiff_t>(offset),
+                variables.begin()
+                    + static_cast<std::ptrdiff_t>(offset + block_size)
+            );
+            distinct_variables[destination + 1 + dimension] =
+                distinct_candidates.back().phase_coordinate;
+            if (phase == duplicate_retained) {
+                distinct_variables[destination] +=
+                    variables[duplicate_removed * block_size];
+                std::copy(
+                    distinct_candidates.back()
+                        .independent_modified_fractions.begin(),
+                    distinct_candidates.back()
+                        .independent_modified_fractions.end(),
+                    distinct_variables.begin()
+                        + static_cast<std::ptrdiff_t>(destination + 1)
+                );
+            }
         }
         Held2Problem67Result refined = solve_held2_problem67(
             coordinates,
@@ -1602,10 +1720,11 @@ Held2Problem67Result solve_held2_problem67(
             distinct_candidates,
             evaluator,
             distinct_bounds,
-            {},
+            std::move(distinct_variables),
             value_evaluator,
             stage_iii_solve_budget - 1,
-            allow_feasibility_support_retry
+            allow_feasibility_support_retry,
+            volume_bounds_evaluator
         );
         restore_coalescence_candidate_indices(
             refined.phase_coalescences, duplicate_removed

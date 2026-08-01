@@ -252,6 +252,13 @@ Held2Step8Result run_held2_step8(
             ++provider_evaluations;
             return evaluator(composition, log_volume);
         };
+    const Held2VolumeBoundsEvaluator counted_volume_bounds =
+        [&step1, &provider_evaluations](
+            const std::vector<double>& composition
+        ) {
+            ++provider_evaluations;
+            return (*step1.volume_bounds)(composition);
+        };
     const Held2StateValueEvaluator counted_value =
         value_evaluator
         ? Held2StateValueEvaluator(
@@ -334,7 +341,8 @@ Held2Step8Result run_held2_step8(
         return solve_held2_problem67(
             *step1.coordinates, physical_feed,
             candidates, counted_evaluator, bounds,
-            std::move(start), counted_value
+            std::move(start), counted_value, 32, true,
+            counted_volume_bounds
         );
     };
     const auto accepted_nlp_evidence = [](const Held2Problem67Result& value) {

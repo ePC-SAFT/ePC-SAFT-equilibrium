@@ -1051,6 +1051,33 @@ JsonValue paper_algorithm_to_json(
             certificate["kkt"] = attempt.kkt
                 ? held2_step5_kkt_certificate_to_json(*attempt.kkt)
                 : JsonValue(nullptr);
+            if (attempt.dilute_face_restart) {
+                const Held2DiluteFaceRestartEvidence& evidence =
+                    *attempt.dilute_face_restart;
+                JsonValue restart = JsonValue::object();
+                restart["face_radius"] = evidence.face_radius;
+                restart["bound_activity_atol"] =
+                    evidence.bound_activity_atol;
+                restart["dual_sign_atol"] = evidence.dual_sign_atol;
+                restart["complementarity_atol"] =
+                    evidence.complementarity_atol;
+                restart["coordinate_indices"] =
+                    evidence.coordinate_indices;
+                restart["lower_bound_distances"] =
+                    evidence.lower_bound_distances;
+                restart["lower_bound_multipliers"] =
+                    evidence.lower_bound_multipliers;
+                restart["complementarity_products"] =
+                    evidence.complementarity_products;
+                restart["solver_status"] = evidence.solver_status;
+                restart["attempted"] = evidence.attempted;
+                restart["accepted"] = evidence.accepted;
+                certificate["dilute_face_restart"] =
+                    std::move(restart);
+            } else {
+                certificate["dilute_face_restart"] =
+                    JsonValue(nullptr);
+            }
             certificate["accepted"] = attempt.accepted;
             attempts.append(std::move(certificate));
         }
