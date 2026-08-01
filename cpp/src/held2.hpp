@@ -118,10 +118,6 @@ using Held2StateEvaluator = std::function<Held2StateEvaluation(
     const std::vector<double>&,
     double
 )>;
-using Held2StateValueEvaluator = std::function<double(
-    const std::vector<double>&,
-    double
-)>;
 
 using Held2VolumeBoundsEvaluator = std::function<std::array<double, 2>(
     const std::vector<double>&

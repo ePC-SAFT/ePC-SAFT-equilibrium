@@ -23,7 +23,6 @@ struct Held2ThermodynamicAccess {
     double total_ion_mole_fraction_max =
         std::numeric_limits<double>::quiet_NaN();
     Held2StateEvaluator evaluate_trace;
-    Held2StateValueEvaluator evaluate_value;
 };
 
 struct Held2AlgorithmResult {

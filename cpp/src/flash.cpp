@@ -154,18 +154,6 @@ public:
         );
     }
 
-    [[nodiscard]] double evaluate_value(
-        const std::vector<double>& independent,
-        double log_volume
-    ) const {
-        const double volume = std::exp(log_volume);
-        return provider_.evaluate_electrolyte_value(
-            input_.temperature_k,
-            held2_lift_independent_fractions(coordinates_, independent),
-            volume
-        ) + pressure_over_rt_ * volume;
-    }
-
     [[nodiscard]] std::array<double, 2> volume_bounds(
         const std::vector<double>& independent
     ) const {
@@ -278,11 +266,6 @@ Held2ThermodynamicAccess make_installed_held2_access(
     }
     result.evaluate = [problem](const auto& composition, double log_volume) {
         return problem->evaluate(composition, log_volume);
-    };
-    result.evaluate_value = [problem](
-        const auto& composition, double log_volume
-    ) {
-        return problem->evaluate_value(composition, log_volume);
     };
     result.evaluate_trace = [problem](
         const auto& composition, double log_volume

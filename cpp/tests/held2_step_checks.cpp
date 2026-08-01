@@ -1971,7 +1971,7 @@ void run_held2_step8_checks() {
     Held2Step8Result recentered_previous = stable_previous;
     recentered_previous.active_phases.front()
         .independent_modified_fractions.front() =
-            0.20 + kHeld2Problem67Radius;
+            0.20 + kHeld2Problem67InitialRadius;
     replay_evaluations = 0;
     const Held2Step8Result recentered = run_held2_step8(
         prepared,
@@ -2341,7 +2341,6 @@ void run_workflow_check() {
                 return composition.front();
             },
             std::numeric_limits<double>::quiet_NaN(),
-            {},
             {},
         },
         {298.15, 100000.0, {0.5, 0.25, 0.25}},
