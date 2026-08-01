@@ -87,6 +87,55 @@ class SaturationError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class HeldStepTiming:
+    """One native HELD2 step invocation and its measured work."""
+
+    step: int
+    invocation_count: int
+    wall_seconds: float
+    cpu_seconds: float
+    provider_evaluations: int
+    optimizer_solves: int
+    optimizer_iterations: int
+    terminal_status: str
+    terminal_reason: str
+    next_step: int
+
+
+@dataclass(frozen=True)
+class HeldPerformanceDiagnostics:
+    """Measured HELD2 work and mechanism-based recovery evidence."""
+
+    step_timings: tuple[HeldStepTiming, ...]
+    provider_evaluations: int
+    optimizer_solves: int
+    optimizer_iterations: int
+    step5_starts_consumed: int
+    step5_attempts: int
+    step5_accepted_attempts: int
+    step5_repeated_start_ordinal_count: int
+    dilute_face_restart_attempts: int
+    dilute_face_restart_accepts: int
+    dilute_face_coordinate_indices: tuple[int, ...]
+    dilute_face_component_indices: tuple[int, ...]
+    step8_invocations: int
+    step8_return_to_stage_ii_count: int
+    step8_warm_start_count: int
+    step8_cold_fallback_count: int
+    step8_provider_state_evaluations: int
+    step8_provider_value_evaluations: int
+    step8_provider_volume_bound_evaluations: int
+    step8_provider_packing_evaluations: int
+    step8_problem_candidate_count: int
+    step8_attempted_candidate_count: int
+    step8_repeated_problem_count: int
+    step10_invocations: int
+    trace_refinement_activated_count: int
+    trace_refinement_return_to_stage_ii_count: int
+    trace_refinement_component_indices: tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class HeldDiagnostics:
     """Compact evidence from the bounded HELD search and local refinement."""
 
@@ -110,6 +159,7 @@ class HeldDiagnostics:
     search_profiles: tuple[str, ...]
     globality_certificate: str
     failure_reason: str
+    performance: HeldPerformanceDiagnostics | None = None
 
 
 @dataclass(frozen=True)
@@ -709,6 +759,227 @@ def _failed_held_diagnostics(outcome: str, search_status: str, reason: str) -> H
     )
 
 
+def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnostics:
+    timing_payloads = cast(Sequence[object], payload.get("step_timings", ()))
+    timings: list[HeldStepTiming] = []
+    for raw_timing in timing_payloads:
+        if not isinstance(raw_timing, Mapping):
+            raise ValueError("native HELD2 step timing must be a mapping")
+        timing = cast(Mapping[str, object], raw_timing)
+        step = int(cast(int, timing["step"]))
+        invocation_count = int(cast(int, timing["invocation_count"]))
+        wall_seconds = float(cast(float, timing["wall_seconds"]))
+        cpu_seconds = float(cast(float, timing["cpu_seconds"]))
+        provider_evaluations = int(cast(int, timing["provider_evaluations"]))
+        optimizer_solves = int(cast(int, timing["optimizer_solves"]))
+        optimizer_iterations = int(cast(int, timing["optimizer_iterations"]))
+        next_step = int(cast(int, timing["next_step"]))
+        if (
+            step not in range(1, 11)
+            or invocation_count < 0
+            or not math.isfinite(wall_seconds)
+            or wall_seconds < 0.0
+            or not math.isfinite(cpu_seconds)
+            or cpu_seconds < 0.0
+            or min(provider_evaluations, optimizer_solves, optimizer_iterations) < 0
+            or next_step not in range(0, 11)
+        ):
+            raise ValueError("native HELD2 step timing is invalid")
+        timings.append(
+            HeldStepTiming(
+                step=step,
+                invocation_count=invocation_count,
+                wall_seconds=wall_seconds,
+                cpu_seconds=cpu_seconds,
+                provider_evaluations=provider_evaluations,
+                optimizer_solves=optimizer_solves,
+                optimizer_iterations=optimizer_iterations,
+                terminal_status=str(timing["terminal_status"]),
+                terminal_reason=str(timing["terminal_reason"]),
+                next_step=next_step,
+            )
+        )
+
+    step5_starts_consumed = 0
+    step5_attempts = 0
+    step5_accepted_attempts = 0
+    dilute_face_restart_attempts = 0
+    dilute_face_restart_accepts = 0
+    dilute_face_coordinate_indices: set[int] = set()
+    dilute_face_component_indices: set[int] = set()
+    start_ordinals: list[int] = []
+    for raw_step5 in cast(Sequence[object], payload.get("step5_history", ())):
+        if not isinstance(raw_step5, Mapping):
+            raise ValueError("native HELD2 Step 5 history must contain mappings")
+        step5 = cast(Mapping[str, object], raw_step5)
+        starts_consumed = int(cast(int, step5.get("starts_consumed", 0)))
+        if starts_consumed < 0:
+            raise ValueError("native HELD2 Step 5 starts consumed is invalid")
+        step5_starts_consumed += starts_consumed
+        for raw_attempt in cast(Sequence[object], step5.get("attempts", ())):
+            if not isinstance(raw_attempt, Mapping):
+                raise ValueError("native HELD2 Step 5 attempt must be a mapping")
+            attempt = cast(Mapping[str, object], raw_attempt)
+            step5_attempts += 1
+            step5_accepted_attempts += int(bool(attempt.get("accepted", False)))
+            if "start_ordinal" in attempt:
+                ordinal = int(cast(int, attempt["start_ordinal"]))
+                if ordinal < 0:
+                    raise ValueError("native HELD2 Step 5 start ordinal is invalid")
+                start_ordinals.append(ordinal)
+            raw_restart = attempt.get("dilute_face_restart")
+            if not isinstance(raw_restart, Mapping):
+                continue
+            restart = cast(Mapping[str, object], raw_restart)
+            if not bool(restart.get("attempted", False)):
+                continue
+            dilute_face_restart_attempts += 1
+            dilute_face_restart_accepts += int(bool(restart.get("accepted", False)))
+            for raw_coordinate in cast(Sequence[object], restart.get("coordinate_indices", ())):
+                coordinate = int(cast(int, raw_coordinate))
+                if coordinate < 0:
+                    raise ValueError("native HELD2 dilute-face coordinate is invalid")
+                dilute_face_coordinate_indices.add(coordinate)
+            for raw_component in cast(
+                Sequence[object], restart.get("provider_component_indices", ())
+            ):
+                component = int(cast(int, raw_component))
+                if component < 0:
+                    raise ValueError("native HELD2 dilute-face component is invalid")
+                dilute_face_component_indices.add(component)
+
+    return_to_stage_ii_reasons = {
+        "problem_67_not_converged",
+        "stage_iii_solver_not_converged",
+        "stage_iii_active_set_resolve_failed",
+        "stage_iii_active_set_balance_failed",
+    }
+    step8_invocations = 0
+    step8_return_to_stage_ii_count = 0
+    step8_warm_start_count = 0
+    step8_cold_fallback_count = 0
+    step8_provider_state_evaluations = 0
+    step8_provider_value_evaluations = 0
+    step8_provider_volume_bound_evaluations = 0
+    step8_provider_packing_evaluations = 0
+    step8_problem_candidate_count = 0
+    step8_attempted_candidate_count = 0
+    problem_signatures: list[tuple[tuple[int, ...], tuple[float, ...]]] = []
+    for raw_step8 in cast(Sequence[object], payload.get("step8_history", ())):
+        if not isinstance(raw_step8, Mapping):
+            raise ValueError("native HELD2 Step 8 history must contain mappings")
+        step8 = cast(Mapping[str, object], raw_step8)
+        step8_invocations += 1
+        step8_return_to_stage_ii_count += int(
+            str(step8.get("reason", "")) in return_to_stage_ii_reasons
+        )
+        step8_warm_start_count += int(bool(step8.get("warm_start_used", False)))
+        step8_cold_fallback_count += int(bool(step8.get("cold_fallback_used", False)))
+        step8_provider_state_evaluations += int(
+            cast(int, step8.get("provider_state_evaluations", 0))
+        )
+        step8_provider_value_evaluations += int(
+            cast(int, step8.get("provider_value_evaluations", 0))
+        )
+        step8_provider_volume_bound_evaluations += int(
+            cast(int, step8.get("provider_volume_bound_evaluations", 0))
+        )
+        step8_provider_packing_evaluations += int(
+            cast(int, step8.get("provider_packing_evaluations", 0))
+        )
+        if (
+            min(
+                step8_provider_state_evaluations,
+                step8_provider_value_evaluations,
+                step8_provider_volume_bound_evaluations,
+                step8_provider_packing_evaluations,
+            )
+            < 0
+        ):
+            raise ValueError("native HELD2 Step 8 Provider work is invalid")
+        problem_ids = tuple(
+            int(cast(int, value))
+            for value in cast(Sequence[object], step8.get("problem_candidate_ids", ()))
+        )
+        attempted_ids = tuple(
+            int(cast(int, value))
+            for value in cast(Sequence[object], step8.get("attempted_candidate_ids", ()))
+        )
+        problem_variables = tuple(
+            float(cast(float, value))
+            for value in cast(Sequence[object], step8.get("problem_candidate_variables", ()))
+        )
+        step8_problem_candidate_count += len(problem_ids)
+        step8_attempted_candidate_count += len(attempted_ids)
+        problem_signatures.append((problem_ids, problem_variables))
+
+    step10_timings = tuple(timing for timing in timings if timing.step == 10)
+    trace_refinement_component_indices: set[int] = set()
+    trace_refinement_activated_count = 0
+    raw_step10_history = payload.get("step10_history", ())
+    step10_payloads = (
+        cast(Sequence[object], raw_step10_history)
+        if isinstance(raw_step10_history, Sequence)
+        else ()
+    )
+    if not step10_payloads and isinstance(payload.get("step10"), Mapping):
+        step10_payloads = (cast(Mapping[str, object], payload["step10"]),)
+    for raw_step10 in step10_payloads:
+        if not isinstance(raw_step10, Mapping):
+            raise ValueError("native HELD2 Step 10 history must contain mappings")
+        step10 = cast(Mapping[str, object], raw_step10)
+        refinement_activated = False
+        raw_components = step10.get("trace_component_indices")
+        if raw_components is None:
+            raw_components = tuple(
+                cast(Mapping[str, object], refinement)["component_index"]
+                for refinement in cast(Sequence[object], step10.get("refinements", ()))
+                if isinstance(refinement, Mapping)
+            )
+        for raw_component in cast(Sequence[object], raw_components):
+            component = int(cast(int, raw_component))
+            if component < 0:
+                raise ValueError("native HELD2 trace component index is invalid")
+            trace_refinement_component_indices.add(component)
+            refinement_activated = True
+        for raw_refinement in cast(Sequence[object], step10.get("refinements", ())):
+            if not isinstance(raw_refinement, Mapping):
+                raise ValueError("native HELD2 trace refinement must be a mapping")
+        trace_refinement_activated_count += int(refinement_activated)
+
+    return HeldPerformanceDiagnostics(
+        step_timings=tuple(timings),
+        provider_evaluations=sum(timing.provider_evaluations for timing in timings),
+        optimizer_solves=sum(timing.optimizer_solves for timing in timings),
+        optimizer_iterations=sum(timing.optimizer_iterations for timing in timings),
+        step5_starts_consumed=step5_starts_consumed,
+        step5_attempts=step5_attempts,
+        step5_accepted_attempts=step5_accepted_attempts,
+        step5_repeated_start_ordinal_count=(len(start_ordinals) - len(set(start_ordinals))),
+        dilute_face_restart_attempts=dilute_face_restart_attempts,
+        dilute_face_restart_accepts=dilute_face_restart_accepts,
+        dilute_face_coordinate_indices=tuple(sorted(dilute_face_coordinate_indices)),
+        dilute_face_component_indices=tuple(sorted(dilute_face_component_indices)),
+        step8_invocations=step8_invocations,
+        step8_return_to_stage_ii_count=step8_return_to_stage_ii_count,
+        step8_warm_start_count=step8_warm_start_count,
+        step8_cold_fallback_count=step8_cold_fallback_count,
+        step8_provider_state_evaluations=step8_provider_state_evaluations,
+        step8_provider_value_evaluations=step8_provider_value_evaluations,
+        step8_provider_volume_bound_evaluations=(step8_provider_volume_bound_evaluations),
+        step8_provider_packing_evaluations=step8_provider_packing_evaluations,
+        step8_problem_candidate_count=step8_problem_candidate_count,
+        step8_attempted_candidate_count=step8_attempted_candidate_count,
+        step8_repeated_problem_count=(len(problem_signatures) - len(set(problem_signatures))),
+        step10_invocations=sum(timing.invocation_count for timing in step10_timings),
+        trace_refinement_activated_count=trace_refinement_activated_count,
+        trace_refinement_return_to_stage_ii_count=sum(
+            timing.invocation_count for timing in step10_timings if timing.next_step == 4
+        ),
+        trace_refinement_component_indices=tuple(sorted(trace_refinement_component_indices)),
+    )
+
+
 def _held2_diagnostics(payload: Mapping[str, object]) -> HeldDiagnostics:
     outcome = str(payload["outcome"])
     accepted = outcome == "physical_equilibrium_accepted"
@@ -760,6 +1031,7 @@ def _held2_diagnostics(payload: Mapping[str, object]) -> HeldDiagnostics:
         search_profiles=("HELD2.0 paper Steps 1-10",),
         globality_certificate=str(payload["globality_certificate"]),
         failure_reason="" if failure is None else str(failure),
+        performance=_held2_performance(payload),
     )
 
 

@@ -782,6 +782,16 @@ JsonValue paper_step8_to_json(const Held2Step8Result& step) {
     result["attempted_candidate_ids"] = step.attempted_candidate_ids;
     result["candidate_ids"] = step.candidate_ids;
     result["candidate_variables"] = step.candidate_variables;
+    result["warm_start_used"] = step.warm_start_used;
+    result["cold_fallback_used"] = step.cold_fallback_used;
+    result["provider_state_evaluations"] =
+        step.provider_state_evaluations;
+    result["provider_value_evaluations"] =
+        step.provider_value_evaluations;
+    result["provider_volume_bound_evaluations"] =
+        step.provider_volume_bound_evaluations;
+    result["provider_packing_evaluations"] =
+        step.provider_packing_evaluations;
     result["total_reduced_gibbs"] = step.total_reduced_gibbs
         ? JsonValue(*step.total_reduced_gibbs) : JsonValue(nullptr);
     result["ordinary_balance_inf"] = step.ordinary_balance_inf;
@@ -873,6 +883,8 @@ JsonValue paper_step10_to_json(const Held2Step10Result& step) {
     JsonValue result = JsonValue::object();
     result["status"] = step.status;
     result["reason"] = step.reason;
+    result["trace_component_indices"] =
+        step.trace_component_indices;
     JsonValue phases = JsonValue::array();
     for (const Held2Phase& phase : step.phases) {
         phases.append(paper_phase_to_json(phase));
@@ -1063,6 +1075,8 @@ JsonValue paper_algorithm_to_json(
                     evidence.complementarity_atol;
                 restart["coordinate_indices"] =
                     evidence.coordinate_indices;
+                restart["provider_component_indices"] =
+                    evidence.provider_component_indices;
                 restart["lower_bound_distances"] =
                     evidence.lower_bound_distances;
                 restart["lower_bound_multipliers"] =
@@ -1129,6 +1143,11 @@ JsonValue paper_algorithm_to_json(
     } else {
         result["step10"] = nullptr;
     }
+    JsonValue step10_history = JsonValue::array();
+    for (const Held2Step10Result& value : solve.step10_history) {
+        step10_history.append(paper_step10_to_json(value));
+    }
+    result["step10_history"] = std::move(step10_history);
     return result;
 }
 

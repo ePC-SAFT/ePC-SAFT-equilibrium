@@ -103,6 +103,13 @@ Held2Step10Result run_held2_step10(
                 * coordinates.modified_factors[retained];
             if (modified[retained] > 10.0 * lower) continue;
             trace_found = true;
+            if (std::find(
+                    result.trace_component_indices.begin(),
+                    result.trace_component_indices.end(),
+                    provider
+                ) == result.trace_component_indices.end()) {
+                result.trace_component_indices.push_back(provider);
+            }
             const auto reference = std::max_element(
                 result.phases.begin(),
                 result.phases.end(),

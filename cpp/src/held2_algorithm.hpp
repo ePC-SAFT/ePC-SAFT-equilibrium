@@ -42,6 +42,7 @@ struct Held2AlgorithmResult {
     std::vector<Held2Step7Result> step7_history;
     std::vector<Held2Step8Result> step8_history;
     std::vector<Held2Step9Result> step9_history;
+    std::vector<Held2Step10Result> step10_history;
     std::optional<Held2Step10Result> step10;
     std::optional<Held2PersistentState> final_state;
     std::vector<Held2Phase> phases;

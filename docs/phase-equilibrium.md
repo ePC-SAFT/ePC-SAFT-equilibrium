@@ -51,7 +51,10 @@ The package exports three equilibrium operations:
 
 `tp_flash` does not accept a phase count, caller seeds, solver settings,
 backend selection, or a case-specific mode. Its public result owners are
-`TpFlashResult`, `HeldDiagnostics`, and `FlashError`. The removed
+`TpFlashResult`, `HeldDiagnostics`, `HeldPerformanceDiagnostics`,
+`HeldStepTiming`, and `FlashError`. HELD2 performance diagnostics expose
+already-measured native work and mechanism evidence without making solver
+configuration public. The removed
 `two_phase_flash` route and result family have no compatibility alias.
 
 ## Formulation owners
@@ -151,6 +154,17 @@ observer and remains
 silent. Observer failures are swallowed and cannot change solver decisions,
 structured results, tolerances, budgets, or the
 `globality_certificate="not_guaranteed"` label.
+
+The public HELD2 result carries the same completed-work evidence as typed
+`HeldPerformanceDiagnostics`: every native Step invocation, Provider and
+optimizer counts, Step-5 starts and accepted attempts, dilute-face restart
+coordinates, Step-8 retry/candidate totals, and Step-10 trace-refinement
+activations and component indices. Exact repeated Step-5 start
+ordinals and Step-8 candidate problems are counted explicitly. A benchmark
+may classify an aqueous lower-bound edge case only when dilute-face or trace-
+refinement evidence is active and the reported coordinate maps to a neutral
+aqueous component; point identity or elapsed time alone is not a valid
+classifier.
 
 The smallest source-bound workflow is Perdomo et al. (2025), Table 3,
 NaCl-water at 298.15 K, 2508 Pa, and 5.6 mol NaCl per kg water. In the installed

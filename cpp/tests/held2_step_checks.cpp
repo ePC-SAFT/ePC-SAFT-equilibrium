@@ -1482,6 +1482,11 @@ void run_held2_step5_checks() {
             && dilute.attempts.front().dilute_face_restart
                 ->coordinate_indices == std::vector<std::size_t>{0}
             && dilute.attempts.front().dilute_face_restart
+                ->provider_component_indices
+                == std::vector<std::size_t>{
+                    prepared.coordinates->independent_indices.front()
+                }
+            && dilute.attempts.front().dilute_face_restart
                 ->lower_bound_distances.size() == 1
             && dilute.attempts.front().dilute_face_restart
                 ->complementarity_products.front()
@@ -1626,7 +1631,14 @@ void run_held2_step8_checks() {
     require(
         result.outcome == Held2Step8Outcome::CertifiedFeasible
             && result.nlp->accepted
+            && !result.warm_start_used
+            && !result.cold_fallback_used
             && result.timing.optimizer_solves == 1
+            && result.provider_state_evaluations
+                + result.provider_value_evaluations
+                + result.provider_volume_bound_evaluations
+                + result.provider_packing_evaluations
+                == result.timing.provider_evaluations
             && result.phase_coalescences.empty()
             && result.active_phases.size() == 2
             && result.active_phases[0].stable_id == 7
@@ -1976,6 +1988,7 @@ void run_held2_step8_checks() {
     );
     require(
         continued.outcome == Held2Step8Outcome::CertifiedFeasible
+            && continued.warm_start_used
             && continued.problem_candidate_ids
                 == std::vector<std::uint64_t>{7, 9, 11}
             && std::find(
@@ -2127,6 +2140,7 @@ void run_held2_step10_checks() {
     require(
         no_trace.status == "complete"
             && no_trace.reason == "trace_refinement_not_required"
+            && no_trace.trace_component_indices.empty()
             && no_trace.refinements.empty()
             && no_trace.final_certificate->accepted,
         "Step-10 no-trace path changed"
@@ -2209,6 +2223,8 @@ void run_held2_step10_checks() {
         refined.status == "complete"
             && refined.next_action == Held2Step10Action::Accept
             && refined.reason == "trace_refinement_complete"
+            && refined.trace_component_indices
+                == std::vector<std::size_t>{provider}
             && refined.refinements.size() == 1
             && std::abs(
                 refined.refinements.front().refined_mole_fraction - 1.0e-12

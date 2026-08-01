@@ -40,6 +40,14 @@ Reactive liquid-liquid equilibrium containing charged species and requiring
 phase-specific electroneutrality and electrolyte reference-state evidence.
 _Avoid_: Neutral reactive LLE
 
+**Aqueous lower-bound edge case**:
+An accepted HELD2 solve that activates the native Step-5 dilute-face restart
+or Step-10 trace refinement because a neutral aqueous component approaches its
+finite search lower bound. The classification comes from retained recovery
+evidence and coordinate identity, never from a chemistry name, figure number,
+or point index.
+_Avoid_: Slow point, aqueous endpoint, dilute-face edge case
+
 Equilibrium owns both its package evidence and execution of assigned
 installed-artifact campaigns in the sibling Validation repository. The task
 remains based here; Validation remains the durable black-box evidence home and
