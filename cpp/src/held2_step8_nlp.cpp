@@ -81,6 +81,23 @@ double maximum_difference(
     return maximum;
 }
 
+void restore_coalescence_candidate_indices(
+    std::vector<Held2PhaseCoalescence>& events,
+    std::size_t removed_index
+) {
+    const auto restore = [removed_index](std::size_t index) {
+        return index < removed_index ? index : index + 1;
+    };
+    for (Held2PhaseCoalescence& event : events) {
+        event.left_candidate_index = restore(event.left_candidate_index);
+        event.right_candidate_index = restore(event.right_candidate_index);
+        event.retained_candidate_index =
+            restore(event.retained_candidate_index);
+        event.removed_candidate_index =
+            restore(event.removed_candidate_index);
+    }
+}
+
 struct Problem67 {
     const Held2Coordinates& coordinates;
     const std::vector<double>& feed;
@@ -1449,6 +1466,9 @@ Held2Problem67Result solve_held2_problem67(
             stage_iii_solve_budget - 1,
             allow_feasibility_support_retry
         );
+        restore_coalescence_candidate_indices(
+            refined.phase_coalescences, retired_index
+        );
         if (refined.numerical_status == "converged") {
             std::vector<std::size_t> candidate_indices;
             candidate_indices.reserve(refined.candidate_indices.size());
@@ -1471,6 +1491,7 @@ Held2Problem67Result solve_held2_problem67(
             }
         }
         result.solution_variables = std::move(retained_variables);
+        result.phase_coalescences = std::move(refined.phase_coalescences);
         result.stage_iii_solve_count += refined.stage_iii_solve_count;
         result.optimizer_iteration_count +=
             refined.optimizer_iteration_count;
@@ -1542,12 +1563,24 @@ Held2Problem67Result solve_held2_problem67(
         }
     }
     if (duplicate_removed < candidates.size()) {
+        Held2PhaseCoalescence event{
+            duplicate_left,
+            duplicate_right,
+            duplicate_retained,
+            duplicate_removed,
+            duplicate_composition_distance,
+            duplicate_log_volume_distance,
+            phase_coalescence.atol,
+            false,
+        };
         if (candidates.size() == 2) {
+            result.phase_coalescences.push_back(event);
             result.numerical_status = "not_converged";
             result.failure_reason = "collapsed_phase_set";
             return result;
         }
         if (stage_iii_solve_budget == 1) {
+            result.phase_coalescences.push_back(event);
             result.numerical_status = "not_converged";
             result.failure_reason = "stage_iii_solve_budget_exhausted";
             return result;
@@ -1574,31 +1607,11 @@ Held2Problem67Result solve_held2_problem67(
             stage_iii_solve_budget - 1,
             allow_feasibility_support_retry
         );
-        const auto restore_candidate_index = [duplicate_removed](
-            std::size_t index
-        ) {
-            return index < duplicate_removed ? index : index + 1;
-        };
-        for (Held2PhaseCoalescence& event : refined.phase_coalescences) {
-            event.left_candidate_index =
-                restore_candidate_index(event.left_candidate_index);
-            event.right_candidate_index =
-                restore_candidate_index(event.right_candidate_index);
-            event.retained_candidate_index =
-                restore_candidate_index(event.retained_candidate_index);
-            event.removed_candidate_index =
-                restore_candidate_index(event.removed_candidate_index);
-        }
-        Held2PhaseCoalescence event{
-            duplicate_left,
-            duplicate_right,
-            duplicate_retained,
-            duplicate_removed,
-            duplicate_composition_distance,
-            duplicate_log_volume_distance,
-            phase_coalescence.atol,
-            refined.numerical_status == "converged",
-        };
+        restore_coalescence_candidate_indices(
+            refined.phase_coalescences, duplicate_removed
+        );
+        event.reduced_solve_accepted =
+            refined.numerical_status == "converged";
         refined.phase_coalescences.insert(
             refined.phase_coalescences.begin(), event
         );

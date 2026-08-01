@@ -1521,10 +1521,38 @@ void run_held2_step8_checks() {
         result.outcome == Held2Step8Outcome::CertifiedFeasible
             && result.nlp->accepted
             && result.timing.optimizer_solves == 1
+            && result.phase_coalescences.empty()
             && result.active_phases.size() == 2
             && result.active_phases[0].stable_id == 7
             && result.active_phases[1].stable_id == 9,
         "Step-8 Eq. (67) solve changed"
+    );
+
+    Held2Step6Result strict_two_phase_duplicate = candidates;
+    strict_two_phase_duplicate.candidates[1]
+        .independent_modified_fractions = {0.200004};
+    const Held2Step1Result strict_duplicate_prepared = step1(
+        {0.0, 1.0, -1.0},
+        held2_lift_independent_fractions(
+            *prepared.coordinates, {0.200002}
+        ),
+        [](const std::vector<double>&) {
+            return std::array<double, 2>{0.5, 1.5};
+        }
+    );
+    const Held2Step8Result collapsed_two_phase =
+        manufactured_step8(
+            strict_duplicate_prepared, strict_two_phase_duplicate
+        );
+    require(
+        collapsed_two_phase.outcome
+                == Held2Step8Outcome::InsufficientCandidates
+            && collapsed_two_phase.phase_coalescences.size() == 1
+            && collapsed_two_phase.phase_coalescences.front().tolerance
+                == kHeld2PhaseMerge.atol
+            && !collapsed_two_phase.phase_coalescences.front()
+                .reduced_solve_accepted,
+        "Step-8 two-phase collapse lost strict identity evidence"
     );
 
     Held2Step6Result numerical_duplicates = candidates;
@@ -1545,6 +1573,49 @@ void run_held2_step8_checks() {
             && duplicate_reduced.ordinary_balance_inf
                 <= kHeld2Stage3ExplicitBalance.atol,
         "Step-8 did not re-solve a numerical duplicate phase set"
+    );
+
+    std::vector<Held2StageIICandidate> budget_candidates;
+    std::vector<std::array<double, 2>> budget_bounds;
+    for (const Held2MPoint& point : numerical_duplicates.candidates) {
+        const auto volume_interval =
+            (*prepared.volume_bounds)(point.independent_modified_fractions);
+        budget_candidates.push_back({
+            point.independent_modified_fractions,
+            point.volume,
+            std::log(point.volume),
+        });
+        budget_bounds.push_back({
+            std::log(volume_interval[0]), std::log(volume_interval[1]),
+        });
+    }
+    const Held2Problem67Result budget_exhausted = solve_held2_problem67(
+        *prepared.coordinates,
+        held2_lift_independent_fractions(
+            *prepared.coordinates, *prepared.independent_feed
+        ),
+        budget_candidates,
+        [coordinates = *prepared.coordinates](
+            const auto& composition, double log_volume
+        ) {
+            return evaluate_manufactured_state_impl(
+                coordinates, composition, log_volume
+            );
+        },
+        budget_bounds,
+        {},
+        [](const auto& composition, double) {
+            return composition.front();
+        },
+        1
+    );
+    require(
+        budget_exhausted.failure_reason
+                == "stage_iii_solve_budget_exhausted"
+            && budget_exhausted.phase_coalescences.size() == 1
+            && !budget_exhausted.phase_coalescences.front()
+                .reduced_solve_accepted,
+        "Step-8 budget exhaustion lost coalescence evidence"
     );
 
     require(

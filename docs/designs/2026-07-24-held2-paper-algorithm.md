@@ -720,10 +720,12 @@ The nominal installed schedule consumes the paper's fixed
 `random_interior` stream. The bounded recovery pass activates when exact
 memoization proves that the same rejected Problem-(67) candidate-ID vector has
 recurred unchanged, or when Step 6 still has fewer than two candidates after
-Step 5 returns an equivalent existing member. It also activates when a failed
-Step-9 or Step-10 convergence return retains no new Step-8 feedback member.
-These conditions prevent a finite major loop from replaying the same
-non-progress terminal or candidate solution. Recovery
+Step 5 returns an equivalent existing member. It also activates after any
+rejected Step-8 problem or non-trace Step-9/Step-10 convergence return.
+Certified failed-phase feedback remains an append-only cut, but it is part of
+the rejected phase set and therefore does not itself satisfy the requirement
+for a distinct new basin. These conditions prevent a finite major loop from
+replaying the same non-progress terminal or candidate solution. Recovery
 fills its declared 2048-start ceiling from the same never-reset random stream
 while reserving room for each of the \(4d\) `boundary_aware`
 face/direction/density profiles and up to one `shifted_retained` start per
@@ -802,8 +804,8 @@ itself consume another upper solve.
 If that bounded pass finds only equivalent qualifying terminals, the unchanged
 set and every consumed start remain explicit and Step 5 terminates
 indeterminate with `step5_recovery_exhausted`; the structured pass is never
-repeated in later major iterations. A successful new insertion or retained
-certified Step-8 feedback clears the requirement.
+repeated in later major iterations. A successful new Step-5 insertion clears
+the requirement.
 
 ### Step 6 — search all of \(\mathcal M\)
 
