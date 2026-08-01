@@ -2,6 +2,8 @@
 
 #include "held2_step6.hpp"
 
+#include <unordered_map>
+
 namespace epcsaft_equilibrium {
 
 enum class Held2Step8Outcome {
@@ -63,13 +65,111 @@ struct Held2Step8Result {
     Held2StepTiming timing;
 };
 
+class Held2AlgorithmCache {
+public:
+    void begin_context(const void* context_token);
+    [[nodiscard]] Held2StateEvaluation evaluate_state(
+        const Held2StateEvaluator& evaluator,
+        const std::vector<double>& composition,
+        double log_volume,
+        bool* provider_evaluated = nullptr
+    );
+    [[nodiscard]] const std::array<double, 2>* find_volume_bounds(
+        const std::vector<double>& composition
+    ) const;
+    void retain_volume_bounds(
+        const std::vector<double>& composition,
+        std::array<double, 2> bounds
+    );
+    [[nodiscard]] std::uint64_t provider_state_evaluations() const {
+        return provider_state_evaluations_;
+    }
+    [[nodiscard]] std::uint64_t state_cache_hits() const {
+        return state_cache_hits_;
+    }
+    [[nodiscard]] const Held2Step8Result* find_problem(
+        const std::vector<std::uint64_t>& candidate_ids,
+        const std::vector<double>& candidate_variables,
+        const Held2Coordinates& coordinates,
+        const std::vector<double>& physical_feed,
+        const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
+        double neighborhood_radius
+    ) const;
+    void retain_problem(
+        const std::vector<std::uint64_t>& candidate_ids,
+        const std::vector<double>& candidate_variables,
+        const Held2Coordinates& coordinates,
+        const std::vector<double>& physical_feed,
+        const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
+        double neighborhood_radius,
+        Held2Step8Result result
+    );
+
+private:
+    struct ProblemKey {
+        std::vector<std::uint64_t> candidate_ids;
+        std::vector<double> candidate_variables;
+        Held2Coordinates coordinates;
+        std::vector<double> physical_feed;
+        std::vector<std::array<double, 2>> phase_coordinate_bounds;
+        double neighborhood_radius = 0.0;
+
+        [[nodiscard]] bool operator==(const ProblemKey& other) const;
+    };
+    struct ProblemHash {
+        [[nodiscard]] std::size_t operator()(
+            const ProblemKey& problem
+        ) const noexcept;
+    };
+
+    struct StateKey {
+        std::vector<double> variables;
+
+        [[nodiscard]] bool operator==(const StateKey& other) const {
+            return variables == other.variables;
+        }
+    };
+    struct StateHash {
+        [[nodiscard]] std::size_t operator()(
+            const StateKey& state
+        ) const noexcept;
+    };
+    struct VolumeBoundsKey {
+        std::vector<double> composition;
+
+        [[nodiscard]] bool operator==(
+            const VolumeBoundsKey& other
+        ) const {
+            return composition == other.composition;
+        }
+    };
+    struct VolumeBoundsHash {
+        [[nodiscard]] std::size_t operator()(
+            const VolumeBoundsKey& bounds
+        ) const noexcept;
+    };
+
+    std::unordered_map<
+        StateKey, Held2StateEvaluation, StateHash
+    > states_;
+    std::unordered_map<
+        VolumeBoundsKey, std::array<double, 2>, VolumeBoundsHash
+    > volume_bounds_;
+    std::unordered_map<ProblemKey, Held2Step8Result, ProblemHash> problems_;
+    std::uint64_t provider_state_evaluations_ = 0;
+    std::uint64_t state_cache_hits_ = 0;
+    const void* context_token_ = nullptr;
+};
+
 [[nodiscard]] Held2Step8Result run_held2_step8(
     const Held2Step1Result& step1,
     const Held2Step6Result& step6,
     const Held2StateEvaluator& evaluator,
     const Held2PackingFractionEvaluator& packing_fraction,
     const Held2Step8Result* previous = nullptr,
-    double neighborhood_radius = kHeld2Problem67InitialRadius
+    double neighborhood_radius = kHeld2Problem67InitialRadius,
+    Held2AlgorithmCache* cache = nullptr,
+    const void* cache_context = nullptr
 );
 
 }  // namespace epcsaft_equilibrium

@@ -1137,19 +1137,18 @@ rule above or the conservation-preserving coalescence reduction in duplicate
 policy item 2.
 
 If the resulting ordered stable-ID vector and effective neighborhood centers
-are exactly the terminal problem already solved, reuse that Step-8 result
-instead of replaying the same nonlinear problem. The effective state uses the
-prior invocation center for an untouched neighborhood and the independently
-solved terminal phase state for a neighborhood that the declared boundary
-rule recenters. Thus deterministic recentering does not manufacture new work,
-while a genuinely changed recentered state invalidates the memo. Reuse of a
-certified feasible result still proceeds to
-Step 9 against the current Step-4 upper bound. Reuse of rejected acceleration
-evidence does not accept a phase result; it records
-`unchanged_problem_67`, returns to Stage II, and activates the bounded
-new-member recovery policy in Step 5. Any newly attempted cut, changed
-eligibility that alters the selected vector, or changed stable-ID order
-requires a fresh Step-8 solve. The diagnostics expose
+exactly identify a certified Problem (67) already retained by the current
+flash-scoped cache, reuse that result instead of replaying the same nonlinear
+problem. The exact key also includes the coordinate transformation, physical
+feed, phase-coordinate bounds, immutable Provider-context generation, and
+requested radius. A changed Provider callback requires a new per-flash context
+token, which clears all retained evidence. Reuse of a certified feasible result
+still proceeds to
+Step 9 against the current Step-4 upper bound. Rejected acceleration evidence
+is never reused as an adjudication; it may provide a warm start, but requires a
+fresh solve. Any newly attempted cut, changed eligibility that alters the
+selected vector, changed stable-ID order, changed mathematical context, or
+changed radius requires a fresh Step-8 solve. The diagnostics expose
 `problem_candidate_ids`, `problem_candidate_variables`,
 `attempted_candidate_ids`, terminal `candidate_ids`, and terminal
 `candidate_variables` so this distinction is auditable.

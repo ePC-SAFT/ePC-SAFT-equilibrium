@@ -15,6 +15,7 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -1670,6 +1671,195 @@ void run_held2_step8_checks() {
         "Step-8 Eq. (67) solve changed"
     );
 
+    auto provider_queries =
+        std::make_shared<std::vector<std::vector<double>>>();
+    auto volume_bound_queries =
+        std::make_shared<std::vector<std::vector<double>>>();
+    Held2Step1Result cache_prepared = step1(
+        {0.0, 1.0, -1.0},
+        {0.50, 0.25, 0.25},
+        [volume_bound_queries](const std::vector<double>& composition) {
+            if (std::find(
+                    volume_bound_queries->begin(),
+                    volume_bound_queries->end(),
+                    composition
+                ) != volume_bound_queries->end()) {
+                throw std::runtime_error(
+                    "manufactured Provider received duplicate volume bounds"
+                );
+            }
+            volume_bound_queries->push_back(composition);
+            return std::array<double, 2>{0.5, 1.5};
+        }
+    );
+    volume_bound_queries->clear();
+    const Held2StateEvaluator duplicate_rejecting_provider =
+        [coordinates = *cache_prepared.coordinates, provider_queries](
+            const auto& composition, double log_volume
+        ) {
+            std::vector<double> key = composition;
+            key.push_back(log_volume);
+            if (std::find(
+                    provider_queries->begin(), provider_queries->end(), key
+                ) != provider_queries->end()) {
+                throw std::runtime_error(
+                    "manufactured Provider received a duplicate state"
+                );
+            }
+            provider_queries->push_back(std::move(key));
+            return evaluate_manufactured_state_impl(
+                coordinates, composition, log_volume
+            );
+        };
+    const Held2PackingFractionEvaluator cache_packing =
+        [](const auto& composition, double) {
+            return composition.front();
+        };
+    const int provider_context = 0;
+    Held2AlgorithmCache provider_cache;
+    const auto run_cached_problem = [
+        &cache_prepared,
+        &duplicate_rejecting_provider,
+        &cache_packing,
+        &provider_context,
+        &provider_cache
+    ](
+        const Held2Step6Result& selected,
+        double radius = kHeld2Problem67InitialRadius
+    ) {
+        return run_held2_step8(
+            cache_prepared,
+            selected,
+            duplicate_rejecting_provider,
+            cache_packing,
+            nullptr,
+            radius,
+            &provider_cache,
+            &provider_context
+        );
+    };
+    const Held2Step8Result deduplicated_provider =
+        run_cached_problem(candidates);
+    require(
+        deduplicated_provider.outcome
+                == Held2Step8Outcome::CertifiedFeasible
+            && deduplicated_provider.nlp
+            && deduplicated_provider.nlp->accepted,
+        "Step-8 repeated an exact Provider state evaluation"
+    );
+    Held2Step6Result intervening_candidates = candidates;
+    intervening_candidates.candidates.push_back(
+        {11, {0.55}, 1.0, 0.55, 0.0, {}, "manufactured"}
+    );
+    const Held2Step8Result intervening_problem =
+        run_cached_problem(intervening_candidates);
+    require(
+        intervening_problem.outcome == Held2Step8Outcome::CertifiedFeasible
+            && intervening_problem.timing.terminal_reason
+                != "cached_problem_67",
+        "Step-8 cache hid a changed Problem (67)"
+    );
+    const Held2Step8Result expanded_problem = run_cached_problem(
+        candidates, kHeld2Problem67ExpandedRadius
+    );
+    require(
+        expanded_problem.outcome == Held2Step8Outcome::CertifiedFeasible
+            && expanded_problem.timing.optimizer_solves > 0
+            && expanded_problem.timing.terminal_reason
+                != "cached_problem_67",
+        "Step-8 cache hid a changed Problem (67) radius"
+    );
+    const std::vector<double> original_feed = *cache_prepared.independent_feed;
+    cache_prepared.independent_feed = std::vector<double>{0.40};
+    const Held2Step8Result changed_feed_problem = run_held2_step8(
+        cache_prepared,
+        candidates,
+        duplicate_rejecting_provider,
+        cache_packing,
+        nullptr,
+        kHeld2Problem67InitialRadius,
+        &provider_cache,
+        &provider_context
+    );
+    cache_prepared.independent_feed = original_feed;
+    require(
+        changed_feed_problem.timing.optimizer_solves > 0
+            && changed_feed_problem.timing.terminal_reason
+                != "cached_problem_67",
+        "Step-8 cache hid a changed feed"
+    );
+    const Held2Step8Result reused_provider =
+        run_cached_problem(candidates);
+    require(
+        reused_provider.outcome == Held2Step8Outcome::CertifiedFeasible
+            && reused_provider.provider_state_evaluations == 0
+            && reused_provider.timing.optimizer_solves == 0
+            && reused_provider.timing.terminal_reason
+                == "cached_problem_67",
+        "Step-8 re-solved an already-adjudicated Problem (67)"
+    );
+
+    auto context_queries = std::make_shared<std::uint64_t>(0);
+    Held2Step1Result context_prepared = cache_prepared;
+    context_prepared.volume_bounds = Held2VolumeBoundsEvaluator(
+        [](const std::vector<double>&) {
+            return std::array<double, 2>{0.5, 1.5};
+        }
+    );
+    Held2StateEvaluator mutable_provider =
+        [coordinates = *cache_prepared.coordinates, context_queries](
+            const auto& composition, double log_volume
+        ) {
+            ++*context_queries;
+            return evaluate_manufactured_state_impl(
+                coordinates, composition, log_volume
+            );
+        };
+    Held2AlgorithmCache context_cache;
+    const int original_context = 0;
+    const Held2Step8Result original_context_result = run_held2_step8(
+        context_prepared,
+        candidates,
+        mutable_provider,
+        cache_packing,
+        nullptr,
+        kHeld2Problem67InitialRadius,
+        &context_cache,
+        &original_context
+    );
+    const std::uint64_t first_context_queries = *context_queries;
+    mutable_provider =
+        [coordinates = *cache_prepared.coordinates, context_queries](
+            const auto& composition, double log_volume
+        ) {
+            ++*context_queries;
+            return evaluate_manufactured_state_impl(
+                coordinates, composition, log_volume
+            );
+        };
+    const int changed_context = 0;
+    const Held2Step8Result changed_context_result = run_held2_step8(
+        context_prepared,
+        candidates,
+        mutable_provider,
+        cache_packing,
+        nullptr,
+        kHeld2Problem67InitialRadius,
+        &context_cache,
+        &changed_context
+    );
+    require(
+        original_context_result.outcome
+                == Held2Step8Outcome::CertifiedFeasible
+            && changed_context_result.outcome
+                == Held2Step8Outcome::CertifiedFeasible
+            && changed_context_result.timing.optimizer_solves > 0
+            && changed_context_result.timing.terminal_reason
+                != "cached_problem_67"
+            && *context_queries > first_context_queries,
+        "Step-8 cache context did not invalidate an in-place Provider change"
+    );
+
     Held2Step6Result strict_two_phase_duplicate = candidates;
     strict_two_phase_duplicate.candidates[1]
         .independent_modified_fractions = {0.200004};
@@ -1931,41 +2121,12 @@ void run_held2_step8_checks() {
     );
     require(
         replayed.outcome == Held2Step8Outcome::CertifiedFeasible
-            && replayed.candidate_ids
-                == std::vector<std::uint64_t>{7, 9}
-            && replayed.problem_candidate_ids
-                == std::vector<std::uint64_t>{7, 9, 10}
-            && replayed.candidate_variables
-                == stable_previous.candidate_variables
-            && replayed.continuation_variables
-                == stable_previous.continuation_variables
-            && replayed.total_reduced_gibbs
-                == stable_previous.total_reduced_gibbs
             && replayed.neighborhood_radius
                 == stable_previous.neighborhood_radius
-            && replayed.active_phases.size()
-                == stable_previous.active_phases.size()
-            && std::equal(
-                replayed.active_phases.begin(),
-                replayed.active_phases.end(),
-                stable_previous.active_phases.begin(),
-                [](const Held2Phase& left, const Held2Phase& right) {
-                    return left.stable_id == right.stable_id
-                        && left.phase_fraction == right.phase_fraction
-                        && left.independent_modified_fractions
-                            == right.independent_modified_fractions
-                        && left.physical_fractions_provider_order
-                            == right.physical_fractions_provider_order
-                        && left.volume == right.volume
-                        && left.reduced_gibbs == right.reduced_gibbs
-                        && left.reduced_gibbs_gradient
-                            == right.reduced_gibbs_gradient;
-                }
-            )
             && replayed.timing.terminal_reason
-                == "unchanged_problem_67"
-            && replay_evaluations == 0,
-        "Step-8 replayed an already-solved retained candidate problem"
+                != "unchanged_problem_67"
+            && replay_evaluations > 0,
+        "Step-8 reused previous evidence without an exact cache key"
     );
     replay_evaluations = 0;
     const Held2Step8Result expanded_replay = run_held2_step8(
@@ -2047,14 +2208,14 @@ void run_held2_step8_checks() {
         &failed_reduction
     );
     require(
-        failed_replay.outcome == Held2Step8Outcome::Indeterminate
+        failed_replay.outcome == Held2Step8Outcome::CertifiedFeasible
             && failed_replay.problem_candidate_ids
                 == std::vector<std::uint64_t>{7, 9}
             && failed_replay.timing.terminal_reason
-                == "unchanged_problem_67"
-            && failed_replay.timing.terminal_status == "indeterminate"
-            && replay_evaluations == 0,
-        "Step-8 discarded certified retirement progress after NLP failure"
+                != "unchanged_problem_67"
+            && failed_replay.timing.terminal_status == "complete"
+            && replay_evaluations > 0,
+        "Step-8 reused indeterminate evidence without adjudication"
     );
     candidates.candidates.push_back(
         {11, {0.55}, 1.0, 0.55, 0.0, {}, "manufactured"}
@@ -2102,6 +2263,79 @@ void run_held2_step8_checks() {
             && infeasible.farkas->contradiction_margin
                 > infeasible.farkas->contradiction_threshold,
         "Step-8 Eq. (67) infeasibility did not return through Step 7"
+    );
+    const Held2StateEvaluator infeasible_evaluator =
+        [coordinates = *prepared.coordinates](
+            const auto& composition, double log_volume
+        ) {
+            return evaluate_manufactured_state_impl(
+                coordinates, composition, log_volume
+            );
+        };
+    const Held2PackingFractionEvaluator infeasible_packing =
+        [](const auto& composition, double) {
+            return composition.front();
+        };
+    const int infeasible_context = 0;
+    Held2AlgorithmCache infeasible_cache;
+    const Held2Step8Result retained_infeasible = run_held2_step8(
+        prepared,
+        candidates,
+        infeasible_evaluator,
+        infeasible_packing,
+        nullptr,
+        kHeld2Problem67InitialRadius,
+        &infeasible_cache,
+        &infeasible_context
+    );
+    Held2Step6Result intervening_infeasible_candidates = candidates;
+    intervening_infeasible_candidates.candidates.push_back(
+        {12, {0.80}, 1.0, 0.80, 0.0, {}, "manufactured"}
+    );
+    const Held2Step8Result intervening_infeasible = run_held2_step8(
+        prepared,
+        intervening_infeasible_candidates,
+        infeasible_evaluator,
+        infeasible_packing,
+        nullptr,
+        kHeld2Problem67InitialRadius,
+        &infeasible_cache,
+        &infeasible_context
+    );
+    Held2Step8Result changed_warm_start = result;
+    changed_warm_start.active_phases[0]
+        .independent_modified_fractions = {0.10};
+    changed_warm_start.active_phases[1]
+        .independent_modified_fractions = {0.20};
+    changed_warm_start.active_phases[0].volume = 1.0;
+    changed_warm_start.active_phases[1].volume = 1.0;
+    changed_warm_start.continuation_variables = {
+        0.6, 0.11, 0.0,
+        0.4, 0.19, 0.0,
+    };
+    const Held2Step8Result replayed_infeasible = run_held2_step8(
+        prepared,
+        candidates,
+        infeasible_evaluator,
+        infeasible_packing,
+        &changed_warm_start,
+        kHeld2Problem67InitialRadius,
+        &infeasible_cache,
+        &infeasible_context
+    );
+    require(
+        retained_infeasible.outcome
+                == Held2Step8Outcome::CertifiedInfeasible
+            && intervening_infeasible.timing.terminal_reason
+                != "cached_problem_67"
+            && replayed_infeasible.outcome
+                == Held2Step8Outcome::CertifiedInfeasible
+            && replayed_infeasible.farkas
+            && replayed_infeasible.farkas->accepted
+            && replayed_infeasible.timing.optimizer_solves == 0
+            && replayed_infeasible.timing.terminal_reason
+                == "cached_problem_67",
+        "Step-8 did not retain exact certified-infeasible evidence"
     );
     Held2AlgorithmResult serialized_infeasible;
     serialized_infeasible.step8_history.push_back(infeasible);
@@ -2351,11 +2585,29 @@ void run_held2_step10_checks() {
 void run_workflow_check() {
     const std::vector<double> charges{0.0, 1.0, -1.0};
     const Held2Coordinates coordinates = make_held2_coordinates(charges);
+    auto provider_queries =
+        std::make_shared<std::vector<std::vector<double>>>();
+    auto volume_bound_queries = std::make_shared<std::uint64_t>(0);
+    auto packing_queries = std::make_shared<std::uint64_t>(0);
     const Held2AlgorithmResult result = run_held2_algorithm(
         {
             {"neutral", "cation", "anion"},
             charges,
-            [coordinates](const auto& composition, double log_volume) {
+            [coordinates, provider_queries](
+                const auto& composition, double log_volume
+            ) {
+                std::vector<double> key = composition;
+                key.push_back(log_volume);
+                if (std::find(
+                        provider_queries->begin(),
+                        provider_queries->end(),
+                        key
+                    ) != provider_queries->end()) {
+                    throw std::runtime_error(
+                        "HELD2 repeated an exact Provider state across stages"
+                    );
+                }
+                provider_queries->push_back(std::move(key));
                 Held2StateEvaluation state = evaluate_manufactured_state_impl(
                     coordinates, composition, log_volume
                 );
@@ -2363,10 +2615,12 @@ void run_workflow_check() {
                 state.pressure_stationarity_derivative_log_volume *= -1.0;
                 return state;
             },
-            [](const auto&) {
+            [volume_bound_queries](const auto&) {
+                ++*volume_bound_queries;
                 return std::array<double, 2>{0.5, 1.5};
             },
-            [](const auto& composition, double) {
+            [packing_queries](const auto& composition, double) {
+                ++*packing_queries;
                 return composition.front();
             },
             std::numeric_limits<double>::quiet_NaN(),
@@ -2386,12 +2640,26 @@ void run_workflow_check() {
     }
     require(
         result.outcome == "physical_equilibrium_accepted"
+            && !provider_queries->empty()
             && result.step10
             && result.step10->status == "complete"
             && result.phases.size() == 2
             && result.step10->final_certificate->accepted
             && result.globality_certificate == "not_guaranteed",
         workflow_failure.c_str()
+    );
+    const std::uint64_t reported_provider_work = std::accumulate(
+        result.step_timings.begin(), result.step_timings.end(),
+        std::uint64_t{0},
+        [](std::uint64_t total, const Held2StepTiming& timing) {
+            return total + timing.provider_evaluations;
+        }
+    );
+    require(
+        reported_provider_work
+            == provider_queries->size()
+                + *volume_bound_queries + *packing_queries,
+        "HELD2 diagnostics counted cache hits as Provider work"
     );
 }
 
