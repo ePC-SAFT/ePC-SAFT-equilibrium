@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "held2_certificates.hpp"
+#include "held2_tolerances.hpp"
 
 namespace epcsaft_equilibrium {
 
@@ -257,10 +258,10 @@ struct Held2Problem67Result {
     const Held2StateEvaluator& evaluator,
     const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
     std::vector<double> initial = {},
-    const Held2StateValueEvaluator& value_evaluator = {},
     int stage_iii_solve_budget = 32,
     bool allow_feasibility_support_retry = true,
-    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator = {}
+    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator = {},
+    double neighborhood_radius = kHeld2Problem67InitialRadius
 );
 
 }  // namespace epcsaft_equilibrium

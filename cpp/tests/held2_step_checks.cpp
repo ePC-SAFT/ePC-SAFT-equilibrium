@@ -710,7 +710,8 @@ void run_held2_step2_checks() {
     require(
         negative.outcome == Held2Step2Outcome::NegativeWitness
             && negative.negative_witness.has_value()
-            && negative.negative_witness->tpd < -1.0e-8,
+            && negative.negative_witness->tpd < -1.0e-8
+            && negative.timing.optimizer_solves == 1,
         "Step 2 missed a strict negative TPD witness"
     );
     const Held2StateEvaluation transient_reference =
@@ -986,8 +987,8 @@ void run_held2_step5_checks() {
     const double recovery_offset = recovery_state.upper_bound
         - 100.0 * (1.0 + std::abs(recovery_multiplier));
     Held2ResourceProfile recovery_resources;
-    recovery_resources.step5_start_cap = 1;
-    recovery_resources.step5_recovery_start_cap = 8;
+    recovery_resources.step5_start_cap = 8;
+    recovery_resources.step5_recovery_start_cap = 144;
     const Held2Step5Result exhausted_recovery = run_held2_step5(
         prepared,
         recovery_step4,
@@ -1039,6 +1040,20 @@ void run_held2_step5_checks() {
         exhausted_recovery.status == "indeterminate"
             && exhausted_recovery.reason == "step5_recovery_exhausted"
             && exhausted_recovery.starts_consumed > 1
+            && exhausted_recovery.attempts[0].start_family
+                == "random_interior"
+            && exhausted_recovery.attempts[1].start_family
+                == "boundary_aware"
+            && std::any_of(
+                exhausted_recovery.attempts.begin(),
+                exhausted_recovery.attempts.end(),
+                [](const Held2LocalCertificate& attempt) {
+                    return attempt.start_family
+                        == "space_filling_interior";
+                }
+            )
+            && exhausted_recovery.attempts.back().start_family
+                == "random_interior"
             && exhausted_recovery.lower_value
             && *exhausted_recovery.lower_value == *std::min_element(
                 exhausted_recovery.attempts.begin(),
@@ -1530,6 +1545,16 @@ void run_held2_step6_checks() {
         result.timing.provider_evaluations == packing_evaluations,
         "Step-6 Provider evaluation accounting changed"
     );
+    require(
+        kHeld2PaperStep6Gap.atol == 5.0e-2
+            && audit_held2_tolerance(
+                kHeld2PaperStep6Gap, 4.0e-2
+            ).passed
+            && !audit_held2_tolerance(
+                kHeld2PaperStep6Gap, 6.0e-2
+            ).passed,
+        "Step-6 finite-search gap policy changed"
+    );
 }
 
 void run_held2_step7_checks() {
@@ -1832,9 +1857,6 @@ void run_held2_step8_checks() {
         },
         budget_bounds,
         {},
-        [](const auto& composition, double) {
-            return composition.front();
-        },
         1
     );
     require(
@@ -1869,6 +1891,19 @@ void run_held2_step8_checks() {
             && expanded.ordinary_balance_inf
                 <= kHeld2Stage3ExplicitBalance.atol,
         "Step-8 inactive-phase re-solve lost its active-set state"
+    );
+    Held2Step6Result batch_retirement_candidates = candidates;
+    batch_retirement_candidates.candidates.push_back(
+        {11, {0.55}, 1.0, 0.55, 0.0, {}, "manufactured"}
+    );
+    const Held2Step8Result batch_retired =
+        manufactured_step8(prepared, batch_retirement_candidates);
+    require(
+        batch_retired.outcome == Held2Step8Outcome::CertifiedFeasible
+            && batch_retired.timing.optimizer_solves == 2
+            && batch_retired.candidate_ids
+                == std::vector<std::uint64_t>{7, 9},
+        "Step-8 replayed the reduced NLP for every same-certificate retirement"
     );
     Held2Step8Result stable_previous = expanded;
     for (Held2Phase& phase : stable_previous.active_phases) {
@@ -1905,6 +1940,33 @@ void run_held2_step8_checks() {
                 == "unchanged_problem_67"
             && replay_evaluations == 0,
         "Step-8 replayed an already-solved retained candidate problem"
+    );
+    replay_evaluations = 0;
+    const Held2Step8Result expanded_replay = run_held2_step8(
+        prepared,
+        candidates,
+        [coordinates = *prepared.coordinates, &replay_evaluations](
+            const auto& composition, double log_volume
+        ) {
+            ++replay_evaluations;
+            return evaluate_manufactured_state_impl(
+                coordinates, composition, log_volume
+            );
+        },
+        [&replay_evaluations](const auto& composition, double) {
+            ++replay_evaluations;
+            return composition.front();
+        },
+        &stable_previous,
+        kHeld2Problem67ExpandedRadius
+    );
+    require(
+        expanded_replay.neighborhood_radius
+                == kHeld2Problem67ExpandedRadius
+            && expanded_replay.timing.terminal_reason
+                != "unchanged_problem_67"
+            && replay_evaluations > 0,
+        "Step-8 memoization hid an expanded candidate neighborhood"
     );
     Held2Step8Result recentered_previous = stable_previous;
     recentered_previous.active_phases.front()

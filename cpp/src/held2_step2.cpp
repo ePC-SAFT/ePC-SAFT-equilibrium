@@ -627,6 +627,15 @@ Held2Step2Result run_held2_step2(
         )
     );
     if (is_valid(complete_witness)) {
+        const Held2StageIJointEvaluation direct_stationary_witness =
+            refine_stationary_witness(complete_witness);
+        if (is_strict_stable_root(direct_stationary_witness)
+            && is_strict_negative(direct_stationary_witness)) {
+            return accept_witness(
+                direct_stationary_witness,
+                "negative_tpd_witness"
+            );
+        }
         constexpr int kPreparationVolumeSamples = 65;
         constexpr int kPreparationRootRefinementLimit = 64;
         constexpr int kPreparationProviderEvaluations =

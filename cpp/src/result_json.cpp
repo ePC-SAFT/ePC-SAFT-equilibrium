@@ -782,6 +782,7 @@ JsonValue paper_step8_to_json(const Held2Step8Result& step) {
     result["attempted_candidate_ids"] = step.attempted_candidate_ids;
     result["candidate_ids"] = step.candidate_ids;
     result["candidate_variables"] = step.candidate_variables;
+    result["neighborhood_radius"] = step.neighborhood_radius;
     result["warm_start_used"] = step.warm_start_used;
     result["cold_fallback_used"] = step.cold_fallback_used;
     result["provider_state_evaluations"] =

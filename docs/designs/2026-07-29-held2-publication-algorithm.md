@@ -156,6 +156,10 @@ jointly over the \(C-2\) modified composition coordinates and normalized
 strict-negative candidate, and terminate early only after that
 recertification. If the declared search completes without a negative state,
 return the operational one-phase result with globality not guaranteed.
+Before launching the optional downstream preparation search, refine the
+recertified witness once at its own composition. When that targeted operation
+already yields a strict stable negative-TPD pressure root, retain it directly;
+do not spend another deterministic global search rediscovering a seed.
 
 **Step 3: initialize the persistent state set.**
 
@@ -233,7 +237,9 @@ both the raw solver variables and the distinct audited terminal variables.
 Reevaluate all of \(\mathcal M\) against the current gap, fixed-volume
 gradient, and Perdomo distinctness conditions. Candidate distinctness uses two
 independent physical axes: modified composition and actual Provider packing
-fraction. Packing fraction is not replaced by molar-volume distance.
+fraction. Packing fraction is not replaced by molar-volume distance. The
+effective upper/lower candidate-discovery gap is five percent; it is a
+working gate only, and does not alter any final Stage-III certificate.
 
 **Step 7: advance the major iteration.**
 
@@ -264,10 +270,19 @@ exact derivatives and its terminal state is independently audited in physical
 coordinates.
 
 Numerical duplicate phases are merged using physical composition and relative
-molar volume. A distinct phase may be retired only from positive
-lower-bound-multiplier KKT evidence; retire at most one and solve the complete
-reduced problem again. A failed warm solve permits one identical cold retry,
-not a changed problem.
+molar volume. Distinct phases may be retired together only when one complete
+KKT certificate gives every nominated phase a positive lower-bound multiplier
+above the retirement margin. Preserve at least two phases and solve the
+complete reduced problem once; any later retirement requires the new reduced
+certificate. A failed warm solve permits one identical cold retry, not a
+changed problem.
+
+The candidate neighborhood starts at \(10^{-2}\). If its exact master is
+Farkas-certified infeasible, make one bounded \(2\times10^{-2}\) probe on the
+same candidates and adopt it only when the complete nonlinear problem and all
+independent audits pass. A convergence-failed certified phase solution may
+also continue with the expanded neighborhood. Radius is part of the memoized
+problem identity.
 
 **Step 9: apply paper convergence tests.**
 
@@ -312,7 +327,7 @@ while resource budget remains:
         continue
 
     phases = exact_master_then_total_gibbs_nlp(candidates)      # Step 8
-    phases = merge_or_retire_one_then_resolve(phases)
+    phases = merge_or_retire_same_certificate_batch_then_resolve(phases)
     convergence = paper_and_physical_certificates(upper, phases) # Step 9
 
     if convergence requests more candidates:
@@ -357,7 +372,8 @@ algorithm auditable for the installed Provider:
 - immutable candidate identities and nontransitive pairwise-distinctness rules;
 - exact master-to-NLP initialization;
 - independently audited LP, KKT, balance, pressure, and domain evidence;
-- one-at-a-time KKT retirement followed by a complete reduced re-solve;
+- same-certificate batched KKT retirement followed by one complete reduced
+  re-solve;
 - evidence invalidation whenever the mathematical problem changes; and
 - logarithmic coordinates only for bounded trace refinement.
 
