@@ -905,9 +905,9 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
             float(cast(float, value))
             for value in cast(Sequence[object], step8.get("problem_candidate_variables", ()))
         )
-        neighborhood_radius = float(
-            cast(float, step8.get("neighborhood_radius", 1.0e-2))
-        )
+        if "neighborhood_radius" not in step8:
+            raise ValueError("native HELD2 Step 8 neighborhood radius is missing")
+        neighborhood_radius = float(cast(float, step8["neighborhood_radius"]))
         if not math.isfinite(neighborhood_radius) or neighborhood_radius <= 0.0:
             raise ValueError("native HELD2 Step 8 neighborhood radius is invalid")
         step8_problem_candidate_count += len(problem_ids)

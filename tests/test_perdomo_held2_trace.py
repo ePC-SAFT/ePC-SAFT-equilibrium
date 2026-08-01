@@ -186,6 +186,18 @@ def test_public_held2_performance_diagnostics_aggregate_native_work() -> None:
     assert performance.trace_refinement_component_indices == (2,)
     assert tuple(timing.step for timing in performance.step_timings) == (5, 8, 10)
 
+    with pytest.raises(ValueError, match="neighborhood radius is missing"):
+        _api._held2_performance(
+            {
+                "step8_history": [
+                    {
+                        "problem_candidate_ids": [1, 2],
+                        "problem_candidate_variables": [0.2, 1.0, 0.8, 1.0],
+                    }
+                ]
+            }
+        )
+
 
 def test_held2_observer_is_quiet_by_default_and_does_not_change_results(capfd) -> None:
     model = _perdomo_table3_model()
