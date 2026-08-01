@@ -259,7 +259,8 @@ struct Held2Problem67Result {
     std::vector<double> initial = {},
     const Held2StateValueEvaluator& value_evaluator = {},
     int stage_iii_solve_budget = 32,
-    bool allow_feasibility_support_retry = true
+    bool allow_feasibility_support_retry = true,
+    const Held2VolumeBoundsEvaluator& volume_bounds_evaluator = {}
 );
 
 }  // namespace epcsaft_equilibrium
