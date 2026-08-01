@@ -787,8 +787,6 @@ JsonValue paper_step8_to_json(const Held2Step8Result& step) {
     result["cold_fallback_used"] = step.cold_fallback_used;
     result["provider_state_evaluations"] =
         step.provider_state_evaluations;
-    result["provider_value_evaluations"] =
-        step.provider_value_evaluations;
     result["provider_volume_bound_evaluations"] =
         step.provider_volume_bound_evaluations;
     result["provider_packing_evaluations"] =
@@ -957,6 +955,8 @@ JsonValue paper_algorithm_to_json(
     tolerances["epsilon_mu"] = kHeld2PaperPotentialRatio.atol;
     tolerances["stage2_kkt_stationarity"] =
         kHeld2Stage2KktStationarity.atol;
+    tolerances["stage3_ipopt_target"] =
+        kHeld2Stage3IpoptTarget.atol;
     tolerances["paper_phase_coalescence"] =
         kHeld2PaperPhaseCoalescence.atol;
     result["effective_tolerances"] = std::move(tolerances);

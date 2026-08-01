@@ -1660,7 +1660,6 @@ void run_held2_step8_checks() {
             && !result.cold_fallback_used
             && result.timing.optimizer_solves == 1
             && result.provider_state_evaluations
-                + result.provider_value_evaluations
                 + result.provider_volume_bound_evaluations
                 + result.provider_packing_evaluations
                 == result.timing.provider_evaluations
@@ -1936,6 +1935,33 @@ void run_held2_step8_checks() {
                 == std::vector<std::uint64_t>{7, 9}
             && replayed.problem_candidate_ids
                 == std::vector<std::uint64_t>{7, 9, 10}
+            && replayed.candidate_variables
+                == stable_previous.candidate_variables
+            && replayed.continuation_variables
+                == stable_previous.continuation_variables
+            && replayed.total_reduced_gibbs
+                == stable_previous.total_reduced_gibbs
+            && replayed.neighborhood_radius
+                == stable_previous.neighborhood_radius
+            && replayed.active_phases.size()
+                == stable_previous.active_phases.size()
+            && std::equal(
+                replayed.active_phases.begin(),
+                replayed.active_phases.end(),
+                stable_previous.active_phases.begin(),
+                [](const Held2Phase& left, const Held2Phase& right) {
+                    return left.stable_id == right.stable_id
+                        && left.phase_fraction == right.phase_fraction
+                        && left.independent_modified_fractions
+                            == right.independent_modified_fractions
+                        && left.physical_fractions_provider_order
+                            == right.physical_fractions_provider_order
+                        && left.volume == right.volume
+                        && left.reduced_gibbs == right.reduced_gibbs
+                        && left.reduced_gibbs_gradient
+                            == right.reduced_gibbs_gradient;
+                }
+            )
             && replayed.timing.terminal_reason
                 == "unchanged_problem_67"
             && replay_evaluations == 0,
@@ -2087,8 +2113,11 @@ void run_held2_step8_checks() {
     require(
         serialized_farkas.find(
             "\"solver_ray_recovered_without_presolve\":true"
-        ) != std::string::npos,
-        "Step-8 presolve-disabled Farkas recovery was not serialized"
+        ) != std::string::npos
+            && serialized_farkas.find(
+                "\"stage3_ipopt_target\":"
+            ) != std::string::npos,
+        "Step-8 Farkas or effective solver tolerance was not serialized"
     );
 
     candidates.candidates[0].independent_modified_fractions = {0.4998};

@@ -554,8 +554,10 @@ whole trials that fit the remaining 6500-callback allowance; zero permitted
 trials is invalid rather than NLopt's unlimited-work convention. Mandatory
 feed-reference work, charged trace-boundary evidence, independent
 recertification, and the single targeted fallback are reported in the total
-Step-2 Provider count but are not allowed to shrink the declared joint-search
-coverage. Every finite result continues to report
+Step-2 Provider count. They do not shrink the already executed joint-search
+coverage; targeted refinement reduces only the optional downstream
+preparation allowance so that joint search, targeted refinement, and optional
+preparation together cannot exceed 6500 callbacks. Every finite result continues to report
 `globality_certificate = not_guaranteed`.
 
 ### Step 3 — initialize the dual problem and \(\mathcal M\)
@@ -910,6 +912,21 @@ boundary crawls with an earlier simultaneous Stage-III solve. It is not an
 accuracy certificate: every returned equilibrium must still pass the
 unchanged independent Stage-III KKT and physical audits.
 
+The 39-point Khudaida Figures 2--7 profiling matrix provides the explicit
+accuracy assessment for this working-gate change and the Stage-III Ipopt
+target of \(10^{-8}\). All 39 physical audits passed before and after. Mean
+paper-comparison formula RMSE changed from 0.0290005 to 0.0290058, maximum
+formula RMSE remained 0.0498578, maximum absolute formula error remained
+0.0985922, and the worst independent KKT residual improved from
+\(8.24\times10^{-9}\) to \(6.95\times10^{-9}\). Total time fell from 894.28 s
+to 721.54 s, Provider evaluations from 432037 to 346530, optimizer solves from
+9913 to 6938, and Step-5 starts from 7253 to 4206. By-stage time fell from
+236.50 to 117.94 s in Step 2 and from 407.59 to 242.22 s in Step 5. Step 8
+increased from 119.57 to 230.64 s because the revised route reached and
+independently audited more complete Stage-III candidate problems. Thus the
+tolerance change is accepted for candidate discovery only, while final
+accuracy remains controlled by the unchanged physical and KKT gates.
+
 The paper says \(C_{pp}\) is “usually” \(C-2\) for \(C\leq5\) and may be
 smaller for larger mixtures. The rewrite uses every non-bound independent
 coordinate for every supported \(C\), so \(C_{pp}=|\mathcal I^m|\). A reduced
@@ -972,12 +989,13 @@ subject to:
 - \(\sum_m\phi^m=1\);
 - \(\phi^m\in[0,1]\);
 - \(V'^m\in[V^L,V^U]\); and
-- each modified composition is within \(10^{-3}\) of its Step-6 candidate,
+- each modified composition is within the installed \(10^{-2}\) radius of its
+  Step-6 candidate,
   intersected with the Step-1 physical bounds.
 
 Before invoking the nonlinear optimizer, solve an exact linear
 material-balance feasibility problem. Let \(X_m\) be the Step-1 transformed
-composition polytope intersected with candidate \(m\)'s \(10^{-3}\)
+composition polytope intersected with candidate \(m\)'s \(10^{-2}\)
 neighborhood, represented as \(B_m\bar{\mathbf x}\leq b_m\). Introduce
 \(w_i^m=\phi^m\bar x_i^m\) and solve
 
@@ -1196,9 +1214,10 @@ not be substituted silently for Eq. (69).
   and return to Step 4 without discarding \(\mathcal M\). Retain the
   independently certified Step-8 phase states as cutting planes, and
   recenter the next Problem-(67) neighborhoods for surviving candidate
-  identities on those refined states. The radius remains the paper's fixed
-  \(10^{-3}\); feedback advances the local neighborhoods rather than
-  widening them;
+  identities on those refined states. The installed radius begins at
+  \(10^{-2}\) and advances once to the bounded \(2\times10^{-2}\) recovery
+  radius after a certified nonlinear or convergence return; it never widens
+  again;
 - both tests pass: proceed to Step 10;
 - Eq. (69) fails only for charged components pinned to the finite Step-1
   search floor: proceed to Step 10 for bounded logarithmic refinement and
@@ -1530,17 +1549,16 @@ The native Release-build audit of those three synthetic feeds at 298.15 K and
 | 5.74 | indeterminate: 64-solve resource limit | 64 | 13.76 | 7.06 | 5.40 |
 
 These are diagnostic results for the installed, unfitted ePC-SAFT model, not
-reproductions of the SAFT-\(\gamma\) Mie phase compositions. The dominant
-measured cost is not repeated HELD2 control flow. Provider commit `e545ed2`
-adds an append-only installed value endpoint that uses the same CppAD
-zero-order tape as the derivative endpoint and returns before Jacobian,
-site-sensitivity, and Hessian work. Step 8 uses it only for objective callbacks;
-all gradients, Hessians, KKT checks, pressure polish, and Steps 9–10 retain the
-full endpoint. This preserves the accepted 4.58 result bit for bit while
-reducing Step 8 by 5.7–7.2 seconds. Step 5 still costs 6.5–7.1 seconds and the
-remaining exact Step-8 derivative work costs 5.4–8.2 seconds, so the requested
-sub-10-second wall target is not met. No unexplained controller replay or
-failed shortcut remains.
+reproductions of the SAFT-\(\gamma\) Mie phase compositions. The historical
+Provider value-only endpoint experiment reduced isolated objective-callback
+cost, but duplicated Provider work whenever Ipopt requested the full state at
+the same variables. The installed Step-8 route now owns one full-state cache
+keyed by the complete variable vector and serves objective, gradient, and
+Hessian callbacks from that state. The value-only access path, its admission
+requirement, and its zero-valued diagnostics are removed. Step 5 still costs
+6.5--7.1 seconds in these retained synthetic diagnostics; the current 39-point
+campaign above is the performance authority for the complete route. No
+unexplained controller replay or failed shortcut remains.
 
 ### Public Python cutover
 

@@ -252,6 +252,8 @@ Held2AlgorithmResult run_held2_algorithm(
             return fail("step8", step8.reason);
         }
         if (step8.outcome == Held2Step8Outcome::Indeterminate) {
+            step8_neighborhood_radius =
+                kHeld2Problem67ExpandedRadius;
             state.step5_requires_new_member = true;
             if (!continue_stage_ii()) {
                 result.final_state = state;

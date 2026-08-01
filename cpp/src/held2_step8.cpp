@@ -217,7 +217,6 @@ Held2Step8Result run_held2_step8(
         unchanged.warm_start_used = false;
         unchanged.cold_fallback_used = false;
         unchanged.provider_state_evaluations = 0;
-        unchanged.provider_value_evaluations = 0;
         unchanged.provider_volume_bound_evaluations = 0;
         unchanged.provider_packing_evaluations = 0;
         unchanged.timing = {};
@@ -242,15 +241,12 @@ Held2Step8Result run_held2_step8(
     bounds.reserve(selected_points.size());
     std::uint64_t provider_evaluations = 0;
     std::uint64_t provider_state_evaluations = 0;
-    std::uint64_t provider_value_evaluations = 0;
     std::uint64_t provider_volume_bound_evaluations = 0;
     std::uint64_t provider_packing_evaluations = 0;
     const auto record_provider_work = [&] {
         result.timing.provider_evaluations = provider_evaluations;
         result.provider_state_evaluations =
             provider_state_evaluations;
-        result.provider_value_evaluations =
-            provider_value_evaluations;
         result.provider_volume_bound_evaluations =
             provider_volume_bound_evaluations;
         result.provider_packing_evaluations =

@@ -49,7 +49,6 @@ struct Held2Step8Result {
     bool warm_start_used = false;
     bool cold_fallback_used = false;
     std::uint64_t provider_state_evaluations = 0;
-    std::uint64_t provider_value_evaluations = 0;
     std::uint64_t provider_volume_bound_evaluations = 0;
     std::uint64_t provider_packing_evaluations = 0;
     std::optional<double> total_reduced_gibbs;

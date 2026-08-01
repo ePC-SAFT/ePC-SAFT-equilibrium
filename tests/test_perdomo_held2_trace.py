@@ -138,7 +138,6 @@ def test_public_held2_performance_diagnostics_aggregate_native_work() -> None:
                     "warm_start_used": True,
                     "cold_fallback_used": True,
                     "provider_state_evaluations": 20,
-                    "provider_value_evaluations": 8,
                     "provider_volume_bound_evaluations": 2,
                     "provider_packing_evaluations": 0,
                     "problem_candidate_ids": [1, 2],
@@ -166,7 +165,6 @@ def test_public_held2_performance_diagnostics_aggregate_native_work() -> None:
     assert performance.step8_warm_start_count == 1
     assert performance.step8_cold_fallback_count == 1
     assert performance.step8_provider_state_evaluations == 20
-    assert performance.step8_provider_value_evaluations == 8
     assert performance.step8_provider_volume_bound_evaluations == 2
     assert performance.step8_provider_packing_evaluations == 0
     assert performance.step8_problem_candidate_count == 2

@@ -81,13 +81,11 @@ double maximum_difference(
     return maximum;
 }
 
-void restore_coalescence_candidate_indices(
+template <typename RestoreIndex>
+void map_coalescence_candidate_indices(
     std::vector<Held2PhaseCoalescence>& events,
-    std::size_t removed_index
+    const RestoreIndex& restore
 ) {
-    const auto restore = [removed_index](std::size_t index) {
-        return index < removed_index ? index : index + 1;
-    };
     for (Held2PhaseCoalescence& event : events) {
         event.left_candidate_index = restore(event.left_candidate_index);
         event.right_candidate_index = restore(event.right_candidate_index);
@@ -100,22 +98,26 @@ void restore_coalescence_candidate_indices(
 
 void restore_coalescence_candidate_indices(
     std::vector<Held2PhaseCoalescence>& events,
+    std::size_t removed_index
+) {
+    map_coalescence_candidate_indices(
+        events,
+        [removed_index](std::size_t index) {
+            return index < removed_index ? index : index + 1;
+        }
+    );
+}
+
+void restore_coalescence_candidate_indices(
+    std::vector<Held2PhaseCoalescence>& events,
     const std::vector<std::size_t>& retained_indices
 ) {
-    for (Held2PhaseCoalescence& event : events) {
-        event.left_candidate_index = retained_indices.at(
-            event.left_candidate_index
-        );
-        event.right_candidate_index = retained_indices.at(
-            event.right_candidate_index
-        );
-        event.retained_candidate_index = retained_indices.at(
-            event.retained_candidate_index
-        );
-        event.removed_candidate_index = retained_indices.at(
-            event.removed_candidate_index
-        );
-    }
+    map_coalescence_candidate_indices(
+        events,
+        [&retained_indices](std::size_t index) {
+            return retained_indices.at(index);
+        }
+    );
 }
 
 struct Problem67 {

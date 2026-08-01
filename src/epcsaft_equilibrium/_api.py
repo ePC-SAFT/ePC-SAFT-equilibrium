@@ -123,7 +123,6 @@ class HeldPerformanceDiagnostics:
     step8_warm_start_count: int
     step8_cold_fallback_count: int
     step8_provider_state_evaluations: int
-    step8_provider_value_evaluations: int
     step8_provider_volume_bound_evaluations: int
     step8_provider_packing_evaluations: int
     step8_problem_candidate_count: int
@@ -859,7 +858,6 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
     step8_warm_start_count = 0
     step8_cold_fallback_count = 0
     step8_provider_state_evaluations = 0
-    step8_provider_value_evaluations = 0
     step8_provider_volume_bound_evaluations = 0
     step8_provider_packing_evaluations = 0
     step8_problem_candidate_count = 0
@@ -878,9 +876,6 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
         step8_provider_state_evaluations += int(
             cast(int, step8.get("provider_state_evaluations", 0))
         )
-        step8_provider_value_evaluations += int(
-            cast(int, step8.get("provider_value_evaluations", 0))
-        )
         step8_provider_volume_bound_evaluations += int(
             cast(int, step8.get("provider_volume_bound_evaluations", 0))
         )
@@ -890,7 +885,6 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
         if (
             min(
                 step8_provider_state_evaluations,
-                step8_provider_value_evaluations,
                 step8_provider_volume_bound_evaluations,
                 step8_provider_packing_evaluations,
             )
@@ -965,7 +959,6 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
         step8_warm_start_count=step8_warm_start_count,
         step8_cold_fallback_count=step8_cold_fallback_count,
         step8_provider_state_evaluations=step8_provider_state_evaluations,
-        step8_provider_value_evaluations=step8_provider_value_evaluations,
         step8_provider_volume_bound_evaluations=(step8_provider_volume_bound_evaluations),
         step8_provider_packing_evaluations=step8_provider_packing_evaluations,
         step8_problem_candidate_count=step8_problem_candidate_count,
