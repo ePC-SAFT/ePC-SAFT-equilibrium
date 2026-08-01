@@ -31,12 +31,13 @@ policies are cross-referenced in the
 [`2026-07-28-held2-necessary-condition-map.md`](2026-07-28-held2-necessary-condition-map.md).
 That map explains differences; it does not relax this specification.
 
-Step 8 retires at most one KKT-inactive candidate at a time and re-solves
-Problem (67) on the retained candidate neighborhoods. A failed reduced solve
-is never accepted through phase-fraction recovery. It preserves the
-independently certified retirement as rejected acceleration evidence and
-returns to bounded Stage II; malformed or uncertified retirement evidence
-terminates indeterminate instead.
+Step 8 may retire multiple KKT-inactive candidates from one complete
+certificate and re-solves Problem (67) once on the retained candidate
+neighborhoods, while preserving at least two phases. A later retirement
+requires the new reduced certificate. A failed reduced solve is never accepted
+through phase-fraction recovery. It preserves the independently certified
+retirement as rejected acceleration evidence and returns to bounded Stage II;
+malformed or uncertified retirement evidence terminates indeterminate instead.
 
 ## Scope
 
@@ -217,7 +218,7 @@ The named effective-tolerance registry is:
 | quantity | reduced value | role |
 |---|---:|---|
 | `tpd_negative` | \(-10^{-8}\) | strict Step-2 negative-witness threshold |
-| \(\epsilon_b\) | \(10^{-2}\) | Step-6 upper/lower agreement |
+| \(\epsilon_b\) | \(5\times10^{-2}\) | Step-6 upper/lower finite-search agreement |
 | \(\epsilon_\lambda\) | \(0.5\) | Step-6 derivative agreement |
 | \(\epsilon_\eta\) | \(10^{-3}\) | Step-6 packing-fraction distinctness |
 | \(\epsilon_x\) | \(10^{-3}\) | Step-6 composition distinctness |
@@ -226,11 +227,14 @@ The named effective-tolerance registry is:
 
 Perdomo 2025 states \(10^{-6}\) defaults for \(\epsilon_g\) and
 \(\epsilon_\mu\). The effective values above are repository implementation
-policy validated against the installed Provider route; the Stage-II values
-retain the Pereira et al. (2012) HELD settings. Every effective tolerance is
-emitted in diagnostics. Independent Provider-domain, pressure, KKT, balance,
-charge, phase-fraction, and physical-state-equivalence tolerances remain
-separately named project certificates.
+policy validated against the installed Provider route. The Stage-II
+derivative and distinctness values retain the Pereira et al. (2012) HELD
+settings. The Step-6 gap is a five-percent candidate-discovery gate; it does
+not relax the final Stage-III KKT, balance, charge, pressure, or physical
+certificates. Every effective tolerance is emitted in diagnostics.
+Independent Provider-domain, pressure, KKT, balance, charge, phase-fraction,
+and physical-state-equivalence tolerances remain separately named project
+certificates.
 
 The \(10^{-2}\) Eq. (69) value is a one-percent stopping test on the paper's
 asymmetric ratio, whose denominator can make small absolute potential
@@ -527,17 +531,21 @@ the later candidate construction.
 
 A pressure-stationary state is useful to Steps 3–8 even though it is not
 needed for the instability proof. After a certified negative witness exists,
-the remaining search allowance may therefore prepare a downstream seed. A
-composition DIRECT-L trial samples 65 deterministic log-volume points but
-does not enumerate a pressure envelope. Only when the best sampled TPD is at
-most 0.2 does it refine the single most-promising pressure-residual bracket,
-using at most 64 safeguarded evaluations. The 0.2 value is a routing threshold
-for local refinement; it cannot accept a witness. The refined state must be a
-strict mechanically stable pressure root and must independently retain
-\(d<-10^{-8}\). If the selected certified witness remains off-pressure, one
-complete-envelope refinement at that composition is permitted for downstream
-initialization. Thus complete envelopes are never nested inside every global
-composition trial.
+the controller first performs one complete-envelope refinement at that same
+composition. If it produces a strict mechanically stable root that
+independently retains \(d<-10^{-8}\), that state is the downstream seed and no
+second global search is run. Only when this targeted refinement cannot
+produce the seed may the remaining search allowance launch the preparation
+search. A composition DIRECT-L preparation trial samples 65 deterministic
+log-volume points but does not enumerate a pressure envelope. Only when the
+best sampled TPD is at most 0.2 does it refine the single most-promising
+pressure-residual bracket, using at most 64 safeguarded evaluations. The 0.2
+value is a routing threshold for local refinement; it cannot accept a
+witness. The prepared state must be a strict mechanically stable pressure
+root and must independently retain \(d<-10^{-8}\). Thus a recertified witness
+is not rediscovered globally when its own pressure refinement already supplies
+the required seed, and complete envelopes are never nested inside every
+global composition trial.
 
 The joint trials have an exact two-callback charge and each downstream
 preparation trial has an explicit worst-case charge of
@@ -546,8 +554,10 @@ whole trials that fit the remaining 6500-callback allowance; zero permitted
 trials is invalid rather than NLopt's unlimited-work convention. Mandatory
 feed-reference work, charged trace-boundary evidence, independent
 recertification, and the single targeted fallback are reported in the total
-Step-2 Provider count but are not allowed to shrink the declared joint-search
-coverage. Every finite result continues to report
+Step-2 Provider count. They do not shrink the already executed joint-search
+coverage; targeted refinement reduces only the optional downstream
+preparation allowance so that joint search, targeted refinement, and optional
+preparation together cannot exceed 6500 callbacks. Every finite result continues to report
 `globality_certificate = not_guaranteed`.
 
 ### Step 3 — initialize the dual problem and \(\mathcal M\)
@@ -725,11 +735,15 @@ rejected Step-8 problem or non-trace Step-9/Step-10 convergence return.
 Certified failed-phase feedback remains an append-only cut, but it is part of
 the rejected phase set and therefore does not itself satisfy the requirement
 for a distinct new basin. These conditions prevent a finite major loop from
-replaying the same non-progress terminal or candidate solution. Recovery
-fills its declared 2048-start ceiling from the same never-reset random stream
-while reserving room for each of the \(4d\) `boundary_aware`
-face/direction/density profiles and up to one `shifted_retained` start per
-persistent member.
+replaying the same non-progress terminal or candidate solution. Recovery fills
+its declared 2048-start ceiling without resetting the nominal random stream.
+It consumes one nominal random start, then each of the \(4d\)
+`boundary_aware` face/direction/density profiles and up to one
+`shifted_retained` start per persistent member. If those starts still return
+owned basins, recovery consumes 32 more nominal random starts, a bounded
+64-point deterministic Halton coverage burst, and then resumes the original
+random stream. The coverage burst is never used by nominal search and cannot
+replace or replay persistent random ordinals.
 Shifted starts are convex
 interior perturbations of persistent members; boundary-aware starts approach
 each polytope face and alternate dense and lower-density volume regions. The
@@ -892,6 +906,27 @@ effective values in diagnostics, and preserve the mathematical relation of
 each criterion. Any additive floor used when \(\bar\lambda_i^k=0\) must be
 named and reported rather than hidden in a generic comparison.
 
+The effective \(\epsilon_b=5\times10^{-2}\) is a Stage-II working tolerance
+for admitting nearby finite-cut candidates. It replaces long one-percent
+boundary crawls with an earlier simultaneous Stage-III solve. It is not an
+accuracy certificate: every returned equilibrium must still pass the
+unchanged independent Stage-III KKT and physical audits.
+
+The 39-point Khudaida Figures 2--7 profiling matrix provides the explicit
+accuracy assessment for this working-gate change and the Stage-III Ipopt
+target of \(10^{-8}\). All 39 physical audits passed before and after. Mean
+paper-comparison formula RMSE changed from 0.0290005 to 0.0290058, maximum
+formula RMSE remained 0.0498578, maximum absolute formula error remained
+0.0985922, and the worst independent KKT residual improved from
+\(8.24\times10^{-9}\) to \(6.95\times10^{-9}\). Total time fell from 894.28 s
+to 721.54 s, Provider evaluations from 432037 to 346530, optimizer solves from
+9913 to 6938, and Step-5 starts from 7253 to 4206. By-stage time fell from
+236.50 to 117.94 s in Step 2 and from 407.59 to 242.22 s in Step 5. Step 8
+increased from 119.57 to 230.64 s because the revised route reached and
+independently audited more complete Stage-III candidate problems. Thus the
+tolerance change is accepted for candidate discovery only, while final
+accuracy remains controlled by the unchanged physical and KKT gates.
+
 The paper says \(C_{pp}\) is “usually” \(C-2\) for \(C\leq5\) and may be
 smaller for larger mixtures. The rewrite uses every non-bound independent
 coordinate for every supported \(C\), so \(C_{pp}=|\mathcal I^m|\). A reduced
@@ -954,12 +989,13 @@ subject to:
 - \(\sum_m\phi^m=1\);
 - \(\phi^m\in[0,1]\);
 - \(V'^m\in[V^L,V^U]\); and
-- each modified composition is within \(10^{-3}\) of its Step-6 candidate,
+- each modified composition is within the installed \(10^{-2}\) radius of its
+  Step-6 candidate,
   intersected with the Step-1 physical bounds.
 
 Before invoking the nonlinear optimizer, solve an exact linear
 material-balance feasibility problem. Let \(X_m\) be the Step-1 transformed
-composition polytope intersected with candidate \(m\)'s \(10^{-3}\)
+composition polytope intersected with candidate \(m\)'s \(10^{-2}\)
 neighborhood, represented as \(B_m\bar{\mathbf x}\leq b_m\). Introduce
 \(w_i^m=\phi^m\bar x_i^m\) and solve
 
@@ -1013,9 +1049,18 @@ than all candidates. This is a generic active-set initialization, not phase
 acceptance: the reduced nonlinear problem must independently converge and pass
 the complete KKT and physical audits, and all solver work remains counted.
 The support retry cannot recurse. One top-level Problem-(67) attempt and its
-certified one-at-a-time retirement chain share a 32-solve ceiling; the separate
+same-certificate retirement reductions share a 32-solve ceiling; the separate
 declared cold retry receives the same finite ceiling. Exhaustion is terminal
 `stage_iii_solve_budget_exhausted` evidence, not Stage-II progress.
+
+The installed candidate neighborhood starts at \(10^{-2}\). When its exact
+master is Farkas-certified infeasible, Step 8 makes one bounded
+\(2\times10^{-2}\) probe on the same candidates. It adopts that changed problem
+only when the complete nonlinear solve and every independent audit pass;
+otherwise the original restricted-infeasibility certificate and Stage-II path
+remain authoritative. A convergence-failed certified phase solution may also
+continue at the expanded radius. Radius is part of the exact memoized problem
+identity.
 
 Duplicate removal is part of Step 8. It may not be performed earlier to
 manufacture a Step-6 candidate count.
@@ -1054,10 +1099,12 @@ manufacture a Step-6 candidate count.
 3. Do not retire a distinct phase because its amount or any component
    fraction is small. Trace component fractions remain valid linear Step-8
    variables and do not trigger phase identity changes.
-4. After a full KKT audit passes, a positive lower-bound phase-amount
-   multiplier above the named retirement margin may nominate one inactive
-   candidate. Remove at most that one candidate and re-solve Problem (67) on
-   the retained neighborhoods, preserving their complete composition freedom.
+4. After a full KKT audit passes, every positive lower-bound phase-amount
+   multiplier above the named retirement margin may nominate an inactive
+   candidate. Retire the same-certificate nominations together while
+   preserving at least two phases, then re-solve Problem (67) once on the
+   retained neighborhoods with their complete composition freedom. Any later
+   retirement requires the new reduced certificate.
 5. Accept the reduced active set only after the reduced solve independently
    passes every nonlinear, KKT, balance, physical, and phase-identity gate.
    Preserve the reduced candidate-ID/continuation mapping and record the
@@ -1167,9 +1214,10 @@ not be substituted silently for Eq. (69).
   and return to Step 4 without discarding \(\mathcal M\). Retain the
   independently certified Step-8 phase states as cutting planes, and
   recenter the next Problem-(67) neighborhoods for surviving candidate
-  identities on those refined states. The radius remains the paper's fixed
-  \(10^{-3}\); feedback advances the local neighborhoods rather than
-  widening them;
+  identities on those refined states. The installed radius begins at
+  \(10^{-2}\) and advances once to the bounded \(2\times10^{-2}\) recovery
+  radius after a certified nonlinear or convergence return; it never widens
+  again;
 - both tests pass: proceed to Step 10;
 - Eq. (69) fails only for charged components pinned to the finite Step-1
   search floor: proceed to Step 10 for bounded logarithmic refinement and
@@ -1501,17 +1549,16 @@ The native Release-build audit of those three synthetic feeds at 298.15 K and
 | 5.74 | indeterminate: 64-solve resource limit | 64 | 13.76 | 7.06 | 5.40 |
 
 These are diagnostic results for the installed, unfitted ePC-SAFT model, not
-reproductions of the SAFT-\(\gamma\) Mie phase compositions. The dominant
-measured cost is not repeated HELD2 control flow. Provider commit `e545ed2`
-adds an append-only installed value endpoint that uses the same CppAD
-zero-order tape as the derivative endpoint and returns before Jacobian,
-site-sensitivity, and Hessian work. Step 8 uses it only for objective callbacks;
-all gradients, Hessians, KKT checks, pressure polish, and Steps 9–10 retain the
-full endpoint. This preserves the accepted 4.58 result bit for bit while
-reducing Step 8 by 5.7–7.2 seconds. Step 5 still costs 6.5–7.1 seconds and the
-remaining exact Step-8 derivative work costs 5.4–8.2 seconds, so the requested
-sub-10-second wall target is not met. No unexplained controller replay or
-failed shortcut remains.
+reproductions of the SAFT-\(\gamma\) Mie phase compositions. The historical
+Provider value-only endpoint experiment reduced isolated objective-callback
+cost, but duplicated Provider work whenever Ipopt requested the full state at
+the same variables. The installed Step-8 route now owns one full-state cache
+keyed by the complete variable vector and serves objective, gradient, and
+Hessian callbacks from that state. The value-only access path, its admission
+requirement, and its zero-valued diagnostics are removed. Step 5 still costs
+6.5--7.1 seconds in these retained synthetic diagnostics; the current 39-point
+campaign above is the performance authority for the complete route. No
+unexplained controller replay or failed shortcut remains.
 
 ### Public Python cutover
 

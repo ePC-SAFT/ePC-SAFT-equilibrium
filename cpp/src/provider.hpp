@@ -124,12 +124,6 @@ public:
         double volume_m3
     ) const;
 
-    [[nodiscard]] double evaluate_electrolyte_value(
-        double temperature_k,
-        const std::vector<double>& amounts_mol,
-        double volume_m3
-    ) const;
-
     [[nodiscard]] std::array<double, 2> evaluate_molar_volume_bounds(
         double temperature_k,
         const std::vector<double>& mole_fractions,

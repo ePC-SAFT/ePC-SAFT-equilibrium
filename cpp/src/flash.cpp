@@ -30,10 +30,6 @@ constexpr std::size_t kMolarVolumeSdkTableSize =
 constexpr std::size_t kSourceDomainSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, total_ion_mole_fraction_max)
     + sizeof(double);
-constexpr std::size_t kElectrolyteValueSdkTableSize =
-    offsetof(epcsaft_native_sdk_v1, evaluate_electrolyte_phase_value)
-    + sizeof(epcsaft_evaluate_electrolyte_phase_value_v1);
-
 void require_mixture_sdk(const epcsaft_native_sdk_v1& sdk) {
     if (sdk.table_size < kMixtureSdkTableSize) {
         throw std::invalid_argument("provider capsule is missing the mixture SDK tail");
@@ -70,14 +66,6 @@ void require_held2_sdk(const epcsaft_native_sdk_v1& sdk) {
     if (sdk.table_size < kSourceDomainSdkTableSize) {
         throw std::invalid_argument(
             "provider capsule is missing the electrolyte source-domain contract"
-        );
-    }
-    if (sdk.table_size < kElectrolyteValueSdkTableSize
-        || sdk.electrolyte_phase_value_result_size
-            != sizeof(epcsaft_electrolyte_phase_value_result_v1)
-        || sdk.evaluate_electrolyte_phase_value == nullptr) {
-        throw std::invalid_argument(
-            "provider capsule is missing the electrolyte value contract"
         );
     }
 }
@@ -152,18 +140,6 @@ public:
             log_volume,
             Held2CompositionDomain::TraceRefinement
         );
-    }
-
-    [[nodiscard]] double evaluate_value(
-        const std::vector<double>& independent,
-        double log_volume
-    ) const {
-        const double volume = std::exp(log_volume);
-        return provider_.evaluate_electrolyte_value(
-            input_.temperature_k,
-            held2_lift_independent_fractions(coordinates_, independent),
-            volume
-        ) + pressure_over_rt_ * volume;
     }
 
     [[nodiscard]] std::array<double, 2> volume_bounds(
@@ -278,11 +254,6 @@ Held2ThermodynamicAccess make_installed_held2_access(
     }
     result.evaluate = [problem](const auto& composition, double log_volume) {
         return problem->evaluate(composition, log_volume);
-    };
-    result.evaluate_value = [problem](
-        const auto& composition, double log_volume
-    ) {
-        return problem->evaluate_value(composition, log_volume);
     };
     result.evaluate_trace = [problem](
         const auto& composition, double log_volume

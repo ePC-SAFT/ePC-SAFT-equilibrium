@@ -5,7 +5,8 @@
 
 namespace epcsaft_equilibrium {
 
-inline constexpr double kHeld2Problem67Radius = 1.0e-3;
+inline constexpr double kHeld2Problem67InitialRadius = 1.0e-2;
+inline constexpr double kHeld2Problem67ExpandedRadius = 2.0e-2;
 
 enum class Held2ToleranceRelation {
     AbsAtMost,
@@ -162,7 +163,7 @@ inline constexpr Held2Tolerance kHeld2Step6Gap{
 inline constexpr Held2Tolerance kHeld2PaperStep6Gap{
     "paper_step6_gap", "stage_ii_paper",
     "Perdomo Eq. (66) upper/lower agreement failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-2, 0.0,
+    Held2ToleranceRelation::AbsAtMost, 5.0e-2, 0.0,
 };
 inline constexpr Held2Tolerance kHeld2PaperStep6Derivative{
     "paper_step6_derivative", "stage_ii_paper",
@@ -238,6 +239,11 @@ inline constexpr Held2Tolerance kHeld2PaperPhaseCoalescence{
 inline constexpr Held2Tolerance kHeld2IpoptTarget{
     "ipopt_target", "solver", "Ipopt target tolerance was not met",
     Held2ToleranceRelation::SolverTarget, 1.0e-10, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2Stage3IpoptTarget{
+    "stage3_ipopt_target", "stage_iii_solver",
+    "Stage-III Ipopt target tolerance was not met",
+    Held2ToleranceRelation::SolverTarget, 1.0e-8, 0.0,
 };
 inline constexpr Held2Tolerance kHeld2IpoptConstraint{
     "ipopt_constraint", "solver", "Ipopt constraint target was not met",

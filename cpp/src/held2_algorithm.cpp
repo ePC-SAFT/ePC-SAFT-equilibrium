@@ -163,6 +163,7 @@ Held2AlgorithmResult run_held2_algorithm(
         return fail("step3", result.step3->reason);
     }
     Held2PersistentState state = *result.step3->state;
+    double step8_neighborhood_radius = kHeld2Problem67InitialRadius;
     while (true) {
         result.step4_history.push_back(run_step(4, [&] {
             return run_held2_step4(state, observer);
@@ -240,7 +241,7 @@ Held2AlgorithmResult run_held2_algorithm(
                 thermodynamics.evaluate,
                 thermodynamics.packing_fraction,
                 previous,
-                thermodynamics.evaluate_value
+                step8_neighborhood_radius
             );
         }, observer));
         result.step_timings.push_back(result.step8_history.back().timing);
@@ -251,6 +252,8 @@ Held2AlgorithmResult run_held2_algorithm(
             return fail("step8", step8.reason);
         }
         if (step8.outcome == Held2Step8Outcome::Indeterminate) {
+            step8_neighborhood_radius =
+                kHeld2Problem67ExpandedRadius;
             state.step5_requires_new_member = true;
             if (!continue_stage_ii()) {
                 result.final_state = state;
@@ -284,6 +287,8 @@ Held2AlgorithmResult run_held2_algorithm(
             return fail("step9", step9.reason);
         }
         if (step9.next_action == Held2Step9Action::ReturnStageII) {
+            step8_neighborhood_radius =
+                kHeld2Problem67ExpandedRadius;
             state.step5_requires_new_member =
                 !retain_held2_step8_feedback(state, step8);
             if (!continue_stage_ii()) {
@@ -309,6 +314,8 @@ Held2AlgorithmResult run_held2_algorithm(
         result.step_timings.push_back(result.step10->timing);
         if (result.step10->next_action
             == Held2Step10Action::ReturnStageII) {
+            step8_neighborhood_radius =
+                kHeld2Problem67ExpandedRadius;
             static_cast<void>(retain_held2_step8_feedback(state, step8));
             state.step5_requires_new_member = true;
             if (!continue_stage_ii()) {

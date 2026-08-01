@@ -19,6 +19,9 @@ namespace {
 
 inline constexpr double kStep5DiluteFaceMuInitial = 1.0e-16;
 inline constexpr double kStep5DiluteFaceBoundPush = 1.0e-14;
+inline constexpr std::size_t kStep5RecoveryRandomPrefix = 1;
+inline constexpr int kStep5RecoveryRandomFallbackPrefix = 32;
+inline constexpr int kStep5RecoverySpaceFillingCount = 64;
 
 struct Step5Assessment {
     bool qualified = false;
@@ -105,6 +108,52 @@ bool representation_equivalent(
     );
 }
 
+std::vector<std::uint64_t> first_primes(std::size_t count) {
+    std::vector<std::uint64_t> primes;
+    primes.reserve(count);
+    std::uint64_t candidate = 2;
+    while (primes.size() < count) {
+        bool prime = true;
+        for (std::uint64_t divisor = 2;
+             divisor * divisor <= candidate;
+             ++divisor) {
+            if (candidate % divisor == 0) {
+                prime = false;
+                break;
+            }
+        }
+        if (prime) {
+            primes.push_back(candidate);
+        }
+        ++candidate;
+    }
+    return primes;
+}
+
+double radical_inverse(std::uint64_t index, std::uint64_t base) {
+    double value = 0.0;
+    double scale = 1.0 / static_cast<double>(base);
+    while (index > 0) {
+        value += scale * static_cast<double>(index % base);
+        index /= base;
+        scale /= static_cast<double>(base);
+    }
+    return value;
+}
+
+std::vector<double> space_filling_point(
+    const std::vector<std::uint64_t>& bases,
+    std::uint64_t ordinal
+) {
+    std::vector<double> point(bases.size());
+    for (std::size_t coordinate = 0; coordinate < bases.size(); ++coordinate) {
+        point[coordinate] = radical_inverse(
+            ordinal + 1, bases[coordinate]
+        );
+    }
+    return point;
+}
+
 Step5Start make_step5_start(
     const Held2Coordinates& coordinates,
     const Held2PersistentState& state,
@@ -112,15 +161,35 @@ Step5Start make_step5_start(
     const std::array<double, 2>& volume_bounds,
     double total_ion_mole_fraction_max,
     int attempt,
-    int random_start_cap
+    int structured_start_begin,
+    int structured_start_count,
+    std::uint64_t ordinal,
+    const std::vector<std::uint64_t>& space_filling_bases
 ) {
     const std::size_t dimension = state.feed.size();
+    const int structured_end =
+        structured_start_begin + structured_start_count;
+    const bool use_space_filling_point = state.step5_requires_new_member
+        && !state.M.empty()
+        && attempt
+            >= structured_end + kStep5RecoveryRandomFallbackPrefix
+        && attempt < structured_end
+            + kStep5RecoveryRandomFallbackPrefix
+            + kStep5RecoverySpaceFillingCount;
+    const std::uint64_t space_filling_ordinal = use_space_filling_point
+        ? ordinal - static_cast<std::uint64_t>(
+            kStep5RecoveryRandomFallbackPrefix
+        )
+        : 0;
+    const std::vector<double> deterministic_point = use_space_filling_point
+        ? space_filling_point(space_filling_bases, space_filling_ordinal)
+        : random_point;
     const std::vector<double> random_independent =
         held2_map_unit_cube_to_independent_fractions(
             coordinates,
             std::vector<double>(
-                random_point.begin(),
-                random_point.begin()
+                deterministic_point.begin(),
+                deterministic_point.begin()
                     + static_cast<std::ptrdiff_t>(dimension)
             ),
             total_ion_mole_fraction_max
@@ -128,14 +197,21 @@ Step5Start make_step5_start(
     const double lower_log_volume = std::log(volume_bounds[0]);
     const double upper_log_volume = std::log(volume_bounds[1]);
     const double random_log_volume = lower_log_volume
-        + random_point.back()
+        + deterministic_point.back()
             * (upper_log_volume - lower_log_volume);
     if (!state.step5_requires_new_member
-        || attempt < random_start_cap || state.M.empty()) {
-        return {random_independent, random_log_volume, "random_interior"};
+        || attempt < structured_start_begin
+        || attempt >= structured_start_begin + structured_start_count
+        || state.M.empty()) {
+        return {
+            random_independent,
+            random_log_volume,
+            use_space_filling_point
+                ? "space_filling_interior" : "random_interior",
+        };
     }
     const std::uint64_t structured_ordinal = static_cast<std::uint64_t>(
-        attempt - random_start_cap
+        attempt - structured_start_begin
     );
     const std::uint64_t boundary_start_count =
         4 * static_cast<std::uint64_t>(dimension);
@@ -1345,9 +1421,17 @@ Held2Step5Result run_held2_step5(
     const int attempt_cap = state.step5_requires_new_member
         ? resources.step5_recovery_start_cap
         : resources.step5_start_cap;
-    const int random_start_cap = state.step5_requires_new_member
-        ? static_cast<int>(recovery_capacity - structured_capacity)
-        : resources.step5_start_cap;
+    const int structured_start_count = state.step5_requires_new_member
+        ? static_cast<int>(structured_capacity) : 0;
+    const int structured_start_begin = state.step5_requires_new_member
+        ? static_cast<int>(std::min(
+            kStep5RecoveryRandomPrefix,
+            recovery_capacity - structured_capacity
+        )) : 0;
+    const std::vector<std::uint64_t> space_filling_bases =
+        state.step5_requires_new_member
+            ? first_primes(dimension + 1)
+            : std::vector<std::uint64_t>{};
     std::vector<double> lower = coordinates.independent_lower_bounds;
     std::vector<double> upper = coordinates.independent_upper_bounds;
     const std::size_t begin =
@@ -1422,7 +1506,10 @@ Held2Step5Result run_held2_step5(
             *state.step5_volume_bounds,
             step1.total_ion_mole_fraction_max,
             attempt,
-            random_start_cap
+            structured_start_begin,
+            structured_start_count,
+            ordinal,
+            space_filling_bases
         );
         Held2LocalCertificate certificate;
         certificate.start_ordinal = ordinal;

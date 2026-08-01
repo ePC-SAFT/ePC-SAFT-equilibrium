@@ -34,9 +34,10 @@ Held2Step8Result run_held2_step8(
     const Held2StateEvaluator& evaluator,
     const Held2PackingFractionEvaluator& packing_fraction,
     const Held2Step8Result* previous,
-    const Held2StateValueEvaluator& value_evaluator
+    double neighborhood_radius
 ) {
     Held2Step8Result result;
+    result.neighborhood_radius = neighborhood_radius;
     result.timing.invocation_count = 1;
     if (!step1.coordinates || !step1.independent_feed || !step1.volume_bounds
         || step6.status != "complete" || step6.candidates.size() < 2
@@ -133,7 +134,7 @@ Held2Step8Result run_held2_step8(
                             - point.independent_modified_fractions[
                                 coordinate
                             ]
-                        ) >= kHeld2Problem67Radius
+                        ) >= neighborhood_radius
                             - kHeld2BoundActivity.atol;
                 }
                 if (neighborhood_boundary_active) {
@@ -189,15 +190,18 @@ Held2Step8Result run_held2_step8(
         result.problem_candidate_variables.push_back(point.volume);
     }
     const bool same_as_previous_problem = previous
+        && neighborhood_radius == previous->neighborhood_radius
         && result.problem_candidate_ids == previous->problem_candidate_ids
         && result.problem_candidate_variables
             == previous->problem_candidate_variables;
     const bool same_as_rejected_terminal = previous
+        && neighborhood_radius == previous->neighborhood_radius
         && previous->outcome == Held2Step8Outcome::Indeterminate
         && result.problem_candidate_ids == previous->candidate_ids
         && result.problem_candidate_variables
             == previous->candidate_variables;
     const bool same_as_certified_effective_problem = previous
+        && neighborhood_radius == previous->neighborhood_radius
         && previous->outcome == Held2Step8Outcome::CertifiedFeasible
         && result.problem_candidate_ids
             == previous->problem_candidate_ids
@@ -213,7 +217,6 @@ Held2Step8Result run_held2_step8(
         unchanged.warm_start_used = false;
         unchanged.cold_fallback_used = false;
         unchanged.provider_state_evaluations = 0;
-        unchanged.provider_value_evaluations = 0;
         unchanged.provider_volume_bound_evaluations = 0;
         unchanged.provider_packing_evaluations = 0;
         unchanged.timing = {};
@@ -238,15 +241,12 @@ Held2Step8Result run_held2_step8(
     bounds.reserve(selected_points.size());
     std::uint64_t provider_evaluations = 0;
     std::uint64_t provider_state_evaluations = 0;
-    std::uint64_t provider_value_evaluations = 0;
     std::uint64_t provider_volume_bound_evaluations = 0;
     std::uint64_t provider_packing_evaluations = 0;
     const auto record_provider_work = [&] {
         result.timing.provider_evaluations = provider_evaluations;
         result.provider_state_evaluations =
             provider_state_evaluations;
-        result.provider_value_evaluations =
-            provider_value_evaluations;
         result.provider_volume_bound_evaluations =
             provider_volume_bound_evaluations;
         result.provider_packing_evaluations =
@@ -285,20 +285,6 @@ Held2Step8Result run_held2_step8(
             ++provider_volume_bound_evaluations;
             return (*step1.volume_bounds)(composition);
         };
-    const Held2StateValueEvaluator counted_value =
-        value_evaluator
-        ? Held2StateValueEvaluator(
-            [&value_evaluator, &provider_evaluations,
-             &provider_value_evaluations](
-                const std::vector<double>& composition,
-                double log_volume
-            ) {
-                ++provider_evaluations;
-                ++provider_value_evaluations;
-                return value_evaluator(composition, log_volume);
-            }
-        )
-        : Held2StateValueEvaluator{};
     std::vector<double> initial;
     const std::size_t dimension =
         step1.coordinates->independent_indices.size();
@@ -338,14 +324,14 @@ Held2Step8Result run_held2_step8(
                             ->independent_lower_bounds[coordinate],
                         candidates[phase]
                             .independent_modified_fractions[coordinate]
-                            - kHeld2Problem67Radius
+                            - neighborhood_radius
                     ),
                     std::min(
                         step1.coordinates
                             ->independent_upper_bounds[coordinate],
                         candidates[phase]
                             .independent_modified_fractions[coordinate]
-                            + kHeld2Problem67Radius
+                            + neighborhood_radius
                     )
                 );
             }
@@ -366,12 +352,15 @@ Held2Step8Result run_held2_step8(
         held2_lift_independent_fractions(
             *step1.coordinates, *step1.independent_feed
         );
-    const auto solve = [&](std::vector<double> start) {
+    const auto solve = [&](
+        std::vector<double> start,
+        double radius
+    ) {
         return solve_held2_problem67(
             *step1.coordinates, physical_feed,
             candidates, counted_evaluator, bounds,
-            std::move(start), counted_value, 32, true,
-            counted_volume_bounds
+            std::move(start), 32, true,
+            counted_volume_bounds, radius
         );
     };
     const auto accepted_nlp_evidence = [](const Held2Problem67Result& value) {
@@ -393,12 +382,37 @@ Held2Step8Result run_held2_step8(
                 value.bound_complementarity_inf_norm
             ).passed;
     };
-    Held2Problem67Result solved = solve(std::move(initial));
+    Held2Problem67Result solved = solve(
+        std::move(initial), neighborhood_radius
+    );
+    if (solved.failure_reason == "problem_67_infeasible"
+        && neighborhood_radius == kHeld2Problem67InitialRadius) {
+        Held2Problem67Result expanded = solve(
+            {}, kHeld2Problem67ExpandedRadius
+        );
+        if (accepted_nlp_evidence(expanded)
+            && expanded.phases.size() >= 2) {
+            expanded.stage_iii_solve_count +=
+                solved.stage_iii_solve_count;
+            expanded.optimizer_iteration_count +=
+                solved.optimizer_iteration_count;
+            solved = std::move(expanded);
+            result.neighborhood_radius =
+                kHeld2Problem67ExpandedRadius;
+        } else {
+            solved.stage_iii_solve_count +=
+                expanded.stage_iii_solve_count;
+            solved.optimizer_iteration_count +=
+                expanded.optimizer_iteration_count;
+        }
+    }
     if (warm_started
         && solved.numerical_status != "not_adjudicated"
         && (!accepted_nlp_evidence(solved) || solved.phases.size() < 2)) {
         result.cold_fallback_used = true;
-        Held2Problem67Result cold = solve({});
+        Held2Problem67Result cold = solve(
+            {}, result.neighborhood_radius
+        );
         cold.stage_iii_solve_count += solved.stage_iii_solve_count;
         cold.optimizer_iteration_count +=
             solved.optimizer_iteration_count;

@@ -138,11 +138,20 @@ def test_public_held2_performance_diagnostics_aggregate_native_work() -> None:
                     "warm_start_used": True,
                     "cold_fallback_used": True,
                     "provider_state_evaluations": 20,
-                    "provider_value_evaluations": 8,
                     "provider_volume_bound_evaluations": 2,
                     "provider_packing_evaluations": 0,
                     "problem_candidate_ids": [1, 2],
                     "attempted_candidate_ids": [1, 2],
+                    "problem_candidate_variables": [0.2, 1.0, 0.8, 1.0],
+                    "neighborhood_radius": 0.01,
+                },
+                {
+                    "status": "complete",
+                    "reason": "step8_complete",
+                    "problem_candidate_ids": [1, 2],
+                    "attempted_candidate_ids": [1, 2],
+                    "problem_candidate_variables": [0.2, 1.0, 0.8, 1.0],
+                    "neighborhood_radius": 0.02,
                 }
             ],
         }
@@ -161,22 +170,33 @@ def test_public_held2_performance_diagnostics_aggregate_native_work() -> None:
     assert performance.dilute_face_restart_accepts == 1
     assert performance.dilute_face_coordinate_indices == (0, 2)
     assert performance.dilute_face_component_indices == (1, 3)
-    assert performance.step8_invocations == 1
+    assert performance.step8_invocations == 2
     assert performance.step8_return_to_stage_ii_count == 1
     assert performance.step8_warm_start_count == 1
     assert performance.step8_cold_fallback_count == 1
     assert performance.step8_provider_state_evaluations == 20
-    assert performance.step8_provider_value_evaluations == 8
     assert performance.step8_provider_volume_bound_evaluations == 2
     assert performance.step8_provider_packing_evaluations == 0
-    assert performance.step8_problem_candidate_count == 2
-    assert performance.step8_attempted_candidate_count == 2
+    assert performance.step8_problem_candidate_count == 4
+    assert performance.step8_attempted_candidate_count == 4
     assert performance.step8_repeated_problem_count == 0
     assert performance.step10_invocations == 1
     assert performance.trace_refinement_activated_count == 1
     assert performance.trace_refinement_return_to_stage_ii_count == 0
     assert performance.trace_refinement_component_indices == (2,)
     assert tuple(timing.step for timing in performance.step_timings) == (5, 8, 10)
+
+    with pytest.raises(ValueError, match="neighborhood radius is missing"):
+        _api._held2_performance(
+            {
+                "step8_history": [
+                    {
+                        "problem_candidate_ids": [1, 2],
+                        "problem_candidate_variables": [0.2, 1.0, 0.8, 1.0],
+                    }
+                ]
+            }
+        )
 
 
 def test_held2_observer_is_quiet_by_default_and_does_not_change_results(capfd) -> None:
@@ -318,15 +338,15 @@ def test_perdomo_table3_nacl_workflow() -> None:
     (
         pytest.param(
             3181.454397,
-            0.005000000139214637,
-            "physical_equilibrium_accepted",
-            0.21155666627999972,
-            (0.9859582298039169, 0.014041770196083159),
-            (
-                (0.999940249301094, 2.9875349452987036e-05, 2.9875349452987036e-05),
-                (0.9913679784855386, 0.004316010757230692, 0.004316010757230692),
-            ),
-            (1.781620362376228e-05, 0.010911059324502348),
+                0.005000000139214637,
+                "physical_equilibrium_accepted",
+                0.21155648678431022,
+                (0.9851851723141468, 0.014814827685853224),
+                (
+                    (0.9999403402467356, 2.9829876632190147e-05, 2.9829876632190147e-05),
+                    (0.991809243149451, 0.004095378425274544, 0.004095378425274544),
+                ),
+                (1.7802235178776976e-05, 0.01151173970113826),
             id="figure1a-0.005molal-below-boundary",
         ),
         pytest.param(

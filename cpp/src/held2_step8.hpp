@@ -45,10 +45,10 @@ struct Held2Step8Result {
     std::vector<std::uint64_t> candidate_ids;
     std::vector<double> candidate_variables;
     std::vector<double> continuation_variables;
+    double neighborhood_radius = kHeld2Problem67InitialRadius;
     bool warm_start_used = false;
     bool cold_fallback_used = false;
     std::uint64_t provider_state_evaluations = 0;
-    std::uint64_t provider_value_evaluations = 0;
     std::uint64_t provider_volume_bound_evaluations = 0;
     std::uint64_t provider_packing_evaluations = 0;
     std::optional<double> total_reduced_gibbs;
@@ -69,7 +69,7 @@ struct Held2Step8Result {
     const Held2StateEvaluator& evaluator,
     const Held2PackingFractionEvaluator& packing_fraction,
     const Held2Step8Result* previous = nullptr,
-    const Held2StateValueEvaluator& value_evaluator = {}
+    double neighborhood_radius = kHeld2Problem67InitialRadius
 );
 
 }  // namespace epcsaft_equilibrium

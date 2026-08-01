@@ -123,7 +123,6 @@ class HeldPerformanceDiagnostics:
     step8_warm_start_count: int
     step8_cold_fallback_count: int
     step8_provider_state_evaluations: int
-    step8_provider_value_evaluations: int
     step8_provider_volume_bound_evaluations: int
     step8_provider_packing_evaluations: int
     step8_problem_candidate_count: int
@@ -859,12 +858,13 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
     step8_warm_start_count = 0
     step8_cold_fallback_count = 0
     step8_provider_state_evaluations = 0
-    step8_provider_value_evaluations = 0
     step8_provider_volume_bound_evaluations = 0
     step8_provider_packing_evaluations = 0
     step8_problem_candidate_count = 0
     step8_attempted_candidate_count = 0
-    problem_signatures: list[tuple[tuple[int, ...], tuple[float, ...]]] = []
+    problem_signatures: list[
+        tuple[tuple[int, ...], tuple[float, ...], float]
+    ] = []
     for raw_step8 in cast(Sequence[object], payload.get("step8_history", ())):
         if not isinstance(raw_step8, Mapping):
             raise ValueError("native HELD2 Step 8 history must contain mappings")
@@ -878,9 +878,6 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
         step8_provider_state_evaluations += int(
             cast(int, step8.get("provider_state_evaluations", 0))
         )
-        step8_provider_value_evaluations += int(
-            cast(int, step8.get("provider_value_evaluations", 0))
-        )
         step8_provider_volume_bound_evaluations += int(
             cast(int, step8.get("provider_volume_bound_evaluations", 0))
         )
@@ -890,7 +887,6 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
         if (
             min(
                 step8_provider_state_evaluations,
-                step8_provider_value_evaluations,
                 step8_provider_volume_bound_evaluations,
                 step8_provider_packing_evaluations,
             )
@@ -909,9 +905,16 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
             float(cast(float, value))
             for value in cast(Sequence[object], step8.get("problem_candidate_variables", ()))
         )
+        if "neighborhood_radius" not in step8:
+            raise ValueError("native HELD2 Step 8 neighborhood radius is missing")
+        neighborhood_radius = float(cast(float, step8["neighborhood_radius"]))
+        if not math.isfinite(neighborhood_radius) or neighborhood_radius <= 0.0:
+            raise ValueError("native HELD2 Step 8 neighborhood radius is invalid")
         step8_problem_candidate_count += len(problem_ids)
         step8_attempted_candidate_count += len(attempted_ids)
-        problem_signatures.append((problem_ids, problem_variables))
+        problem_signatures.append(
+            (problem_ids, problem_variables, neighborhood_radius)
+        )
 
     step10_timings = tuple(timing for timing in timings if timing.step == 10)
     trace_refinement_component_indices: set[int] = set()
@@ -965,7 +968,6 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
         step8_warm_start_count=step8_warm_start_count,
         step8_cold_fallback_count=step8_cold_fallback_count,
         step8_provider_state_evaluations=step8_provider_state_evaluations,
-        step8_provider_value_evaluations=step8_provider_value_evaluations,
         step8_provider_volume_bound_evaluations=(step8_provider_volume_bound_evaluations),
         step8_provider_packing_evaluations=step8_provider_packing_evaluations,
         step8_problem_candidate_count=step8_problem_candidate_count,

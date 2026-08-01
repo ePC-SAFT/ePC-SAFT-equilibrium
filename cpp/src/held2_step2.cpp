@@ -616,6 +616,8 @@ Held2Step2Result run_held2_step2(
             cube.front()
         );
     };
+    const std::uint64_t preparation_allowance_begin =
+        result.timing.provider_evaluations;
     ++result.timing.optimizer_solves;
     const Held2StageIJointEvaluation complete_witness = assess_search(
         run_direct_search(
@@ -627,15 +629,28 @@ Held2Step2Result run_held2_step2(
         )
     );
     if (is_valid(complete_witness)) {
+        const Held2StageIJointEvaluation direct_stationary_witness =
+            refine_stationary_witness(complete_witness);
+        if (is_strict_stable_root(direct_stationary_witness)
+            && is_strict_negative(direct_stationary_witness)) {
+            return accept_witness(
+                direct_stationary_witness,
+                "negative_tpd_witness"
+            );
+        }
         constexpr int kPreparationVolumeSamples = 65;
         constexpr int kPreparationRootRefinementLimit = 64;
         constexpr int kPreparationProviderEvaluations =
             1 + kPreparationVolumeSamples
             + kPreparationRootRefinementLimit;
-        const int joint_provider_evaluations =
-            static_cast<int>(result.timing.optimizer_iterations) * 2;
-        const int preparation_budget =
-            provider_evaluation_budget - joint_provider_evaluations;
+        const std::uint64_t preparation_allowance_consumed =
+            result.timing.provider_evaluations
+                - preparation_allowance_begin;
+        const int preparation_budget = preparation_allowance_consumed
+                >= static_cast<std::uint64_t>(provider_evaluation_budget)
+            ? 0
+            : provider_evaluation_budget
+                - static_cast<int>(preparation_allowance_consumed);
         Held2StageIJointEvaluation prepared_witness;
         if (preparation_budget >= kPreparationProviderEvaluations) {
             constexpr double kPromisingPreparationTpd = 0.2;
