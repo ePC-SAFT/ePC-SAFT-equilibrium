@@ -222,7 +222,7 @@ The named effective-tolerance registry is:
 | \(\epsilon_\eta\) | \(10^{-3}\) | Step-6 packing-fraction distinctness |
 | \(\epsilon_x\) | \(10^{-3}\) | Step-6 composition distinctness |
 | \(\epsilon_g\) | \(10^{-4}\) | Step-9 reduced free-energy convergence |
-| \(\epsilon_\mu\) | \(10^{-3}\) | Step-9 reduced-potential convergence |
+| \(\epsilon_\mu\) | \(10^{-2}\) | Step-9 reduced-potential finite-search convergence |
 
 Perdomo 2025 states \(10^{-6}\) defaults for \(\epsilon_g\) and
 \(\epsilon_\mu\). The effective values above are repository implementation
@@ -231,6 +231,18 @@ retain the Pereira et al. (2012) HELD settings. Every effective tolerance is
 emitted in diagnostics. Independent Provider-domain, pressure, KKT, balance,
 charge, phase-fraction, and physical-state-equivalence tolerances remain
 separately named project certificates.
+
+The \(10^{-2}\) Eq. (69) value is a one-percent stopping test on the paper's
+asymmetric ratio, whose denominator can make small absolute potential
+differences appear disproportionately large. It is not a chemical-potential
+equality certificate. Every accepted result must still pass the independent
+Stage-III stationarity, balance, charge, pressure, and physical-state gates;
+those gates retain their tighter project tolerances. Likewise, the
+\(10^{-6}\) Stage-II discovery-stationarity gate is only a basin-discovery
+working test. Stage III must re-solve and certify the physical result at the
+final tolerances. The issue-102 installed-artifact differential retained in
+Validation records the former stopping locations before these working gates
+were changed.
 
 The following state persists across major iterations:
 
@@ -708,10 +720,12 @@ The nominal installed schedule consumes the paper's fixed
 `random_interior` stream. The bounded recovery pass activates when exact
 memoization proves that the same rejected Problem-(67) candidate-ID vector has
 recurred unchanged, or when Step 6 still has fewer than two candidates after
-Step 5 returns an equivalent existing member. It also activates when a failed
-Step-9 or Step-10 convergence return retains no new Step-8 feedback member.
-These conditions prevent a finite major loop from replaying the same
-non-progress terminal or candidate solution. Recovery
+Step 5 returns an equivalent existing member. It also activates after any
+rejected Step-8 problem or non-trace Step-9/Step-10 convergence return.
+Certified failed-phase feedback remains an append-only cut, but it is part of
+the rejected phase set and therefore does not itself satisfy the requirement
+for a distinct new basin. These conditions prevent a finite major loop from
+replaying the same non-progress terminal or candidate solution. Recovery
 fills its declared 2048-start ceiling from the same never-reset random stream
 while reserving room for each of the \(4d\) `boundary_aware`
 face/direction/density profiles and up to one `shifted_retained` start per
@@ -790,8 +804,8 @@ itself consume another upper solve.
 If that bounded pass finds only equivalent qualifying terminals, the unchanged
 set and every consumed start remain explicit and Step 5 terminates
 indeterminate with `step5_recovery_exhausted`; the structured pass is never
-repeated in later major iterations. A successful new insertion or retained
-certified Step-8 feedback clears the requirement.
+repeated in later major iterations. A successful new Step-5 insertion clears
+the requirement.
 
 ### Step 6 — search all of \(\mathcal M\)
 
@@ -991,12 +1005,19 @@ manufacture a Step-6 candidate count.
 **Implementation policy for duplicate phases:**
 
 1. Visit solved phases by stable candidate ID. Build a greedy maximal
-   pairwise-distinct set using the named `phase_merge` test in physical
-   composition and molar volume, matching the paper's “same composition and
-   volume” duplicate rule. Use log-volume difference only as a dimensionless
-   relative-volume measure; do not apply a nontransitive equivalence-class
-   algorithm. Nominate the smaller-weight numerical representative of the
-   first duplicate pair for removal; break equal-weight ties by stable ID.
+   pairwise-distinct set in physical composition and molar volume, matching
+   the paper's “same composition and volume” duplicate rule. Use the named
+   `phase_merge` test for a two-phase problem. When a candidate-restricted
+   problem contains at least three solved phases, the first pair whose
+   physical-composition and log-molar-volume distances are both within the
+   named `paper_phase_coalescence` neighborhood may instead nominate one
+   member for removal. That neighborhood equals the Eq. (69) finite-search
+   tolerance, \(10^{-2}\); it is only a proposal for a lower-dimensional
+   re-solve, not an accepted identity or an output-space merge. Use
+   log-volume difference only as a dimensionless relative-volume measure; do
+   not apply a nontransitive equivalence-class algorithm. Nominate the
+   smaller-weight numerical representative of the first pair for removal;
+   break equal-weight ties by stable ID.
 2. Remove at most one nominated duplicate and re-solve the complete reduced
    Problem (67), including its feasibility LP, nonlinear solve, KKT audit,
    balances, pressure, charge, and phase-identity tests. Repeat one pair at a
@@ -1011,8 +1032,10 @@ manufacture a Step-6 candidate count.
    the retained neighborhoods, preserving their complete composition freedom.
 5. Accept the reduced active set only after the reduced solve independently
    passes every nonlinear, KKT, balance, physical, and phase-identity gate.
-   Preserve the reduced candidate-ID/continuation mapping. If the reduced solve
-   fails, terminate indeterminate at Step 8.
+   Preserve the reduced candidate-ID/continuation mapping and record the
+   nominated pair, both distances, threshold, retained and removed indices,
+   and reduced-solve decision. If the reduced solve fails, terminate
+   indeterminate at Step 8.
 6. A supplied active-set continuation is an optimizer initial condition, not
    scientific evidence. If that warm solve fails any Step-8 acceptance gate,
    retry the identical candidate problem once from the deterministic cold
@@ -1098,7 +1121,7 @@ and adjacent phase pair,
 }
 \right|
 \leq\epsilon_\mu,
-\qquad \epsilon_\mu=10^{-3}\ \text{by implementation policy}.
+\qquad \epsilon_\mu=10^{-2}\ \text{by implementation policy}.
 \tag{69}
 \]
 

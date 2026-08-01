@@ -395,6 +395,7 @@ Held2Step8Result run_held2_step8(
     result.electroneutrality_inf = solved.phase_charge_inf_norm;
     result.electroneutrality_scale = solved.phase_charge_scale;
     result.pressure_residual_inf = solved.pressure_stationarity_inf_norm;
+    result.phase_coalescences = solved.phase_coalescences;
     result.farkas = solved.feasibility_certificate;
     const bool nlp_attempted =
         solved.numerical_status != "not_adjudicated";

@@ -788,6 +788,29 @@ JsonValue paper_step8_to_json(const Held2Step8Result& step) {
     result["electroneutrality_inf"] = step.electroneutrality_inf;
     result["electroneutrality_scale"] = step.electroneutrality_scale;
     result["pressure_residual_inf"] = step.pressure_residual_inf;
+    JsonValue coalescences = JsonValue::array();
+    for (const Held2PhaseCoalescence& value : step.phase_coalescences) {
+        JsonValue event = JsonValue::object();
+        event["left_candidate_index"] = static_cast<double>(
+            value.left_candidate_index
+        );
+        event["right_candidate_index"] = static_cast<double>(
+            value.right_candidate_index
+        );
+        event["retained_candidate_index"] = static_cast<double>(
+            value.retained_candidate_index
+        );
+        event["removed_candidate_index"] = static_cast<double>(
+            value.removed_candidate_index
+        );
+        event["physical_composition_inf_norm"] =
+            value.physical_composition_inf_norm;
+        event["log_molar_volume_abs"] = value.log_molar_volume_abs;
+        event["tolerance"] = value.tolerance;
+        event["reduced_solve_accepted"] = value.reduced_solve_accepted;
+        coalescences.append(std::move(event));
+    }
+    result["phase_coalescences"] = std::move(coalescences);
     JsonValue phases = JsonValue::array();
     for (const Held2Phase& phase : step.active_phases) {
         phases.append(paper_phase_to_json(phase));
@@ -919,6 +942,10 @@ JsonValue paper_algorithm_to_json(
     tolerances["epsilon_x"] = kHeld2PaperStep6CompositionDistinct.atol;
     tolerances["epsilon_g"] = kHeld2PaperFreeEnergyGap.atol;
     tolerances["epsilon_mu"] = kHeld2PaperPotentialRatio.atol;
+    tolerances["stage2_kkt_stationarity"] =
+        kHeld2Stage2KktStationarity.atol;
+    tolerances["paper_phase_coalescence"] =
+        kHeld2PaperPhaseCoalescence.atol;
     result["effective_tolerances"] = std::move(tolerances);
 
     JsonValue phases = JsonValue::array();

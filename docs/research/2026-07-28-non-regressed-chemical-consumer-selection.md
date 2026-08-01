@@ -27,10 +27,13 @@ different claims and should be retained together.
 
 ## Installed Provider evidence
 
-Provider `main` contains the catalog
-`held-2008-water-self-ionization`, version 1. Its package tests call the
-catalog exact and source complete and fail closed when required component,
-association, interaction, or formulation records are removed.
+Data commit `c096285415d4d3198b9d00fc75af48b837dd1305` contains the canonical
+`held-cameretti-sadowski-2008/1` packet. Equilibrium pins its complete packet
+fingerprint and passes the packet's parameter bundle to the installed EOS with
+`Parameters.from_bundle(...)`. The latest EOS SDK therefore remains the
+runtime owner while reusable scientific data remains in Data; tests fail
+closed when the packet or any required component, association, interaction,
+or formulation record changes.
 
 The catalog fixes:
 

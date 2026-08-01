@@ -103,9 +103,15 @@ def test_native_diagnostic_matches_python_payload(
         model.parameter_fingerprint,
     )
 
-    assert _normalize_json(json.loads(first.stdout)) == _normalize_json(python_payload)
+    first_payload = json.loads(first.stdout)
+    assert _normalize_json(first_payload) == _normalize_json(python_payload)
     assert _normalize_json(json.loads(second.stdout)) == _normalize_json(json.loads(first.stdout))
     assert first.stderr == second.stderr == ""
+    if route == "held2":
+        assert all(
+            isinstance(step8["phase_coalescences"], list)
+            for step8 in first_payload["step8_history"]
+        )
 
 
 def test_native_diagnostic_streams_trace_and_writes_json(tmp_path: Path) -> None:

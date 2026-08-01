@@ -189,6 +189,12 @@ pytest -q
 python scripts/validate_saturation.py
 ```
 
+The complete chemical-equilibrium test suite consumes the immutable
+`held-cameretti-sadowski-2008/1` packet pinned in `tests/data-lock.toml`.
+Place `ePC-SAFT-data` beside this repository or set `EPCSAFT_DATA_ROOT` to its
+checkout. Tests verify the complete packet fingerprint before passing its
+parameter bundle to the installed EOS through `Parameters.from_bundle(...)`.
+
 The canonical documentation map is `docs/phase-equilibrium.md`. Detailed
 formulation owners are
 `docs/designs/2026-07-17-pure-saturation-slice.md`,

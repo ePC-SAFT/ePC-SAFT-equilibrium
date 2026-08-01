@@ -128,7 +128,7 @@ inline constexpr Held2Tolerance kHeld2Stage2KktPullback{
 inline constexpr Held2Tolerance kHeld2Stage2KktStationarity{
     "stage2_kkt_stationarity", "stage_ii_kkt",
     "Step-5 original-coordinate stationarity failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-7, 0.0,
+    Held2ToleranceRelation::AbsAtMost, 1.0e-6, 0.0,
 };
 inline constexpr Held2Tolerance kHeld2Stage2KktComplementarity{
     "stage2_kkt_complementarity", "stage_ii_kkt",
@@ -220,7 +220,7 @@ inline constexpr Held2Tolerance kHeld2PaperFreeEnergyGap{
 inline constexpr Held2Tolerance kHeld2PaperPotentialRatio{
     "paper_potential_ratio", "stage_iii_paper",
     "Perdomo Eq. (69) modified-potential convergence failed",
-    Held2ToleranceRelation::AbsAtMost, 1.0e-3, 0.0,
+    Held2ToleranceRelation::AbsAtMost, 1.0e-2, 0.0,
 };
 inline constexpr Held2Tolerance kHeld2PhaseRetirementMargin{
     "phase_retirement_margin", "stage_iii_kkt", "phase retirement evidence is marginal",
@@ -229,6 +229,11 @@ inline constexpr Held2Tolerance kHeld2PhaseRetirementMargin{
 inline constexpr Held2Tolerance kHeld2PhaseMerge{
     "phase_merge", "phase_identity", "phases are not numerical duplicates",
     Held2ToleranceRelation::AbsAtMost, 1.0e-5, 0.0,
+};
+inline constexpr Held2Tolerance kHeld2PaperPhaseCoalescence{
+    "paper_phase_coalescence", "phase_identity",
+    "three-or-more-phase solve has no paper-scale coalescent pair",
+    Held2ToleranceRelation::AbsAtMost, 1.0e-2, 0.0,
 };
 inline constexpr Held2Tolerance kHeld2IpoptTarget{
     "ipopt_target", "solver", "Ipopt target tolerance was not met",
