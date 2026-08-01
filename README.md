@@ -86,6 +86,14 @@ manufactured orchestration are deleted rather than retained as compatibility
 paths. The experimental public runtime is preserved by tag
 `archive/held2-pre-strategy-2026-07-21` for strategy review.
 
+For HELD2 dispatch, `result.diagnostics.performance` retains typed native
+Step 1--10 wall/CPU timings, Provider evaluation counts, optimizer work,
+Step-5 start and dilute-face restart evidence, and Step-8 retry/candidate
+counts. Step-10 trace-refinement activations and component indices distinguish
+trace-component recovery. Neutral HELD results leave this HELD2-specific field unset. These
+measurements describe work already performed; they do not expose solver
+controls or change acceptance, tolerance, completeness, or globality claims.
+
 The HELD2 coordinate contract is hybrid only where the source requires it:
 Steps 1--9 use linear modified compositions and linear material balances.
 The finite \(10^{-10}\) Step-1 floor regularizes those searches; it is not a

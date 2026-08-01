@@ -4,7 +4,7 @@ import epcsaft
 import pytest
 
 import epcsaft_equilibrium
-from epcsaft_equilibrium import _equilibrium
+from epcsaft_equilibrium import _api, _equilibrium
 
 WATER_MOLAR_MASS_G_PER_MOL = 18.0153
 PERDOMO_TABLE3_NACL_MOL_PER_KG_WATER = 5.6
@@ -50,6 +50,133 @@ def _without_times(value: object) -> object:
     if isinstance(value, list):
         return [_without_times(item) for item in value]
     return value
+
+
+def test_public_held2_performance_diagnostics_aggregate_native_work() -> None:
+    diagnostics = _api._held2_diagnostics(
+        {
+            "outcome": "physical_equilibrium_accepted",
+            "failure_reason": None,
+            "failure_stage": None,
+            "globality_certificate": "not_guaranteed",
+            "upper_solve_count": 2,
+            "step2": {"minimum_tpd": -1.0},
+            "step9_history": [],
+            "step10": {
+                "status": "complete",
+                "final_certificate": None,
+                "trace_component_indices": [2],
+                "refinements": [{"component_index": 2}],
+            },
+            "step10_history": [
+                {
+                    "status": "complete",
+                    "reason": "trace_refinement_complete",
+                    "trace_component_indices": [2],
+                    "refinements": [{"component_index": 2}],
+                }
+            ],
+            "step_timings": [
+                {
+                    "step": 5,
+                    "invocation_count": 1,
+                    "wall_seconds": 1.25,
+                    "cpu_seconds": 1.0,
+                    "provider_evaluations": 12,
+                    "optimizer_solves": 3,
+                    "optimizer_iterations": 21,
+                    "terminal_status": "complete",
+                    "terminal_reason": "new_member",
+                    "next_step": 6,
+                },
+                {
+                    "step": 8,
+                    "invocation_count": 1,
+                    "wall_seconds": 2.5,
+                    "cpu_seconds": 2.0,
+                    "provider_evaluations": 30,
+                    "optimizer_solves": 2,
+                    "optimizer_iterations": 18,
+                    "terminal_status": "indeterminate",
+                    "terminal_reason": "problem_67_not_converged",
+                    "next_step": 4,
+                },
+                {
+                    "step": 10,
+                    "invocation_count": 1,
+                    "wall_seconds": 0.25,
+                    "cpu_seconds": 0.2,
+                    "provider_evaluations": 4,
+                    "optimizer_solves": 0,
+                    "optimizer_iterations": 0,
+                    "terminal_status": "complete",
+                    "terminal_reason": "trace_refinement_complete",
+                    "next_step": 0,
+                },
+            ],
+            "step5_history": [
+                {
+                    "starts_consumed": 2,
+                    "attempts": [
+                        {
+                            "accepted": False,
+                            "dilute_face_restart": {
+                                "attempted": True,
+                                "accepted": True,
+                                "coordinate_indices": [0, 2],
+                                "provider_component_indices": [1, 3],
+                            },
+                        },
+                        {"accepted": True, "dilute_face_restart": None},
+                    ],
+                }
+            ],
+            "step8_history": [
+                {
+                    "status": "indeterminate",
+                    "reason": "problem_67_not_converged",
+                    "warm_start_used": True,
+                    "cold_fallback_used": True,
+                    "provider_state_evaluations": 20,
+                    "provider_value_evaluations": 8,
+                    "provider_volume_bound_evaluations": 2,
+                    "provider_packing_evaluations": 0,
+                    "problem_candidate_ids": [1, 2],
+                    "attempted_candidate_ids": [1, 2],
+                }
+            ],
+        }
+    )
+
+    performance = diagnostics.performance
+    assert performance is not None
+    assert performance.provider_evaluations == 46
+    assert performance.optimizer_solves == 5
+    assert performance.optimizer_iterations == 39
+    assert performance.step5_starts_consumed == 2
+    assert performance.step5_attempts == 2
+    assert performance.step5_accepted_attempts == 1
+    assert performance.step5_repeated_start_ordinal_count == 0
+    assert performance.dilute_face_restart_attempts == 1
+    assert performance.dilute_face_restart_accepts == 1
+    assert performance.dilute_face_coordinate_indices == (0, 2)
+    assert performance.dilute_face_component_indices == (1, 3)
+    assert performance.step8_invocations == 1
+    assert performance.step8_return_to_stage_ii_count == 1
+    assert performance.step8_warm_start_count == 1
+    assert performance.step8_cold_fallback_count == 1
+    assert performance.step8_provider_state_evaluations == 20
+    assert performance.step8_provider_value_evaluations == 8
+    assert performance.step8_provider_volume_bound_evaluations == 2
+    assert performance.step8_provider_packing_evaluations == 0
+    assert performance.step8_problem_candidate_count == 2
+    assert performance.step8_attempted_candidate_count == 2
+    assert performance.step8_repeated_problem_count == 0
+    assert performance.step10_invocations == 1
+    assert performance.trace_refinement_activated_count == 1
+    assert performance.trace_refinement_return_to_stage_ii_count == 0
+    assert performance.trace_refinement_component_indices == (2,)
+    assert tuple(timing.step for timing in performance.step_timings) == (5, 8, 10)
 
 
 def test_held2_observer_is_quiet_by_default_and_does_not_change_results(capfd) -> None:
@@ -125,6 +252,9 @@ def test_two_phase_trace_serializes_step5_and_step8_continuation_state() -> None
         step["gap_scope"] == "finite_cut_upper_minus_restricted_problem_67"
         for step in result["step9_history"]
     )
+    assert result["step10_history"]
+    assert result["step10"] == result["step10_history"][-1]
+    assert all("trace_component_indices" in step for step in result["step10_history"])
 
 
 def test_perdomo_table3_nacl_workflow() -> None:
@@ -246,6 +376,18 @@ def test_perdomo_nacl_public_results_remain_in_the_numerical_regression_region(
     assert result.diagnostics.numerical_status == "passed"
     assert result.diagnostics.physical_status == "passed"
     assert result.diagnostics.globality_certificate == "not_guaranteed"
+    performance = result.diagnostics.performance
+    assert performance is not None
+    assert performance.step_timings
+    assert all(
+        isinstance(timing, epcsaft_equilibrium.HeldStepTiming)
+        and 1 <= timing.step <= 10
+        and timing.wall_seconds >= 0.0
+        for timing in performance.step_timings
+    )
+    assert performance.provider_evaluations == sum(
+        timing.provider_evaluations for timing in performance.step_timings
+    )
     assert result.overall_mole_fractions == pytest.approx(
         feed,
         abs=NUMERICAL_ATOL,

@@ -294,7 +294,7 @@ Held2AlgorithmResult run_held2_algorithm(
             }
             continue;
         }
-        result.step10 = run_step(10, [&] {
+        result.step10_history.push_back(run_step(10, [&] {
             return run_held2_step10(
                 result.step1,
                 step8,
@@ -304,7 +304,8 @@ Held2AlgorithmResult run_held2_algorithm(
                     : thermodynamics.evaluate,
                 observer
             );
-        }, observer);
+        }, observer));
+        result.step10 = result.step10_history.back();
         result.step_timings.push_back(result.step10->timing);
         if (result.step10->next_action
             == Held2Step10Action::ReturnStageII) {

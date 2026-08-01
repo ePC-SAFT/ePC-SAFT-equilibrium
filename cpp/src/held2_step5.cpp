@@ -1588,6 +1588,9 @@ Held2Step5Result run_held2_step5(
                     face_evidence.coordinate_indices.push_back(
                         coordinate
                     );
+                    face_evidence.provider_component_indices.push_back(
+                        coordinates.independent_indices[coordinate]
+                    );
                     face_evidence.lower_bound_distances.push_back(
                         distance
                     );

@@ -29,6 +29,7 @@ struct Held2DiluteFaceRestartEvidence {
     double dual_sign_atol = 0.0;
     double complementarity_atol = 0.0;
     std::vector<std::size_t> coordinate_indices;
+    std::vector<std::size_t> provider_component_indices;
     std::vector<double> lower_bound_distances;
     std::vector<double> lower_bound_multipliers;
     std::vector<double> complementarity_products;

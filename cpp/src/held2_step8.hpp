@@ -45,6 +45,12 @@ struct Held2Step8Result {
     std::vector<std::uint64_t> candidate_ids;
     std::vector<double> candidate_variables;
     std::vector<double> continuation_variables;
+    bool warm_start_used = false;
+    bool cold_fallback_used = false;
+    std::uint64_t provider_state_evaluations = 0;
+    std::uint64_t provider_value_evaluations = 0;
+    std::uint64_t provider_volume_bound_evaluations = 0;
+    std::uint64_t provider_packing_evaluations = 0;
     std::optional<double> total_reduced_gibbs;
     double ordinary_balance_inf = std::numeric_limits<double>::infinity();
     double electroneutrality_inf = std::numeric_limits<double>::infinity();

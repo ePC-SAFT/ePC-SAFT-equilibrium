@@ -210,6 +210,12 @@ Held2Step8Result run_held2_step8(
         unchanged.problem_candidate_variables =
             result.problem_candidate_variables;
         unchanged.attempted_candidate_ids = result.attempted_candidate_ids;
+        unchanged.warm_start_used = false;
+        unchanged.cold_fallback_used = false;
+        unchanged.provider_state_evaluations = 0;
+        unchanged.provider_value_evaluations = 0;
+        unchanged.provider_volume_bound_evaluations = 0;
+        unchanged.provider_packing_evaluations = 0;
         unchanged.timing = {};
         unchanged.timing.invocation_count = 1;
         unchanged.timing.terminal_status =
@@ -231,10 +237,26 @@ Held2Step8Result run_held2_step8(
     candidates.reserve(selected_points.size());
     bounds.reserve(selected_points.size());
     std::uint64_t provider_evaluations = 0;
+    std::uint64_t provider_state_evaluations = 0;
+    std::uint64_t provider_value_evaluations = 0;
+    std::uint64_t provider_volume_bound_evaluations = 0;
+    std::uint64_t provider_packing_evaluations = 0;
+    const auto record_provider_work = [&] {
+        result.timing.provider_evaluations = provider_evaluations;
+        result.provider_state_evaluations =
+            provider_state_evaluations;
+        result.provider_value_evaluations =
+            provider_value_evaluations;
+        result.provider_volume_bound_evaluations =
+            provider_volume_bound_evaluations;
+        result.provider_packing_evaluations =
+            provider_packing_evaluations;
+    };
     for (const Held2MPoint& point : selected_points) {
         const std::array<double, 2> physical_bounds =
             (*step1.volume_bounds)(point.independent_modified_fractions);
         ++provider_evaluations;
+        ++provider_volume_bound_evaluations;
         candidates.push_back({
             point.independent_modified_fractions,
             point.volume,
@@ -245,28 +267,34 @@ Held2Step8Result run_held2_step8(
         });
     }
     const Held2StateEvaluator counted_evaluator =
-        [&evaluator, &provider_evaluations](
+        [&evaluator, &provider_evaluations,
+         &provider_state_evaluations](
             const std::vector<double>& composition,
             double log_volume
         ) {
             ++provider_evaluations;
+            ++provider_state_evaluations;
             return evaluator(composition, log_volume);
         };
     const Held2VolumeBoundsEvaluator counted_volume_bounds =
-        [&step1, &provider_evaluations](
+        [&step1, &provider_evaluations,
+         &provider_volume_bound_evaluations](
             const std::vector<double>& composition
         ) {
             ++provider_evaluations;
+            ++provider_volume_bound_evaluations;
             return (*step1.volume_bounds)(composition);
         };
     const Held2StateValueEvaluator counted_value =
         value_evaluator
         ? Held2StateValueEvaluator(
-            [&value_evaluator, &provider_evaluations](
+            [&value_evaluator, &provider_evaluations,
+             &provider_value_evaluations](
                 const std::vector<double>& composition,
                 double log_volume
             ) {
                 ++provider_evaluations;
+                ++provider_value_evaluations;
                 return value_evaluator(composition, log_volume);
             }
         )
@@ -333,6 +361,7 @@ Held2Step8Result run_held2_step8(
         }
     }
     const bool warm_started = !initial.empty();
+    result.warm_start_used = warm_started;
     const std::vector<double> physical_feed =
         held2_lift_independent_fractions(
             *step1.coordinates, *step1.independent_feed
@@ -368,13 +397,14 @@ Held2Step8Result run_held2_step8(
     if (warm_started
         && solved.numerical_status != "not_adjudicated"
         && (!accepted_nlp_evidence(solved) || solved.phases.size() < 2)) {
+        result.cold_fallback_used = true;
         Held2Problem67Result cold = solve({});
         cold.stage_iii_solve_count += solved.stage_iii_solve_count;
         cold.optimizer_iteration_count +=
             solved.optimizer_iteration_count;
         solved = std::move(cold);
     }
-    result.timing.provider_evaluations = provider_evaluations;
+    record_provider_work();
     result.timing.optimizer_solves =
         static_cast<std::uint64_t>(solved.stage_iii_solve_count);
     result.timing.optimizer_iterations =
@@ -453,9 +483,11 @@ Held2Step8Result run_held2_step8(
         const std::vector<double> composition =
             independent(*step1.coordinates, phase.modified_fractions);
         ++provider_evaluations;
+        ++provider_state_evaluations;
         const Held2StateEvaluation state =
             evaluator(composition, std::log(phase.volume));
         ++provider_evaluations;
+        ++provider_packing_evaluations;
         const double phase_packing_fraction =
             packing_fraction(composition, phase.volume);
         result.active_phases.push_back({
@@ -472,7 +504,7 @@ Held2Step8Result run_held2_step8(
             state.gradient,
         });
     }
-    result.timing.provider_evaluations = provider_evaluations;
+    record_provider_work();
     std::sort(
         result.active_phases.begin(),
         result.active_phases.end(),

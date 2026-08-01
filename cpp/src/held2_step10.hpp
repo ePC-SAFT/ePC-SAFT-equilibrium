@@ -27,6 +27,7 @@ struct Held2Step10Result {
     std::string status = "indeterminate";
     std::string reason = "not_run";
     std::vector<Held2Phase> phases;
+    std::vector<std::size_t> trace_component_indices;
     std::vector<Held2TraceRefinement> refinements;
     std::optional<Held2PhysicalCertificate> final_certificate;
     std::optional<double> total_free_energy_over_rt;
