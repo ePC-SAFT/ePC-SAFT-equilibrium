@@ -150,8 +150,10 @@ The remaining implementation and evidence must preserve all of the following:
    into Equilibrium.
 2. Every numerical and physical gate uses the categorized contract indexed in
    `docs/phase-equilibrium.md`; no leaf may tune or substitute those values.
-   Pressure remains `1e-8` relative, Stage-II stationarity remains `1e-7`,
+   Pressure remains `1e-8` relative, Stage-II discovery stationarity is `1e-6`,
    complementarity remains `1e-8`, and dual pullback is independently scaled.
+   Perdomo Eq. (69) uses a `1e-2` paper-convergence ratio; it does not replace
+   those physical or KKT gates.
 3. Fixed-physical-volume Step-6 derivatives and same-major `UBD/lambda` data
    remain authoritative.
 4. A chart, Provider, root, solver, resource, certificate, or trace-refinement

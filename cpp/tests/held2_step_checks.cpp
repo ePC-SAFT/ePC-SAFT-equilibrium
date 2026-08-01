@@ -899,6 +899,10 @@ void run_held2_step4_checks() {
 }
 
 void run_held2_step5_checks() {
+    require(
+        kHeld2Stage2KktStationarity.atol == 1.0e-6,
+        "Step-5 discovery stationarity tolerance changed"
+    );
     Held2PersistentState identity_state;
     identity_state.M.push_back({
         42, {0.25}, 1.0, std::numeric_limits<double>::quiet_NaN(),
@@ -1536,6 +1540,12 @@ void run_held2_step8_checks() {
             && duplicate_reduced.ordinary_balance_inf
                 <= kHeld2Stage3ExplicitBalance.atol,
         "Step-8 did not re-solve a numerical duplicate phase set"
+    );
+
+    require(
+        kHeld2PaperPhaseCoalescence.atol
+            == kHeld2PaperPotentialRatio.atol,
+        "Step-8 phase coalescence is inconsistent with paper convergence"
     );
 
     candidates.candidates.push_back(

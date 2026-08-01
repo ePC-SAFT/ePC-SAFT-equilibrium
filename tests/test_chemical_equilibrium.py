@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import copy
 import ctypes
+import functools
+import hashlib
 import json
 import math
+import os
 import subprocess
 import sys
 import textwrap
+import tomllib
 from pathlib import Path
 
 import epcsaft
@@ -41,10 +45,39 @@ _BELOV_SOURCE_GIBBS = (
     -17.10224518423043,
 )
 _HELD_WATER_IONIZATION_FINGERPRINT = (
-    "sha256:6af6c7aec1106723cf6fa536391b7ba08f2e70ef9fe7064bcb6bb61db18644e8"
+    "sha256:30d506776fb22f8f1931baadb4942b58bf2c57dd8e95236959827095732c2c61"
 )
 _FINGERPRINT_CAPACITY = 72
 _PROVIDER_ERROR_CAPACITY = 160
+
+
+def _packet_fingerprint(packet_root: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(item for item in packet_root.rglob("*") if item.is_file()):
+        relative = path.relative_to(packet_root).as_posix().encode()
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(path.stat().st_size.to_bytes(8, "big"))
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+@functools.cache
+def _held_parameter_packet() -> Path:
+    with Path(__file__).with_name("data-lock.toml").open("rb") as stream:
+        lock = tomllib.load(stream)["held_cameretti_sadowski_2008"]
+    default_root = Path(__file__).resolve().parents[2] / "ePC-SAFT-data"
+    data_root = Path(os.environ.get("EPCSAFT_DATA_ROOT", default_root))
+    packet = data_root / lock["packet_path"]
+    assert _packet_fingerprint(packet) == lock["packet_fingerprint"]
+    return packet
+
+
+def _held_parameters(components: tuple[str, ...]) -> epcsaft.Parameters:
+    return epcsaft.Parameters.from_bundle(
+        _held_parameter_packet() / "parameters",
+        components=components,
+    )
 
 
 class _NeutralReferenceResult(ctypes.Structure):
@@ -1438,11 +1471,7 @@ def _held_water_ionization_problem() -> tuple[
     assert isinstance(standard_state, dict)
     assert isinstance(values, dict)
     components = ("water", "hydronium-cation", "hydroxide-anion")
-    parameters = epcsaft.Parameters.from_catalog(
-        "held-2008-water-self-ionization",
-        components=components,
-        version=1,
-    )
+    parameters = _held_parameters(components)
     model = epcsaft.Mixture(parameters)
     assert model.parameter_fingerprint == _HELD_WATER_IONIZATION_FINGERPRINT
     conversion = math.log(
@@ -2195,11 +2224,7 @@ def test_held_source_transform_is_coordinate_invariant(variant: str) -> None:
     if variant == "species_order":
         permutation = (2, 0, 1)
         components = tuple(spec["species_ids"][index] for index in permutation)
-        parameters = epcsaft.Parameters.from_catalog(
-            "held-2008-water-self-ionization",
-            components=components,
-            version=1,
-        )
+        parameters = _held_parameters(components)
         model = epcsaft.Mixture(parameters)
         for field in (
             "species_ids",

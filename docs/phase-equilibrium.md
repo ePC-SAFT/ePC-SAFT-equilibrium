@@ -322,15 +322,22 @@ to the solver and never substitute for scientific acceptance.
 | Root topology | mechanical margin; stable-objective tie | strict margin `>1e-6`; tie `1e-8 + 1e-9*scale` |
 | Stage I | materially negative reduced TPD | `< -1e-8`; `[-1e-8,1e-8]` is inconclusive |
 | Stage-II LP | primal, dual, complementarity, active-cut diagnostic | `1e-9 + 1e-8*scale`, `1e-9 + 1e-8*scale`, `1e-8`, `1e-7` |
-| Stage-II KKT | primal, dual sign, pullback, stationarity, complementarity | `1e-8`, `1e-9`, `1e-9 + 1e-9*scale`, `1e-7`, `1e-8` |
+| Stage-II discovery KKT | primal, dual sign, pullback, stationarity, complementarity | `1e-8`, `1e-9`, `1e-9 + 1e-9*scale`, `1e-6`, `1e-8` |
 | Stage-III feasibility LP | Farkas row sign, column dual feasibility, strict contradiction margin | `1e-10`, `1e-10`, `>1e-9 + 1e-9*scale` |
 | Step 6 | gap; fixed-volume gradient | `1e-8`; `1e-8 + 1e-7*scale` |
 | Generic candidate identity | numerical duplicate; confidently distinct | `<=1e-7`; either physical composition or log-volume distance `>1e-5` |
+
+When Stage III returns to Stage II because an otherwise feasible phase set
+fails the non-trace modified-potential check, the failed phases remain as
+search feedback and Step 5 must discover a distinct basin before Stage III is
+retried. Reusing the same phase set cannot repair chemical-potential equality.
 | HELD2 persistent \(\mathcal M\) identity | modified composition and relative molar-volume numerical copy | `<=1e-8` in every modified-composition coordinate and log-volume difference |
 | HELD2 Step-6 distinctness | Perdomo Eq. (66) Provider packing fraction or modified composition | either difference `>=1e-3` |
 | Stage III | modified/explicit balances, scaled charge, pressure | `1e-8`, `1e-8`, `1e-9`, `1e-8` |
 | Stage III | modified potentials; KKT, dual sign, complementarity, free-energy gap | `1e-8 + 1e-7*scale`, `1e-7`, `1e-9`, `1e-8`, `1e-8` |
-| Phase identity | active, retirement evidence, merge, confidently distinct | `>1e-8`, `>1e-8`, `<=1e-5`, `>1e-4` |
+| Stage III paper convergence | Perdomo Eqs. (68)-(69) free-energy gap; modified-potential ratio | `1e-4`; `1e-2` |
+| Phase identity | active, retirement evidence, numerical merge, confidently distinct | `>1e-8`, `>1e-8`, `<=1e-5`, `>1e-4` |
+| Three-or-more-phase coalescence | physical composition and log molar-volume distance | both `<=1e-2`, followed by a reduced Stage-III solve and full recertification |
 | Step 10 trace | charged physical mole-fraction interval; potential residual | `[1e-300, 5e-10]`; `1e-8` absolute |
 | Ipopt | target, disabled acceptable target, constraint target | `1e-10`, `1e-9`, `1e-10`; zero bound relaxation |
 
@@ -343,6 +350,12 @@ iterates. The Step-10 trace domain relaxes only a charged independent
 coordinate's finite-search lower bound; it does not relax any other polytope
 constraint. Finite search always retains
 `globality_certificate="not_guaranteed"`.
+
+The paper-scale coalescence neighborhood is only considered when Stage III
+contains at least three phases. It does not merge the returned states in
+place: one member is removed and the smaller problem must independently pass
+the same balance, charge, pressure, KKT, and paper-convergence gates. A
+two-phase result therefore cannot be collapsed by this recovery rule.
 
 HELD2 keeps three identities separate. Appendix C and persistent
 \(\mathcal M\) membership use modified composition plus molar volume. Step 6

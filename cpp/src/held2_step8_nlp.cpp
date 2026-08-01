@@ -1503,6 +1503,9 @@ Held2Problem67Result solve_held2_problem67(
     }
     std::size_t duplicate_retained = candidates.size();
     std::size_t duplicate_removed = candidates.size();
+    const Held2Tolerance& phase_coalescence = candidates.size() > 2
+        ? kHeld2PaperPhaseCoalescence
+        : kHeld2PhaseMerge;
     for (std::size_t left = 0; left < candidates.size(); ++left) {
         for (std::size_t right = left + 1;
              right < candidates.size(); ++right) {
@@ -1515,7 +1518,7 @@ Held2Problem67Result solve_held2_problem67(
                         std::log(solved_states[left].volume)
                         - std::log(solved_states[right].volume)
                     )
-                ) > kHeld2PhaseMerge.atol) {
+                ) > phase_coalescence.atol) {
                 continue;
             }
             const double left_fraction = variables[left * block_size];
