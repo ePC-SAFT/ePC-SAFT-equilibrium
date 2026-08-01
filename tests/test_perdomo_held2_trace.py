@@ -142,6 +142,16 @@ def test_public_held2_performance_diagnostics_aggregate_native_work() -> None:
                     "provider_packing_evaluations": 0,
                     "problem_candidate_ids": [1, 2],
                     "attempted_candidate_ids": [1, 2],
+                    "problem_candidate_variables": [0.2, 1.0, 0.8, 1.0],
+                    "neighborhood_radius": 0.01,
+                },
+                {
+                    "status": "complete",
+                    "reason": "step8_complete",
+                    "problem_candidate_ids": [1, 2],
+                    "attempted_candidate_ids": [1, 2],
+                    "problem_candidate_variables": [0.2, 1.0, 0.8, 1.0],
+                    "neighborhood_radius": 0.02,
                 }
             ],
         }
@@ -160,15 +170,15 @@ def test_public_held2_performance_diagnostics_aggregate_native_work() -> None:
     assert performance.dilute_face_restart_accepts == 1
     assert performance.dilute_face_coordinate_indices == (0, 2)
     assert performance.dilute_face_component_indices == (1, 3)
-    assert performance.step8_invocations == 1
+    assert performance.step8_invocations == 2
     assert performance.step8_return_to_stage_ii_count == 1
     assert performance.step8_warm_start_count == 1
     assert performance.step8_cold_fallback_count == 1
     assert performance.step8_provider_state_evaluations == 20
     assert performance.step8_provider_volume_bound_evaluations == 2
     assert performance.step8_provider_packing_evaluations == 0
-    assert performance.step8_problem_candidate_count == 2
-    assert performance.step8_attempted_candidate_count == 2
+    assert performance.step8_problem_candidate_count == 4
+    assert performance.step8_attempted_candidate_count == 4
     assert performance.step8_repeated_problem_count == 0
     assert performance.step10_invocations == 1
     assert performance.trace_refinement_activated_count == 1
