@@ -159,8 +159,20 @@ struct ChemicalSearchBudgetPrefix {
 struct ChemicalSearchEvidence {
     std::string status = "not_evaluated";
     std::string continuation_status = "not_used";
+    std::string continuation_blocker;
+    std::string continuation_initial_model_fingerprint;
+    double continuation_accepted_lambda =
+        std::numeric_limits<double>::quiet_NaN();
+    std::size_t continuation_attempt_count = 0;
     std::size_t primary_budget = 25;
     std::size_t primary_attempt_count = 0;
+    std::size_t generated_start_count = 0;
+    std::size_t budget_truncated_start_count = 0;
+    std::size_t duplicate_start_count = 0;
+    std::size_t infeasible_start_count = 0;
+    std::size_t evaluated_start_count = 0;
+    std::size_t domain_rejected_start_count = 0;
+    std::size_t construction_rejected_start_count = 0;
     std::vector<ChemicalSearchAttempt> attempts;
     std::vector<ChemicalSearchBasin> basins;
     std::vector<ChemicalSearchBudgetPrefix> budget_prefixes;
@@ -201,6 +213,16 @@ struct ChemicalSolveResult {
     double trace_floor_mol = std::numeric_limits<double>::quiet_NaN();
     double kkt_stationarity_inf_norm = 0.0;
     std::vector<double> physical_stationarity_residuals;
+    std::vector<double> physical_equality_multipliers;
+    std::vector<double> physical_constraint_jacobian;
+    std::size_t physical_constraint_rows = 0;
+    std::size_t physical_constraint_columns = 0;
+    std::vector<double> physical_lagrangian_gradient;
+    std::vector<double> physical_to_chart_jacobian;
+    std::size_t physical_to_chart_rows = 0;
+    std::size_t physical_to_chart_columns = 0;
+    double chart_physical_pullback_residual_inf_norm =
+        std::numeric_limits<double>::quiet_NaN();
     double complementarity_inf_norm = 0.0;
     std::size_t kkt_dimension = 0;
     std::size_t kkt_rank = 0;
@@ -234,6 +256,22 @@ struct ChemicalSolveResult {
     double chart_stationarity_inf_norm = std::numeric_limits<double>::quiet_NaN();
     std::vector<double> lagrangian_hessian;
     std::vector<double> covariant_lagrangian_hessian;
+    double derivative_check_step = std::numeric_limits<double>::quiet_NaN();
+    double objective_gradient_check_relative_error =
+        std::numeric_limits<double>::quiet_NaN();
+    double constraint_jacobian_check_relative_error =
+        std::numeric_limits<double>::quiet_NaN();
+    double lagrangian_hessian_check_relative_error =
+        std::numeric_limits<double>::quiet_NaN();
+    std::string derivative_check_worst_entry;
+    double derivative_check_worst_relative_error =
+        std::numeric_limits<double>::quiet_NaN();
+    double derivative_check_worst_analytic_value =
+        std::numeric_limits<double>::quiet_NaN();
+    double derivative_check_worst_finite_difference_value =
+        std::numeric_limits<double>::quiet_NaN();
+    double derivative_check_worst_step =
+        std::numeric_limits<double>::quiet_NaN();
     std::vector<std::string> derivative_coordinate_order;
     std::string derivative_objective_basis =
         "dimensionless_fixed_TP_A_plus_PV_plus_reference_over_RT";
@@ -244,6 +282,8 @@ struct ChemicalSolveResult {
     std::size_t kkt_root_rows = 0;
     std::size_t kkt_root_columns = 0;
     std::string kkt_root_status = "not_evaluated";
+    double kkt_root_jacobian_check_relative_error =
+        std::numeric_limits<double>::quiet_NaN();
     ChemicalSearchEvidence search;
     ChemicalSensitivityResult sensitivities;
 };
@@ -353,6 +393,15 @@ struct SourceStandardStateResult {
     double quadratic_strength = 2.3
 );
 
+[[nodiscard]] ChemicalSolveResult solve_manufactured_inconsistent_derivative_reaction(
+    const CompiledReactionSystem& system,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& gauge_coefficients,
+    double trace_floor,
+    int max_iterations = 200
+);
+
 [[nodiscard]] ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(
     const CompiledReactionSystem& system,
     double temperature_k,
@@ -431,6 +480,24 @@ evaluate_manufactured_inverse_log_packing_nlp(
     const std::vector<double>& ln_k_parameter_derivatives = {},
     const ProviderActiveParameterSet* active_parameters = nullptr,
     int max_iterations = 500
+);
+
+[[nodiscard]] ChemicalSolveResult solve_provider_reaction_continuation(
+    const CompiledReactionSystem& target_system,
+    const ProviderContext& target_provider,
+    double target_packing_fraction_min,
+    double target_packing_fraction_max,
+    double target_total_ion_fraction_max,
+    const CompiledReactionSystem& initial_system,
+    const ProviderContext& initial_provider,
+    double initial_packing_fraction_min,
+    double initial_packing_fraction_max,
+    double initial_total_ion_fraction_max,
+    double temperature_k,
+    double pressure_pa,
+    double trace_floor,
+    int max_iterations = 500,
+    bool continue_after_certified_target = false
 );
 
 }  // namespace epcsaft_equilibrium

@@ -9,11 +9,12 @@ from decimal import Decimal, getcontext
 
 import epcsaft
 import pytest
+from provider_data import packet_parameters
 
 import epcsaft_equilibrium
 from epcsaft_equilibrium import _equilibrium
 
-BINARY_FINGERPRINT = "sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195"
+BINARY_FINGERPRINT = "sha256:8347d8daad42af60d61071f0584eb50d8866d98d9636872fd9d173f491ea7947"
 GAS_CONSTANT_J_PER_MOL_K = 8.31446261815324
 
 # May et al. (2015), Table 5, retained source row may2015-ch4-c2h6-001.
@@ -142,10 +143,9 @@ OUTER_FINITE_FIXTURES = {
 
 
 def _binary_model() -> epcsaft.Mixture:
-    parameters = epcsaft.Parameters.from_catalog(
+    parameters = packet_parameters(
         "gross-2001-methane-ethane",
-        components=("methane", "ethane"),
-        version=1,
+        ("methane", "ethane"),
     )
     model = epcsaft.Mixture(parameters)
     assert model.parameter_fingerprint == BINARY_FINGERPRINT
@@ -845,10 +845,9 @@ def test_public_tp_flash_rejects_wrong_fingerprint_and_provider_abi(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pure_model = epcsaft.Mixture(
-        epcsaft.Parameters.from_catalog(
+        packet_parameters(
             "gross-2001-methane-ethane",
-            components=("methane",),
-            version=1,
+            ("methane",),
         )
     )
     with pytest.raises(epcsaft_equilibrium.FlashError) as wrong_fingerprint:
@@ -949,18 +948,18 @@ def test_public_surface_has_no_retired_routes_or_solver_controls() -> None:
     assert trace_parameter.kind is inspect.Parameter.KEYWORD_ONLY
     assert trace_parameter.default is False
     assert set(epcsaft_equilibrium.__all__) == {
-            "ChemicalArtifactIdentity",
-            "ChemicalEquilibriumActiveParameter",
-            "ChemicalEquilibriumAttempt",
-            "ChemicalEquilibriumBasin",
-            "ChemicalEquilibriumBudgetPrefix",
-            "ChemicalEquilibriumConstant",
-            "ChemicalEquilibriumCriterion",
+        "ChemicalArtifactIdentity",
+        "ChemicalEquilibriumActiveParameter",
+        "ChemicalEquilibriumAttempt",
+        "ChemicalEquilibriumBasin",
+        "ChemicalEquilibriumBudgetPrefix",
+        "ChemicalEquilibriumConstant",
+        "ChemicalEquilibriumCriterion",
         "ChemicalEquilibriumDiagnostics",
         "ChemicalEquilibriumError",
         "ChemicalEquilibriumProblem",
-            "ChemicalEquilibriumResult",
-            "ChemicalEquilibriumSearch",
+        "ChemicalEquilibriumResult",
+        "ChemicalEquilibriumSearch",
         "ChemicalEquilibriumSensitivity",
         "ChemicalEquilibriumSensitivityParameter",
         "ChemicalEquilibriumSensitivityRequest",
@@ -975,6 +974,7 @@ def test_public_surface_has_no_retired_routes_or_solver_controls() -> None:
         "IdealGasPhase",
         "PhaseState",
         "ProviderPhase",
+        "ProviderModelContinuation",
         "SaturationDiagnostics",
         "SaturationError",
         "SaturationResult",

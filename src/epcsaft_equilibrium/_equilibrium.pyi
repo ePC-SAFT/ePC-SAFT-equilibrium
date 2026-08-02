@@ -75,6 +75,18 @@ def _chemical_equilibrium(
     trace_floor: float,
     active_parameters: tuple[dict[str, object], ...] | None = ...,
 ) -> dict[str, Any]: ...
+def _chemical_equilibrium_continuation(
+    target_capsule: object,
+    initial_capsule: object,
+    spec: dict[str, object],
+    initial_provider_fingerprint: str,
+    initial_equilibrium_constants: dict[str, object] | None,
+    source_standard_state: dict[str, object] | None,
+    target_packing_fraction_bounds: tuple[float, float],
+    initial_packing_fraction_bounds: tuple[float, float],
+    trace_floor: float,
+    force_continuation_for_testing: bool = ...,
+) -> dict[str, Any]: ...
 
 def _chemical_observation_context(
     provider_capsule: object,

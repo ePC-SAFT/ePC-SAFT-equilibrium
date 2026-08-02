@@ -8,6 +8,7 @@ from pathlib import Path
 
 import epcsaft
 import pytest
+from provider_data import packet_parameters
 
 import epcsaft_equilibrium
 from epcsaft_equilibrium import _equilibrium
@@ -62,7 +63,7 @@ def _capsule(table: _NativeSdkTable, name: str = "epcsaft.native_sdk.v1") -> obj
 
 def _model(component: str = "methane") -> epcsaft.Mixture:
     catalog = "gross-2001-propane" if component == "propane" else "gross-2001-methane-ethane"
-    parameters = epcsaft.Parameters.from_catalog(catalog, components=(component,), version=1)
+    parameters = packet_parameters(catalog, (component,))
     return epcsaft.Mixture(parameters)
 
 
@@ -298,10 +299,9 @@ def test_public_saturation_rejects_noncanonical_or_out_of_scope_inputs() -> None
     with pytest.raises(ValueError, match="source domain"):
         epcsaft_equilibrium.saturation(methane, 96.0 * epcsaft.unit_registry.kelvin)
 
-    binary_parameters = epcsaft.Parameters.from_catalog(
+    binary_parameters = packet_parameters(
         "gross-2001-methane-ethane",
-        components=("methane", "ethane"),
-        version=1,
+        ("methane", "ethane"),
     )
     binary = epcsaft.Mixture(binary_parameters)
     with pytest.raises(ValueError, match="approved pure-component fingerprint"):
@@ -341,7 +341,7 @@ def test_public_ethane_saturation_separates_all_acceptance_layers(
 
     assert result.temperature_k == 240.0
     assert result.parameter_fingerprint == (
-        "sha256:b81f32e44adb46080dfa91026c6428045e04a219900305767672d0547f9a9fb9"
+        "sha256:6381ef30d4f25c63fee1fd098c7024dd59254f3021d0588ee46e4eecfb31619b"
     )
     assert result.saturation_pressure_pa == pytest.approx(969_152.1055945412, rel=5.0e-6)
     assert result.vapor.amount_mol == 1.0
@@ -400,7 +400,7 @@ def test_public_saturation_matches_retained_lab_and_nist_anchors() -> None:
     for anchor in anchors:
         component = anchor["component"]
         model = epcsaft.Mixture(
-            epcsaft.Parameters.from_catalog(anchor["catalog"], components=(component,), version=1)
+            packet_parameters(anchor["catalog"], (component,))
         )
         result = epcsaft_equilibrium.saturation(
             model,

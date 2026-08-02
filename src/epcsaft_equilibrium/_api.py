@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from importlib import metadata
 from types import MappingProxyType
@@ -223,6 +223,15 @@ class ProviderPhase:
 
 
 @dataclass(frozen=True)
+class ProviderModelContinuation:
+    """A caller-supplied Provider endpoint for deterministic model homotopy."""
+
+    initial_phase: ProviderPhase
+    initial_equilibrium_constants: tuple[ChemicalEquilibriumConstant, ...] | None = None
+    initial_equilibrium_constants_model_fingerprint: str | None = None
+
+
+@dataclass(frozen=True)
 class ChemicalEquilibriumProblem:
     """One reaction system with an explicit strict-interior admission boundary."""
 
@@ -301,8 +310,19 @@ class ChemicalEquilibriumSearch:
 
     status: str
     continuation_status: str
+    continuation_blocker: str
+    continuation_initial_model_fingerprint: str
+    continuation_accepted_lambda: float | None
+    continuation_attempt_count: int
     primary_budget: int
     primary_attempt_count: int
+    generated_start_count: int
+    budget_truncated_start_count: int
+    duplicate_start_count: int
+    infeasible_start_count: int
+    evaluated_start_count: int
+    domain_rejected_start_count: int
+    construction_rejected_start_count: int
     attempts: tuple[ChemicalEquilibriumAttempt, ...]
     basins: tuple[ChemicalEquilibriumBasin, ...]
     budget_prefixes: tuple[ChemicalEquilibriumBudgetPrefix, ...]
@@ -360,6 +380,13 @@ class ChemicalEquilibriumDiagnostics:
     trace_floor_mol: float | None
     kkt_stationarity_inf_norm: float | None
     physical_stationarity_residuals: tuple[float, ...]
+    physical_equality_multipliers: tuple[float, ...]
+    physical_constraint_jacobian: tuple[float, ...]
+    physical_constraint_shape: tuple[int, int]
+    physical_lagrangian_gradient: tuple[float, ...]
+    physical_to_chart_jacobian: tuple[float, ...]
+    physical_to_chart_shape: tuple[int, int]
+    chart_physical_pullback_residual_inf_norm: float | None
     complementarity_inf_norm: float | None
     numerical_criteria: tuple[ChemicalEquilibriumCriterion, ...]
     physical_criteria: tuple[ChemicalEquilibriumCriterion, ...]
@@ -391,6 +418,15 @@ class ChemicalEquilibriumDiagnostics:
     chart_stationarity_inf_norm: float | None
     lagrangian_hessian: tuple[float, ...]
     covariant_lagrangian_hessian: tuple[float, ...]
+    derivative_check_step: float | None
+    objective_gradient_check_relative_error: float | None
+    constraint_jacobian_check_relative_error: float | None
+    lagrangian_hessian_check_relative_error: float | None
+    derivative_check_worst_entry: str
+    derivative_check_worst_relative_error: float | None
+    derivative_check_worst_analytic_value: float | None
+    derivative_check_worst_finite_difference_value: float | None
+    derivative_check_worst_step: float | None
     derivative_coordinate_order: tuple[str, ...]
     derivative_objective_basis: str
     derivative_constraint_basis: str
@@ -401,6 +437,7 @@ class ChemicalEquilibriumDiagnostics:
     kkt_root_jacobian: tuple[float, ...]
     kkt_root_shape: tuple[int, int]
     kkt_root_status: str
+    kkt_root_jacobian_check_relative_error: float | None
     reference_representation_residual_inf_norm: float | None
     reference_convergence_error: float | None
     reference_derivative_availability: int | None
@@ -601,19 +638,19 @@ class _Scope:
 
 _SCOPES = MappingProxyType(
     {
-        "sha256:905e7a6e22eb1073347575bf833d5aa059d9ccf562e4408cb186d74f580ba36f": _Scope(
+        "sha256:4a5cde0fad05a150c7fa54bb5ac7db508424f0126cf512596dcc248c284dd9e0": _Scope(
             component="methane",
             temperature_min_k=97.0,
             temperature_max_k=300.0,
             liquid_density_upper_mol_m3=40_000.0,
         ),
-        "sha256:b81f32e44adb46080dfa91026c6428045e04a219900305767672d0547f9a9fb9": _Scope(
+        "sha256:6381ef30d4f25c63fee1fd098c7024dd59254f3021d0588ee46e4eecfb31619b": _Scope(
             component="ethane",
             temperature_min_k=90.0,
             temperature_max_k=305.0,
             liquid_density_upper_mol_m3=40_000.0,
         ),
-        "sha256:1194db349d0608c89419e70c56ccec9ada2ae0884dd8e64e519e9560e7e8ae42": _Scope(
+        "sha256:7d893c35288fceec76b7dde4a16fbf2ef95830b7d18827d3205537ce54878140": _Scope(
             component="propane",
             temperature_min_k=85.0,
             temperature_max_k=523.0,
@@ -622,7 +659,7 @@ _SCOPES = MappingProxyType(
     }
 )
 
-_FLASH_FINGERPRINT = "sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195"
+_FLASH_FINGERPRINT = "sha256:8347d8daad42af60d61071f0584eb50d8866d98d9636872fd9d173f491ea7947"
 _FLASH_TEMPERATURE_DOMAIN_K = (203.22, 243.61)
 _FLASH_PRESSURE_DOMAIN_PA = (2_124_000.0, 6_885_000.0)
 _FLASH_METHANE_FEED_DOMAIN = (0.4661, 0.66705)
@@ -924,9 +961,7 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
     step8_provider_packing_evaluations = 0
     step8_problem_candidate_count = 0
     step8_attempted_candidate_count = 0
-    problem_signatures: list[
-        tuple[tuple[int, ...], tuple[float, ...], float]
-    ] = []
+    problem_signatures: list[tuple[tuple[int, ...], tuple[float, ...], float]] = []
     for raw_step8 in cast(Sequence[object], payload.get("step8_history", ())):
         if not isinstance(raw_step8, Mapping):
             raise ValueError("native HELD2 Step 8 history must contain mappings")
@@ -974,9 +1009,7 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
             raise ValueError("native HELD2 Step 8 neighborhood radius is invalid")
         step8_problem_candidate_count += len(problem_ids)
         step8_attempted_candidate_count += len(attempted_ids)
-        problem_signatures.append(
-            (problem_ids, problem_variables, neighborhood_radius)
-        )
+        problem_signatures.append((problem_ids, problem_variables, neighborhood_radius))
 
     step10_timings = tuple(timing for timing in timings if timing.step == 10)
     trace_refinement_component_indices: set[int] = set()
@@ -1282,8 +1315,19 @@ def _empty_chemical_search(status: str = "not_evaluated") -> ChemicalEquilibrium
     return ChemicalEquilibriumSearch(
         status=status,
         continuation_status="not_used",
-        primary_budget=25,
+        continuation_blocker="",
+        continuation_initial_model_fingerprint="",
+        continuation_accepted_lambda=None,
+        continuation_attempt_count=0,
+        primary_budget=0,
         primary_attempt_count=0,
+        generated_start_count=0,
+        budget_truncated_start_count=0,
+        duplicate_start_count=0,
+        infeasible_start_count=0,
+        evaluated_start_count=0,
+        domain_rejected_start_count=0,
+        construction_rejected_start_count=0,
         attempts=(),
         basins=(),
         budget_prefixes=(),
@@ -1310,15 +1354,65 @@ _CHEMICAL_TERMINAL_STATUSES = _CHEMICAL_SEARCH_STATUSES | {"solver_failed"}
 def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
     if search.status not in _CHEMICAL_SEARCH_STATUSES:
         raise ValueError("native chemical search has an invalid status")
-    if search.continuation_status != "not_used":
+    if search.continuation_status not in {
+        "not_used",
+        "completed",
+        "initial_model_not_certified",
+        "endpoint_domain_incompatible",
+        "endpoint_derivative_incompatible",
+        "no_strictly_feasible_continuation_start",
+        "step_refinement_exhausted",
+        "attempt_budget_exhausted",
+    }:
         raise ValueError("native chemical search has an invalid continuation status")
     if search.selection_label != "lowest_observed_certified_local_value":
         raise ValueError("native chemical search has an invalid selection label")
+    if (
+        search.continuation_attempt_count < 0
+        or (
+            search.continuation_accepted_lambda is not None
+            and not 0.0 <= search.continuation_accepted_lambda <= 1.0
+        )
+        or (
+            search.continuation_status == "not_used"
+            and (
+                search.continuation_attempt_count != 0
+                or search.continuation_accepted_lambda is not None
+                or search.continuation_blocker
+                or search.continuation_initial_model_fingerprint
+            )
+        )
+        or (
+            search.continuation_status != "not_used"
+            and not search.continuation_initial_model_fingerprint
+        )
+        or (
+            search.continuation_status == "completed" and search.continuation_accepted_lambda != 1.0
+        )
+    ):
+        raise ValueError("native chemical continuation evidence is inconsistent")
     if not 0 <= search.primary_attempt_count <= search.primary_budget <= 25:
         raise ValueError("native chemical search has an invalid primary budget")
-    if tuple(attempt.ordinal for attempt in search.attempts) != tuple(
-        range(len(search.attempts))
+    if (
+        (search.status != "not_evaluated" and search.primary_attempt_count == 0)
+        or search.generated_start_count
+        != search.primary_attempt_count
+        + search.budget_truncated_start_count
+        + search.duplicate_start_count
+        + search.infeasible_start_count
+        or search.budget_truncated_start_count < 0
+        or not 0 <= search.evaluated_start_count <= search.primary_attempt_count
+        or not 0
+        <= search.domain_rejected_start_count
+        <= search.primary_attempt_count - search.evaluated_start_count
+        or not 0 <= search.construction_rejected_start_count
+        or search.evaluated_start_count
+        + search.domain_rejected_start_count
+        + search.construction_rejected_start_count
+        != search.primary_attempt_count
     ):
+        raise ValueError("native chemical search start accounting is inconsistent")
+    if tuple(attempt.ordinal for attempt in search.attempts) != tuple(range(len(search.attempts))):
         raise ValueError("native chemical search attempt ordinals are inconsistent")
     if len(search.attempts) < search.primary_attempt_count or any(
         attempt.kind != "primary"
@@ -1327,16 +1421,49 @@ def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
         for attempt in search.attempts[: search.primary_attempt_count]
     ):
         raise ValueError("native chemical search primary lineage is inconsistent")
+    continuation_parents = tuple(
+        attempt for attempt in search.attempts if attempt.kind == "continuation"
+    )
+    continuation_preflight = (
+        search.continuation_status
+        in {"endpoint_domain_incompatible", "endpoint_derivative_incompatible"}
+        and search.continuation_attempt_count == 0
+        and not search.attempts
+    )
+    if (search.continuation_status == "not_used" and continuation_parents) or (
+        search.continuation_status != "not_used"
+        and not continuation_preflight
+        and (
+            len(continuation_parents) != search.continuation_attempt_count + 1
+            or not continuation_parents
+            or continuation_parents[0].continuation_status != "initial_model"
+        )
+    ):
+        raise ValueError("native chemical continuation attempt accounting is inconsistent")
     for attempt in search.attempts:
-        if attempt.kind not in {"primary", "recovery"}:
+        if attempt.kind not in {
+            "primary",
+            "recovery",
+            "continuation",
+            "continuation_recovery",
+        }:
             raise ValueError("native chemical search has an invalid attempt kind")
-        if not 0 <= attempt.primary_ordinal < search.primary_attempt_count:
+        if (
+            attempt.kind not in {"continuation", "continuation_recovery"}
+            and not 0 <= attempt.primary_ordinal < search.primary_attempt_count
+        ):
             raise ValueError("native chemical search primary ordinal is out of range")
         if attempt.kind == "recovery" and (
             attempt.parent_ordinal != attempt.primary_ordinal
             or attempt.parent_ordinal >= search.primary_attempt_count
         ):
             raise ValueError("native chemical search recovery lineage is inconsistent")
+        if attempt.kind == "continuation_recovery" and (
+            attempt.parent_ordinal is None
+            or attempt.parent_ordinal >= attempt.ordinal
+            or search.attempts[attempt.parent_ordinal].kind != "continuation"
+        ):
+            raise ValueError("native chemical continuation recovery lineage is inconsistent")
         if attempt.start_construction_status not in {
             "accepted",
             "rejected",
@@ -1350,7 +1477,12 @@ def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
             "balance_preserved_by_reaction_extent",
         }:
             raise ValueError("native chemical search has an invalid retraction status")
-        if attempt.continuation_status != "not_used":
+        if attempt.continuation_status not in {
+            "not_used",
+            "initial_model",
+            "step_accepted",
+            "step_rejected",
+        }:
             raise ValueError("native chemical attempt has an invalid continuation status")
         if attempt.provider_domain_status not in {
             "passed",
@@ -1404,9 +1536,7 @@ def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
             0 <= attempt.basin_ordinal < len(search.basins)
         ):
             raise ValueError("native chemical attempt basin reference is out of range")
-    if tuple(basin.ordinal for basin in search.basins) != tuple(
-        range(len(search.basins))
-    ):
+    if tuple(basin.ordinal for basin in search.basins) != tuple(range(len(search.basins))):
         raise ValueError("native chemical basin ordinals are inconsistent")
     for basin in search.basins:
         if not 0 <= basin.representative_attempt_ordinal < len(search.attempts):
@@ -1436,14 +1566,24 @@ def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
             or search.selected_objective != selected.objective
         ):
             raise ValueError("native chemical search selection is inconsistent")
+    expected_prefix_budgets = tuple(
+        dict.fromkeys(
+            min(requested, search.primary_attempt_count)
+            for requested in (1, 5, 13, 25)
+            if search.primary_attempt_count > 0
+        )
+    )
+    if tuple(prefix.primary_budget for prefix in search.budget_prefixes) != (
+        expected_prefix_budgets
+    ):
+        raise ValueError("native chemical search budget prefixes are incomplete")
     previous_budget = 0
     previous_selection: int | None = None
     for index, prefix in enumerate(search.budget_prefixes):
         if (
             prefix.primary_budget <= previous_budget
             or prefix.primary_budget > search.primary_attempt_count
-            or prefix.attempted_primary_ordinals
-            != tuple(range(prefix.primary_budget))
+            or prefix.attempted_primary_ordinals != tuple(range(prefix.primary_budget))
             or len(set(prefix.basin_ordinals)) != len(prefix.basin_ordinals)
             or any(not 0 <= ordinal < len(search.basins) for ordinal in prefix.basin_ordinals)
             or (
@@ -1451,10 +1591,7 @@ def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
                 and prefix.selected_basin_ordinal not in prefix.basin_ordinals
             )
             or prefix.selection_changed
-            != (
-                index > 0
-                and prefix.selected_basin_ordinal != previous_selection
-            )
+            != (index > 0 and prefix.selected_basin_ordinal != previous_selection)
         ):
             raise ValueError("native chemical search budget prefix is inconsistent")
         previous_budget = prefix.primary_budget
@@ -1481,25 +1618,15 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
             solver_status=str(record["solver_status"]),
             callback_error=str(record["callback_error"]),
             terminal_status=str(record["terminal_status"]),
-            amounts_mol=tuple(
-                float(value) for value in cast(Sequence[float], record["amounts"])
-            ),
+            amounts_mol=tuple(float(value) for value in cast(Sequence[float], record["amounts"])),
             volume_m3=_optional_float(record, "volume_m3"),
             objective=_optional_float(record, "objective"),
             balance_inf_norm=_optional_float(record, "balance_inf_norm"),
             charge_inf_norm=_optional_float(record, "charge_inf_norm"),
-            pressure_relative_residual=_optional_float(
-                record, "pressure_relative_residual"
-            ),
-            reaction_affinity_inf_norm=_optional_float(
-                record, "reaction_affinity_inf_norm"
-            ),
-            kkt_stationarity_inf_norm=_optional_float(
-                record, "kkt_stationarity_inf_norm"
-            ),
-            complementarity_inf_norm=_optional_float(
-                record, "complementarity_inf_norm"
-            ),
+            pressure_relative_residual=_optional_float(record, "pressure_relative_residual"),
+            reaction_affinity_inf_norm=_optional_float(record, "reaction_affinity_inf_norm"),
+            kkt_stationarity_inf_norm=_optional_float(record, "kkt_stationarity_inf_norm"),
+            complementarity_inf_norm=_optional_float(record, "complementarity_inf_norm"),
             kkt_dimension=int(cast(int, record["kkt_dimension"])),
             kkt_rank=int(cast(int, record["kkt_rank"])),
             condition_number_inf=_optional_float(record, "condition_number_inf"),
@@ -1518,12 +1645,8 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
     basins = tuple(
         ChemicalEquilibriumBasin(
             ordinal=int(cast(int, record["ordinal"])),
-            representative_attempt_ordinal=int(
-                cast(int, record["representative_attempt_ordinal"])
-            ),
-            amounts_mol=tuple(
-                float(value) for value in cast(Sequence[float], record["amounts"])
-            ),
+            representative_attempt_ordinal=int(cast(int, record["representative_attempt_ordinal"])),
+            amounts_mol=tuple(float(value) for value in cast(Sequence[float], record["amounts"])),
             volume_m3=float(cast(float, record["volume_m3"])),
             objective=float(cast(float, record["objective"])),
         )
@@ -1533,14 +1656,10 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
         ChemicalEquilibriumBudgetPrefix(
             primary_budget=int(cast(int, record["primary_budget"])),
             attempted_primary_ordinals=tuple(
-                int(value)
-                for value in cast(
-                    Sequence[int], record["attempted_primary_ordinals"]
-                )
+                int(value) for value in cast(Sequence[int], record["attempted_primary_ordinals"])
             ),
             basin_ordinals=tuple(
-                int(value)
-                for value in cast(Sequence[int], record["basin_ordinals"])
+                int(value) for value in cast(Sequence[int], record["basin_ordinals"])
             ),
             selected_basin_ordinal=(
                 int(cast(int, record["selected_basin_ordinal"]))
@@ -1554,8 +1673,23 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
     search = ChemicalEquilibriumSearch(
         status=str(payload["status"]),
         continuation_status=str(payload["continuation_status"]),
+        continuation_blocker=str(payload["continuation_blocker"]),
+        continuation_initial_model_fingerprint=str(
+            payload["continuation_initial_model_fingerprint"]
+        ),
+        continuation_accepted_lambda=_optional_float(payload, "continuation_accepted_lambda"),
+        continuation_attempt_count=int(cast(int, payload["continuation_attempt_count"])),
         primary_budget=int(cast(int, payload["primary_budget"])),
         primary_attempt_count=int(cast(int, payload["primary_attempt_count"])),
+        generated_start_count=int(cast(int, payload["generated_start_count"])),
+        budget_truncated_start_count=int(cast(int, payload["budget_truncated_start_count"])),
+        duplicate_start_count=int(cast(int, payload["duplicate_start_count"])),
+        infeasible_start_count=int(cast(int, payload["infeasible_start_count"])),
+        evaluated_start_count=int(cast(int, payload["evaluated_start_count"])),
+        domain_rejected_start_count=int(cast(int, payload["domain_rejected_start_count"])),
+        construction_rejected_start_count=int(
+            cast(int, payload["construction_rejected_start_count"])
+        ),
         attempts=attempts,
         basins=basins,
         budget_prefixes=prefixes,
@@ -1609,6 +1743,13 @@ def _failed_chemical_diagnostics(
         trace_floor_mol=None,
         kkt_stationarity_inf_norm=None,
         physical_stationarity_residuals=(),
+        physical_equality_multipliers=(),
+        physical_constraint_jacobian=(),
+        physical_constraint_shape=(0, 0),
+        physical_lagrangian_gradient=(),
+        physical_to_chart_jacobian=(),
+        physical_to_chart_shape=(0, 0),
+        chart_physical_pullback_residual_inf_norm=None,
         complementarity_inf_norm=None,
         numerical_criteria=(),
         physical_criteria=(),
@@ -1640,6 +1781,15 @@ def _failed_chemical_diagnostics(
         chart_stationarity_inf_norm=None,
         lagrangian_hessian=(),
         covariant_lagrangian_hessian=(),
+        derivative_check_step=None,
+        objective_gradient_check_relative_error=None,
+        constraint_jacobian_check_relative_error=None,
+        lagrangian_hessian_check_relative_error=None,
+        derivative_check_worst_entry="",
+        derivative_check_worst_relative_error=None,
+        derivative_check_worst_analytic_value=None,
+        derivative_check_worst_finite_difference_value=None,
+        derivative_check_worst_step=None,
         derivative_coordinate_order=(),
         derivative_objective_basis="dimensionless_fixed_TP_A_plus_PV_plus_reference_over_RT",
         derivative_constraint_basis="ordered_per_row_in_derivative_constraint_order",
@@ -1650,10 +1800,82 @@ def _failed_chemical_diagnostics(
         kkt_root_jacobian=(),
         kkt_root_shape=(0, 0),
         kkt_root_status="not_evaluated",
+        kkt_root_jacobian_check_relative_error=None,
         reference_representation_residual_inf_norm=None,
         reference_convergence_error=None,
         reference_derivative_availability=None,
     )
+
+
+def _failed_continuation_diagnostics(
+    failure_reason: str,
+    initial_model_fingerprint: str,
+    *,
+    failure_kind: str,
+    continuation_status: str,
+) -> ChemicalEquilibriumDiagnostics:
+    search = replace(
+        _empty_chemical_search(),
+        continuation_status=continuation_status,
+        continuation_blocker=failure_reason,
+        continuation_initial_model_fingerprint=initial_model_fingerprint,
+    )
+    return replace(
+        _failed_chemical_diagnostics("continuation_preflight_failed", failure_reason),
+        failure_kind=failure_kind,
+        failure_reason=f"{failure_kind}: {failure_reason}",
+        provider_domain_status=(
+            "failed" if failure_kind == "physical_domain_failure" else "not_adjudicated"
+        ),
+        search=search,
+    )
+
+
+def _classified_continuation_failure(
+    failure_reason: str, initial_model_fingerprint: str
+) -> ChemicalEquilibriumDiagnostics | None:
+    """Type only native continuation failures with an unambiguous contract meaning."""
+    classifications = (
+        (
+            "temperature is outside a Provider continuation endpoint domain",
+            "physical_domain_failure",
+            "endpoint_domain_incompatible",
+        ),
+        (
+            "Provider continuation packing domains do not overlap",
+            "physical_domain_failure",
+            "endpoint_domain_incompatible",
+        ),
+        (
+            "Provider continuation endpoint derivative bases are incompatible",
+            "derivative_inconsistency",
+            "endpoint_derivative_incompatible",
+        ),
+        (
+            "Provider continuation inverse-packing dimensions changed",
+            "derivative_inconsistency",
+            "endpoint_derivative_incompatible",
+        ),
+        (
+            "Provider capsule is missing the reacting-phase SDK contract",
+            "unsupported_derivative_capability",
+            "endpoint_derivative_incompatible",
+        ),
+        (
+            "Provider capsule is missing the reacting-phase callbacks",
+            "unsupported_derivative_capability",
+            "endpoint_derivative_incompatible",
+        ),
+    )
+    for native_reason, failure_kind, status in classifications:
+        if failure_reason == native_reason:
+            return _failed_continuation_diagnostics(
+                failure_reason,
+                initial_model_fingerprint,
+                failure_kind=failure_kind,
+                continuation_status=status,
+            )
+    return None
 
 
 def _chemical_diagnostics(
@@ -1725,14 +1947,35 @@ def _chemical_diagnostics(
         raise ValueError("native chemical failure kind is invalid")
     if bool(native["accepted"]) != (failure_kind == "none"):
         raise ValueError("native chemical acceptance and failure kind disagree")
+    accepted = bool(native["accepted"])
+    certification = str(native["chemical_certification_level"])
+    numerical_status = str(native["numerical_status"])
+    physical_status = str(native["physical_status"])
+    local_minimum_status = str(native["local_minimum_status"])
+    search = _chemical_search(native)
+    if accepted != (certification == "LOCAL_EQUILIBRIUM") or (
+        accepted
+        and (
+            numerical_status != "passed"
+            or physical_status != "passed"
+            or local_minimum_status != "passed"
+            or search.status != "certified_local_minimum"
+            or first_failed_numerical is not None
+            or first_failed_physical is not None
+        )
+    ):
+        raise ValueError("native chemical acceptance and certification evidence disagree")
     kkt_dimension = int(cast(int, native["kkt_dimension"]))
     kkt_rank = int(cast(int, native["kkt_rank"]))
     if kkt_dimension < 0 or not 0 <= kkt_rank <= kkt_dimension:
         raise ValueError("native chemical KKT rank evidence is invalid")
     objective_gradient = _float_tuple(native["objective_gradient"])
     reaction_affinity_residuals = _float_tuple(native["reaction_affinity_residuals"])
-    physical_stationarity_residuals = _float_tuple(
-        native["physical_stationarity_residuals"]
+    physical_stationarity_residuals = _float_tuple(native["physical_stationarity_residuals"])
+    physical_equality_multipliers = _float_tuple(native["physical_equality_multipliers"])
+    physical_constraint_jacobian = _float_tuple(native["physical_constraint_jacobian"])
+    physical_constraint_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["physical_constraint_shape"])
     )
     constraint_values = _float_tuple(native["constraint_values"])
     constraint_jacobian = _float_tuple(native["constraint_jacobian"])
@@ -1742,12 +1985,9 @@ def _chemical_diagnostics(
     covariant_lagrangian_hessian = _float_tuple(native["covariant_lagrangian_hessian"])
     reduced_hessian = _float_tuple(native["reduced_hessian"])
     reduced_hessian_eigenvalues = _float_tuple(native["reduced_hessian_eigenvalues"])
-    reduced_hessian_nullspace_basis = _float_tuple(
-        native["reduced_hessian_nullspace_basis"]
-    )
+    reduced_hessian_nullspace_basis = _float_tuple(native["reduced_hessian_nullspace_basis"])
     reduced_hessian_nullspace_shape = tuple(
-        int(value)
-        for value in cast(Sequence[int], native["reduced_hessian_nullspace_shape"])
+        int(value) for value in cast(Sequence[int], native["reduced_hessian_nullspace_shape"])
     )
     spectrum_status = str(native["reduced_hessian_spectrum_status"])
     derivative_dimension = len(objective_gradient)
@@ -1766,10 +2006,13 @@ def _chemical_diagnostics(
     derivative_constraint_order = tuple(
         str(value) for value in cast(Sequence[str], native["derivative_constraint_order"])
     )
-    kkt_root_jacobian = _float_tuple(native["kkt_root_jacobian"])
-    kkt_root_shape = tuple(
-        int(value) for value in cast(Sequence[int], native["kkt_root_shape"])
+    physical_lagrangian_gradient = _float_tuple(native["physical_lagrangian_gradient"])
+    physical_to_chart_jacobian = _float_tuple(native["physical_to_chart_jacobian"])
+    physical_to_chart_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["physical_to_chart_shape"])
     )
+    kkt_root_jacobian = _float_tuple(native["kkt_root_jacobian"])
+    kkt_root_shape = tuple(int(value) for value in cast(Sequence[int], native["kkt_root_shape"]))
     kkt_root_status = str(native["kkt_root_status"])
     reduced_dimension = math.isqrt(len(reduced_hessian))
     tolerance = _optional_float(native, "reduced_hessian_eigenvalue_tolerance")
@@ -1789,7 +2032,16 @@ def _chemical_diagnostics(
         or reduced_hessian_nullspace_shape != (reduced_dimension, derivative_dimension)
         or len(reduced_hessian_nullspace_basis) != reduced_dimension * derivative_dimension
         or len(kkt_root_shape) != 2
+        or len(physical_to_chart_shape) != 2
+        or len(physical_lagrangian_gradient) != physical_to_chart_shape[0]
+        or len(physical_to_chart_jacobian)
+        != physical_to_chart_shape[0] * physical_to_chart_shape[1]
         or len(kkt_root_jacobian) != kkt_root_shape[0] * kkt_root_shape[1]
+        or len(physical_constraint_shape) != 2
+        or len(physical_equality_multipliers) != physical_constraint_shape[0]
+        or len(physical_stationarity_residuals) != physical_constraint_shape[1]
+        or len(physical_constraint_jacobian)
+        != physical_constraint_shape[0] * physical_constraint_shape[1]
     ):
         raise ValueError("native chemical derivative evidence has inconsistent dimensions")
     if kkt_root_status not in {
@@ -1862,16 +2114,16 @@ def _chemical_diagnostics(
         callback_error=str(native["callback_error"]),
         failure_kind=failure_kind,
         failure_reason=str(native["failure_reason"]),
-        chemical_certification_level=str(native["chemical_certification_level"]),
+        chemical_certification_level=certification,
         boundary_status=str(native["boundary_status"]),
         structural_zero_species_indices=tuple(
             int(index) for index in cast(Sequence[int], native["structural_zero_species_indices"])
         ),
-        numerical_status=str(native["numerical_status"]),
-        physical_status=str(native["physical_status"]),
+        numerical_status=numerical_status,
+        physical_status=physical_status,
         predictive_status="not_adjudicated",
         provider_domain_status=str(native["provider_domain_status"]),
-        local_minimum_status=str(native["local_minimum_status"]),
+        local_minimum_status=local_minimum_status,
         negative_curvature_recovery_status=str(
             native.get("negative_curvature_recovery_status", "not_needed")
         ),
@@ -1883,7 +2135,7 @@ def _chemical_diagnostics(
         ),
         trace_status=str(native["trace_status"]),
         globality_status=str(native["globality_certificate"]),
-        search=_chemical_search(native),
+        search=search,
         amounts_mol=_float_tuple(native["amounts"]),
         volume_m3=_optional_float(native, "volume_m3"),
         balance_inf_norm=float(cast(float, native["balance_inf_norm"])),
@@ -1900,6 +2152,15 @@ def _chemical_diagnostics(
         trace_floor_mol=_optional_float(native, "trace_floor_mol"),
         kkt_stationarity_inf_norm=reported_stationarity_norm,
         physical_stationarity_residuals=physical_stationarity_residuals,
+        physical_equality_multipliers=physical_equality_multipliers,
+        physical_constraint_jacobian=physical_constraint_jacobian,
+        physical_constraint_shape=physical_constraint_shape,
+        physical_lagrangian_gradient=physical_lagrangian_gradient,
+        physical_to_chart_jacobian=physical_to_chart_jacobian,
+        physical_to_chart_shape=physical_to_chart_shape,
+        chart_physical_pullback_residual_inf_norm=_optional_float(
+            native, "chart_physical_pullback_residual_inf_norm"
+        ),
         complementarity_inf_norm=float(cast(float, native["complementarity_inf_norm"])),
         numerical_criteria=numerical_criteria,
         physical_criteria=physical_criteria,
@@ -1935,6 +2196,27 @@ def _chemical_diagnostics(
         chart_stationarity_inf_norm=_optional_float(native, "chart_stationarity_inf_norm"),
         lagrangian_hessian=lagrangian_hessian,
         covariant_lagrangian_hessian=covariant_lagrangian_hessian,
+        derivative_check_step=_optional_float(native, "derivative_check_step"),
+        objective_gradient_check_relative_error=_optional_float(
+            native, "objective_gradient_check_relative_error"
+        ),
+        constraint_jacobian_check_relative_error=_optional_float(
+            native, "constraint_jacobian_check_relative_error"
+        ),
+        lagrangian_hessian_check_relative_error=_optional_float(
+            native, "lagrangian_hessian_check_relative_error"
+        ),
+        derivative_check_worst_entry=str(native["derivative_check_worst_entry"]),
+        derivative_check_worst_relative_error=_optional_float(
+            native, "derivative_check_worst_relative_error"
+        ),
+        derivative_check_worst_analytic_value=_optional_float(
+            native, "derivative_check_worst_analytic_value"
+        ),
+        derivative_check_worst_finite_difference_value=_optional_float(
+            native, "derivative_check_worst_finite_difference_value"
+        ),
+        derivative_check_worst_step=_optional_float(native, "derivative_check_worst_step"),
         derivative_coordinate_order=derivative_coordinate_order,
         derivative_objective_basis=str(native["derivative_objective_basis"]),
         derivative_constraint_basis=str(native["derivative_constraint_basis"]),
@@ -1945,6 +2227,9 @@ def _chemical_diagnostics(
         kkt_root_jacobian=kkt_root_jacobian,
         kkt_root_shape=kkt_root_shape,
         kkt_root_status=kkt_root_status,
+        kkt_root_jacobian_check_relative_error=_optional_float(
+            native, "kkt_root_jacobian_check_relative_error"
+        ),
         reference_representation_residual_inf_norm=_optional_float(
             native, "reference_representation_residual_inf_norm"
         )
@@ -1978,9 +2263,7 @@ def _distribution_file_identity(
     path = metadata.distribution(distribution_name).locate_file(relative_path)
     payload = path.read_bytes()
     if not payload:
-        raise ValueError(
-            f"installed {distribution_name} file identity is unavailable"
-        )
+        raise ValueError(f"installed {distribution_name} file identity is unavailable")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
@@ -2128,9 +2411,7 @@ def _chemical_sensitivity(
     parameter_names = tuple(
         str(value) for value in cast(Sequence[object], payload["parameter_order"])
     )
-    parameters = tuple(
-        _sensitivity_parameter(name, active_parameters) for name in parameter_names
-    )
+    parameters = tuple(_sensitivity_parameter(name, active_parameters) for name in parameter_names)
     amount_derivatives = tuple(
         _vector(row, len(species_ids), "chemical sensitivity amount row")
         for row in cast(Sequence[object], payload["amount_derivatives"])
@@ -2152,9 +2433,7 @@ def _chemical_sensitivity(
             + reaction_parameters
             + (_sensitivity_parameter("pressure_pa"),)
             + tuple(
-                _sensitivity_parameter(
-                    _active_parameter_name(parameter), active_parameters
-                )
+                _sensitivity_parameter(_active_parameter_name(parameter), active_parameters)
                 for parameter in active_parameters
             )
         )
@@ -2245,6 +2524,7 @@ def chemical_equilibrium(
     problem: ChemicalEquilibriumProblem,
     *,
     sensitivity_request: ChemicalEquilibriumSensitivityRequest | None = None,
+    continuation: ProviderModelContinuation | None = None,
 ) -> ChemicalEquilibriumResult:
     """Solve and certify one local fixed-T,P homogeneous reacting phase."""
 
@@ -2255,10 +2535,12 @@ def chemical_equilibrium(
             sensitivity_request, ChemicalEquilibriumSensitivityRequest
         ):
             raise TypeError("sensitivity_request must be a typed sensitivity request")
+        if continuation is not None and not isinstance(continuation, ProviderModelContinuation):
+            raise TypeError("continuation must be a typed Provider model continuation")
+        if continuation is not None and sensitivity_request is not None:
+            raise ValueError("Provider model continuation does not support sensitivity requests")
         active_parameters = (
-            ()
-            if sensitivity_request is None
-            else sensitivity_request.active_parameters
+            () if sensitivity_request is None else sensitivity_request.active_parameters
         )
         if any(
             not isinstance(parameter, ChemicalEquilibriumActiveParameter)
@@ -2277,15 +2559,13 @@ def chemical_equilibrium(
         )
         for parameter in active_parameters:
             component_shape_valid = (
-                parameter.identity == "component"
-                and len(parameter.component_ids) == 1
-            ) or (
-                parameter.identity == "unordered_component_pair"
-                and len(parameter.component_ids) == 2
-                and parameter.component_ids[0] != parameter.component_ids[1]
-            ) or (
-                parameter.identity == "model"
-                and not parameter.component_ids
+                (parameter.identity == "component" and len(parameter.component_ids) == 1)
+                or (
+                    parameter.identity == "unordered_component_pair"
+                    and len(parameter.component_ids) == 2
+                    and parameter.component_ids[0] != parameter.component_ids[1]
+                )
+                or (parameter.identity == "model" and not parameter.component_ids)
             )
             if (
                 not parameter.family
@@ -2339,6 +2619,8 @@ def chemical_equilibrium(
         }
         packing_bounds: tuple[float, float] | None
         if isinstance(phase, IdealGasPhase):
+            if continuation is not None:
+                raise ValueError("Provider model continuation requires a ProviderPhase")
             if active_parameters:
                 raise ValueError("ideal-gas sensitivity cannot request Provider coordinates")
             if problem.source_standard_state is not None:
@@ -2380,6 +2662,79 @@ def chemical_equilibrium(
             thermodynamic_model = "installed_provider"
             provider_ids = tuple(phase.model.component_ids)
             provider_fingerprint = model_fingerprint
+            if continuation is not None:
+                initial_phase = continuation.initial_phase
+                if not isinstance(initial_phase, ProviderPhase):
+                    raise TypeError("Provider model continuation requires an initial ProviderPhase")
+                if not isinstance(initial_phase.model, epcsaft.Mixture):
+                    raise TypeError("continuation initial phase requires an epcsaft.Mixture")
+                if (
+                    not initial_phase.expected_parameter_fingerprint
+                    or initial_phase.expected_parameter_fingerprint
+                    != initial_phase.model.parameter_fingerprint
+                ):
+                    raise ValueError("installed continuation Provider fingerprint does not match")
+                initial_bounds = tuple(
+                    float(value) for value in initial_phase.admissible_packing_fraction_interval
+                )
+                if (
+                    len(initial_bounds) != 2
+                    or not all(math.isfinite(value) for value in initial_bounds)
+                    or not 0.0 < initial_bounds[0] < initial_bounds[1]
+                ):
+                    raise ValueError(
+                        "continuation packing-fraction bounds must be finite and increasing"
+                    )
+                initial_constants = continuation.initial_equilibrium_constants
+                initial_constants_fingerprint = (
+                    continuation.initial_equilibrium_constants_model_fingerprint
+                )
+                if (initial_constants is None) != (initial_constants_fingerprint is None):
+                    raise ValueError(
+                        "initial equilibrium constants and their Provider fingerprint "
+                        "must be supplied together"
+                    )
+                if (
+                    initial_constants_fingerprint is not None
+                    and initial_constants_fingerprint
+                    != initial_phase.expected_parameter_fingerprint
+                ):
+                    raise ValueError(
+                        "initial equilibrium constants are not bound to the initial "
+                        "Provider fingerprint"
+                    )
+                if standard_state is not None and initial_constants is not None:
+                    raise ValueError(
+                        "source-standard continuation transforms one source contract "
+                        "at both endpoints"
+                    )
+                if (
+                    standard_state is None
+                    and initial_phase.expected_parameter_fingerprint
+                    != phase.expected_parameter_fingerprint
+                    and initial_constants is None
+                ):
+                    raise ValueError(
+                        "different Provider endpoints require endpoint-bound initial "
+                        "equilibrium constants"
+                    )
+                if initial_constants is not None and (
+                    len(initial_constants) != len(problem.reaction_matrix)
+                    or any(
+                        not isinstance(record, ChemicalEquilibriumConstant)
+                        or not math.isfinite(record.ln_value)
+                        or not record.source_id
+                        or record.reference_id != "provider-helmholtz-coordinate-basis"
+                        or record.reaction_orientation != "products_positive"
+                        or record.conversion_id != "already-provider-basis"
+                        or not record.dimensionless
+                        for record in initial_constants
+                    )
+                ):
+                    raise ValueError(
+                        "initial equilibrium constants are not a complete "
+                        "Provider-basis endpoint contract"
+                    )
         else:
             raise TypeError("chemical_equilibrium requires a typed phase model")
         native_standard_state: dict[str, object] | None = (
@@ -2394,13 +2749,51 @@ def chemical_equilibrium(
         )
         native = cast(
             Mapping[str, object],
-            _equilibrium._chemical_equilibrium(
-                capsule,
-                spec,
-                native_standard_state,
-                packing_bounds,
-                problem.strict_interior_amount_floor_mol,
-                None if sensitivity_request is None else active_parameter_payload,
+            (
+                _equilibrium._chemical_equilibrium(
+                    capsule,
+                    spec,
+                    native_standard_state,
+                    packing_bounds,
+                    problem.strict_interior_amount_floor_mol,
+                    None if sensitivity_request is None else active_parameter_payload,
+                )
+                if continuation is None
+                else _equilibrium._chemical_equilibrium_continuation(
+                    capsule,
+                    epcsaft.native_sdk(continuation.initial_phase.model),
+                    spec,
+                    continuation.initial_phase.expected_parameter_fingerprint,
+                    (
+                        None
+                        if continuation.initial_equilibrium_constants is None
+                        else {
+                            "provider_fingerprint": (
+                                continuation.initial_equilibrium_constants_model_fingerprint
+                            ),
+                            "ln_k": tuple(
+                                record.ln_value
+                                for record in continuation.initial_equilibrium_constants
+                            ),
+                            "equilibrium_constant_records": tuple(
+                                {
+                                    "source_id": record.source_id,
+                                    "reference_id": record.reference_id,
+                                    "reaction_orientation": record.reaction_orientation,
+                                    "conversion_id": record.conversion_id,
+                                    "dimensionless": record.dimensionless,
+                                    "temperature_k": temperature_k,
+                                    "pressure_pa": pressure_pa,
+                                }
+                                for record in continuation.initial_equilibrium_constants
+                            ),
+                        }
+                    ),
+                    native_standard_state,
+                    cast(tuple[float, float], packing_bounds),
+                    continuation.initial_phase.admissible_packing_fraction_interval,
+                    problem.strict_interior_amount_floor_mol,
+                )
             ),
         )
         diagnostics = _chemical_diagnostics(native)
@@ -2412,9 +2805,23 @@ def chemical_equilibrium(
         TypeError,
         ValueError,
     ) as error:
+        reason = str(error)
+        continuation_fingerprint = (
+            getattr(continuation.initial_phase, "expected_parameter_fingerprint", "")
+            if continuation is not None
+            else ""
+        )
+        classified = (
+            _classified_continuation_failure(reason, continuation_fingerprint)
+            if continuation_fingerprint
+            else None
+        )
+        diagnostics = classified or _failed_chemical_diagnostics(
+            "input_or_native_error", reason
+        )
         raise ChemicalEquilibriumError(
-            str(error),
-            _failed_chemical_diagnostics("input_or_native_error", str(error)),
+            reason,
+            diagnostics,
         ) from error
 
     try:
@@ -2513,10 +2920,7 @@ def chemical_observation_context(
         raise ValueError("chemical-observation context requires rows and parameters")
     if any(not isinstance(item, ChemicalObservationRow) for item in row_records):
         raise TypeError("chemical-observation rows use the typed row record")
-    if any(
-        not isinstance(item, ChemicalEquilibriumActiveParameter)
-        for item in parameter_records
-    ):
+    if any(not isinstance(item, ChemicalEquilibriumActiveParameter) for item in parameter_records):
         raise TypeError("active parameters use the typed request record")
     if not isinstance(phase.model, epcsaft.Mixture):
         raise TypeError("ProviderPhase requires an epcsaft.Mixture")
@@ -2596,27 +3000,28 @@ def chemical_observation_context(
                 "log_activity_scale_factors": (
                     problem.source_standard_state.log_activity_scale_factors
                 ),
-                "reference_pressure_pa": (
-                    problem.source_standard_state.reference_pressure_pa
-                ),
+                "reference_pressure_pa": (problem.source_standard_state.reference_pressure_pa),
             }
         reference_id = (
             problem.source_standard_state.id
             if problem.source_standard_state is not None
             else "provider-helmholtz-coordinate-basis"
         )
-        reference_fingerprint = "sha256:" + hashlib.sha256(
-            json.dumps(
-                {
-                    "reference_id": reference_id,
-                    "source_standard_state": standard_state,
-                    "equilibrium_constants": constants,
-                },
-                allow_nan=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode("utf-8")
-        ).hexdigest()
+        reference_fingerprint = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    {
+                        "reference_id": reference_id,
+                        "source_standard_state": standard_state,
+                        "equilibrium_constants": constants,
+                    },
+                    allow_nan=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
         native_rows.append(
             {
                 "row_id": row.row_id,
@@ -2655,52 +3060,57 @@ def chemical_observation_context(
         "epcsaft_equilibrium/include/epcsaft/regression/evaluator_v1.h",
     )
     provider_artifact_identity = (
-        f"epcsaft=={provider_version};RECORD={provider_record};"
-        f"HEADER={provider_header}"
+        f"epcsaft=={provider_version};RECORD={provider_record};HEADER={provider_header}"
     )
     owner_artifact_identity = (
-        f"epcsaft-equilibrium=={owner_version};RECORD={owner_record};"
-        f"HEADER={owner_header}"
+        f"epcsaft-equilibrium=={owner_version};RECORD={owner_record};HEADER={owner_header}"
     )
     evaluator_identity = "epcsaft-equilibrium.homogeneous-liquid-observation.v1"
     capability_id = "homogeneous-liquid-positive-scalars-v1"
-    capability_fingerprint = "sha256:" + hashlib.sha256(
-        (
-            capability_id
-            + "\nneutral_component_fugacity_pa:Pa"
-            + "\nspecies_mole_fraction:dimensionless"
-            + "\nidentity\nnatural_log"
-        ).encode("utf-8")
-    ).hexdigest()
-    contract_fingerprint = "sha256:" + hashlib.sha256(
-        json.dumps(
-            {
-                "rows": native_rows,
-                "parameters": native_parameters,
-            },
-            allow_nan=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode("utf-8")
-    ).hexdigest()
-    artifact_identity = "sha256:" + hashlib.sha256(
-        (
-            evaluator_identity
-            + "\n"
-            + capability_fingerprint
-            + "\n"
-            + provider_artifact_identity
-            + "\n"
-            + owner_artifact_identity
-            + "\n"
-            + contract_fingerprint
-            + "\n"
-            + phase.expected_parameter_fingerprint
-        ).encode("utf-8")
-    ).hexdigest()
-    trace_floors = {
-        float(item.problem.strict_interior_amount_floor_mol) for item in row_records
-    }
+    capability_fingerprint = (
+        "sha256:"
+        + hashlib.sha256(
+            (
+                capability_id
+                + "\nneutral_component_fugacity_pa:Pa"
+                + "\nspecies_mole_fraction:dimensionless"
+                + "\nidentity\nnatural_log"
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    contract_fingerprint = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(
+                {
+                    "rows": native_rows,
+                    "parameters": native_parameters,
+                },
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    artifact_identity = (
+        "sha256:"
+        + hashlib.sha256(
+            (
+                evaluator_identity
+                + "\n"
+                + capability_fingerprint
+                + "\n"
+                + provider_artifact_identity
+                + "\n"
+                + owner_artifact_identity
+                + "\n"
+                + contract_fingerprint
+                + "\n"
+                + phase.expected_parameter_fingerprint
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    trace_floors = {float(item.problem.strict_interior_amount_floor_mol) for item in row_records}
     if len(trace_floors) != 1:
         raise ValueError("chemical-observation rows require one trace-floor contract")
     capsule = _equilibrium._chemical_observation_context(
@@ -2724,19 +3134,14 @@ def chemical_observation_context(
         state_schema_ids=tuple(item.state_schema_id for item in row_records),
         source_ids=tuple(item.source_id for item in row_records),
         primitive_ids=tuple(
-            f"{item.primitive.kind};{item.primitive.component_id}"
-            for item in row_records
+            f"{item.primitive.kind};{item.primitive.component_id}" for item in row_records
         ),
         parameter_ids=tuple(
             f"{item.family};{item.identity};{','.join(item.component_ids)}"
             for item in parameter_records
         ),
         primitive_units=tuple(
-            (
-                "Pa"
-                if item.primitive.kind == "neutral_component_fugacity_pa"
-                else "dimensionless"
-            )
+            ("Pa" if item.primitive.kind == "neutral_component_fugacity_pa" else "dimensionless")
             for item in row_records
         ),
         transform_ids=tuple(item.transform_id for item in row_records),

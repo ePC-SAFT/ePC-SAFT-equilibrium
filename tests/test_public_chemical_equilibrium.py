@@ -9,6 +9,7 @@ import epcsaft
 import pytest
 
 import epcsaft_equilibrium
+from epcsaft_equilibrium import _api as equilibrium_api
 
 
 def _ideal_problem() -> epcsaft_equilibrium.ChemicalEquilibriumProblem:
@@ -71,13 +72,42 @@ def test_public_chemical_equilibrium_solves_one_typed_ideal_problem() -> None:
     assert result.diagnostics.search.status == "certified_local_minimum"
     assert result.diagnostics.search.continuation_status == "not_used"
     assert result.diagnostics.search.primary_attempt_count == 5
+    assert result.diagnostics.search.primary_budget == 25
+    assert result.diagnostics.search.generated_start_count == 5
+    duplicate_accounting = replace(
+        result.diagnostics.search,
+        generated_start_count=6,
+        duplicate_start_count=1,
+    )
+    equilibrium_api._validate_chemical_search(duplicate_accounting)
+    truncated_accounting = replace(
+        result.diagnostics.search,
+        generated_start_count=6,
+        budget_truncated_start_count=1,
+    )
+    equilibrium_api._validate_chemical_search(truncated_accounting)
+    with pytest.raises(ValueError, match="start accounting"):
+        equilibrium_api._validate_chemical_search(
+            replace(result.diagnostics.search, generated_start_count=6)
+        )
+    with pytest.raises(ValueError, match="budget prefixes"):
+        equilibrium_api._validate_chemical_search(
+            replace(result.diagnostics.search, budget_prefixes=())
+        )
     assert result.diagnostics.search.selected_objective is not None
     assert result.diagnostics.search.selected_basin_ordinal == 0
     assert result.diagnostics.kkt_root_status == "interior_no_active_bounds"
     assert result.diagnostics.first_failed_numerical_criterion is None
-    assert tuple(
+    numerical_names = tuple(
         criterion.name for criterion in result.diagnostics.numerical_criteria
-    )[-2:] == ("chart_stationarity_inf_norm", "derivative_evidence_finite")
+    )
+    assert numerical_names[-5:] == (
+        "derivative_evidence_finite",
+        "objective_gradient_spanning_relative_error",
+        "constraint_jacobian_spanning_relative_error",
+        "lagrangian_hessian_spanning_relative_error",
+        "kkt_root_jacobian_spanning_relative_error",
+    )
     assert len(result.diagnostics.search.attempts) == 5
     assert len(result.diagnostics.search.basins) == 1
     assert result.local_scope == "fixed_TP_single_homogeneous_phase"
@@ -117,6 +147,17 @@ def test_public_chemical_equilibrium_solves_one_typed_ideal_problem() -> None:
         rel=2.0e-8,
         abs=2.0e-13,
     )
+
+
+def test_continuation_missing_sdk_contract_is_typed_unsupported() -> None:
+    diagnostics = equilibrium_api._classified_continuation_failure(
+        "Provider capsule is missing the reacting-phase SDK contract",
+        "sha256:initial-model",
+    )
+    assert diagnostics is not None
+    assert diagnostics.failure_kind == "unsupported_derivative_capability"
+    assert diagnostics.search.continuation_status == "endpoint_derivative_incompatible"
+    equilibrium_api._validate_chemical_search(diagnostics.search)
 
 
 def test_chart_multiplier_reconstruction_is_invariant_to_balance_row_scale() -> None:
@@ -173,9 +214,7 @@ def test_reaction_compilation_is_invariant_to_row_scale() -> None:
     scaled_problem = replace(
         baseline_problem,
         reaction_matrix=((-scale, scale),),
-        equilibrium_constants=(
-            replace(reaction, ln_value=scale * reaction.ln_value),
-        ),
+        equilibrium_constants=(replace(reaction, ln_value=scale * reaction.ln_value),),
     )
 
     baseline = epcsaft_equilibrium.chemical_equilibrium(
@@ -286,9 +325,7 @@ def test_scaled_invalid_reaction_contract_is_rejected_at_compilation(
         feed_amounts_mol=feed,
         conserved_totals=(sum(feed),),
         reaction_matrix=(reaction,),
-        equilibrium_constants=(
-            replace(_ideal_problem().equilibrium_constants[0], ln_value=0.0),
-        ),
+        equilibrium_constants=(replace(_ideal_problem().equilibrium_constants[0], ln_value=0.0),),
     )
 
     with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError, match=message):
@@ -400,8 +437,13 @@ def test_public_failure_exposes_typed_criterion_and_search_blocker(
         native["chemical_certification_level"] = "FEASIBLE_ONLY"
         native["failure_kind"] = failure_kind
         native["failure_reason"] = failure_reason
-        native["numerical_criteria"][2]["value"] = 56.0
-        native["numerical_criteria"][2]["status"] = "failed"
+        criterion = next(
+            record
+            for record in native["numerical_criteria"]
+            if record["name"] == "kkt_stationarity_inf_norm"
+        )
+        criterion["value"] = 56.0
+        criterion["status"] = "failed"
         native["numerical_status"] = "failed"
         native["physical_criteria"][2]["value"] = 2.0e-7
         native["physical_criteria"][2]["status"] = "failed"
@@ -426,7 +468,14 @@ def test_public_failure_exposes_typed_criterion_and_search_blocker(
     assert diagnostics.failure_reason == failure_reason
     assert diagnostics.first_failed_numerical_criterion == "kkt_stationarity_inf_norm"
     assert diagnostics.first_failed_physical_criterion == "pressure_relative_residual"
-    assert diagnostics.numerical_criteria[2].value == 56.0
+    assert (
+        next(
+            record.value
+            for record in diagnostics.numerical_criteria
+            if record.name == "kkt_stationarity_inf_norm"
+        )
+        == 56.0
+    )
     assert diagnostics.numerical_criteria[2].limit == 1.0e-7
     assert diagnostics.physical_criteria[2].value == 2.0e-7
     assert diagnostics.physical_criteria[2].limit == 1.0e-8
@@ -447,8 +496,13 @@ def test_public_nonfinite_reduced_hessian_preserves_derivative_blocker(
         )
         native["callback_error"] = native["failure_reason"]
         native["numerical_status"] = "failed"
-        native["numerical_criteria"][4]["value"] = 0.0
-        native["numerical_criteria"][4]["status"] = "failed"
+        criterion = next(
+            record
+            for record in native["numerical_criteria"]
+            if record["name"] == "derivative_evidence_finite"
+        )
+        criterion["value"] = 0.0
+        criterion["status"] = "failed"
         native["reduced_hessian_spectrum_status"] = "nonfinite"
         native["reduced_hessian_eigenvalues"] = ()
         native["reduced_hessian_raw_inertia"] = (0, 0, 0)
@@ -470,10 +524,7 @@ def test_public_nonfinite_reduced_hessian_preserves_derivative_blocker(
 
     assert failed.value.diagnostics.failure_kind == "derivative_inconsistency"
     assert failed.value.diagnostics.reduced_hessian_spectrum_status == "nonfinite"
-    assert (
-        failed.value.diagnostics.first_failed_numerical_criterion
-        == "derivative_evidence_finite"
-    )
+    assert failed.value.diagnostics.first_failed_numerical_criterion == "derivative_evidence_finite"
 
 
 @pytest.mark.parametrize(
@@ -482,6 +533,7 @@ def test_public_nonfinite_reduced_hessian_preserves_derivative_blocker(
         ("unknown_status", "invalid status"),
         ("nonfinite_attempt", "nonfinite value"),
         ("inconsistent_prefix", "budget prefix"),
+        ("inconsistent_continuation", "continuation attempt accounting"),
     ),
 )
 def test_public_chemical_equilibrium_rejects_malformed_search_receipt(
@@ -498,8 +550,12 @@ def test_public_chemical_equilibrium_rejects_malformed_search_receipt(
             search["status"] = "unknown"
         elif mutation == "nonfinite_attempt":
             search["attempts"][0]["objective"] = math.nan
-        else:
+        elif mutation == "inconsistent_prefix":
             search["budget_prefixes"][-1]["attempted_primary_ordinals"] = (0,)
+        else:
+            search["continuation_status"] = "completed"
+            search["continuation_initial_model_fingerprint"] = "sha256:manufactured"
+            search["continuation_accepted_lambda"] = 1.0
         native["search"] = search
         return native
 
@@ -579,6 +635,7 @@ def test_public_chemical_equilibrium_exports_typed_value_and_jacobian_contract()
         "ChemicalStandardState",
         "IdealGasPhase",
         "ProviderPhase",
+        "ProviderModelContinuation",
         "chemical_equilibrium",
     }
     assert expected <= set(epcsaft_equilibrium.__all__)
@@ -588,6 +645,7 @@ def test_public_chemical_equilibrium_exports_typed_value_and_jacobian_contract()
         "pressure",
         "problem",
         "sensitivity_request",
+        "continuation",
     )
     for retired in (
         "_chemical_solve_manufactured",

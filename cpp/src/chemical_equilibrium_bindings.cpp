@@ -243,6 +243,25 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
     result["kkt_stationarity_inf_norm"] = evaluation.kkt_stationarity_inf_norm;
     result["physical_stationarity_residuals"] =
         evaluation.physical_stationarity_residuals;
+    result["physical_equality_multipliers"] =
+        evaluation.physical_equality_multipliers;
+    result["physical_constraint_jacobian"] =
+        evaluation.physical_constraint_jacobian;
+    result["physical_constraint_shape"] = py::make_tuple(
+        evaluation.physical_constraint_rows,
+        evaluation.physical_constraint_columns
+    );
+    result["physical_lagrangian_gradient"] =
+        evaluation.physical_lagrangian_gradient;
+    result["physical_to_chart_jacobian"] =
+        evaluation.physical_to_chart_jacobian;
+    result["physical_to_chart_shape"] = py::make_tuple(
+        evaluation.physical_to_chart_rows,
+        evaluation.physical_to_chart_columns
+    );
+    result["chart_physical_pullback_residual_inf_norm"] = optional_float(
+        evaluation.chart_physical_pullback_residual_inf_norm
+    );
     result["complementarity_inf_norm"] = evaluation.complementarity_inf_norm;
     result["kkt_dimension"] = evaluation.kkt_dimension;
     result["kkt_rank"] = evaluation.kkt_rank;
@@ -290,6 +309,32 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
     result["lagrangian_hessian"] = evaluation.lagrangian_hessian;
     result["covariant_lagrangian_hessian"] =
         evaluation.covariant_lagrangian_hessian;
+    result["derivative_check_step"] = optional_float(
+        evaluation.derivative_check_step
+    );
+    result["objective_gradient_check_relative_error"] = optional_float(
+        evaluation.objective_gradient_check_relative_error
+    );
+    result["constraint_jacobian_check_relative_error"] = optional_float(
+        evaluation.constraint_jacobian_check_relative_error
+    );
+    result["lagrangian_hessian_check_relative_error"] = optional_float(
+        evaluation.lagrangian_hessian_check_relative_error
+    );
+    result["derivative_check_worst_entry"] =
+        evaluation.derivative_check_worst_entry;
+    result["derivative_check_worst_relative_error"] = optional_float(
+        evaluation.derivative_check_worst_relative_error
+    );
+    result["derivative_check_worst_analytic_value"] = optional_float(
+        evaluation.derivative_check_worst_analytic_value
+    );
+    result["derivative_check_worst_finite_difference_value"] = optional_float(
+        evaluation.derivative_check_worst_finite_difference_value
+    );
+    result["derivative_check_worst_step"] = optional_float(
+        evaluation.derivative_check_worst_step
+    );
     const std::size_t derivative_dimension =
         evaluation.objective_gradient.size();
     result["derivative_coordinate_order"] =
@@ -320,6 +365,9 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
         evaluation.kkt_root_columns
     );
     result["kkt_root_status"] = evaluation.kkt_root_status;
+    result["kkt_root_jacobian_check_relative_error"] = optional_float(
+        evaluation.kkt_root_jacobian_check_relative_error
+    );
     const auto criterion = [](
         const char* name,
         double value,
@@ -337,6 +385,10 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
     };
     py::list numerical_criteria;
     numerical_criteria.append(criterion(
+        "solver_termination", evaluation.solver_status == "solve_succeeded" ? 1.0 : 0.0,
+        1.0, ">=", evaluation.solver_status == "solve_succeeded"
+    ));
+    numerical_criteria.append(criterion(
         "balance_inf_norm", evaluation.balance_inf_norm, 1.0e-9, "<=",
         evaluation.balance_inf_norm <= 1.0e-9
     ));
@@ -353,8 +405,43 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
         evaluation.chart_stationarity_inf_norm <= 1.0e-7
     ));
     numerical_criteria.append(criterion(
+        "chart_physical_pullback_residual_inf_norm",
+        evaluation.chart_physical_pullback_residual_inf_norm,
+        1.0e-10,
+        "<=",
+        evaluation.chart_physical_pullback_residual_inf_norm <= 1.0e-10
+    ));
+    numerical_criteria.append(criterion(
         "derivative_evidence_finite", evaluation.callback_error.empty() ? 1.0 : 0.0,
         1.0, ">=", evaluation.callback_error.empty()
+    ));
+    numerical_criteria.append(criterion(
+        "objective_gradient_spanning_relative_error",
+        evaluation.objective_gradient_check_relative_error,
+        1.0e-5,
+        "<=",
+        evaluation.objective_gradient_check_relative_error <= 1.0e-5
+    ));
+    numerical_criteria.append(criterion(
+        "constraint_jacobian_spanning_relative_error",
+        evaluation.constraint_jacobian_check_relative_error,
+        1.0e-5,
+        "<=",
+        evaluation.constraint_jacobian_check_relative_error <= 1.0e-5
+    ));
+    numerical_criteria.append(criterion(
+        "lagrangian_hessian_spanning_relative_error",
+        evaluation.lagrangian_hessian_check_relative_error,
+        2.0e-4,
+        "<=",
+        evaluation.lagrangian_hessian_check_relative_error <= 2.0e-4
+    ));
+    numerical_criteria.append(criterion(
+        "kkt_root_jacobian_spanning_relative_error",
+        evaluation.kkt_root_jacobian_check_relative_error,
+        2.0e-4,
+        "<=",
+        evaluation.kkt_root_jacobian_check_relative_error <= 2.0e-4
     ));
     result["numerical_criteria"] = std::move(numerical_criteria);
     py::list physical_criteria;
@@ -421,9 +508,31 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
     py::dict search;
     search["status"] = evaluation.search.status;
     search["continuation_status"] = evaluation.search.continuation_status;
+    search["continuation_blocker"] = evaluation.search.continuation_blocker;
+    search["continuation_initial_model_fingerprint"] =
+        evaluation.search.continuation_initial_model_fingerprint;
+    search["continuation_accepted_lambda"] = optional_float(
+        evaluation.search.continuation_accepted_lambda
+    );
+    search["continuation_attempt_count"] =
+        evaluation.search.continuation_attempt_count;
     search["primary_budget"] = evaluation.search.primary_budget;
     search["primary_attempt_count"] =
         evaluation.search.primary_attempt_count;
+    search["generated_start_count"] =
+        evaluation.search.generated_start_count;
+    search["budget_truncated_start_count"] =
+        evaluation.search.budget_truncated_start_count;
+    search["duplicate_start_count"] =
+        evaluation.search.duplicate_start_count;
+    search["infeasible_start_count"] =
+        evaluation.search.infeasible_start_count;
+    search["evaluated_start_count"] =
+        evaluation.search.evaluated_start_count;
+    search["domain_rejected_start_count"] =
+        evaluation.search.domain_rejected_start_count;
+    search["construction_rejected_start_count"] =
+        evaluation.search.construction_rejected_start_count;
     search["selected_basin_ordinal"] =
         optional_index(evaluation.search.selected_basin_ordinal);
     search["selected_objective"] =
@@ -600,6 +709,25 @@ py::dict solve_manufactured_nonconvex(
             trace_floor,
             max_iterations,
             quadratic_strength
+        )
+    );
+}
+
+py::dict solve_manufactured_inconsistent_derivatives(
+    const py::dict& spec,
+    double trace_floor,
+    int max_iterations
+) {
+    const ReactionSystemInput input = reaction_system_input(spec);
+    const CompiledReactionSystem compiled = compile_reaction_system(input);
+    return chemical_result(
+        solve_manufactured_inconsistent_derivative_reaction(
+            compiled,
+            input.temperature_k,
+            input.pressure_pa,
+            {},
+            trace_floor,
+            max_iterations
         )
     );
 }
@@ -979,6 +1107,211 @@ py::dict solve_chemical_equilibrium(
     );
 }
 
+py::dict solve_chemical_equilibrium_continuation(
+    const py::capsule& target_capsule,
+    const py::capsule& initial_capsule,
+    const py::dict& spec,
+    const std::string& initial_provider_fingerprint,
+    const py::object& initial_equilibrium_constants,
+    const py::object& source_standard_state,
+    const std::vector<double>& target_packing_bounds,
+    const std::vector<double>& initial_packing_bounds,
+    double trace_floor,
+    bool force_continuation_for_testing
+) {
+    if (target_packing_bounds.size() != 2
+        || initial_packing_bounds.size() != 2) {
+        throw py::value_error(
+            "Provider continuation packing bounds must contain two values"
+        );
+    }
+    const epcsaft_native_sdk_v1& target_sdk =
+        checked_chemical_sdk(target_capsule);
+    const epcsaft_native_sdk_v1& initial_sdk =
+        checked_chemical_sdk(initial_capsule);
+    const ChemicalProviderMetadata target_metadata =
+        chemical_provider_metadata(target_sdk);
+    const ChemicalProviderMetadata initial_metadata =
+        chemical_provider_metadata(initial_sdk);
+    ReactionSystemInput target_input = reaction_system_input(spec);
+    py::dict initial_spec(spec);
+    if (!initial_equilibrium_constants.is_none()) {
+        const py::dict endpoint = py::cast<py::dict>(
+            initial_equilibrium_constants
+        );
+        if (!endpoint.contains("provider_fingerprint")
+            || py::cast<std::string>(endpoint["provider_fingerprint"])
+                != initial_provider_fingerprint) {
+            throw py::value_error(
+                "initial equilibrium constants are not bound to the initial Provider fingerprint"
+            );
+        }
+        initial_spec["ln_k"] = endpoint["ln_k"];
+        initial_spec["equilibrium_constant_records"] =
+            endpoint["equilibrium_constant_records"];
+    }
+    ReactionSystemInput initial_input = reaction_system_input(initial_spec);
+    initial_input.provider_fingerprint = initial_provider_fingerprint;
+    validate_provider_identity(target_metadata, target_input);
+    validate_provider_identity(initial_metadata, initial_input);
+    if (target_input.temperature_k < target_sdk.source_temperature_min_k
+        || target_input.temperature_k > target_sdk.source_temperature_max_k
+        || target_input.temperature_k < initial_sdk.source_temperature_min_k
+        || target_input.temperature_k > initial_sdk.source_temperature_max_k) {
+        throw py::value_error(
+            "temperature is outside a Provider continuation endpoint domain"
+        );
+    }
+    const ProviderContext target_provider(
+        target_sdk, target_input.provider_fingerprint
+    );
+    const ProviderContext initial_provider(
+        initial_sdk, initial_input.provider_fingerprint
+    );
+    SourceStandardStateResult target_transformed;
+    NeutralReferenceEvaluation target_reference;
+    std::string source_standard_state_id;
+    std::string source_activity_scale_id;
+    if (!source_standard_state.is_none()) {
+        if (!initial_equilibrium_constants.is_none()) {
+            throw py::value_error(
+                "source-standard continuation cannot supply endpoint Provider-basis constants"
+            );
+        }
+        const py::dict standard = py::cast<py::dict>(source_standard_state);
+        source_standard_state_id = py::cast<std::string>(standard["id"]);
+        source_activity_scale_id = py::cast<std::string>(
+            standard["activity_scale_id"]
+        );
+        const std::vector<double> log_activity_scale_factors =
+            py::cast<std::vector<double>>(
+                standard["log_activity_scale_factors"]
+            );
+        const double source_reference_pressure_pa = py::cast<double>(
+            standard["reference_pressure_pa"]
+        );
+        if (source_standard_state_id.empty()
+            || source_activity_scale_id.empty()
+            || !std::isfinite(source_reference_pressure_pa)
+            || source_reference_pressure_pa <= 0.0) {
+            throw py::value_error(
+                "source standard-state identity or pressure is invalid"
+            );
+        }
+        for (const EquilibriumConstantRecord& record
+             : target_input.equilibrium_constant_records) {
+            if (record.conversion_id
+                    != "source-standard-state-to-provider-neutral-reference"
+                || record.reaction_orientation != "products_positive"
+                || !record.dimensionless
+                || record.reference_id != source_standard_state_id
+                || record.temperature_k != target_input.temperature_k
+                || record.pressure_pa != source_reference_pressure_pa) {
+                throw py::value_error(
+                    "source equilibrium-constant provenance is incompatible"
+                );
+            }
+        }
+        target_reference = target_provider.evaluate_neutral_reference(
+            target_input.temperature_k, target_input.pressure_pa
+        );
+        const NeutralReferenceEvaluation initial_reference =
+            initial_provider.evaluate_neutral_reference(
+                initial_input.temperature_k, initial_input.pressure_pa
+            );
+        target_transformed = transform_source_standard_state(
+            target_input.reaction_matrix,
+            target_input.ln_k,
+            log_activity_scale_factors,
+            target_input.charges,
+            target_input.provider_fingerprint,
+            target_input.temperature_k,
+            target_input.pressure_pa,
+            target_reference
+        );
+        const SourceStandardStateResult initial_transformed =
+            transform_source_standard_state(
+                initial_input.reaction_matrix,
+                initial_input.ln_k,
+                log_activity_scale_factors,
+                initial_input.charges,
+                initial_input.provider_fingerprint,
+                initial_input.temperature_k,
+                initial_input.pressure_pa,
+                initial_reference
+            );
+        target_input.ln_k = target_transformed.ln_k_provider_basis;
+        initial_input.ln_k = initial_transformed.ln_k_provider_basis;
+        for (ReactionSystemInput* input : {&target_input, &initial_input}) {
+            for (EquilibriumConstantRecord& record
+                 : input->equilibrium_constant_records) {
+                record.reference_id = "provider-helmholtz-coordinate-basis";
+                record.conversion_id = "already-provider-basis";
+                record.pressure_pa = input->pressure_pa;
+            }
+        }
+    }
+    ChemicalSolveResult evaluation = solve_provider_reaction_continuation(
+        compile_reaction_system(target_input),
+        target_provider,
+        target_packing_bounds[0],
+        target_packing_bounds[1],
+        target_sdk.total_ion_mole_fraction_max,
+        compile_reaction_system(initial_input),
+        initial_provider,
+        initial_packing_bounds[0],
+        initial_packing_bounds[1],
+        initial_sdk.total_ion_mole_fraction_max,
+        target_input.temperature_k,
+        target_input.pressure_pa,
+        trace_floor,
+        500,
+        force_continuation_for_testing
+    );
+    if (evaluation.search.continuation_status != "not_used") {
+        evaluation.search.continuation_initial_model_fingerprint =
+            initial_input.provider_fingerprint;
+    }
+    py::dict result = chemical_result(evaluation);
+    result["parameter_fingerprint"] = target_input.provider_fingerprint;
+    result["packing_fraction_bounds"] = target_packing_bounds;
+    result["provider_sdk_capsule_name"] = EPCSAFT_NATIVE_SDK_V1_CAPSULE_NAME;
+    result["provider_sdk_abi_version"] = target_sdk.abi_version;
+    result["provider_sdk_table_size"] = target_sdk.table_size;
+    result["provider_sdk_result_size"] = target_sdk.result_size;
+    result["provider_sdk_mixture_result_size"] =
+        target_sdk.mixture_result_size;
+    result["provider_sdk_neutral_reference_result_size"] =
+        target_sdk.table_size >= kChemicalNeutralReferenceSizeSdkTableSize
+        ? target_sdk.neutral_reference_result_size
+        : 0;
+    result["provider_sdk_neutral_reference_derivative_result_size"] =
+        target_sdk.table_size
+            >= kChemicalNeutralReferenceDerivativeSizeSdkTableSize
+        ? target_sdk.neutral_reference_derivative_result_size
+        : 0;
+    result["provider_sdk_reacting_phase_parameter_result_size"] =
+        target_sdk.table_size
+            >= kChemicalReactingPhaseParameterSizeSdkTableSize
+        ? target_sdk.reacting_phase_parameter_result_size
+        : 0;
+    if (!source_standard_state.is_none()) {
+        result["standard_offsets"] = target_transformed.standard_offsets;
+        result["ln_k_provider_basis"] =
+            target_transformed.ln_k_provider_basis;
+        result["reference_representation_residual_inf_norm"] =
+            target_transformed.representation_residual_inf_norm;
+        result["source_standard_state_id"] = source_standard_state_id;
+        result["source_activity_scale_id"] = source_activity_scale_id;
+        result["provider_reference_id"] = target_reference.basis_id;
+        result["reference_derivative_availability"] =
+            target_reference.derivative_availability;
+        result["reference_convergence_error"] =
+            target_reference.reference_convergence_error;
+    }
+    return result;
+}
+
 py::dict manufactured_nlp_evidence(
     const py::dict& spec,
     const std::vector<double>& variables,
@@ -1117,6 +1450,20 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("active_parameters") = py::none()
     );
     module.def(
+        "_chemical_equilibrium_continuation",
+        &solve_chemical_equilibrium_continuation,
+        py::arg("target_capsule"),
+        py::arg("initial_capsule"),
+        py::arg("spec"),
+        py::arg("initial_provider_fingerprint"),
+        py::arg("initial_equilibrium_constants"),
+        py::arg("source_standard_state"),
+        py::arg("target_packing_fraction_bounds"),
+        py::arg("initial_packing_fraction_bounds"),
+        py::arg("trace_floor"),
+        py::arg("force_continuation_for_testing") = false
+    );
+    module.def(
         "_chemical_evaluate_provider_block",
         &provider_block_evidence,
         py::arg("capsule"),
@@ -1175,6 +1522,13 @@ void bind_chemical_equilibrium(py::module_& module) {
         py::arg("trace_floor") = 1.0e-12,
         py::arg("max_iterations") = 500,
         py::arg("quadratic_strength") = 2.3
+    );
+    module.def(
+        "_chemical_solve_manufactured_inconsistent_derivatives",
+        &solve_manufactured_inconsistent_derivatives,
+        py::arg("spec"),
+        py::arg("trace_floor") = 1.0e-12,
+        py::arg("max_iterations") = 200
     );
     bind_chemical_observation(module);
 }

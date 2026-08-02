@@ -145,19 +145,19 @@ balance retraction when binary64 reconstruction exceeds the balance tolerance.
 A failed retraction remains an attempt record and launches no Ipopt solve.
 
 For each accepted physical amount seed, the Provider route recomputes molar
-volume bounds and the pressure seed at that composition. It uses the existing
-inward-contracted bounds, geometric midpoint, and at most 100 geometric
-bisections when endpoint pressure residuals have opposite signs. The stopping
-test remains `abs(residual) <= 1e-10 * P`. A failed Provider bracket,
-inverse-packing reconstruction, trace check, or domain check remains a rejected
-start record.
+volume bounds and performs a fixed 128-interval scan in log volume. Every
+detected sign-changing pressure root is refined by at most 100 bisections with
+the stopping test `abs(residual) <= 1e-10 * P`. Distinct roots are ordered by
+distance from the log-volume midpoint and interleaved breadth-first across
+amount seeds. A failed Provider scan, inverse-packing reconstruction, trace
+check, or domain check remains a rejected start record; detected roots omitted
+by the fixed primary ceiling are counted as budget-truncated.
 
-The search does not use ideal-to-Provider continuation in this slice.
-Receipts report `continuation_status="not_used"`. Pope's ideal-gas continuation
-result therefore supplies no guarantee or hidden start for the nonideal
-problem. A future continuation route requires a new pre-result design that
-freezes its homotopy, predictor, corrector, step control, endpoint solve, fold
-handling, and failure accounting.
+The ordinary primary search does not hide a continuation start. If it finds no
+certified target-model basin and the caller supplied a typed Provider-model
+continuation, the independently receipted recovery route is governed by
+[`2026-08-02-provider-model-continuation.md`](2026-08-02-provider-model-continuation.md).
+The fixed ordinary basin search and its receipt remain unchanged and mandatory.
 
 ## Negative-curvature recovery
 
@@ -242,7 +242,16 @@ basin ordinal. The receipt names the selected value
 
 The fixed primary budget is 25. The actual generated count can be lower when
 the reaction dimension is smaller or a direction cannot produce a distinct
-strict-interior seed. Each primary attempt can launch at most two recovery
+strict-interior seed. For an installed Provider, a fixed 128-interval
+log-volume scan brackets every detected sign-changing pressure root in the
+admitted volume interval. Distinct roots are ordered by distance from the
+log-volume midpoint. Starts are then interleaved breadth-first by root rank, so
+every constructible composition receives its first root before any composition
+receives a second, until the same fixed ceiling is reached; no detected root is
+silently chosen as the only density branch. Generated roots omitted only by the
+fixed ceiling are reported as budget-truncated; construction-, duplicate-,
+infeasible-, and Provider-domain-rejected starts are likewise accounted
+separately from evaluated starts. Each evaluated primary attempt can launch at most two recovery
 solves. No random seed, adaptive extra start, or result-dependent budget
 extension exists.
 
@@ -260,6 +269,9 @@ Every attempt record includes:
 - finite terminal amounts, volume, and objective when available;
 - balance, charge, pressure, affinity, KKT, complementarity, trace, rank,
   conditioning, and curvature evidence;
+- returned-state central directional checks of the objective gradient,
+  constraint Jacobian, and Lagrangian Hessian, including step, scaled error,
+  and fixed tolerance;
 - terminal classification and duplicate basin reference; and
 - recovery seed and launched-solve accounting.
 

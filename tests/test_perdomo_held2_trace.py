@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import epcsaft
 import pytest
+from provider_data import packet_parameters
 
 import epcsaft_equilibrium
 from epcsaft_equilibrium import _api, _equilibrium
@@ -33,10 +34,9 @@ PERDOMO_TABLE3_FEED = _nacl_feed(PERDOMO_TABLE3_NACL_MOL_PER_KG_WATER)
 
 
 def _perdomo_table3_model() -> epcsaft.Mixture:
-    parameters = epcsaft.Parameters.from_catalog(
+    parameters = packet_parameters(
         "figiel-2025-reference-electrolytes",
-        components=("water", "sodium-cation", "chloride-anion"),
-        version=1,
+        ("water", "sodium-cation", "chloride-anion"),
     )
     return epcsaft.Mixture(parameters)
 

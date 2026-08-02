@@ -28,6 +28,7 @@ constexpr double kBalanceTolerance = 1.0e-9;
 constexpr double kPressureTolerance = 1.0e-8;
 constexpr double kAffinityTolerance = 1.0e-7;
 constexpr double kKktTolerance = 1.0e-7;
+constexpr double kChartPhysicalPullbackTolerance = 1.0e-10;
 constexpr double kProviderDomainTolerance = 1.0e-12;
 constexpr double kSensitivityConditionNumberMax = 1.0e6;
 
@@ -452,6 +453,20 @@ PhaseEvaluator ideal_phase_evaluator() {
     return evaluate_ideal_phase_block;
 }
 
+PhaseEvaluator manufactured_inconsistent_derivative_evaluator() {
+    return [](
+        double temperature_k,
+        const std::vector<double>& amounts,
+        double volume
+    ) {
+        PhaseBlockEvaluation result = evaluate_ideal_phase_block(
+            temperature_k, amounts, volume
+        );
+        result.mechanical.hessian.front() += 1.0;
+        return result;
+    };
+}
+
 PhaseEvaluator manufactured_nonconvex_phase_evaluator(double quadratic_strength) {
     return [quadratic_strength](
         double temperature_k,
@@ -506,6 +521,8 @@ struct ReactionNlpEvaluation {
     std::vector<double> volume_gradient;
     std::vector<double> volume_hessian;
     std::vector<double> volume_parameter_derivatives;
+    std::vector<double> physical_lagrangian_gradient;
+    std::vector<double> physical_to_chart_jacobian;
     double volume = 0.0;
 };
 
@@ -715,6 +732,8 @@ ReactionNlpEvaluation evaluate_reaction_nlp(
             }
         }
     }
+    result.physical_lagrangian_gradient = physical_lagrangian_gradient;
+    result.physical_to_chart_jacobian = physical_jacobian;
     result.lagrangian_hessian.assign(variable_count * variable_count, 0.0);
     for (std::size_t row = 0; row < variable_count; ++row) {
         for (std::size_t column = 0; column < variable_count; ++column) {
@@ -1709,6 +1728,7 @@ bool polish_interior_kkt(
     std::vector<double>& variables,
     const VolumeCoordinateTransform* volume_transform = nullptr
 ) {
+    constexpr double kPolishResidualTolerance = 1.0e-13;
     const std::size_t dimension = variables.size();
     if (kkt_polish_constraint_count(balances, reactions) != dimension) {
         return false;
@@ -1736,10 +1756,13 @@ bool polish_interior_kkt(
                 evaluation.constraints.begin(),
                 evaluation.constraints.end() - 1
             ));
-        if (nonpressure_residual <= kAffinityTolerance
-            && pressure_residual <= kPressureTolerance) {
+        if (nonpressure_residual <= kPolishResidualTolerance
+            && pressure_residual <= kPolishResidualTolerance) {
             return evaluation.domain_feasible;
         }
+        const bool certification_accurate = evaluation.domain_feasible
+            && nonpressure_residual <= kAffinityTolerance
+            && pressure_residual <= kPressureTolerance;
         std::vector<double> right_hand_side = evaluation.constraints;
         for (double& value : right_hand_side) {
             value = -value;
@@ -1753,7 +1776,7 @@ bool polish_interior_kkt(
                 right_hand_side,
                 step
             )) {
-            return false;
+            return certification_accurate;
         }
         double alpha = 1.0;
         for (std::size_t index = 0; index < dimension; ++index) {
@@ -1797,10 +1820,37 @@ bool polish_interior_kkt(
             alpha *= 0.5;
         }
         if (!accepted_step) {
-            return false;
+            return certification_accurate;
         }
     }
-    return false;
+    try {
+        const KktPolishEvaluation evaluation = evaluate_kkt_polish(
+            chart,
+            balances,
+            reactions,
+            g_ref,
+            temperature_k,
+            pressure_pa,
+            phase_evaluator,
+            domain,
+            variables,
+            volume_transform
+        );
+        const double pressure_residual = evaluation.constraints.empty()
+            ? std::numeric_limits<double>::infinity()
+            : std::abs(evaluation.constraints.back());
+        const double nonpressure_residual = evaluation.constraints.size() <= 1
+            ? 0.0
+            : vector_inf_norm(std::vector<double>(
+                evaluation.constraints.begin(),
+                evaluation.constraints.end() - 1
+            ));
+        return evaluation.domain_feasible
+            && nonpressure_residual <= kAffinityTolerance
+            && pressure_residual <= kPressureTolerance;
+    } catch (const std::exception&) {
+        return false;
+    }
 }
 
 class ReactionTnlp final : public Ipopt::TNLP {
@@ -2407,8 +2457,18 @@ ReducedHessianAnalysis analyze_reduced_hessian(
 ) {
     ReducedHessianAnalysis result;
     const std::size_t dimension = evaluation.gradient.size();
+    if (evaluation.jacobian.size() < constraint_count * dimension) {
+        throw std::invalid_argument(
+            "reduced-Hessian equality Jacobian dimensions are invalid"
+        );
+    }
+    const std::vector<double> tangent_jacobian(
+        evaluation.jacobian.begin(),
+        evaluation.jacobian.begin()
+            + static_cast<std::ptrdiff_t>(constraint_count * dimension)
+    );
     const std::vector<std::vector<double>> basis = nullspace_basis(
-        evaluation.jacobian, constraint_count, dimension
+        tangent_jacobian, constraint_count, dimension
     );
     result.nullspace_rows = basis.size();
     result.nullspace_columns = dimension;
@@ -3419,6 +3479,10 @@ ChemicalSolveResult solve_reaction_attempt(
             );
         physical_multipliers =
             recompute_equality_multipliers(physical_balances, potentials);
+        result.physical_equality_multipliers = physical_multipliers;
+        result.physical_constraint_jacobian = physical_balances.matrix.values;
+        result.physical_constraint_rows = physical_balances.matrix.rows;
+        result.physical_constraint_columns = physical_balances.matrix.columns;
         std::copy(
             recomputed.begin(), recomputed.end(), equality_multipliers.begin()
         );
@@ -3453,16 +3517,214 @@ ChemicalSolveResult solve_reaction_attempt(
         result.lagrangian_hessian = equality_evaluation.lagrangian_hessian;
         result.covariant_lagrangian_hessian =
             equality_evaluation.stationary_lagrangian_hessian;
+        result.physical_lagrangian_gradient =
+            equality_evaluation.physical_lagrangian_gradient;
+        result.physical_to_chart_jacobian =
+            equality_evaluation.physical_to_chart_jacobian;
+        result.physical_to_chart_rows =
+            equality_evaluation.physical_lagrangian_gradient.size();
+        result.physical_to_chart_columns = variables.size();
+        result.chart_physical_pullback_residual_inf_norm = 0.0;
+        for (std::size_t column = 0; column < variables.size(); ++column) {
+            double pullback = 0.0;
+            for (std::size_t physical = 0;
+                 physical < result.physical_to_chart_rows;
+                 ++physical) {
+                pullback += result.physical_to_chart_jacobian[
+                    physical * variables.size() + column
+                ] * result.physical_lagrangian_gradient[physical];
+            }
+            result.chart_physical_pullback_residual_inf_norm = std::max(
+                result.chart_physical_pullback_residual_inf_norm,
+                std::abs(pullback - result.lagrangian_gradient[column])
+            );
+        }
     } catch (const std::exception& error) {
         result.callback_error = error.what();
         result.numerical_status = "failed";
         return result;
     }
+    try {
+        constexpr double kObjectiveGradientCheckTolerance = 1.0e-5;
+        constexpr double kConstraintJacobianCheckTolerance = 1.0e-5;
+        constexpr double kLagrangianHessianCheckTolerance = 2.0e-4;
+        const auto relative_error = [](double observed, double expected) {
+            return std::abs(observed - expected)
+                / std::max({1.0, std::abs(observed), std::abs(expected)});
+        };
+        result.derivative_check_step = std::numeric_limits<double>::infinity();
+        result.objective_gradient_check_relative_error = 0.0;
+        result.constraint_jacobian_check_relative_error = 0.0;
+        result.lagrangian_hessian_check_relative_error = 0.0;
+        result.derivative_check_worst_relative_error = -1.0;
+        const auto record_check = [&result, &relative_error](
+            const std::string& quantity,
+            std::size_t row,
+            std::size_t column,
+            double finite_difference,
+            double analytic,
+            double step,
+            double& maximum
+        ) {
+            const double error = relative_error(finite_difference, analytic);
+            maximum = std::max(maximum, error);
+            if (error > result.derivative_check_worst_relative_error) {
+                result.derivative_check_worst_entry = quantity + "[row="
+                    + std::to_string(row) + ",coordinate="
+                    + std::to_string(column) + "]";
+                result.derivative_check_worst_relative_error = error;
+                result.derivative_check_worst_analytic_value = analytic;
+                result.derivative_check_worst_finite_difference_value =
+                    finite_difference;
+                result.derivative_check_worst_step = step;
+            }
+        };
+        const auto lagrangian_gradient = [&](const ReactionNlpEvaluation& item) {
+            std::vector<double> gradient = item.gradient;
+            for (std::size_t row = 0; row < equality_multipliers.size(); ++row) {
+                for (std::size_t column = 0; column < variables.size(); ++column) {
+                    gradient[column] += equality_multipliers[row]
+                        * item.jacobian[row * variables.size() + column];
+                }
+            }
+            return gradient;
+        };
+        for (std::size_t column = 0; column < variables.size(); ++column) {
+            double step = std::cbrt(std::numeric_limits<double>::epsilon())
+                * std::max(1.0, std::abs(variables[column]));
+            step = std::min(
+                step,
+                0.25 * std::min(
+                    upper[column] - variables[column],
+                    variables[column] - lower[column]
+                )
+            );
+            if (!std::isfinite(step) || step <= 0.0) {
+                throw std::runtime_error(
+                    "spanning derivative audit step is unavailable"
+                );
+            }
+            result.derivative_check_step = std::min(
+                result.derivative_check_step, step
+            );
+            std::vector<double> below_variables = variables;
+            std::vector<double> above_variables = variables;
+            below_variables[column] -= step;
+            above_variables[column] += step;
+            const ReactionNlpEvaluation below = evaluate_reaction_nlp(
+                chart,
+                balances,
+                g_ref,
+                temperature_k,
+                pressure_pa,
+                phase_evaluator,
+                domain,
+                below_variables,
+                equality_multipliers,
+                volume_transform
+            );
+            const ReactionNlpEvaluation above = evaluate_reaction_nlp(
+                chart,
+                balances,
+                g_ref,
+                temperature_k,
+                pressure_pa,
+                phase_evaluator,
+                domain,
+                above_variables,
+                equality_multipliers,
+                volume_transform
+            );
+            record_check(
+                "objective_gradient",
+                0,
+                column,
+                (above.objective - below.objective) / (2.0 * step),
+                equality_evaluation.gradient[column],
+                step,
+                result.objective_gradient_check_relative_error
+            );
+            for (std::size_t row = 0;
+                 row < equality_evaluation.constraints.size();
+                 ++row) {
+                record_check(
+                    "constraint_jacobian",
+                    row,
+                    column,
+                    (above.constraints[row] - below.constraints[row])
+                        / (2.0 * step),
+                    equality_evaluation.jacobian[
+                        row * variables.size() + column
+                    ],
+                    step,
+                    result.constraint_jacobian_check_relative_error
+                );
+            }
+            const std::vector<double> below_lagrangian_gradient =
+                lagrangian_gradient(below);
+            const std::vector<double> above_lagrangian_gradient =
+                lagrangian_gradient(above);
+            for (std::size_t row = 0; row < variables.size(); ++row) {
+                record_check(
+                    "lagrangian_hessian",
+                    row,
+                    column,
+                    (above_lagrangian_gradient[row]
+                        - below_lagrangian_gradient[row])
+                        / (2.0 * step),
+                    equality_evaluation.lagrangian_hessian[
+                        row * variables.size() + column
+                    ],
+                    step,
+                    result.lagrangian_hessian_check_relative_error
+                );
+            }
+        }
+        if (result.objective_gradient_check_relative_error
+                > kObjectiveGradientCheckTolerance
+            || result.constraint_jacobian_check_relative_error
+                > kConstraintJacobianCheckTolerance
+            || result.lagrangian_hessian_check_relative_error
+                > kLagrangianHessianCheckTolerance) {
+            throw std::runtime_error(
+                "spanning objective/Jacobian/Lagrangian-Hessian audit failed"
+            );
+        }
+    } catch (const std::exception& error) {
+        result.callback_error = "derivative inconsistency: "
+            + std::string(error.what());
+        result.physical_stationarity_residuals = potentials;
+        for (std::size_t species = 0; species < potentials.size(); ++species) {
+            for (std::size_t row = 0; row < physical_balances.matrix.rows; ++row) {
+                result.physical_stationarity_residuals[species] +=
+                    physical_balances.matrix(row, species)
+                    * physical_multipliers[row];
+            }
+        }
+        result.kkt_stationarity_inf_norm = vector_inf_norm(
+            result.physical_stationarity_residuals
+        );
+        result.numerical_status = "failed";
+        result.local_minimum_status = "second_order_inconclusive";
+        result.reduced_hessian_status = "second_order_inconclusive";
+        return result;
+    }
     std::vector<double> negative_curvature_direction;
     if (sensitivity_interior) {
-        const ReducedHessianAnalysis curvature = analyze_reduced_hessian(
-            equality_evaluation, balances.matrix.rows
-        );
+        ReducedHessianAnalysis curvature;
+        try {
+            curvature = analyze_reduced_hessian(
+                equality_evaluation,
+                balances.matrix.rows
+            );
+        } catch (const std::exception& error) {
+            result.callback_error = std::string(
+                "derivative inconsistency: reduced-Hessian tangent construction failed: "
+            ) + error.what();
+            result.numerical_status = "failed";
+            result.local_minimum_status = "second_order_inconclusive";
+            return result;
+        }
         result.local_minimum_status = curvature.positive
             ? "passed"
             : curvature.status;
@@ -3530,6 +3792,70 @@ ChemicalSolveResult solve_reaction_attempt(
             result.kkt_root_rows = variables.size();
             result.kkt_root_columns = variables.size();
             result.kkt_root_status = "interior_no_active_bounds";
+            result.kkt_root_jacobian_check_relative_error = 0.0;
+            const auto relative_error = [](double observed, double expected) {
+                return std::abs(observed - expected)
+                    / std::max({1.0, std::abs(observed), std::abs(expected)});
+            };
+            for (std::size_t column = 0; column < variables.size(); ++column) {
+                double step = std::cbrt(std::numeric_limits<double>::epsilon())
+                    * std::max(1.0, std::abs(variables[column]));
+                step = std::min(
+                    step,
+                    0.25 * std::min(
+                        upper[column] - variables[column],
+                        variables[column] - lower[column]
+                    )
+                );
+                if (!std::isfinite(step) || step <= 0.0) {
+                    throw std::runtime_error(
+                        "spanning KKT-root audit step is unavailable"
+                    );
+                }
+                std::vector<double> below_variables = variables;
+                std::vector<double> above_variables = variables;
+                below_variables[column] -= step;
+                above_variables[column] += step;
+                const KktPolishEvaluation below = evaluate_kkt_polish(
+                    chart, balances, system.reaction_matrix, g_ref,
+                    temperature_k, pressure_pa, phase_evaluator, domain,
+                    below_variables, volume_transform
+                );
+                const KktPolishEvaluation above = evaluate_kkt_polish(
+                    chart, balances, system.reaction_matrix, g_ref,
+                    temperature_k, pressure_pa, phase_evaluator, domain,
+                    above_variables, volume_transform
+                );
+                for (std::size_t row = 0; row < variables.size(); ++row) {
+                    const double finite_difference =
+                        (above.constraints[row] - below.constraints[row])
+                            / (2.0 * step);
+                    const double analytic =
+                        kkt.jacobian[row * variables.size() + column];
+                    const double error = relative_error(
+                        finite_difference, analytic
+                    );
+                    result.kkt_root_jacobian_check_relative_error = std::max(
+                        result.kkt_root_jacobian_check_relative_error,
+                        error
+                    );
+                    if (error > result.derivative_check_worst_relative_error) {
+                        result.derivative_check_worst_entry =
+                            "kkt_root_jacobian[row=" + std::to_string(row)
+                            + ",coordinate=" + std::to_string(column) + "]";
+                        result.derivative_check_worst_relative_error = error;
+                        result.derivative_check_worst_analytic_value = analytic;
+                        result.derivative_check_worst_finite_difference_value =
+                            finite_difference;
+                        result.derivative_check_worst_step = step;
+                    }
+                }
+            }
+            if (result.kkt_root_jacobian_check_relative_error > 2.0e-4) {
+                throw std::runtime_error(
+                    "spanning KKT-root Jacobian audit failed"
+                );
+            }
         } else {
             result.kkt_root_status = "unavailable_active_bounds";
         }
@@ -3548,7 +3874,7 @@ ChemicalSolveResult solve_reaction_attempt(
     } catch (const std::exception& error) {
         result.kkt_dimension = variables.size();
         result.kkt_root_status = "evaluation_failed";
-        result.callback_error = "KKT derivative evaluation failed: "
+        result.callback_error = "derivative inconsistency: KKT derivative evaluation failed: "
             + std::string(error.what());
         result.local_minimum_status = "second_order_inconclusive";
         result.reduced_hessian_status = "second_order_inconclusive";
@@ -3558,6 +3884,8 @@ ChemicalSolveResult solve_reaction_attempt(
             && result.balance_inf_norm <= kBalanceTolerance
             && result.kkt_stationarity_inf_norm <= kKktTolerance
             && result.chart_stationarity_inf_norm <= kKktTolerance
+            && result.chart_physical_pullback_residual_inf_norm
+                <= kChartPhysicalPullbackTolerance
             && result.complementarity_inf_norm <= kKktTolerance
         ? "passed"
         : "failed";
@@ -3911,7 +4239,7 @@ struct ReactionStartGeometry {
 };
 
 using ReactionStartGeometryFactory =
-    std::function<ReactionStartGeometry(const std::vector<double>&)>;
+    std::function<std::vector<ReactionStartGeometry>(const std::vector<double>&)>;
 
 ChemicalSolveResult solve_reaction(
     const CompiledReactionSystem& system,
@@ -3965,9 +4293,16 @@ ChemicalSolveResult solve_reaction(
     struct PrimaryStart {
         std::vector<double> amounts;
         std::string identity;
+        ReactionStartGeometry geometry;
+        bool geometry_prepared = false;
+        std::string geometry_error;
     };
+    std::size_t generated_start_count = 1;
+    std::size_t budget_truncated_start_count = 0;
+    std::size_t duplicate_start_count = 0;
+    std::size_t infeasible_start_count = 0;
     std::vector<PrimaryStart> starts;
-    starts.push_back({initialization.amounts, "max_min"});
+    starts.push_back({initialization.amounts, "max_min", {}, false, {}});
     if (initialization.strict_positive_feasible
         && initialization.amounts.size() == system.species_count
         && initialization.amount_upper_bounds.size() == system.species_count) {
@@ -3979,6 +4314,7 @@ ChemicalSolveResult solve_reaction(
              ++row) {
             for (const double fraction : {0.5, 0.875}) {
                 for (const int sign : {1, -1}) {
+                    ++generated_start_count;
                     std::vector<double> direction(system.species_count, 0.0);
                     double maximum_step =
                         std::numeric_limits<double>::infinity();
@@ -4006,6 +4342,7 @@ ChemicalSolveResult solve_reaction(
                     }
                     if (!nonzero || !std::isfinite(maximum_step)
                         || maximum_step <= 0.0) {
+                        ++infeasible_start_count;
                         continue;
                     }
                     std::vector<double> amounts = initialization.amounts;
@@ -4021,6 +4358,7 @@ ChemicalSolveResult solve_reaction(
                                 < initialization.amount_upper_bounds[species];
                     }
                     if (!valid) {
+                        ++infeasible_start_count;
                         continue;
                     }
                     bool duplicate = false;
@@ -4048,6 +4386,7 @@ ChemicalSolveResult solve_reaction(
                                 * std::max(1.0, scale);
                     }
                     if (duplicate) {
+                        ++duplicate_start_count;
                         continue;
                     }
                     starts.push_back({
@@ -4055,6 +4394,9 @@ ChemicalSolveResult solve_reaction(
                         "reaction_row=" + std::to_string(row)
                             + ";fraction=" + std::to_string(fraction)
                             + ";sign=" + std::to_string(sign),
+                        {},
+                        false,
+                        {},
                     });
                     if (starts.size() == kPrimaryBudget) {
                         break;
@@ -4067,9 +4409,93 @@ ChemicalSolveResult solve_reaction(
         }
     }
 
+    if (geometry_factory) {
+        struct GeometryExpansion {
+            PrimaryStart start;
+            std::vector<ReactionStartGeometry> geometries;
+            std::string error;
+        };
+        std::vector<GeometryExpansion> candidates;
+        candidates.reserve(starts.size());
+        for (const PrimaryStart& start : starts) {
+            GeometryExpansion candidate;
+            candidate.start = start;
+            try {
+                candidate.geometries = geometry_factory(start.amounts);
+                if (candidate.geometries.empty()) {
+                    throw std::domain_error(
+                        "Provider start pressure search returned no roots"
+                    );
+                }
+            } catch (const std::exception& error) {
+                candidate.error = error.what();
+            }
+            candidates.push_back(std::move(candidate));
+        }
+        std::vector<PrimaryStart> expanded;
+        expanded.reserve(kPrimaryBudget);
+        std::size_t discovered_start_count = 0;
+        for (const GeometryExpansion& candidate : candidates) {
+            discovered_start_count += candidate.error.empty()
+                ? candidate.geometries.size()
+                : 1;
+        }
+        for (const GeometryExpansion& candidate : candidates) {
+            if (!candidate.error.empty()) {
+                expanded.push_back({
+                    candidate.start.amounts,
+                    candidate.start.identity + ";pressure_root=unavailable",
+                    {},
+                    false,
+                    candidate.error,
+                });
+            } else {
+                expanded.push_back({
+                    candidate.start.amounts,
+                    candidate.start.identity + ";pressure_root=0",
+                    candidate.geometries.front(),
+                    true,
+                    {},
+                });
+            }
+        }
+        for (std::size_t root = 1;
+             expanded.size() < kPrimaryBudget;
+             ++root) {
+            bool root_rank_available = false;
+            for (const GeometryExpansion& candidate : candidates) {
+                if (expanded.size() == kPrimaryBudget) {
+                    break;
+                }
+                if (candidate.error.empty()
+                    && root < candidate.geometries.size()) {
+                    root_rank_available = true;
+                    expanded.push_back({
+                        candidate.start.amounts,
+                        candidate.start.identity + ";pressure_root="
+                            + std::to_string(root),
+                        candidate.geometries[root],
+                        true,
+                        {},
+                    });
+                }
+            }
+            if (!root_rank_available) {
+                break;
+            }
+        }
+        starts = std::move(expanded);
+        budget_truncated_start_count = discovered_start_count - starts.size();
+        generated_start_count = discovered_start_count
+            + duplicate_start_count + infeasible_start_count;
+    }
+
     ChemicalSearchEvidence search;
-    search.primary_budget = kPrimaryBudget;
     search.primary_attempt_count = starts.size();
+    search.generated_start_count = generated_start_count;
+    search.budget_truncated_start_count = budget_truncated_start_count;
+    search.duplicate_start_count = duplicate_start_count;
+    search.infeasible_start_count = infeasible_start_count;
     std::vector<ChemicalSolveResult> terminals;
     terminals.reserve(starts.size());
     search.attempts.reserve(starts.size());
@@ -4173,6 +4599,7 @@ ChemicalSolveResult solve_reaction(
             )) {
             attempt.start_construction_status = "rejected";
             attempt.terminal_status = "no_feasible_start_found";
+            ++search.construction_rejected_start_count;
             search.attempts.push_back(std::move(attempt));
             terminals.emplace_back();
             continue;
@@ -4180,8 +4607,20 @@ ChemicalSolveResult solve_reaction(
         start_initialization.amounts = reconstructed_amounts;
         ReactionStartGeometry geometry;
         try {
-            if (geometry_factory) {
-                geometry = geometry_factory(reconstructed_amounts);
+            if (!starts[ordinal].geometry_error.empty()) {
+                throw std::domain_error(starts[ordinal].geometry_error);
+            }
+            if (starts[ordinal].geometry_prepared) {
+                geometry = starts[ordinal].geometry;
+            } else if (geometry_factory) {
+                const std::vector<ReactionStartGeometry> geometries =
+                    geometry_factory(reconstructed_amounts);
+                if (geometries.empty()) {
+                    throw std::domain_error(
+                        "Provider start pressure search returned no roots"
+                    );
+                }
+                geometry = geometries.front();
             } else {
                 geometry.initial_volume = initial_volume;
                 geometry.volume_bounds = volume_bounds;
@@ -4196,10 +4635,12 @@ ChemicalSolveResult solve_reaction(
             attempt.callback_error = error.what();
             attempt.provider_domain_status = "failed";
             attempt.terminal_status = "domain_rejected";
+            ++search.domain_rejected_start_count;
             search.attempts.push_back(std::move(attempt));
             terminals.emplace_back();
             continue;
         }
+        ++search.evaluated_start_count;
 
         ChemicalSolveResult candidate;
         try {
@@ -4476,7 +4917,7 @@ ChemicalSolveResult solve_reaction(
                 + (candidate.kkt_root_status != "not_evaluated" ? 1 : 0);
             return std::array<int, 7>{
                 adjudicated_axes,
-                candidate.callback_error.empty() ? 0 : 1,
+                candidate.callback_error.empty() ? 1 : 0,
                 valid_state ? 1 : 0,
                 candidate.kkt_dimension > 0 ? 1 : 0,
                 std::isfinite(candidate.chart_stationarity_inf_norm) ? 1 : 0,
@@ -4523,6 +4964,10 @@ ChemicalSolveResult solve_reaction(
                 upper(candidate.reaction_affinity_inf_norm, kAffinityTolerance),
                 upper(candidate.kkt_stationarity_inf_norm, kKktTolerance),
                 upper(candidate.chart_stationarity_inf_norm, kKktTolerance),
+                upper(
+                    candidate.chart_physical_pullback_residual_inf_norm,
+                    kChartPhysicalPullbackTolerance
+                ),
                 upper(candidate.complementarity_inf_norm, kKktTolerance),
             });
             if (std::isfinite(candidate.trace_floor_mol)) {
@@ -4798,7 +5243,10 @@ ChemicalSolveResult finalize_chemical_result(
                             ? "complementarity_inf_norm"
                             : result.kkt_stationarity_inf_norm > kKktTolerance
                                 ? "kkt_stationarity_inf_norm"
-                                : "chart_stationarity_inf_norm";
+                                : result.chart_stationarity_inf_norm
+                                        > kKktTolerance
+                                    ? "chart_stationarity_inf_norm"
+                                    : "chart_physical_pullback_residual_inf_norm";
                 }
             }
             if (result.physical_status == "failed") {
@@ -4835,7 +5283,9 @@ ChemicalSolveResult finalize_chemical_result(
                     ? "domain_rejected"
                     : "search_exhausted_no_certified_candidate";
         if (!result.solver_status.empty()) {
+            result.search.primary_budget = 25;
             result.search.primary_attempt_count = 1;
+            result.search.generated_start_count = 1;
             ChemicalSearchAttempt attempt;
             attempt.start_identity = "max_min";
             attempt.start_construction_status =
@@ -4843,6 +5293,15 @@ ChemicalSolveResult finalize_chemical_result(
                     || result.provider_domain_status == "failed"
                 ? "rejected"
                 : "accepted";
+            result.search.evaluated_start_count =
+                attempt.start_construction_status == "accepted" ? 1 : 0;
+            result.search.domain_rejected_start_count =
+                result.provider_domain_status == "failed" ? 1 : 0;
+            result.search.construction_rejected_start_count =
+                attempt.start_construction_status == "rejected"
+                    && result.provider_domain_status != "failed"
+                ? 1
+                : 0;
             attempt.solver_status = result.solver_status;
             attempt.callback_error = result.callback_error;
             attempt.provider_domain_status =
@@ -5005,7 +5464,43 @@ ChemicalSolveResult solve_manufactured_nonconvex_reaction(
     return finalize_chemical_result(system, std::move(result), true);
 }
 
-double provider_pressure_start_volume(
+ChemicalSolveResult solve_manufactured_inconsistent_derivative_reaction(
+    const CompiledReactionSystem& system,
+    double temperature_k,
+    double pressure_pa,
+    const std::vector<double>& gauge_coefficients,
+    double trace_floor,
+    int max_iterations
+) {
+    const MaxMinInitializationResult initialization = max_min_initialization(
+        system.balance_matrix,
+        system.feed_amounts,
+        system.charges,
+        trace_floor,
+        std::numeric_limits<double>::quiet_NaN()
+    );
+    ChemicalSolveResult result = solve_reaction(
+        system,
+        temperature_k,
+        pressure_pa,
+        gauge_coefficients,
+        trace_floor,
+        max_iterations,
+        initialization,
+        manufactured_inconsistent_derivative_evaluator(),
+        ReactionDomain{},
+        std::numeric_limits<double>::quiet_NaN(),
+        {},
+        {},
+        {
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(),
+        }
+    );
+    return finalize_chemical_result(system, std::move(result), true);
+}
+
+std::vector<double> provider_pressure_start_volumes(
     double lower_volume,
     double upper_volume,
     double pressure_pa,
@@ -5022,7 +5517,7 @@ double provider_pressure_start_volume(
         );
     }
     const double tolerance = 1.0e-10 * pressure_pa;
-    double lower_residual = residual(lower_volume);
+    const double lower_residual = residual(lower_volume);
     const double upper_residual = residual(upper_volume);
     if (!std::isfinite(lower_residual)
         || !std::isfinite(upper_residual)) {
@@ -5030,48 +5525,105 @@ double provider_pressure_start_volume(
             "Provider start pressure bracket is nonfinite"
         );
     }
+    constexpr std::size_t kLogVolumeIntervals = 128;
+    const double log_lower = std::log(lower_volume);
+    const double log_upper = std::log(upper_volume);
+    const double log_midpoint = 0.5 * (log_lower + log_upper);
+    std::vector<double> roots;
+    const auto append_root = [&roots](double volume) {
+        for (const double prior : roots) {
+            if (std::abs(std::log(volume / prior)) <= 1.0e-10) {
+                return;
+            }
+        }
+        roots.push_back(volume);
+    };
     if (std::abs(lower_residual) <= tolerance) {
-        return lower_volume;
+        append_root(lower_volume);
     }
     if (std::abs(upper_residual) <= tolerance) {
-        return upper_volume;
+        append_root(upper_volume);
     }
-    double seed_volume = std::sqrt(lower_volume * upper_volume);
-    double seed_residual = residual(seed_volume);
-    if (!std::isfinite(seed_residual)) {
-        throw std::domain_error(
-            "Provider start pressure midpoint is nonfinite"
+    double prior_volume = lower_volume;
+    double prior_residual = lower_residual;
+    for (std::size_t interval = 1;
+         interval <= kLogVolumeIntervals;
+         ++interval) {
+        const double fraction = static_cast<double>(interval)
+            / static_cast<double>(kLogVolumeIntervals);
+        const double trial_volume = std::exp(
+            log_lower + fraction * (log_upper - log_lower)
         );
+        const double trial_residual = residual(trial_volume);
+        if (!std::isfinite(trial_residual)) {
+            prior_volume = trial_volume;
+            prior_residual = std::numeric_limits<double>::quiet_NaN();
+            continue;
+        }
+        if (std::abs(trial_residual) <= tolerance) {
+            append_root(trial_volume);
+        }
+        if (std::isfinite(prior_residual)
+            && std::signbit(prior_residual)
+                != std::signbit(trial_residual)) {
+            double bracket_lower = prior_volume;
+            double bracket_upper = trial_volume;
+            double bracket_lower_residual = prior_residual;
+            double root = std::sqrt(bracket_lower * bracket_upper);
+            bool converged = false;
+            for (int iteration = 0; iteration < 100; ++iteration) {
+                root = std::sqrt(bracket_lower * bracket_upper);
+                const double root_residual = residual(root);
+                if (!std::isfinite(root_residual)) {
+                    throw std::domain_error(
+                        "Provider start pressure bisection is nonfinite"
+                    );
+                }
+                if (std::abs(root_residual) <= tolerance) {
+                    converged = true;
+                    break;
+                }
+                if (std::signbit(root_residual)
+                    == std::signbit(bracket_lower_residual)) {
+                    bracket_lower = root;
+                    bracket_lower_residual = root_residual;
+                } else {
+                    bracket_upper = root;
+                }
+            }
+            if (!converged) {
+                throw std::domain_error(
+                    "Provider start pressure bisection did not converge"
+                );
+            }
+            append_root(root);
+        }
+        prior_volume = trial_volume;
+        prior_residual = trial_residual;
     }
-    if (std::abs(seed_residual) <= tolerance) {
-        return seed_volume;
-    }
-    if (std::signbit(lower_residual) == std::signbit(upper_residual)) {
+    if (roots.empty()) {
         throw std::domain_error(
             "Provider start pressure root is not bracketed"
         );
     }
-    for (int iteration = 0; iteration < 100; ++iteration) {
-        seed_volume = std::sqrt(lower_volume * upper_volume);
-        seed_residual = residual(seed_volume);
-        if (!std::isfinite(seed_residual)) {
-            throw std::domain_error(
-                "Provider start pressure bisection is nonfinite"
-            );
+    std::stable_sort(
+        roots.begin(), roots.end(), [log_midpoint](double left, double right) {
+            return std::abs(std::log(left) - log_midpoint)
+                < std::abs(std::log(right) - log_midpoint);
         }
-        if (std::abs(seed_residual) <= tolerance) {
-            return seed_volume;
-        }
-        if (std::signbit(seed_residual) == std::signbit(lower_residual)) {
-            lower_volume = seed_volume;
-            lower_residual = seed_residual;
-        } else {
-            upper_volume = seed_volume;
-        }
-    }
-    throw std::domain_error(
-        "Provider start pressure bisection did not converge"
     );
+    return roots;
+}
+
+double provider_pressure_start_volume(
+    double lower_volume,
+    double upper_volume,
+    double pressure_pa,
+    const std::function<double(double)>& residual
+) {
+    return provider_pressure_start_volumes(
+        lower_volume, upper_volume, pressure_pa, residual
+    ).front();
 }
 
 ProviderPhaseBlockEvidence evaluate_provider_phase_block(
@@ -5427,45 +5979,50 @@ ChemicalSolveResult solve_provider_reaction(
                 temperature_k, amounts, volume
             ).pressure_pa - pressure_pa;
         };
-        const double seed_volume = provider_pressure_start_volume(
+        const std::vector<double> seed_volumes = provider_pressure_start_volumes(
             lower, upper, pressure_pa, residual
         );
-        const double packing = parameterized
-            ? provider.evaluate_reacting_phase_parameters(
-                temperature_k,
-                amounts,
-                seed_volume,
-                packing_fraction_min,
-                packing_fraction_max,
-                *active_parameters
-            ).packing.value
-            : provider.evaluate_packing_fraction(
-                temperature_k, amounts, seed_volume
-            ).value;
-        ReactionStartGeometry geometry;
-        geometry.initial_volume = seed_volume;
-        geometry.volume_bounds = {
-            std::nextafter(
-                amount_total * start_molar_bounds[0],
-                std::numeric_limits<double>::infinity()
-            ),
-            std::nextafter(
-                amount_total * start_molar_bounds[1], 0.0
-            ),
-        };
-        geometry.volume_transform = volume_transform;
-        geometry.volume_transform.initial_coordinate = std::log(packing);
-        geometry.has_volume_transform = true;
-        if (!std::isfinite(geometry.volume_transform.initial_coordinate)
-            || geometry.volume_transform.initial_coordinate
-                <= geometry.volume_transform.lower_coordinate
-            || geometry.volume_transform.initial_coordinate
-                >= geometry.volume_transform.upper_coordinate) {
-            throw std::domain_error(
-                "Provider start packing coordinate is outside admission bounds"
-            );
+        std::vector<ReactionStartGeometry> geometries;
+        geometries.reserve(seed_volumes.size());
+        for (const double seed_volume : seed_volumes) {
+            const double packing = parameterized
+                ? provider.evaluate_reacting_phase_parameters(
+                    temperature_k,
+                    amounts,
+                    seed_volume,
+                    packing_fraction_min,
+                    packing_fraction_max,
+                    *active_parameters
+                ).packing.value
+                : provider.evaluate_packing_fraction(
+                    temperature_k, amounts, seed_volume
+                ).value;
+            ReactionStartGeometry geometry;
+            geometry.initial_volume = seed_volume;
+            geometry.volume_bounds = {
+                std::nextafter(
+                    amount_total * start_molar_bounds[0],
+                    std::numeric_limits<double>::infinity()
+                ),
+                std::nextafter(
+                    amount_total * start_molar_bounds[1], 0.0
+                ),
+            };
+            geometry.volume_transform = volume_transform;
+            geometry.volume_transform.initial_coordinate = std::log(packing);
+            geometry.has_volume_transform = true;
+            if (!std::isfinite(geometry.volume_transform.initial_coordinate)
+                || geometry.volume_transform.initial_coordinate
+                    <= geometry.volume_transform.lower_coordinate
+                || geometry.volume_transform.initial_coordinate
+                    >= geometry.volume_transform.upper_coordinate) {
+                throw std::domain_error(
+                    "Provider start packing coordinate is outside admission bounds"
+                );
+            }
+            geometries.push_back(std::move(geometry));
         }
-        return geometry;
+        return geometries;
     };
     return finalize_chemical_result(
         system,
@@ -5488,6 +6045,663 @@ ChemicalSolveResult solve_provider_reaction(
         ),
         false
     );
+}
+
+ChemicalSolveResult solve_provider_reaction_continuation(
+    const CompiledReactionSystem& target_system,
+    const ProviderContext& target_provider,
+    double target_packing_fraction_min,
+    double target_packing_fraction_max,
+    double target_total_ion_fraction_max,
+    const CompiledReactionSystem& initial_system,
+    const ProviderContext& initial_provider,
+    double initial_packing_fraction_min,
+    double initial_packing_fraction_max,
+    double initial_total_ion_fraction_max,
+    double temperature_k,
+    double pressure_pa,
+    double trace_floor,
+    int max_iterations,
+    bool continue_after_certified_target
+) {
+    constexpr double kContinuationDuplicateStateTolerance = 1.0e-8;
+    constexpr double kContinuationDuplicateVolumeTolerance = 1.0e-8;
+    constexpr double kContinuationDuplicateObjectiveFactor = 256.0;
+    const auto same_matrix = [](const DenseMatrix& left, const DenseMatrix& right) {
+        return left.rows == right.rows
+            && left.columns == right.columns
+            && left.values == right.values;
+    };
+    if (target_system.species_count != initial_system.species_count
+        || target_system.charges != initial_system.charges
+        || target_system.feed_amounts != initial_system.feed_amounts
+        || target_system.balance_totals != initial_system.balance_totals
+        || !same_matrix(
+            target_system.balance_matrix, initial_system.balance_matrix
+        )
+        || !same_matrix(
+            target_system.reaction_matrix, initial_system.reaction_matrix
+        )
+        || !target_system.removed_species_indices.empty()
+        || !initial_system.removed_species_indices.empty()) {
+        throw std::invalid_argument(
+            "Provider continuation endpoints do not share one compiled reaction system"
+        );
+    }
+    const double packing_fraction_min = std::max(
+        target_packing_fraction_min, initial_packing_fraction_min
+    );
+    const double packing_fraction_max = std::min(
+        target_packing_fraction_max, initial_packing_fraction_max
+    );
+    if (!std::isfinite(packing_fraction_min)
+        || !std::isfinite(packing_fraction_max)
+        || packing_fraction_min <= 0.0
+        || packing_fraction_max <= packing_fraction_min) {
+        throw std::invalid_argument(
+            "Provider continuation packing domains do not overlap"
+        );
+    }
+    double total_ion_fraction_max = std::numeric_limits<double>::quiet_NaN();
+    if (std::isfinite(target_total_ion_fraction_max)
+        && std::isfinite(initial_total_ion_fraction_max)) {
+        total_ion_fraction_max = std::min(
+            target_total_ion_fraction_max, initial_total_ion_fraction_max
+        );
+    } else if (std::isfinite(target_total_ion_fraction_max)) {
+        total_ion_fraction_max = target_total_ion_fraction_max;
+    } else if (std::isfinite(initial_total_ion_fraction_max)) {
+        total_ion_fraction_max = initial_total_ion_fraction_max;
+    }
+
+    ChemicalSolveResult target_result = solve_provider_reaction(
+        target_system,
+        target_provider,
+        temperature_k,
+        pressure_pa,
+        target_packing_fraction_min,
+        target_packing_fraction_max,
+        target_total_ion_fraction_max,
+        trace_floor,
+        {},
+        {},
+        nullptr,
+        max_iterations
+    );
+    if (target_result.accepted && !continue_after_certified_target) {
+        return target_result;
+    }
+    ChemicalSolveResult initial_result = solve_provider_reaction(
+        initial_system,
+        initial_provider,
+        temperature_k,
+        pressure_pa,
+        initial_packing_fraction_min,
+        initial_packing_fraction_max,
+        initial_total_ion_fraction_max,
+        trace_floor,
+        {},
+        {},
+        nullptr,
+        max_iterations
+    );
+    const auto continuation_failure = [&target_result]() {
+        if (!target_result.accepted
+            && !target_result.search.continuation_blocker.empty()) {
+            const std::string& blocker =
+                target_result.search.continuation_blocker;
+            if (blocker == "derivative_inconsistency"
+                || blocker.find("derivative inconsistency") != std::string::npos) {
+                target_result.failure_kind = "derivative_inconsistency";
+            } else if (
+                blocker == "unsupported_derivative_capability"
+                || blocker.find("unsupported") != std::string::npos
+                || blocker.find("capability") != std::string::npos
+                || blocker.find("ABI contract") != std::string::npos
+            ) {
+                target_result.failure_kind =
+                    "unsupported_derivative_capability";
+            } else if (blocker == "rank_deficiency") {
+                target_result.failure_kind = "rank_deficiency";
+            } else if (blocker == "ill_conditioning") {
+                target_result.failure_kind = "ill_conditioning";
+            } else if (
+                blocker == "physical_domain_failure"
+                || blocker == "provider_domain_status"
+                || blocker == "strict_interior_amount_floor"
+                || blocker == "endpoint_packing_fraction_domain"
+                || blocker.find("endpoint_evaluation_failure")
+                    != std::string::npos
+            ) {
+                target_result.failure_kind = "physical_domain_failure";
+            } else if (blocker == "genuine_saddle") {
+                target_result.failure_kind = "genuine_saddle";
+            }
+            target_result.failure_reason = target_result.failure_kind
+                + ": continuation status="
+                + target_result.search.continuation_status
+                + "; continuation blocker="
+                + blocker;
+            if (std::isfinite(
+                    target_result.search.continuation_accepted_lambda
+                )) {
+                target_result.failure_reason +=
+                    "; maximum certified continuation lambda="
+                    + std::to_string(
+                        target_result.search.continuation_accepted_lambda
+                    );
+            }
+        }
+        return target_result;
+    };
+    const auto append_attempt = [&target_result](
+        const ChemicalSolveResult& candidate,
+        const std::string& identity,
+        const std::string& continuation_status,
+        bool preserve_local_lineage
+    ) {
+        const std::size_t parent_ordinal = target_result.search.attempts.size();
+        ChemicalSearchAttempt attempt;
+        bool has_originating_attempt = false;
+        const bool single_corrector_lineage = preserve_local_lineage;
+        if (single_corrector_lineage) {
+            for (const ChemicalSearchAttempt& nested : candidate.search.attempts) {
+                if (nested.kind == "primary") {
+                    attempt = nested;
+                    has_originating_attempt = true;
+                    break;
+                }
+            }
+        }
+        attempt.ordinal = parent_ordinal;
+        attempt.kind = "continuation";
+        attempt.parent_ordinal = -1;
+        attempt.basin_ordinal = -1;
+        attempt.start_identity = identity;
+        attempt.start_construction_status = "accepted";
+        attempt.continuation_status = continuation_status;
+        if (!has_originating_attempt) {
+            attempt.provider_domain_status = candidate.provider_domain_status;
+            attempt.solver_status = candidate.solver_status;
+            attempt.callback_error = candidate.callback_error;
+            attempt.terminal_status = chemical_terminal_status(candidate);
+            attempt.amounts = candidate.amounts;
+            attempt.volume_m3 = std::isfinite(candidate.volume_m3)
+                    && candidate.volume_m3 > 0.0
+                ? candidate.volume_m3
+                : std::numeric_limits<double>::quiet_NaN();
+            attempt.balance_inf_norm = candidate.balance_inf_norm;
+            attempt.charge_inf_norm = candidate.charge_inf_norm;
+            attempt.pressure_relative_residual =
+                candidate.pressure_relative_residual;
+            attempt.reaction_affinity_inf_norm =
+                candidate.reaction_affinity_inf_norm;
+            attempt.kkt_stationarity_inf_norm =
+                candidate.kkt_stationarity_inf_norm;
+            attempt.complementarity_inf_norm =
+                candidate.complementarity_inf_norm;
+            attempt.kkt_dimension = candidate.kkt_dimension;
+            attempt.kkt_rank = candidate.kkt_rank;
+            attempt.condition_number_inf = candidate.condition_number_inf;
+            attempt.local_minimum_status = candidate.local_minimum_status;
+            attempt.trace_status = candidate.trace_status;
+            attempt.recovery_seed_count =
+                candidate.negative_curvature_recovery_seed_count;
+            attempt.recovery_solve_count =
+                candidate.negative_curvature_recovery_attempts;
+        }
+        target_result.search.attempts.push_back(std::move(attempt));
+        std::size_t representative_ordinal = parent_ordinal;
+        for (const ChemicalSearchAttempt& nested : candidate.search.attempts) {
+            if (!single_corrector_lineage || nested.kind != "recovery") {
+                continue;
+            }
+            ChemicalSearchAttempt recovery = nested;
+            recovery.ordinal = target_result.search.attempts.size();
+            recovery.kind = "continuation_recovery";
+            recovery.parent_ordinal = static_cast<long>(parent_ordinal);
+            recovery.basin_ordinal = -1;
+            recovery.start_identity = identity + ";" + nested.start_identity;
+            recovery.continuation_status = continuation_status;
+            if (recovery.amounts == candidate.amounts
+                && recovery.volume_m3 == candidate.volume_m3) {
+                representative_ordinal = recovery.ordinal;
+            }
+            target_result.search.attempts.push_back(std::move(recovery));
+        }
+        return representative_ordinal;
+    };
+    append_attempt(
+        initial_result,
+        "model_continuation:lambda=0",
+        "initial_model",
+        false
+    );
+    if (!initial_result.accepted) {
+        target_result.search.continuation_status = "initial_model_not_certified";
+        target_result.search.continuation_blocker =
+            initial_result.failure_kind.empty()
+            ? "initial_model_not_certified"
+            : initial_result.failure_kind;
+        return continuation_failure();
+    }
+    target_result.search.continuation_accepted_lambda = 0.0;
+
+    const auto provider_phase = [](
+        const ProviderContext& provider,
+        double temperature,
+        const std::vector<double>& amounts,
+        double volume
+    ) {
+        const ProviderPhaseBlockEvidence block = evaluate_provider_phase_block(
+            provider, temperature, amounts, volume
+        );
+        PhaseBlockEvaluation result;
+        result.mechanical = {
+            block.value,
+            block.gradient,
+            block.hessian,
+            block.pressure_pa,
+        };
+        result.packing = {
+            block.packing_fraction,
+            block.packing_gradient,
+            block.packing_hessian,
+        };
+        result.has_packing = true;
+        return result;
+    };
+    PhaseBlockEvaluation initial_target_block;
+    PhaseBlockEvaluation initial_source_block;
+    try {
+        initial_target_block = provider_phase(
+            target_provider,
+            temperature_k,
+            initial_result.amounts,
+            initial_result.volume_m3
+        );
+        initial_source_block = provider_phase(
+            initial_provider,
+            temperature_k,
+            initial_result.amounts,
+            initial_result.volume_m3
+        );
+    } catch (const std::exception& error) {
+        target_result.search.continuation_status =
+            "endpoint_domain_incompatible";
+        target_result.search.continuation_blocker =
+            "provider_endpoint_evaluation_failure: "
+            + std::string(error.what());
+        return continuation_failure();
+    }
+    if (initial_target_block.packing.value < target_packing_fraction_min
+        || initial_target_block.packing.value > target_packing_fraction_max
+        || initial_source_block.packing.value < initial_packing_fraction_min
+        || initial_source_block.packing.value > initial_packing_fraction_max) {
+        target_result.search.continuation_status =
+            "endpoint_domain_incompatible";
+        target_result.search.continuation_blocker =
+            "endpoint_packing_fraction_domain";
+        return continuation_failure();
+    }
+
+    const MaxMinInitializationResult target_initialization =
+        max_min_initialization(
+            target_system.balance_matrix,
+            target_system.feed_amounts,
+            target_system.charges,
+            trace_floor,
+            total_ion_fraction_max
+        );
+    if (!target_initialization.strict_positive_feasible) {
+        target_result.search.continuation_status =
+            "no_strictly_feasible_continuation_start";
+        target_result.search.continuation_blocker =
+            "strict_interior_amount_floor";
+        return continuation_failure();
+    }
+    VolumeCoordinateTransform volume_transform;
+    volume_transform.lower_coordinate = std::log(packing_fraction_min);
+    volume_transform.upper_coordinate = std::nextafter(
+        std::log(packing_fraction_max), -std::numeric_limits<double>::infinity()
+    );
+    volume_transform.evaluate = [&target_provider](
+        double temperature,
+        const std::vector<double>& amounts,
+        double coordinate
+    ) {
+        const InversePackingGeometryEvaluation block =
+            target_provider.evaluate_inverse_packing_geometry(
+                temperature, amounts, coordinate, ProviderActiveParameterSet{}
+            );
+        const std::size_t state_count = amounts.size() + 1;
+        if (block.gradient.size() != state_count
+            || block.hessian.size() != state_count * state_count) {
+            throw std::invalid_argument(
+                "Provider continuation inverse-packing dimensions changed"
+            );
+        }
+        return VolumeCoordinateEvaluation{
+            block.volume_m3,
+            block.gradient,
+            block.hessian,
+            {},
+        };
+    };
+    const ReactionDomain domain{
+        false,
+        packing_fraction_min,
+        packing_fraction_max,
+        total_ion_fraction_max,
+    };
+    std::vector<double> current_amounts = initial_result.amounts;
+    double current_volume = initial_result.volume_m3;
+    double accepted_lambda = 0.0;
+    double step = 0.25;
+    constexpr double kMinimumContinuationStep = 1.0 / 256.0;
+    constexpr std::size_t kMaximumContinuationAttempts = 32;
+    for (std::size_t path_attempt = 0;
+         path_attempt < kMaximumContinuationAttempts
+            && accepted_lambda < 1.0;
+         ++path_attempt) {
+        const double lambda = std::min(1.0, accepted_lambda + step);
+        CompiledReactionSystem path_system = target_system;
+        for (std::size_t species = 0;
+             species < path_system.g_ref.size();
+             ++species) {
+            path_system.g_ref[species] =
+                (1.0 - lambda) * initial_system.g_ref[species]
+                + lambda * target_system.g_ref[species];
+        }
+        const PhaseEvaluator phase_evaluator = [
+            &target_provider,
+            &initial_provider,
+            lambda,
+            provider_phase,
+            target_packing_fraction_min,
+            target_packing_fraction_max,
+            initial_packing_fraction_min,
+            initial_packing_fraction_max
+        ](
+            double temperature,
+            const std::vector<double>& amounts,
+            double volume
+        ) {
+            PhaseBlockEvaluation initial = provider_phase(
+                initial_provider, temperature, amounts, volume
+            );
+            PhaseBlockEvaluation target = provider_phase(
+                target_provider, temperature, amounts, volume
+            );
+            if (initial.packing.value < initial_packing_fraction_min
+                || initial.packing.value > initial_packing_fraction_max
+                || target.packing.value < target_packing_fraction_min
+                || target.packing.value > target_packing_fraction_max
+                || initial.mechanical.gradient.size()
+                    != target.mechanical.gradient.size()
+                || initial.mechanical.hessian.size()
+                    != target.mechanical.hessian.size()
+                || initial.packing.gradient.size()
+                    != target.packing.gradient.size()
+                || initial.packing.hessian.size()
+                    != target.packing.hessian.size()) {
+                throw std::invalid_argument(
+                    "Provider continuation endpoint derivative bases are incompatible"
+                );
+            }
+            PhaseBlockEvaluation result = target;
+            result.mechanical.value =
+                (1.0 - lambda) * initial.mechanical.value
+                + lambda * target.mechanical.value;
+            result.mechanical.pressure_pa =
+                (1.0 - lambda) * initial.mechanical.pressure_pa
+                + lambda * target.mechanical.pressure_pa;
+            for (std::size_t index = 0;
+                 index < result.mechanical.gradient.size();
+                 ++index) {
+                result.mechanical.gradient[index] =
+                    (1.0 - lambda) * initial.mechanical.gradient[index]
+                    + lambda * target.mechanical.gradient[index];
+            }
+            for (std::size_t index = 0;
+                 index < result.mechanical.hessian.size();
+                 ++index) {
+                result.mechanical.hessian[index] =
+                    (1.0 - lambda) * initial.mechanical.hessian[index]
+                    + lambda * target.mechanical.hessian[index];
+            }
+            result.packing.value =
+                (1.0 - lambda) * initial.packing.value
+                + lambda * target.packing.value;
+            for (std::size_t index = 0;
+                 index < result.packing.gradient.size();
+                 ++index) {
+                result.packing.gradient[index] =
+                    (1.0 - lambda) * initial.packing.gradient[index]
+                    + lambda * target.packing.gradient[index];
+            }
+            for (std::size_t index = 0;
+                 index < result.packing.hessian.size();
+                 ++index) {
+                result.packing.hessian[index] =
+                    (1.0 - lambda) * initial.packing.hessian[index]
+                    + lambda * target.packing.hessian[index];
+            }
+            return result;
+        };
+        MaxMinInitializationResult warm = target_initialization;
+        warm.amounts = current_amounts;
+        ChemicalSolveResult candidate;
+        try {
+            const PhaseBlockEvaluation target_block = provider_phase(
+                target_provider, temperature_k, current_amounts, current_volume
+            );
+            volume_transform.initial_coordinate =
+                std::log(target_block.packing.value);
+            candidate = solve_reaction_attempt(
+                path_system,
+                temperature_k,
+                pressure_pa,
+                {},
+                trace_floor,
+                max_iterations,
+                warm,
+                phase_evaluator,
+                domain,
+                current_volume,
+                {},
+                {},
+                {
+                    std::numeric_limits<double>::quiet_NaN(),
+                    std::numeric_limits<double>::quiet_NaN(),
+                },
+                &volume_transform,
+                true
+            );
+        } catch (const std::exception& error) {
+            candidate.callback_error = error.what();
+            candidate.solver_status = "continuation_step_failed";
+            candidate.numerical_status = "failed";
+        }
+        const std::size_t endpoint_attempt_ordinal = append_attempt(
+            candidate,
+            "model_continuation:lambda=" + std::to_string(lambda),
+            candidate.accepted ? "step_accepted" : "step_rejected",
+            true
+        );
+        ++target_result.search.continuation_attempt_count;
+        if (candidate.accepted) {
+            accepted_lambda = lambda;
+            target_result.search.continuation_accepted_lambda = lambda;
+            target_result.search.continuation_blocker.clear();
+            current_amounts = candidate.amounts;
+            current_volume = candidate.volume_m3;
+            step = std::min(0.25, 2.0 * step);
+            if (accepted_lambda == 1.0) {
+                ChemicalSearchEvidence merged_search = target_result.search;
+                merged_search.status = "certified_local_minimum";
+                merged_search.continuation_status = "completed";
+                ChemicalSearchBasin basin;
+                basin.representative_attempt_ordinal = endpoint_attempt_ordinal;
+                basin.amounts = candidate.amounts;
+                basin.volume_m3 = candidate.volume_m3;
+                const PhaseBlockEvaluation final_phase = provider_phase(
+                    target_provider,
+                    temperature_k,
+                    candidate.amounts,
+                    candidate.volume_m3
+                );
+                basin.objective = final_phase.mechanical.value
+                    + pressure_pa
+                        / (kGasConstantJPerMolK * temperature_k)
+                        * candidate.volume_m3;
+                for (std::size_t species = 0;
+                     species < candidate.amounts.size();
+                     ++species) {
+                    basin.objective += target_system.g_ref[species]
+                        * candidate.amounts[species];
+                }
+                long endpoint_basin = -1;
+                bool endpoint_matched_existing_basin = false;
+                for (const ChemicalSearchBasin& observed : merged_search.basins) {
+                    double amount_difference = 0.0;
+                    double candidate_total = 0.0;
+                    double observed_total = 0.0;
+                    for (std::size_t species = 0;
+                         species < basin.amounts.size();
+                         ++species) {
+                        amount_difference = std::max(
+                            amount_difference,
+                            std::abs(
+                                basin.amounts[species]
+                                - observed.amounts[species]
+                            )
+                        );
+                        candidate_total += basin.amounts[species];
+                        observed_total += observed.amounts[species];
+                    }
+                    const double amount_scale = std::max({
+                        candidate_total, observed_total, trace_floor,
+                    });
+                    const double objective_tolerance =
+                        kContinuationDuplicateObjectiveFactor
+                        * std::numeric_limits<double>::epsilon()
+                        * std::max({
+                            1.0,
+                            std::abs(basin.objective),
+                            std::abs(observed.objective),
+                        });
+                    if (amount_difference / amount_scale
+                            <= kContinuationDuplicateStateTolerance
+                        && std::abs(std::log(
+                            basin.volume_m3 / observed.volume_m3
+                        )) <= kContinuationDuplicateVolumeTolerance
+                        && std::abs(basin.objective - observed.objective)
+                            <= objective_tolerance) {
+                        endpoint_basin = static_cast<long>(observed.ordinal);
+                        endpoint_matched_existing_basin = true;
+                        break;
+                    }
+                }
+                if (endpoint_basin < 0) {
+                    basin.ordinal = merged_search.basins.size();
+                    endpoint_basin = static_cast<long>(basin.ordinal);
+                    merged_search.basins.push_back(basin);
+                }
+                merged_search.attempts[endpoint_attempt_ordinal].basin_ordinal =
+                    endpoint_basin;
+                merged_search.attempts[endpoint_attempt_ordinal].objective =
+                    basin.objective;
+                merged_search.selected_basin_ordinal = -1;
+                merged_search.selected_objective =
+                    std::numeric_limits<double>::quiet_NaN();
+                for (const ChemicalSearchBasin& observed : merged_search.basins) {
+                    if (merged_search.selected_basin_ordinal < 0) {
+                        merged_search.selected_basin_ordinal =
+                            static_cast<long>(observed.ordinal);
+                        merged_search.selected_objective = observed.objective;
+                        continue;
+                    }
+                    const double tolerance =
+                        kContinuationDuplicateObjectiveFactor
+                        * std::numeric_limits<double>::epsilon()
+                        * std::max({
+                            1.0,
+                            std::abs(merged_search.selected_objective),
+                            std::abs(observed.objective),
+                        });
+                    if (observed.objective
+                            < merged_search.selected_objective - tolerance) {
+                        merged_search.selected_basin_ordinal =
+                            static_cast<long>(observed.ordinal);
+                        merged_search.selected_objective = observed.objective;
+                    }
+                }
+                if (target_result.accepted
+                    && (endpoint_matched_existing_basin
+                        || merged_search.selected_basin_ordinal
+                            != endpoint_basin)) {
+                    target_result.search = std::move(merged_search);
+                    return finalize_chemical_result(
+                        target_system, std::move(target_result), false
+                    );
+                }
+                candidate.search = std::move(merged_search);
+                return finalize_chemical_result(
+                    target_system, std::move(candidate), false
+                );
+            }
+            continue;
+        }
+        target_result.search.continuation_blocker =
+            !candidate.callback_error.empty()
+            ? "provider_callback_or_derivative_failure: "
+                + candidate.callback_error
+            : candidate.solver_status != "solve_succeeded"
+            ? "optimizer_status: " + candidate.solver_status
+            : candidate.balance_inf_norm > kBalanceTolerance
+            ? "balance_inf_norm"
+            : candidate.charge_inf_norm > kBalanceTolerance
+                ? "charge_inf_norm"
+                : candidate.pressure_relative_residual > kPressureTolerance
+                ? "pressure_relative_residual"
+                : candidate.reaction_affinity_inf_norm > kAffinityTolerance
+                    ? "reaction_affinity_inf_norm"
+                    : candidate.provider_domain_status == "failed"
+                        ? "provider_domain_status"
+                        : candidate.trace_status != "interior"
+                            ? "strict_interior_amount_floor"
+                            : candidate.complementarity_inf_norm > kKktTolerance
+                                ? "complementarity_inf_norm"
+                            : candidate.kkt_stationarity_inf_norm > kKktTolerance
+                                ? "physical_kkt_stationarity_inf_norm"
+                                : candidate.chart_stationarity_inf_norm
+                                        > kKktTolerance
+                                    ? "chart_stationarity_inf_norm"
+                                    : candidate.chart_physical_pullback_residual_inf_norm
+                                            > kChartPhysicalPullbackTolerance
+                                        ? "chart_physical_pullback_residual_inf_norm"
+                                    : candidate.kkt_dimension != 0
+                                            && candidate.kkt_rank
+                                                < candidate.kkt_dimension
+                                        ? "rank_deficiency"
+                                        : candidate.kkt_dimension != 0
+                                                && (!std::isfinite(
+                                                        candidate.condition_number_inf
+                                                    )
+                                                    || candidate.condition_number_inf
+                                                        > kSensitivityConditionNumberMax)
+                                            ? "ill_conditioning"
+                                            : "second_order_certification";
+        step *= 0.5;
+        if (step < kMinimumContinuationStep) {
+            target_result.search.continuation_status =
+                "step_refinement_exhausted";
+            return continuation_failure();
+        }
+    }
+    target_result.search.continuation_status = "attempt_budget_exhausted";
+    return continuation_failure();
 }
 
 ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(
