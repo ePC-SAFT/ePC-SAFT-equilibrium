@@ -955,6 +955,7 @@ def test_public_surface_has_no_retired_routes_or_solver_controls() -> None:
             "ChemicalEquilibriumBasin",
             "ChemicalEquilibriumBudgetPrefix",
             "ChemicalEquilibriumConstant",
+            "ChemicalEquilibriumCriterion",
         "ChemicalEquilibriumDiagnostics",
         "ChemicalEquilibriumError",
         "ChemicalEquilibriumProblem",

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <limits>
 #include <string>
@@ -190,12 +191,59 @@ struct ChemicalSolveResult {
     double charge_inf_norm = 0.0;
     double pressure_relative_residual = 0.0;
     double reaction_affinity_inf_norm = 0.0;
+    std::vector<double> reaction_affinity_residuals;
     double packing_fraction = 0.0;
+    double packing_fraction_min = std::numeric_limits<double>::quiet_NaN();
+    double packing_fraction_max = std::numeric_limits<double>::quiet_NaN();
+    double total_ion_fraction = std::numeric_limits<double>::quiet_NaN();
+    double total_ion_fraction_max = std::numeric_limits<double>::quiet_NaN();
+    double minimum_amount_mol = std::numeric_limits<double>::quiet_NaN();
+    double trace_floor_mol = std::numeric_limits<double>::quiet_NaN();
     double kkt_stationarity_inf_norm = 0.0;
+    std::vector<double> physical_stationarity_residuals;
     double complementarity_inf_norm = 0.0;
     std::size_t kkt_dimension = 0;
     std::size_t kkt_rank = 0;
     double condition_number_inf = std::numeric_limits<double>::infinity();
+    std::string failure_kind = "not_adjudicated";
+    std::string failure_reason;
+    std::vector<std::size_t> active_lower_bounds;
+    std::vector<std::size_t> active_upper_bounds;
+    std::vector<std::size_t> active_constraint_bounds;
+    std::string reduced_hessian_status = "not_adjudicated";
+    std::vector<double> reduced_hessian;
+    std::vector<double> reduced_hessian_nullspace_basis;
+    std::size_t reduced_hessian_nullspace_rows = 0;
+    std::size_t reduced_hessian_nullspace_columns = 0;
+    std::vector<double> reduced_hessian_eigenvalues;
+    std::string reduced_hessian_spectrum_status = "not_adjudicated";
+    std::size_t reduced_hessian_raw_positive_eigenvalues = 0;
+    std::size_t reduced_hessian_raw_zero_eigenvalues = 0;
+    std::size_t reduced_hessian_raw_negative_eigenvalues = 0;
+    std::size_t reduced_hessian_positive_eigenvalues = 0;
+    std::size_t reduced_hessian_zero_eigenvalues = 0;
+    std::size_t reduced_hessian_negative_eigenvalues = 0;
+    double reduced_hessian_scale = std::numeric_limits<double>::quiet_NaN();
+    double reduced_hessian_eigenvalue_tolerance =
+        std::numeric_limits<double>::quiet_NaN();
+    std::vector<double> objective_gradient;
+    std::vector<double> constraint_values;
+    std::vector<double> constraint_jacobian;
+    std::vector<double> lagrangian_gradient;
+    std::vector<double> equality_multipliers;
+    double chart_stationarity_inf_norm = std::numeric_limits<double>::quiet_NaN();
+    std::vector<double> lagrangian_hessian;
+    std::vector<double> covariant_lagrangian_hessian;
+    std::vector<std::string> derivative_coordinate_order;
+    std::string derivative_objective_basis =
+        "dimensionless_fixed_TP_A_plus_PV_plus_reference_over_RT";
+    std::string derivative_constraint_basis =
+        "ordered_per_row_in_derivative_constraint_order";
+    std::vector<std::string> derivative_constraint_order;
+    std::vector<double> kkt_root_jacobian;
+    std::size_t kkt_root_rows = 0;
+    std::size_t kkt_root_columns = 0;
+    std::string kkt_root_status = "not_evaluated";
     ChemicalSearchEvidence search;
     ChemicalSensitivityResult sensitivities;
 };
@@ -216,8 +264,19 @@ struct ManufacturedNlpEvaluation {
 
 struct ManufacturedReducedHessianEvidence {
     bool positive = false;
+    std::string status = "second_order_inconclusive";
     double curvature = 0.0;
     std::vector<double> negative_direction;
+    std::vector<double> reduced_hessian;
+    std::vector<double> nullspace_basis;
+    std::size_t nullspace_rows = 0;
+    std::size_t nullspace_columns = 0;
+    std::vector<double> eigenvalues;
+    std::array<std::size_t, 3> inertia = {0, 0, 0};
+    std::array<std::size_t, 3> raw_inertia = {0, 0, 0};
+    std::string spectrum_status = "not_evaluated";
+    double hessian_scale = std::numeric_limits<double>::quiet_NaN();
+    double eigenvalue_tolerance = std::numeric_limits<double>::quiet_NaN();
 };
 
 struct ProviderPhaseBlockEvidence {
@@ -304,8 +363,11 @@ struct SourceStandardStateResult {
 );
 
 // Private manufactured seams used to test the generic recovery mathematics.
-[[nodiscard]] ManufacturedReducedHessianEvidence
-analyze_manufactured_reduced_hessian(const std::vector<double>& hessian);
+[[nodiscard]] ManufacturedReducedHessianEvidence analyze_manufactured_reduced_hessian(
+    const std::vector<double>& hessian,
+    const std::vector<double>& constraint_jacobian = {},
+    std::size_t constraint_count = 0
+);
 
 [[nodiscard]] std::vector<double> retract_manufactured_balance(
     const CompiledReactionSystem& system,

@@ -232,7 +232,20 @@ EOS fingerprint, installed distribution RECORD fingerprints, and EOS
 SDK ABI identity. The reported `condition_number_inf` is the deterministic
 infinity-norm condition number of the four-pass row/column-equilibrated KKT
 system and is the one numerical conditioning metric used by the sensitivity
-gate; no second or unscaled condition metric is reported. The operation has no predictive admission, coupled
+gate; no second or unscaled condition metric is reported. Rejected solves retain
+the terminal amounts and volume and report a typed `failure_kind`, the first
+failed numerical and physical scalar criteria with their thresholds, active-set
+indices, KKT rank and conditioning, and reduced-Hessian matrix, spectrum,
+raw and certified inertia, spectrum convergence, scale, and tolerance. The
+derivative coordinate order and objective/constraint bases are explicit. The
+full chart Lagrangian Hessian, chart-consistent equality multipliers,
+null-space basis and covariant physical congruence are exposed for derivative
+and projection checks. For strictly interior states, diagnostics also expose
+the balance/affinity/pressure KKT root-system Jacobian; active-bound states
+mark that matrix unavailable instead of mislabeling an incomplete active-set
+system. Second-order admission uses the
+full chart Lagrangian Hessian after multiplier reconstruction from that chart's
+objective gradient and constraint Jacobian. The operation has no predictive admission, coupled
 phase-equilibrium claim, or globality proof.
 Accepted receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the

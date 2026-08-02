@@ -477,8 +477,77 @@ def test_manufactured_ideal_reactions_match_independent_analytic_states(
     assert diagnostics.charge_inf_norm <= 1.0e-12
     assert diagnostics.pressure_relative_residual <= 1.0e-8
     assert diagnostics.reaction_affinity_inf_norm <= 1.0e-7
+    assert max(map(abs, diagnostics.reaction_affinity_residuals)) == pytest.approx(
+        diagnostics.reaction_affinity_inf_norm
+    )
     assert diagnostics.kkt_stationarity_inf_norm <= 1.0e-7
+    assert max(map(abs, diagnostics.physical_stationarity_residuals)) == pytest.approx(
+        diagnostics.kkt_stationarity_inf_norm
+    )
     assert diagnostics.complementarity_inf_norm <= 1.0e-7
+    derivative_dimension = len(diagnostics.derivative_coordinate_order)
+    assert diagnostics.objective_gradient_shape == (derivative_dimension,)
+    assert diagnostics.constraint_jacobian_shape == (
+        len(diagnostics.constraint_values),
+        derivative_dimension,
+    )
+    assert diagnostics.lagrangian_hessian_shape == (
+        derivative_dimension,
+        derivative_dimension,
+    )
+    assert diagnostics.derivative_objective_basis == (
+        "dimensionless_fixed_TP_A_plus_PV_plus_reference_over_RT"
+    )
+    assert diagnostics.derivative_constraint_basis == (
+        "ordered_per_row_in_derivative_constraint_order"
+    )
+    assert len(diagnostics.derivative_constraint_order) == len(
+        diagnostics.constraint_values
+    )
+    assert diagnostics.derivative_coordinate_order[-1] == "log_volume_m3"
+    assert diagnostics.chart_stationarity_inf_norm <= 1.0e-7
+    assert diagnostics.kkt_root_status == "interior_no_active_bounds"
+    assert diagnostics.kkt_root_shape == (
+        diagnostics.kkt_dimension,
+        diagnostics.kkt_dimension,
+    )
+    assert len(diagnostics.kkt_root_jacobian) == diagnostics.kkt_dimension**2
+    assert diagnostics.reduced_hessian_spectrum_status == "converged"
+    assert sum(diagnostics.reduced_hessian_raw_inertia) == len(
+        diagnostics.reduced_hessian_eigenvalues
+    )
+    reduced_dimension, full_dimension = diagnostics.reduced_hessian_nullspace_shape
+    assert full_dimension == derivative_dimension
+    assert reduced_dimension**2 == len(diagnostics.reduced_hessian)
+    assert len(diagnostics.reduced_hessian_nullspace_basis) == (
+        reduced_dimension * full_dimension
+    )
+    for row in range(reduced_dimension):
+        for column in range(reduced_dimension):
+            projected = math.fsum(
+                diagnostics.reduced_hessian_nullspace_basis[
+                    row * full_dimension + left
+                ]
+                * diagnostics.lagrangian_hessian[left * full_dimension + right]
+                * diagnostics.reduced_hessian_nullspace_basis[
+                    column * full_dimension + right
+                ]
+                for left in range(full_dimension)
+                for right in range(full_dimension)
+            )
+            assert projected == pytest.approx(
+                diagnostics.reduced_hessian[row * reduced_dimension + column],
+                abs=2.0e-10,
+            )
+    assert diagnostics.minimum_amount_mol is not None
+    assert diagnostics.trace_floor_mol == 1.0e-12
+    trace_criterion = next(
+        criterion
+        for criterion in diagnostics.physical_criteria
+        if criterion.name == "minimum_amount_mol"
+    )
+    assert trace_criterion.status == "passed"
+    assert trace_criterion.comparison == ">"
 
 
 def test_manufactured_nonconvex_saddle_recovers_certified_lower_minimum() -> None:
@@ -625,14 +694,67 @@ def test_manufactured_search_distinguishes_no_feasible_start_from_infeasibility(
     assert search["basins"] == []
 
 
-def test_reduced_hessian_counterexample_returns_certified_direction() -> None:
+@pytest.mark.parametrize(
+    ("hessian", "status", "inertia"),
+    (
+        ((2.0, 0.0, 0.0, 1.0), "certified_local_minimum", (2, 0, 0)),
+        ((1.0, 0.0, 0.0, 0.0), "second_order_inconclusive", (1, 1, 0)),
+        ((1.0, 0.0, 0.0, -0.25), "saddle_observed", (1, 0, 1)),
+    ),
+)
+def test_reduced_hessian_reports_spectrum_and_inertia(
+    hessian: tuple[float, ...],
+    status: str,
+    inertia: tuple[int, int, int],
+) -> None:
+    evidence = _equilibrium._chemical_analyze_manufactured_reduced_hessian(hessian)
+
+    assert evidence["status"] == status
+    assert tuple(evidence["inertia"]) == inertia
+    assert tuple(evidence["raw_inertia"]) == inertia
+    assert evidence["spectrum_status"] == "converged"
+    assert tuple(evidence["nullspace_shape"]) == (2, 2)
+    assert tuple(evidence["nullspace_basis"]) == pytest.approx(
+        (1.0, 0.0, 0.0, 1.0), abs=2.0e-13
+    )
+    assert tuple(evidence["eigenvalues"]) == pytest.approx(
+        tuple(sorted(hessian[::3])), abs=2.0e-13
+    )
+    assert evidence["eigenvalue_tolerance"] == pytest.approx(
+        1.0e-10 * max(1.0, *(abs(value) for value in hessian[::3]))
+    )
+    if status == "saddle_observed":
+        assert evidence["curvature"] < 0.0
+        assert len(evidence["negative_direction"]) == 2
+
+
+def test_reduced_hessian_separates_raw_spectrum_from_scaled_certification() -> None:
     evidence = _equilibrium._chemical_analyze_manufactured_reduced_hessian(
-        (1.0, 0.5, 0.2, 0.5, 1.0, 0.4, 0.2, 0.4, 0.15)
+        (1.0e20, 0.0, 0.0, 1.0)
     )
 
-    assert evidence["positive"] is False
-    assert evidence["curvature"] < 0.0
-    assert len(evidence["negative_direction"]) == 3
+    assert evidence["status"] == "certified_local_minimum"
+    assert tuple(evidence["inertia"]) == (2, 0, 0)
+    assert tuple(evidence["raw_inertia"]) == (1, 1, 0)
+    assert evidence["spectrum_status"] == "converged"
+
+
+def test_reduced_hessian_nullspace_is_invariant_to_constraint_row_scaling() -> None:
+    hessian = (2.0, 0.25, 0.0, 0.25, 1.5, 0.0, 0.0, 0.0, 0.75)
+    baseline = _equilibrium._chemical_analyze_manufactured_reduced_hessian(
+        hessian, (1.0, -2.0, 0.5), 1
+    )
+    scaled = _equilibrium._chemical_analyze_manufactured_reduced_hessian(
+        hessian, (1.0e-18, -2.0e-18, 0.5e-18), 1
+    )
+
+    assert tuple(baseline["nullspace_shape"]) == (2, 3)
+    assert tuple(scaled["nullspace_shape"]) == (2, 3)
+    assert scaled["status"] == baseline["status"]
+    assert tuple(scaled["inertia"]) == tuple(baseline["inertia"])
+    assert tuple(scaled["eigenvalues"]) == pytest.approx(
+        tuple(baseline["eigenvalues"]), rel=2.0e-12, abs=2.0e-12
+    )
 
 
 def test_recovery_displacement_uses_mixed_sign_bound_room() -> None:
@@ -924,7 +1046,9 @@ def test_manufactured_reaction_with_ill_conditioned_kkt_has_no_sensitivity() -> 
     assert sensitivities["volume_derivatives"] == ()
     assert native["accepted"] is False
     assert native["local_minimum_status"] == "second_order_inconclusive"
+    assert native["reduced_hessian_status"] == "second_order_inconclusive"
     assert native["search"]["status"] == "second_order_inconclusive"
+    assert native["failure_kind"] == "ill_conditioning"
 
 
 @pytest.mark.parametrize("trace_floor", (1.0e-50, 1.0e-55))
@@ -1400,6 +1524,174 @@ def _figiel_provider_model(
         version=1,
     )
     return epcsaft.Mixture(parameters)
+
+
+@pytest.mark.parametrize("polar", (False, True), ids=("nonpolar", "full-polar"))
+def test_public_provider_phase_block_matches_independent_finite_differences(
+    polar: bool,
+) -> None:
+    mapping: dict[str, object] = {
+        "schema": "epcsaft.parameters",
+        "schema_version": 1,
+        "components": ("solvent", "cation", "anion"),
+        "parameters": {
+            "mw": (0.018, None, None),
+            "m": (1.2, 1.0, 1.0),
+            "s": (2.8, 2.8, 2.8),
+            "e": (350.0, 230.0, 170.0),
+            "z": (0, 1, -1),
+            "d_born": (None, 3.4, 4.1),
+            "f_solv": (1.5, 1.0, 1.0),
+            "epsilon_r": (78.0, None, None),
+            "k_ij": (
+                (0.0, -0.3, -0.3),
+                (-0.3, 0.0, 0.8),
+                (-0.3, 0.8, 0.0),
+            ),
+            "sites": (
+                {
+                    "component_id": "solvent",
+                    "site_id": "a",
+                    "site_class": "donor",
+                    "multiplicity": 1,
+                },
+                {
+                    "component_id": "solvent",
+                    "site_id": "b",
+                    "site_class": "acceptor",
+                    "multiplicity": 1,
+                },
+            ),
+            "association": (
+                {
+                    "component_id_a": "solvent",
+                    "site_id_a": "a",
+                    "component_id_b": "solvent",
+                    "site_id_b": "b",
+                    "association_energy_over_k": 2425.7,
+                    "association_volume": 0.04509,
+                },
+            ),
+        },
+        "options": {
+            "epsilon_r_ion": 8.0,
+            "a_dh": 7.01,
+            "permittivity_model": "ion-fraction-suppression",
+        },
+        "validity": {
+            "kind": "reported-conditions",
+            "temperature_min_k": 298.0,
+            "temperature_max_k": 350.0,
+            "pressure_min_pa": 10_000.0,
+            "pressure_max_pa": 200_000.0,
+            "ion_mole_fraction_max": 0.38,
+        },
+    }
+    if polar:
+        parameters = mapping["parameters"]
+        options = mapping["options"]
+        assert isinstance(parameters, dict)
+        assert isinstance(options, dict)
+        parameters["dipole_moment"] = (1.85, None, None)
+        parameters["quadrupole_moment"] = (4.1, None, None)
+        options["polar_formulation"] = "gross-vrabec-point-multipole"
+    model = epcsaft.Mixture.from_dictionary(mapping)
+    capsule = epcsaft.native_sdk(model)
+    temperature_k = 313.15
+    point = (0.98, 0.01, 0.01, 1.0e-3)
+
+    def evaluate(values: tuple[float, float, float, float]) -> dict[str, object]:
+        return _equilibrium._chemical_evaluate_provider_block(
+            capsule,
+            temperature_k,
+            values[:3],
+            values[3],
+            model.parameter_fingerprint,
+        )
+
+    center = evaluate(point)
+    gradient = tuple(center["gradient"])
+    hessian = tuple(center["hessian"])
+    assert center["component_ids"] == ["solvent", "cation", "anion"]
+    assert center["density_transformation"] == "rho_i_mol_per_m3=amount_i_mol/volume_m3"
+    assert len(gradient) == 4
+    assert len(hessian) == 16
+    directions = (
+        ((1.0, 0.0, 0.0, 0.0), 2.0e-6),
+        ((0.0, 1.0, 1.0, 0.0), 2.0e-7),
+        ((0.0, 0.0, 0.0, 1.0), 2.0e-8),
+    )
+    for direction, step in directions:
+        lower = tuple(
+            value - step * delta for value, delta in zip(point, direction, strict=True)
+        )
+        upper = tuple(
+            value + step * delta for value, delta in zip(point, direction, strict=True)
+        )
+        below = evaluate(lower)
+        above = evaluate(upper)
+        finite_difference_gradient = (
+            float(above["value"]) - float(below["value"])
+        ) / (2.0 * step)
+        analytic_directional_gradient = math.fsum(
+            value * delta for value, delta in zip(gradient, direction, strict=True)
+        )
+        assert analytic_directional_gradient == pytest.approx(
+            finite_difference_gradient, rel=3.0e-6, abs=3.0e-7
+        )
+        for row in range(4):
+            finite_difference_hessian = (
+                above["gradient"][row] - below["gradient"][row]
+            ) / (2.0 * step)
+            analytic_directional_hessian = math.fsum(
+                hessian[row * 4 + column] * direction[column]
+                for column in range(4)
+            )
+            assert analytic_directional_hessian == pytest.approx(
+                finite_difference_hessian, rel=3.0e-5, abs=3.0e-5
+            )
+
+    phase = epcsaft_equilibrium.ProviderPhase(
+        model=model,
+        expected_parameter_fingerprint=model.parameter_fingerprint,
+        admissible_packing_fraction_interval=(1.0e-6, 0.74),
+    )
+    problem = epcsaft_equilibrium.ChemicalEquilibriumProblem(
+        species_ids=("solvent", "cation", "anion"),
+        charges=(0, 1, -1),
+        molar_masses_kg_per_mol=(0.018, 0.009, 0.009),
+        balance_matrix=((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
+        conserved_totals=(1.98, 0.0),
+        reaction_matrix=((-1.0, 1.0, 1.0),),
+        feed_amounts_mol=(0.98, 0.01, 0.01),
+        equilibrium_constants=(
+            epcsaft_equilibrium.ChemicalEquilibriumConstant(
+                ln_value=0.0,
+                source_id="synthetic-provider-path",
+                reference_id="provider-helmholtz-coordinate-basis",
+                reaction_orientation="products_positive",
+                conversion_id="already-provider-basis",
+                dimensionless=True,
+            ),
+        ),
+        strict_interior_amount_floor_mol=1.0e-12,
+    )
+    try:
+        public_result = epcsaft_equilibrium.chemical_equilibrium(
+            phase,
+            temperature_k * epcsaft.unit_registry.kelvin,
+            100_000.0 * epcsaft.unit_registry.pascal,
+            problem,
+        )
+    except epcsaft_equilibrium.ChemicalEquilibriumError as error:
+        assert error.diagnostics.failure_kind in {
+            "exhausted_multistart_search",
+            "physical_domain_failure",
+        }
+        assert "derivative" not in error.diagnostics.callback_error
+    else:
+        assert public_result.diagnostics.provider_domain_status == "passed"
+        assert public_result.diagnostics.local_minimum_status == "passed"
 
 
 @pytest.mark.parametrize("with_sensitivity", (False, True))

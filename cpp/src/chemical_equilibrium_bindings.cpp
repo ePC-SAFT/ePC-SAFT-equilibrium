@@ -189,6 +189,12 @@ py::dict amount_chart_evidence(
 
 py::dict chemical_result(const ChemicalSolveResult& evaluation) {
     py::dict result;
+    const auto optional_float = [](double value) -> py::object {
+        return std::isfinite(value) ? py::cast(value) : py::none();
+    };
+    const auto optional_index = [](long value) -> py::object {
+        return value >= 0 ? py::cast(value) : py::none();
+    };
     result["accepted"] = evaluation.accepted;
     result["solver_status"] = evaluation.solver_status;
     result["callback_error"] = evaluation.callback_error;
@@ -215,19 +221,203 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
     result["charge_inf_norm"] = evaluation.charge_inf_norm;
     result["pressure_relative_residual"] = evaluation.pressure_relative_residual;
     result["reaction_affinity_inf_norm"] = evaluation.reaction_affinity_inf_norm;
+    result["reaction_affinity_residuals"] =
+        evaluation.reaction_affinity_residuals;
     result["packing_fraction"] = evaluation.packing_fraction;
+    result["packing_fraction_min"] = optional_float(
+        evaluation.packing_fraction_min
+    );
+    result["packing_fraction_max"] = optional_float(
+        evaluation.packing_fraction_max
+    );
+    result["total_ion_fraction"] = optional_float(
+        evaluation.total_ion_fraction
+    );
+    result["total_ion_fraction_max"] = optional_float(
+        evaluation.total_ion_fraction_max
+    );
+    result["minimum_amount_mol"] = optional_float(
+        evaluation.minimum_amount_mol
+    );
+    result["trace_floor_mol"] = optional_float(evaluation.trace_floor_mol);
     result["kkt_stationarity_inf_norm"] = evaluation.kkt_stationarity_inf_norm;
+    result["physical_stationarity_residuals"] =
+        evaluation.physical_stationarity_residuals;
     result["complementarity_inf_norm"] = evaluation.complementarity_inf_norm;
     result["kkt_dimension"] = evaluation.kkt_dimension;
     result["kkt_rank"] = evaluation.kkt_rank;
-    const auto optional_float = [](double value) -> py::object {
-        return std::isfinite(value) ? py::cast(value) : py::none();
-    };
-    const auto optional_index = [](long value) -> py::object {
-        return value >= 0 ? py::cast(value) : py::none();
-    };
     result["condition_number_inf"] =
         optional_float(evaluation.condition_number_inf);
+    result["failure_kind"] = evaluation.failure_kind;
+    result["failure_reason"] = evaluation.failure_reason;
+    result["active_lower_bounds"] = evaluation.active_lower_bounds;
+    result["active_upper_bounds"] = evaluation.active_upper_bounds;
+    result["active_constraint_bounds"] =
+        evaluation.active_constraint_bounds;
+    result["reduced_hessian_status"] = evaluation.reduced_hessian_status;
+    result["reduced_hessian"] = evaluation.reduced_hessian;
+    result["reduced_hessian_nullspace_basis"] =
+        evaluation.reduced_hessian_nullspace_basis;
+    result["reduced_hessian_nullspace_shape"] = py::make_tuple(
+        evaluation.reduced_hessian_nullspace_rows,
+        evaluation.reduced_hessian_nullspace_columns
+    );
+    result["reduced_hessian_eigenvalues"] =
+        evaluation.reduced_hessian_eigenvalues;
+    result["reduced_hessian_spectrum_status"] =
+        evaluation.reduced_hessian_spectrum_status;
+    result["reduced_hessian_raw_inertia"] = py::make_tuple(
+        evaluation.reduced_hessian_raw_positive_eigenvalues,
+        evaluation.reduced_hessian_raw_zero_eigenvalues,
+        evaluation.reduced_hessian_raw_negative_eigenvalues
+    );
+    result["reduced_hessian_inertia"] = py::make_tuple(
+        evaluation.reduced_hessian_positive_eigenvalues,
+        evaluation.reduced_hessian_zero_eigenvalues,
+        evaluation.reduced_hessian_negative_eigenvalues
+    );
+    result["reduced_hessian_scale"] =
+        optional_float(evaluation.reduced_hessian_scale);
+    result["reduced_hessian_eigenvalue_tolerance"] =
+        optional_float(evaluation.reduced_hessian_eigenvalue_tolerance);
+    result["objective_gradient"] = evaluation.objective_gradient;
+    result["constraint_values"] = evaluation.constraint_values;
+    result["constraint_jacobian"] = evaluation.constraint_jacobian;
+    result["lagrangian_gradient"] = evaluation.lagrangian_gradient;
+    result["equality_multipliers"] = evaluation.equality_multipliers;
+    result["chart_stationarity_inf_norm"] =
+        optional_float(evaluation.chart_stationarity_inf_norm);
+    result["lagrangian_hessian"] = evaluation.lagrangian_hessian;
+    result["covariant_lagrangian_hessian"] =
+        evaluation.covariant_lagrangian_hessian;
+    const std::size_t derivative_dimension =
+        evaluation.objective_gradient.size();
+    result["derivative_coordinate_order"] =
+        evaluation.derivative_coordinate_order.size() == derivative_dimension
+        ? py::cast(evaluation.derivative_coordinate_order)
+        : py::cast(std::vector<std::string>{});
+    result["derivative_objective_basis"] =
+        evaluation.derivative_objective_basis;
+    result["derivative_constraint_basis"] =
+        evaluation.derivative_constraint_basis;
+    result["derivative_constraint_order"] =
+        evaluation.derivative_constraint_order.size()
+            == evaluation.constraint_values.size()
+        ? py::cast(evaluation.derivative_constraint_order)
+        : py::cast(std::vector<std::string>{});
+    result["objective_gradient_shape"] = py::make_tuple(
+        derivative_dimension
+    );
+    result["constraint_jacobian_shape"] = py::make_tuple(
+        evaluation.constraint_values.size(), derivative_dimension
+    );
+    result["lagrangian_hessian_shape"] = py::make_tuple(
+        derivative_dimension, derivative_dimension
+    );
+    result["kkt_root_jacobian"] = evaluation.kkt_root_jacobian;
+    result["kkt_root_shape"] = py::make_tuple(
+        evaluation.kkt_root_rows,
+        evaluation.kkt_root_columns
+    );
+    result["kkt_root_status"] = evaluation.kkt_root_status;
+    const auto criterion = [](
+        const char* name,
+        double value,
+        double limit,
+        const char* comparison,
+        bool passed
+    ) {
+        py::dict record;
+        record["name"] = name;
+        record["status"] = std::isfinite(value) && passed ? "passed" : "failed";
+        record["value"] = value;
+        record["limit"] = limit;
+        record["comparison"] = comparison;
+        return record;
+    };
+    py::list numerical_criteria;
+    numerical_criteria.append(criterion(
+        "balance_inf_norm", evaluation.balance_inf_norm, 1.0e-9, "<=",
+        evaluation.balance_inf_norm <= 1.0e-9
+    ));
+    numerical_criteria.append(criterion(
+        "complementarity_inf_norm", evaluation.complementarity_inf_norm, 1.0e-7, "<=",
+        evaluation.complementarity_inf_norm <= 1.0e-7
+    ));
+    numerical_criteria.append(criterion(
+        "kkt_stationarity_inf_norm", evaluation.kkt_stationarity_inf_norm, 1.0e-7, "<=",
+        evaluation.kkt_stationarity_inf_norm <= 1.0e-7
+    ));
+    numerical_criteria.append(criterion(
+        "chart_stationarity_inf_norm", evaluation.chart_stationarity_inf_norm, 1.0e-7, "<=",
+        evaluation.chart_stationarity_inf_norm <= 1.0e-7
+    ));
+    numerical_criteria.append(criterion(
+        "derivative_evidence_finite", evaluation.callback_error.empty() ? 1.0 : 0.0,
+        1.0, ">=", evaluation.callback_error.empty()
+    ));
+    result["numerical_criteria"] = std::move(numerical_criteria);
+    py::list physical_criteria;
+    physical_criteria.append(criterion(
+        "balance_inf_norm", evaluation.balance_inf_norm, 1.0e-9, "<=",
+        evaluation.balance_inf_norm <= 1.0e-9
+    ));
+    physical_criteria.append(criterion(
+        "charge_inf_norm", evaluation.charge_inf_norm, 1.0e-9, "<=",
+        evaluation.charge_inf_norm <= 1.0e-9
+    ));
+    physical_criteria.append(criterion(
+        "pressure_relative_residual",
+        evaluation.pressure_relative_residual,
+        1.0e-8,
+        "<=",
+        evaluation.pressure_relative_residual <= 1.0e-8
+    ));
+    physical_criteria.append(criterion(
+        "reaction_affinity_inf_norm",
+        evaluation.reaction_affinity_inf_norm,
+        1.0e-7,
+        "<=",
+        evaluation.reaction_affinity_inf_norm <= 1.0e-7
+    ));
+    if (std::isfinite(evaluation.minimum_amount_mol)
+        && std::isfinite(evaluation.trace_floor_mol)) {
+        physical_criteria.append(criterion(
+            "minimum_amount_mol",
+            evaluation.minimum_amount_mol,
+            evaluation.trace_floor_mol,
+            ">",
+            evaluation.minimum_amount_mol > evaluation.trace_floor_mol
+        ));
+    }
+    if (std::isfinite(evaluation.packing_fraction_min)
+        && std::isfinite(evaluation.packing_fraction_max)) {
+        physical_criteria.append(criterion(
+            "packing_fraction_lower_bound",
+            evaluation.packing_fraction,
+            evaluation.packing_fraction_min,
+            ">=",
+            evaluation.packing_fraction >= evaluation.packing_fraction_min
+        ));
+        physical_criteria.append(criterion(
+            "packing_fraction_upper_bound",
+            evaluation.packing_fraction,
+            evaluation.packing_fraction_max,
+            "<=",
+            evaluation.packing_fraction <= evaluation.packing_fraction_max
+        ));
+    }
+    if (std::isfinite(evaluation.total_ion_fraction_max)) {
+        physical_criteria.append(criterion(
+            "total_ion_fraction",
+            evaluation.total_ion_fraction,
+            evaluation.total_ion_fraction_max + 1.0e-12,
+            "<=",
+            evaluation.total_ion_fraction
+                <= evaluation.total_ion_fraction_max + 1.0e-12
+        ));
+    }
+    result["physical_criteria"] = std::move(physical_criteria);
     py::dict search;
     search["status"] = evaluation.search.status;
     search["continuation_status"] = evaluation.search.continuation_status;
@@ -435,8 +625,21 @@ py::dict provider_block_evidence(
         provider, temperature_k, amounts, volume_m3
     );
     py::dict result;
+    result["component_ids"] = metadata.component_ids;
+    result["coordinate_order"] = py::make_tuple(
+        "component_amounts_mol_in_provider_order", "volume_m3"
+    );
+    result["density_transformation"] = "rho_i_mol_per_m3=amount_i_mol/volume_m3";
+    result["helmholtz_basis"] = "dimensionless_A_over_RT";
+    result["reference_transformation"] =
+        "provider_phase_block_only; source-standard offsets are linear external terms";
+    result["value"] = evaluation.value;
     result["gradient"] = evaluation.gradient;
+    result["hessian"] = evaluation.hessian;
     result["pressure_pa"] = evaluation.pressure_pa;
+    result["packing_fraction"] = evaluation.packing_fraction;
+    result["packing_gradient"] = evaluation.packing_gradient;
+    result["packing_hessian"] = evaluation.packing_hessian;
     return result;
 }
 
@@ -836,14 +1039,30 @@ py::dict manufactured_inverse_log_packing_nlp_evidence(
 }
 
 py::dict manufactured_reduced_hessian_evidence(
-    const std::vector<double>& hessian
+    const std::vector<double>& hessian,
+    const std::vector<double>& constraint_jacobian,
+    std::size_t constraint_count
 ) {
     const ManufacturedReducedHessianEvidence evidence =
-        analyze_manufactured_reduced_hessian(hessian);
+        analyze_manufactured_reduced_hessian(
+            hessian, constraint_jacobian, constraint_count
+        );
     py::dict result;
     result["positive"] = evidence.positive;
+    result["status"] = evidence.status;
     result["curvature"] = evidence.curvature;
     result["negative_direction"] = evidence.negative_direction;
+    result["reduced_hessian"] = evidence.reduced_hessian;
+    result["nullspace_basis"] = evidence.nullspace_basis;
+    result["nullspace_shape"] = py::make_tuple(
+        evidence.nullspace_rows, evidence.nullspace_columns
+    );
+    result["eigenvalues"] = evidence.eigenvalues;
+    result["inertia"] = evidence.inertia;
+    result["raw_inertia"] = evidence.raw_inertia;
+    result["spectrum_status"] = evidence.spectrum_status;
+    result["hessian_scale"] = evidence.hessian_scale;
+    result["eigenvalue_tolerance"] = evidence.eigenvalue_tolerance;
     return result;
 }
 
@@ -926,7 +1145,9 @@ void bind_chemical_equilibrium(py::module_& module) {
     module.def(
         "_chemical_analyze_manufactured_reduced_hessian",
         &manufactured_reduced_hessian_evidence,
-        py::arg("hessian")
+        py::arg("hessian"),
+        py::arg("constraint_jacobian") = std::vector<double>{},
+        py::arg("constraint_count") = 0
     );
     module.def(
         "_chemical_retract_manufactured_balance",

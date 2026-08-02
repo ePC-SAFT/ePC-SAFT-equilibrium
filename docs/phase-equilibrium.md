@@ -234,6 +234,25 @@ callback at the actual system pressure, then passes Provider-basis constants
 and private transformed records bound to that trial pressure directly to the
 same compiler and `solve_provider_reaction` owner. The source standard state's
 declared reference pressure is retained separately as immutable provenance.
+Failures preserve the returned terminal state and expose each scalar numerical
+and physical criterion independently, including the first failed criterion,
+active bounds, KKT rank/conditioning, and reduced-Hessian evidence. A
+`solve_succeeded` optimizer status is never a chemical certificate by itself.
+Second-order admission first reconstructs equality multipliers from the actual
+chart objective gradient and constraint Jacobian, rather than transferring a
+least-squares multiplier from a differently scaled physical system. It then
+uses the full chart Lagrangian Hessian. The physical Lagrangian's covariant
+congruence remains separate derivative-check evidence. Diagnostics name every
+derivative coordinate and constraint row in storage order and declare their
+bases; they also expose the equality multipliers and null-space basis needed to
+reproduce the projections. Strictly interior states expose the separate
+balance/affinity/pressure KKT root-system Jacobian. When any bound is active,
+that matrix is explicitly unavailable rather than presented as a complete
+active-set KKT system.
+The reported raw eigenvalue spectrum, its convergence status, and raw inertia
+are separate from the certified inertia produced by the scale-invariant
+diagonal congruence and Cholesky test; neither is silently substituted for the
+other.
 Its source-complete sentinel is `2 H2O <=> H3O+ + OH-` at 298.15 K and 1 bar
 using frozen IAPWS R11-07(2019) reaction data and the immutable Held-2008
 Provider catalog. This establishes one local, strictly interior, fixed-`T,P`

@@ -312,11 +312,23 @@ class ChemicalEquilibriumSearch:
 
 
 @dataclass(frozen=True)
+class ChemicalEquilibriumCriterion:
+    """One named scalar certification check with its declared threshold."""
+
+    name: str
+    status: str
+    value: float
+    limit: float
+    comparison: str
+
+
+@dataclass(frozen=True)
 class ChemicalEquilibriumDiagnostics:
     """Independent local chemical-equilibrium admission axes and residuals."""
 
     solver_status: str
     callback_error: str
+    failure_kind: str
     failure_reason: str
     chemical_certification_level: str
     boundary_status: str
@@ -332,13 +344,63 @@ class ChemicalEquilibriumDiagnostics:
     trace_status: str
     globality_status: str
     search: ChemicalEquilibriumSearch
+    amounts_mol: tuple[float, ...]
+    volume_m3: float | None
     balance_inf_norm: float | None
     charge_inf_norm: float | None
     pressure_relative_residual: float | None
     reaction_affinity_inf_norm: float | None
+    reaction_affinity_residuals: tuple[float, ...]
     packing_fraction: float | None
+    packing_fraction_min: float | None
+    packing_fraction_max: float | None
+    total_ion_fraction: float | None
+    total_ion_fraction_max: float | None
+    minimum_amount_mol: float | None
+    trace_floor_mol: float | None
     kkt_stationarity_inf_norm: float | None
+    physical_stationarity_residuals: tuple[float, ...]
     complementarity_inf_norm: float | None
+    numerical_criteria: tuple[ChemicalEquilibriumCriterion, ...]
+    physical_criteria: tuple[ChemicalEquilibriumCriterion, ...]
+    first_failed_numerical_criterion: str | None
+    first_failed_physical_criterion: str | None
+    kkt_dimension: int
+    kkt_rank: int
+    condition_number_inf: float | None
+    active_lower_bounds: tuple[int, ...]
+    active_upper_bounds: tuple[int, ...]
+    active_constraint_bounds: tuple[int, ...]
+    active_trace_species: tuple[int, ...]
+    chart_topology: str
+    reduced_hessian_status: str
+    reduced_hessian: tuple[float, ...]
+    reduced_hessian_nullspace_basis: tuple[float, ...]
+    reduced_hessian_nullspace_shape: tuple[int, int]
+    reduced_hessian_eigenvalues: tuple[float, ...]
+    reduced_hessian_spectrum_status: str
+    reduced_hessian_raw_inertia: tuple[int, int, int]
+    reduced_hessian_inertia: tuple[int, int, int]
+    reduced_hessian_scale: float | None
+    reduced_hessian_eigenvalue_tolerance: float | None
+    objective_gradient: tuple[float, ...]
+    constraint_values: tuple[float, ...]
+    constraint_jacobian: tuple[float, ...]
+    lagrangian_gradient: tuple[float, ...]
+    equality_multipliers: tuple[float, ...]
+    chart_stationarity_inf_norm: float | None
+    lagrangian_hessian: tuple[float, ...]
+    covariant_lagrangian_hessian: tuple[float, ...]
+    derivative_coordinate_order: tuple[str, ...]
+    derivative_objective_basis: str
+    derivative_constraint_basis: str
+    derivative_constraint_order: tuple[str, ...]
+    objective_gradient_shape: tuple[int, ...]
+    constraint_jacobian_shape: tuple[int, int]
+    lagrangian_hessian_shape: tuple[int, int]
+    kkt_root_jacobian: tuple[float, ...]
+    kkt_root_shape: tuple[int, int]
+    kkt_root_status: str
     reference_representation_residual_inf_norm: float | None
     reference_convergence_error: float | None
     reference_derivative_availability: int | None
@@ -1515,6 +1577,7 @@ def _failed_chemical_diagnostics(
     return ChemicalEquilibriumDiagnostics(
         solver_status=status,
         callback_error="",
+        failure_kind="input_or_native_error",
         failure_reason=failure_reason,
         chemical_certification_level="NOT_EVALUATED",
         boundary_status="not_adjudicated",
@@ -1530,13 +1593,63 @@ def _failed_chemical_diagnostics(
         trace_status="not_adjudicated",
         globality_status="not_adjudicated",
         search=_empty_chemical_search(),
+        amounts_mol=(),
+        volume_m3=None,
         balance_inf_norm=None,
         charge_inf_norm=None,
         pressure_relative_residual=None,
         reaction_affinity_inf_norm=None,
+        reaction_affinity_residuals=(),
         packing_fraction=None,
+        packing_fraction_min=None,
+        packing_fraction_max=None,
+        total_ion_fraction=None,
+        total_ion_fraction_max=None,
+        minimum_amount_mol=None,
+        trace_floor_mol=None,
         kkt_stationarity_inf_norm=None,
+        physical_stationarity_residuals=(),
         complementarity_inf_norm=None,
+        numerical_criteria=(),
+        physical_criteria=(),
+        first_failed_numerical_criterion=None,
+        first_failed_physical_criterion=None,
+        kkt_dimension=0,
+        kkt_rank=0,
+        condition_number_inf=None,
+        active_lower_bounds=(),
+        active_upper_bounds=(),
+        active_constraint_bounds=(),
+        active_trace_species=(),
+        chart_topology="not_adjudicated",
+        reduced_hessian_status="not_adjudicated",
+        reduced_hessian=(),
+        reduced_hessian_nullspace_basis=(),
+        reduced_hessian_nullspace_shape=(0, 0),
+        reduced_hessian_eigenvalues=(),
+        reduced_hessian_spectrum_status="not_adjudicated",
+        reduced_hessian_raw_inertia=(0, 0, 0),
+        reduced_hessian_inertia=(0, 0, 0),
+        reduced_hessian_scale=None,
+        reduced_hessian_eigenvalue_tolerance=None,
+        objective_gradient=(),
+        constraint_values=(),
+        constraint_jacobian=(),
+        lagrangian_gradient=(),
+        equality_multipliers=(),
+        chart_stationarity_inf_norm=None,
+        lagrangian_hessian=(),
+        covariant_lagrangian_hessian=(),
+        derivative_coordinate_order=(),
+        derivative_objective_basis="dimensionless_fixed_TP_A_plus_PV_plus_reference_over_RT",
+        derivative_constraint_basis="ordered_per_row_in_derivative_constraint_order",
+        derivative_constraint_order=(),
+        objective_gradient_shape=(0,),
+        constraint_jacobian_shape=(0, 0),
+        lagrangian_hessian_shape=(0, 0),
+        kkt_root_jacobian=(),
+        kkt_root_shape=(0, 0),
+        kkt_root_status="not_evaluated",
         reference_representation_residual_inf_norm=None,
         reference_convergence_error=None,
         reference_derivative_availability=None,
@@ -1546,15 +1659,209 @@ def _failed_chemical_diagnostics(
 def _chemical_diagnostics(
     native: Mapping[str, object],
 ) -> ChemicalEquilibriumDiagnostics:
+    def criteria(name: str) -> tuple[ChemicalEquilibriumCriterion, ...]:
+        def passes(record: ChemicalEquilibriumCriterion) -> bool:
+            if not math.isfinite(record.value):
+                return False
+            if record.comparison == "<=":
+                return record.value <= record.limit
+            if record.comparison == ">":
+                return record.value > record.limit
+            if record.comparison == ">=":
+                return record.value >= record.limit
+            raise ValueError(f"native {name} comparison is invalid")
+
+        records = tuple(
+            ChemicalEquilibriumCriterion(
+                name=str(cast(Mapping[str, object], record)["name"]),
+                status=str(cast(Mapping[str, object], record)["status"]),
+                value=float(cast(float, cast(Mapping[str, object], record)["value"])),
+                limit=float(cast(float, cast(Mapping[str, object], record)["limit"])),
+                comparison=str(cast(Mapping[str, object], record)["comparison"]),
+            )
+            for record in cast(Sequence[object], native[name])
+        )
+        if any(record.status not in {"passed", "failed"} for record in records):
+            raise ValueError(f"native {name} status is invalid")
+        if any(
+            record.comparison not in {"<=", ">", ">="}
+            or not math.isfinite(record.limit)
+            or record.limit < 0.0
+            or (record.status == "passed") != passes(record)
+            for record in records
+        ):
+            raise ValueError(f"native {name} evidence is inconsistent")
+        return records
+
+    numerical_criteria = criteria("numerical_criteria")
+    physical_criteria = criteria("physical_criteria")
+    first_failed_numerical = next(
+        (record.name for record in numerical_criteria if record.status == "failed"), None
+    )
+    first_failed_physical = next(
+        (record.name for record in physical_criteria if record.status == "failed"), None
+    )
+    reduced_inertia = tuple(
+        int(value) for value in cast(Sequence[int], native["reduced_hessian_inertia"])
+    )
+    if len(reduced_inertia) != 3 or any(value < 0 for value in reduced_inertia):
+        raise ValueError("native reduced-Hessian inertia is invalid")
+    reduced_raw_inertia = tuple(
+        int(value) for value in cast(Sequence[int], native["reduced_hessian_raw_inertia"])
+    )
+    if len(reduced_raw_inertia) != 3 or any(value < 0 for value in reduced_raw_inertia):
+        raise ValueError("native raw reduced-Hessian inertia is invalid")
+    failure_kind = str(native["failure_kind"])
+    if failure_kind not in {
+        "none",
+        "genuine_saddle",
+        "derivative_inconsistency",
+        "rank_deficiency",
+        "ill_conditioning",
+        "physical_domain_failure",
+        "exhausted_multistart_search",
+        "unsupported_derivative_capability",
+    }:
+        raise ValueError("native chemical failure kind is invalid")
+    if bool(native["accepted"]) != (failure_kind == "none"):
+        raise ValueError("native chemical acceptance and failure kind disagree")
+    kkt_dimension = int(cast(int, native["kkt_dimension"]))
+    kkt_rank = int(cast(int, native["kkt_rank"]))
+    if kkt_dimension < 0 or not 0 <= kkt_rank <= kkt_dimension:
+        raise ValueError("native chemical KKT rank evidence is invalid")
+    objective_gradient = _float_tuple(native["objective_gradient"])
+    reaction_affinity_residuals = _float_tuple(native["reaction_affinity_residuals"])
+    physical_stationarity_residuals = _float_tuple(
+        native["physical_stationarity_residuals"]
+    )
+    constraint_values = _float_tuple(native["constraint_values"])
+    constraint_jacobian = _float_tuple(native["constraint_jacobian"])
+    lagrangian_gradient = _float_tuple(native["lagrangian_gradient"])
+    equality_multipliers = _float_tuple(native["equality_multipliers"])
+    lagrangian_hessian = _float_tuple(native["lagrangian_hessian"])
+    covariant_lagrangian_hessian = _float_tuple(native["covariant_lagrangian_hessian"])
+    reduced_hessian = _float_tuple(native["reduced_hessian"])
+    reduced_hessian_eigenvalues = _float_tuple(native["reduced_hessian_eigenvalues"])
+    reduced_hessian_nullspace_basis = _float_tuple(
+        native["reduced_hessian_nullspace_basis"]
+    )
+    reduced_hessian_nullspace_shape = tuple(
+        int(value)
+        for value in cast(Sequence[int], native["reduced_hessian_nullspace_shape"])
+    )
+    spectrum_status = str(native["reduced_hessian_spectrum_status"])
+    derivative_dimension = len(objective_gradient)
+    derivative_coordinate_order = tuple(
+        str(value) for value in cast(Sequence[str], native["derivative_coordinate_order"])
+    )
+    objective_gradient_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["objective_gradient_shape"])
+    )
+    constraint_jacobian_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["constraint_jacobian_shape"])
+    )
+    lagrangian_hessian_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["lagrangian_hessian_shape"])
+    )
+    derivative_constraint_order = tuple(
+        str(value) for value in cast(Sequence[str], native["derivative_constraint_order"])
+    )
+    kkt_root_jacobian = _float_tuple(native["kkt_root_jacobian"])
+    kkt_root_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["kkt_root_shape"])
+    )
+    kkt_root_status = str(native["kkt_root_status"])
+    reduced_dimension = math.isqrt(len(reduced_hessian))
+    tolerance = _optional_float(native, "reduced_hessian_eigenvalue_tolerance")
+    if (
+        len(lagrangian_gradient) != derivative_dimension
+        or len(constraint_jacobian) != len(constraint_values) * derivative_dimension
+        or len(lagrangian_hessian) != derivative_dimension * derivative_dimension
+        or len(covariant_lagrangian_hessian) != derivative_dimension * derivative_dimension
+        or len(derivative_coordinate_order) != derivative_dimension
+        or objective_gradient_shape != (derivative_dimension,)
+        or constraint_jacobian_shape != (len(constraint_values), derivative_dimension)
+        or lagrangian_hessian_shape != (derivative_dimension, derivative_dimension)
+        or len(derivative_constraint_order) != len(constraint_values)
+        or len(equality_multipliers) != len(constraint_values)
+        or len(reduced_hessian) != reduced_dimension * reduced_dimension
+        or len(reduced_hessian_nullspace_shape) != 2
+        or reduced_hessian_nullspace_shape != (reduced_dimension, derivative_dimension)
+        or len(reduced_hessian_nullspace_basis) != reduced_dimension * derivative_dimension
+        or len(kkt_root_shape) != 2
+        or len(kkt_root_jacobian) != kkt_root_shape[0] * kkt_root_shape[1]
+    ):
+        raise ValueError("native chemical derivative evidence has inconsistent dimensions")
+    if kkt_root_status not in {
+        "not_evaluated",
+        "interior_no_active_bounds",
+        "unavailable_active_bounds",
+        "evaluation_failed",
+    }:
+        raise ValueError("native KKT root-system status is invalid")
+    if kkt_root_status == "interior_no_active_bounds":
+        if (
+            kkt_root_shape != (kkt_dimension, kkt_dimension)
+            or len(kkt_root_jacobian) != kkt_dimension * kkt_dimension
+        ):
+            raise ValueError("native KKT root-system evidence is inconsistent")
+    elif kkt_root_shape != (0, 0) or kkt_root_jacobian:
+        raise ValueError("native unavailable KKT root-system evidence is not empty")
+    if spectrum_status not in {
+        "not_adjudicated",
+        "not_evaluated",
+        "converged",
+        "not_converged",
+        "nonfinite",
+    }:
+        raise ValueError("native reduced-Hessian spectrum status is invalid")
+    if reduced_dimension and spectrum_status in {"converged", "not_converged"}:
+        if len(reduced_hessian_eigenvalues) != reduced_dimension or tolerance is None:
+            raise ValueError("native reduced-Hessian spectrum dimensions are invalid")
+        classified = (
+            sum(value > tolerance for value in reduced_hessian_eigenvalues),
+            sum(abs(value) <= tolerance for value in reduced_hessian_eigenvalues),
+            sum(value < -tolerance for value in reduced_hessian_eigenvalues),
+        )
+        if reduced_raw_inertia != classified or sum(reduced_inertia) != reduced_dimension:
+            raise ValueError("native reduced-Hessian spectrum and inertia disagree")
+    elif reduced_dimension and spectrum_status == "nonfinite":
+        if (
+            reduced_hessian_eigenvalues
+            or reduced_raw_inertia != (0, 0, 0)
+            or reduced_inertia != (0, 0, 0)
+        ):
+            raise ValueError("native nonfinite reduced-Hessian evidence is inconsistent")
+    elif reduced_dimension:
+        raise ValueError("native reduced-Hessian spectrum was not evaluated")
+    elif reduced_raw_inertia != (0, 0, 0) or reduced_inertia != (0, 0, 0):
+        raise ValueError("native empty reduced-Hessian inertia is invalid")
+    reported_affinity_norm = float(cast(float, native["reaction_affinity_inf_norm"]))
+    reported_stationarity_norm = float(cast(float, native["kkt_stationarity_inf_norm"]))
+    if (
+        reaction_affinity_residuals
+        and not math.isclose(
+            max(abs(value) for value in reaction_affinity_residuals),
+            reported_affinity_norm,
+            rel_tol=2.0e-12,
+            abs_tol=2.0e-12,
+        )
+    ) or (
+        physical_stationarity_residuals
+        and not math.isclose(
+            max(abs(value) for value in physical_stationarity_residuals),
+            reported_stationarity_norm,
+            rel_tol=2.0e-12,
+            abs_tol=2.0e-12,
+        )
+    ):
+        raise ValueError("native chemical residual vectors and norms disagree")
+    sensitivities = cast(Mapping[str, object], native["sensitivities"])
     return ChemicalEquilibriumDiagnostics(
         solver_status=str(native["solver_status"]),
         callback_error=str(native["callback_error"]),
-        failure_reason=(
-            str(native["callback_error"])
-            or f"not certified: {native['chemical_certification_level']}"
-        )
-        if not bool(native["accepted"])
-        else "",
+        failure_kind=failure_kind,
+        failure_reason=str(native["failure_reason"]),
         chemical_certification_level=str(native["chemical_certification_level"]),
         boundary_status=str(native["boundary_status"]),
         structural_zero_species_indices=tuple(
@@ -1577,13 +1884,67 @@ def _chemical_diagnostics(
         trace_status=str(native["trace_status"]),
         globality_status=str(native["globality_certificate"]),
         search=_chemical_search(native),
+        amounts_mol=_float_tuple(native["amounts"]),
+        volume_m3=_optional_float(native, "volume_m3"),
         balance_inf_norm=float(cast(float, native["balance_inf_norm"])),
         charge_inf_norm=float(cast(float, native["charge_inf_norm"])),
         pressure_relative_residual=float(cast(float, native["pressure_relative_residual"])),
-        reaction_affinity_inf_norm=float(cast(float, native["reaction_affinity_inf_norm"])),
+        reaction_affinity_inf_norm=reported_affinity_norm,
+        reaction_affinity_residuals=reaction_affinity_residuals,
         packing_fraction=float(cast(float, native["packing_fraction"])),
-        kkt_stationarity_inf_norm=float(cast(float, native["kkt_stationarity_inf_norm"])),
+        packing_fraction_min=_optional_float(native, "packing_fraction_min"),
+        packing_fraction_max=_optional_float(native, "packing_fraction_max"),
+        total_ion_fraction=_optional_float(native, "total_ion_fraction"),
+        total_ion_fraction_max=_optional_float(native, "total_ion_fraction_max"),
+        minimum_amount_mol=_optional_float(native, "minimum_amount_mol"),
+        trace_floor_mol=_optional_float(native, "trace_floor_mol"),
+        kkt_stationarity_inf_norm=reported_stationarity_norm,
+        physical_stationarity_residuals=physical_stationarity_residuals,
         complementarity_inf_norm=float(cast(float, native["complementarity_inf_norm"])),
+        numerical_criteria=numerical_criteria,
+        physical_criteria=physical_criteria,
+        first_failed_numerical_criterion=first_failed_numerical,
+        first_failed_physical_criterion=first_failed_physical,
+        kkt_dimension=kkt_dimension,
+        kkt_rank=kkt_rank,
+        condition_number_inf=_optional_float(native, "condition_number_inf"),
+        active_lower_bounds=_index_tuple(native["active_lower_bounds"], "active lower bounds"),
+        active_upper_bounds=_index_tuple(native["active_upper_bounds"], "active upper bounds"),
+        active_constraint_bounds=_index_tuple(
+            native["active_constraint_bounds"], "active constraint bounds"
+        ),
+        active_trace_species=_index_tuple(
+            sensitivities["active_trace_species"], "active trace species"
+        ),
+        chart_topology=str(sensitivities["chart_topology"]),
+        reduced_hessian_status=str(native["reduced_hessian_status"]),
+        reduced_hessian=reduced_hessian,
+        reduced_hessian_nullspace_basis=reduced_hessian_nullspace_basis,
+        reduced_hessian_nullspace_shape=reduced_hessian_nullspace_shape,
+        reduced_hessian_eigenvalues=reduced_hessian_eigenvalues,
+        reduced_hessian_spectrum_status=spectrum_status,
+        reduced_hessian_raw_inertia=reduced_raw_inertia,
+        reduced_hessian_inertia=reduced_inertia,
+        reduced_hessian_scale=_optional_float(native, "reduced_hessian_scale"),
+        reduced_hessian_eigenvalue_tolerance=tolerance,
+        objective_gradient=objective_gradient,
+        constraint_values=constraint_values,
+        constraint_jacobian=constraint_jacobian,
+        lagrangian_gradient=lagrangian_gradient,
+        equality_multipliers=equality_multipliers,
+        chart_stationarity_inf_norm=_optional_float(native, "chart_stationarity_inf_norm"),
+        lagrangian_hessian=lagrangian_hessian,
+        covariant_lagrangian_hessian=covariant_lagrangian_hessian,
+        derivative_coordinate_order=derivative_coordinate_order,
+        derivative_objective_basis=str(native["derivative_objective_basis"]),
+        derivative_constraint_basis=str(native["derivative_constraint_basis"]),
+        derivative_constraint_order=derivative_constraint_order,
+        objective_gradient_shape=objective_gradient_shape,
+        constraint_jacobian_shape=constraint_jacobian_shape,
+        lagrangian_hessian_shape=lagrangian_hessian_shape,
+        kkt_root_jacobian=kkt_root_jacobian,
+        kkt_root_shape=kkt_root_shape,
+        kkt_root_status=kkt_root_status,
         reference_representation_residual_inf_norm=_optional_float(
             native, "reference_representation_residual_inf_norm"
         )
@@ -2058,10 +2419,7 @@ def chemical_equilibrium(
 
     try:
         if not bool(native["accepted"]):
-            reason = str(native["callback_error"]) or (
-                f"chemical equilibrium was not certified: "
-                f"{diagnostics.chemical_certification_level}"
-            )
+            reason = diagnostics.failure_reason or str(native["callback_error"])
             raise ChemicalEquilibriumError(reason, diagnostics)
         if provider_fingerprint is not None and (
             str(native["parameter_fingerprint"]) != provider_fingerprint

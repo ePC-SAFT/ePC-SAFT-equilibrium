@@ -42,6 +42,22 @@ double numerical_tolerance(double scale, std::size_t dimension) {
         * std::max(1.0, scale) * static_cast<double>(std::max<std::size_t>(1, dimension));
 }
 
+bool within_relative_precision(
+    double residual,
+    double scale,
+    std::size_t dimension
+) {
+    if (residual == 0.0) {
+        return true;
+    }
+    if (!std::isfinite(residual) || !std::isfinite(scale) || scale <= 0.0) {
+        return false;
+    }
+    return std::abs(residual / scale)
+        <= kResidualMultiplier * std::numeric_limits<double>::epsilon()
+            * static_cast<double>(std::max<std::size_t>(1, dimension));
+}
+
 double row_dot(const std::vector<double>& left, const std::vector<double>& right) {
     if (left.size() != right.size()) {
         throw std::invalid_argument("row dimensions do not match");
@@ -83,7 +99,14 @@ std::vector<std::vector<double>> orthonormal_rows(
     std::vector<std::vector<double>> result;
     result.reserve(rows.size());
     for (const std::vector<double>& row : rows) {
+        const double scale = row_norm(row);
+        if (!std::isfinite(scale) || scale == 0.0) {
+            throw std::invalid_argument("row basis is numerically deficient");
+        }
         std::vector<double> residual = row;
+        for (double& value : residual) {
+            value /= scale;
+        }
         for (int pass = 0; pass < 2; ++pass) {
             for (const std::vector<double>& basis : result) {
                 const double projection = row_dot(residual, basis);
@@ -184,7 +207,13 @@ RowQr factor_row_basis(const DenseMatrix& basis) {
             }
         }
         const double diagonal = row_norm(residual);
-        if (diagonal <= numerical_tolerance(1.0, basis.columns)) {
+        const double source_norm = row_norm(matrix_row(basis, column));
+        const double relative_tolerance = kResidualMultiplier
+            * std::numeric_limits<double>::epsilon()
+            * source_norm
+            * static_cast<double>(std::max<std::size_t>(1, basis.columns));
+        if (!std::isfinite(diagonal) || source_norm == 0.0
+            || diagonal <= relative_tolerance) {
             throw std::invalid_argument("reaction matrix rank is deficient");
         }
         result.upper(column, column) = diagonal;
@@ -259,14 +288,28 @@ double charge_reaction_inf_norm(
     const std::vector<int>& charges,
     const DenseMatrix& reaction_matrix
 ) {
+    double charge_scale_squared = 0.0;
+    for (int charge : charges) {
+        charge_scale_squared += static_cast<double>(charge * charge);
+    }
+    const double charge_scale = std::sqrt(charge_scale_squared);
+    if (charge_scale == 0.0) {
+        return 0.0;
+    }
     double norm = 0.0;
     for (std::size_t reaction = 0; reaction < reaction_matrix.rows; ++reaction) {
+        const double reaction_scale = row_norm(matrix_row(reaction_matrix, reaction));
+        if (reaction_scale == 0.0) {
+            return std::numeric_limits<double>::infinity();
+        }
         double value = 0.0;
         for (std::size_t species = 0; species < reaction_matrix.columns; ++species) {
             value += static_cast<double>(charges[species])
                 * reaction_matrix(reaction, species);
         }
-        norm = std::max(norm, std::abs(value));
+        norm = std::max(
+            norm, std::abs(value) / (charge_scale * reaction_scale)
+        );
     }
     return norm;
 }
@@ -347,20 +390,34 @@ double reaction_conservation_inf_norm(
     const DenseMatrix& balance_matrix,
     const DenseMatrix& reaction_matrix
 ) {
+    const double mass_scale = row_norm(molar_masses);
     double norm = 0.0;
     for (std::size_t reaction = 0; reaction < reaction_matrix.rows; ++reaction) {
+        const double reaction_scale = row_norm(matrix_row(reaction_matrix, reaction));
+        if (reaction_scale == 0.0 || mass_scale == 0.0) {
+            return std::numeric_limits<double>::infinity();
+        }
         double mass_value = 0.0;
         for (std::size_t species = 0; species < reaction_matrix.columns; ++species) {
             mass_value += molar_masses[species] * reaction_matrix(reaction, species);
         }
-        norm = std::max(norm, std::abs(mass_value));
+        norm = std::max(
+            norm, std::abs(mass_value) / (mass_scale * reaction_scale)
+        );
         for (std::size_t balance = 0; balance < balance_matrix.rows; ++balance) {
+            const double balance_scale = row_norm(matrix_row(balance_matrix, balance));
+            if (balance_scale == 0.0) {
+                continue;
+            }
             double balance_value = 0.0;
             for (std::size_t species = 0; species < reaction_matrix.columns; ++species) {
                 balance_value += balance_matrix(balance, species)
                     * reaction_matrix(reaction, species);
             }
-            norm = std::max(norm, std::abs(balance_value));
+            norm = std::max(
+                norm,
+                std::abs(balance_value) / (balance_scale * reaction_scale)
+            );
         }
     }
     return norm;
@@ -469,8 +526,34 @@ std::vector<double> multiply_matrix_vector(
 
 DenseMatrix nullspace_basis(const DenseMatrix& matrix) {
     DenseMatrix reduced = matrix;
+    std::vector<double> column_scales(matrix.columns, 1.0);
+    for (std::size_t column = 0; column < matrix.columns; ++column) {
+        double scale_squared = 0.0;
+        for (std::size_t row = 0; row < matrix.rows; ++row) {
+            scale_squared += matrix(row, column) * matrix(row, column);
+        }
+        const double scale = std::sqrt(scale_squared);
+        if (std::isfinite(scale) && scale > 0.0) {
+            column_scales[column] = scale;
+            for (std::size_t row = 0; row < matrix.rows; ++row) {
+                reduced(row, column) /= scale;
+            }
+        }
+    }
+    for (std::size_t row = 0; row < reduced.rows; ++row) {
+        double scale_squared = 0.0;
+        for (std::size_t column = 0; column < reduced.columns; ++column) {
+            scale_squared += reduced(row, column) * reduced(row, column);
+        }
+        const double scale = std::sqrt(scale_squared);
+        if (std::isfinite(scale) && scale > 0.0) {
+            for (std::size_t column = 0; column < reduced.columns; ++column) {
+                reduced(row, column) /= scale;
+            }
+        }
+    }
     const double tolerance = numerical_tolerance(
-        matrix_scale(matrix), std::max(matrix.rows, matrix.columns)
+        1.0, std::max(matrix.rows, matrix.columns)
     );
     std::vector<std::size_t> pivot_columns;
     std::size_t pivot_row = 0;
@@ -522,6 +605,18 @@ DenseMatrix nullspace_basis(const DenseMatrix& matrix) {
         for (std::size_t row = 0; row < pivot_columns.size(); ++row) {
             vector[pivot_columns[row]] = -reduced(row, free_column);
         }
+        for (std::size_t column = 0; column < vector.size(); ++column) {
+            vector[column] /= column_scales[column];
+        }
+        const double scale = row_norm(vector);
+        if (!std::isfinite(scale) || scale == 0.0) {
+            throw std::invalid_argument(
+                "accessible reaction null-space basis is numerically deficient"
+            );
+        }
+        for (double& value : vector) {
+            value /= scale;
+        }
         rows.push_back(std::move(vector));
     }
     return matrix_from_rows(rows);
@@ -533,11 +628,21 @@ double removed_species_residual(
 ) {
     double result = 0.0;
     for (std::size_t reaction = 0; reaction < full_reaction_matrix.rows; ++reaction) {
+        const double reaction_scale = row_norm(
+            matrix_row(full_reaction_matrix, reaction)
+        );
+        double removed_scale_squared = 0.0;
         for (std::size_t species : removed_species) {
-            result = std::max(
-                result, std::abs(full_reaction_matrix(reaction, species))
-            );
+            const double value = full_reaction_matrix(reaction, species);
+            removed_scale_squared += value * value;
         }
+        const double removed_scale = std::sqrt(removed_scale_squared);
+        result = std::max(
+            result,
+            reaction_scale > 0.0
+                ? removed_scale / reaction_scale
+                : removed_scale
+        );
     }
     return result;
 }
@@ -602,9 +707,7 @@ CompiledReactionSystem compile_accessible_face(
     const double removed_residual = removed_species_residual(
         accessible_full_reactions, system.removed_species_indices
     );
-    if (removed_residual > numerical_tolerance(
-            matrix_scale(system.reaction_matrix), system.species_count
-        )) {
+    if (removed_residual > numerical_tolerance(1.0, system.species_count)) {
         throw std::invalid_argument(
             "accessible reaction transform does not cancel removed species"
         );
@@ -662,11 +765,7 @@ CompiledReactionSystem compile_accessible_face(
         molar_masses, balance_matrix, accessible_reactions
     );
     if (conservation_norm > numerical_tolerance(
-            std::max(
-                *std::max_element(molar_masses.begin(), molar_masses.end()),
-                matrix_scale(balance_matrix)
-            ) * matrix_scale(accessible_reactions),
-            system.retained_species_indices.size()
+            1.0, system.retained_species_indices.size()
         )) {
         throw std::invalid_argument(
             "accessible reaction stoichiometry does not conserve balances"
@@ -676,7 +775,7 @@ CompiledReactionSystem compile_accessible_face(
         charges, accessible_reactions
     );
     if (charge_norm > numerical_tolerance(
-            matrix_scale(accessible_reactions), system.retained_species_indices.size()
+            1.0, system.retained_species_indices.size()
         )) {
         throw std::invalid_argument(
             "accessible reaction stoichiometry does not conserve charge"
@@ -688,10 +787,12 @@ CompiledReactionSystem compile_accessible_face(
     const double reference_residual = reconstruction.residual;
     double ln_k_scale = 0.0;
     for (double value : accessible_ln_k) {
-        ln_k_scale = std::max(ln_k_scale, std::abs(value));
+        ln_k_scale += std::abs(value);
     }
-    if (reference_residual > numerical_tolerance(
-            ln_k_scale, system.retained_species_indices.size()
+    if (!within_relative_precision(
+            reference_residual,
+            ln_k_scale,
+            system.retained_species_indices.size()
         )) {
         throw std::invalid_argument(
             "accessible chemical reference reconstruction is inconsistent"
@@ -748,11 +849,16 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     require_finite_vector(input.molar_masses_kg_per_mol, "molar masses");
     for (std::size_t row = 0; row < input.balance_matrix.rows; ++row) {
         double total = 0.0;
+        double total_scale = std::abs(input.conserved_totals[row]);
         for (std::size_t species = 0; species < species_count; ++species) {
-            total += input.balance_matrix(row, species) * input.feed_amounts[species];
+            const double contribution =
+                input.balance_matrix(row, species) * input.feed_amounts[species];
+            total += contribution;
+            total_scale += std::abs(contribution);
         }
-        if (std::abs(total - input.conserved_totals[row])
-            > numerical_tolerance(std::abs(total), species_count)) {
+        if (!within_relative_precision(
+                total - input.conserved_totals[row], total_scale, species_count
+            )) {
             throw std::invalid_argument(
                 "declared conserved totals do not match the feed basis"
             );
@@ -775,15 +881,7 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
         input.balance_matrix,
         input.reaction_matrix
     );
-    const double molar_mass_scale = *std::max_element(
-        input.molar_masses_kg_per_mol.begin(),
-        input.molar_masses_kg_per_mol.end()
-    );
-    const double conservation_tolerance = numerical_tolerance(
-        std::max(molar_mass_scale, matrix_scale(input.balance_matrix))
-            * matrix_scale(input.reaction_matrix),
-        species_count
-    );
+    const double conservation_tolerance = numerical_tolerance(1.0, species_count);
     if (conservation_norm > conservation_tolerance) {
         throw std::invalid_argument(
             "reaction stoichiometry does not conserve molar mass and the balance matrix"
@@ -801,7 +899,7 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     const double reaction_charge_norm = charge_reaction_inf_norm(
         input.charges, input.reaction_matrix
     );
-    if (reaction_charge_norm > numerical_tolerance(matrix_scale(input.reaction_matrix), species_count)) {
+    if (reaction_charge_norm > numerical_tolerance(1.0, species_count)) {
         throw std::invalid_argument("reaction stoichiometry does not conserve charge");
     }
 
@@ -820,10 +918,6 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     for (std::size_t row : reaction_basis_rows) {
         independent_ln_k.push_back(input.ln_k[row]);
     }
-    const double ln_k_scale = std::abs(*std::max_element(
-        input.ln_k.begin(), input.ln_k.end(),
-        [](double left, double right) { return std::abs(left) < std::abs(right); }
-    ));
     for (std::size_t supplied = 0; supplied < input.reaction_matrix.rows; ++supplied) {
         const std::vector<double> coordinates = row_coordinates(
             matrix_row(input.reaction_matrix, supplied), reaction_factor
@@ -837,8 +931,11 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
             reaction_residual = std::max(reaction_residual, std::abs(value));
         }
         double constant_residual = -input.ln_k[supplied];
+        double constant_scale = std::abs(input.ln_k[supplied]);
         for (std::size_t basis = 0; basis < coordinates.size(); ++basis) {
-            constant_residual += coordinates[basis] * independent_ln_k[basis];
+            const double contribution = coordinates[basis] * independent_ln_k[basis];
+            constant_residual += contribution;
+            constant_scale += std::abs(contribution);
         }
         const std::size_t dimension = std::max(
             input.reaction_matrix.rows, species_count
@@ -848,8 +945,8 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
             )) {
             throw std::invalid_argument("reaction matrix rank reduction is inconsistent");
         }
-        if (std::abs(constant_residual) > numerical_tolerance(
-                ln_k_scale, dimension
+        if (!within_relative_precision(
+                constant_residual, constant_scale, dimension
             )) {
             throw std::invalid_argument(
                 "reaction constant cycle is inconsistent after Provider-basis conversion"
@@ -880,7 +977,13 @@ CompiledReactionSystem compile_reaction_system(const ReactionSystemInput& input)
     );
 
     const double reference_residual = reconstruction.residual;
-    if (reference_residual > numerical_tolerance(ln_k_scale, species_count)) {
+    const double independent_ln_k_scale = std::accumulate(
+        independent_ln_k.begin(), independent_ln_k.end(), 0.0,
+        [](double scale, double value) { return scale + std::abs(value); }
+    );
+    if (!within_relative_precision(
+            reference_residual, independent_ln_k_scale, species_count
+        )) {
         throw std::invalid_argument("standard chemical reference reconstruction is inconsistent");
     }
 

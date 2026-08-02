@@ -146,6 +146,20 @@ double reaction_residual_inf_norm(
     return result;
 }
 
+std::vector<double> reaction_residuals(
+    const DenseMatrix& reactions,
+    const std::vector<double>& potentials
+) {
+    std::vector<double> result(reactions.rows, 0.0);
+    for (std::size_t reaction = 0; reaction < reactions.rows; ++reaction) {
+        for (std::size_t species = 0; species < reactions.columns; ++species) {
+            result[reaction] += reactions(reaction, species) * potentials[species];
+        }
+        result[reaction] /= matrix_row_l2_norm(reactions, reaction);
+    }
+    return result;
+}
+
 bool add_independent_row(
     const std::vector<double>& row,
     std::vector<std::vector<double>>& orthonormal_basis
@@ -154,22 +168,27 @@ bool add_independent_row(
     const double original_norm = std::sqrt(std::inner_product(
         row.begin(), row.end(), row.begin(), 0.0
     ));
-    if (original_norm == 0.0) {
+    if (!std::isfinite(original_norm) || original_norm == 0.0) {
         return false;
     }
-    for (const std::vector<double>& basis : orthonormal_basis) {
-        const double projection = std::inner_product(
-            residual.begin(), residual.end(), basis.begin(), 0.0
-        );
-        for (std::size_t column = 0; column < residual.size(); ++column) {
-            residual[column] -= projection * basis[column];
+    for (double& value : residual) {
+        value /= original_norm;
+    }
+    for (int pass = 0; pass < 2; ++pass) {
+        for (const std::vector<double>& basis : orthonormal_basis) {
+            const double projection = std::inner_product(
+                residual.begin(), residual.end(), basis.begin(), 0.0
+            );
+            for (std::size_t column = 0; column < residual.size(); ++column) {
+                residual[column] -= projection * basis[column];
+            }
         }
     }
     const double residual_norm = std::sqrt(std::inner_product(
         residual.begin(), residual.end(), residual.begin(), 0.0
     ));
     if (residual_norm <= 4096.0 * std::numeric_limits<double>::epsilon()
-            * std::max(1.0, original_norm) * static_cast<double>(row.size())) {
+            * static_cast<double>(row.size())) {
         return false;
     }
     for (double& value : residual) {
@@ -182,7 +201,28 @@ bool add_independent_row(
 struct ConstraintRows {
     DenseMatrix matrix;
     std::vector<double> totals;
+    std::vector<double> source_row_scales;
 };
+
+ConstraintRows normalized_constraint_rows(
+    const DenseMatrix& matrix,
+    const std::vector<double>& totals
+) {
+    if (matrix.rows != totals.size()) {
+        throw std::invalid_argument("balance row and total dimensions are inconsistent");
+    }
+    ConstraintRows result{matrix, totals, {}};
+    result.source_row_scales.reserve(matrix.rows);
+    for (std::size_t row = 0; row < matrix.rows; ++row) {
+        const double scale = matrix_row_l2_norm(matrix, row);
+        result.source_row_scales.push_back(scale);
+        result.totals[row] /= scale;
+        for (std::size_t column = 0; column < matrix.columns; ++column) {
+            result.matrix(row, column) /= scale;
+        }
+    }
+    return result;
+}
 
 ConstraintRows independent_max_min_rows(
     const DenseMatrix& balance_matrix,
@@ -214,7 +254,7 @@ ConstraintRows independent_max_min_rows(
         result.totals.push_back(0.0);
     }
     result.matrix.rows = result.totals.size();
-    return result;
+    return normalized_constraint_rows(result.matrix, result.totals);
 }
 
 struct LinearInitialization {
@@ -458,6 +498,7 @@ struct ReactionNlpEvaluation {
     std::vector<double> constraints;
     std::vector<double> jacobian;
     std::vector<double> lagrangian_hessian;
+    std::vector<double> stationary_lagrangian_hessian;
     AmountChartEvaluation amount_chart;
     PhaseBlockEvaluation phase;
     std::vector<double> constraint_lower;
@@ -687,6 +728,11 @@ ReactionNlpEvaluation evaluate_reaction_nlp(
             }
         }
     }
+    // This congruence is the coordinate-covariant second variation of the
+    // physical Lagrangian.  The chart-connection terms added below vanish at
+    // an exact stationary point, but can otherwise manufacture curvature from
+    // a small physical residual amplified by a log/inverse-packing chart.
+    result.stationary_lagrangian_hessian = result.lagrangian_hessian;
     for (std::size_t species = 0; species < g_ref.size(); ++species) {
         const double component_weight = physical_lagrangian_gradient[species];
         for (std::size_t row = 0; row < amount_dimension; ++row) {
@@ -1549,11 +1595,14 @@ ChemicalSensitivityResult evaluate_implicit_sensitivities(
         if (parameter < balances.matrix.rows) {
             const double total = balances.totals[parameter];
             const double scale = std::max(1.0, std::abs(total));
-            right_hand_side[parameter] = 1.0 / scale;
+            const double source_row_scale = balances.source_row_scales.empty()
+                ? 1.0
+                : balances.source_row_scales[parameter];
+            right_hand_side[parameter] = 1.0 / (source_row_scale * scale);
             if (std::abs(total) > 1.0) {
                 right_hand_side[parameter] +=
                     evaluation.constraints[parameter] * std::copysign(1.0, total)
-                    / scale;
+                    / (source_row_scale * scale);
             }
         } else if (parameter < balances.matrix.rows + reactions.rows) {
             const std::size_t reaction = parameter - balances.matrix.rows;
@@ -2126,7 +2175,29 @@ std::vector<std::vector<double>> nullspace_basis(
     std::size_t rows,
     std::size_t columns
 ) {
+    if (matrix.size() != rows * columns
+        || !std::all_of(matrix.begin(), matrix.end(), [](double value) {
+            return std::isfinite(value);
+        })) {
+        throw std::invalid_argument("null-space matrix dimensions are invalid");
+    }
     std::vector<double> rref = matrix;
+    for (std::size_t row = 0; row < rows; ++row) {
+        double row_scale = 0.0;
+        for (std::size_t column = 0; column < columns; ++column) {
+            row_scale = std::max(
+                row_scale, std::abs(rref[row * columns + column])
+            );
+        }
+        if (row_scale > 0.0) {
+            for (std::size_t column = 0; column < columns; ++column) {
+                rref[row * columns + column] /= row_scale;
+            }
+        }
+    }
+    const double pivot_tolerance =
+        4096.0 * std::numeric_limits<double>::epsilon()
+        * static_cast<double>(std::max(rows, columns));
     std::vector<std::size_t> pivot_columns;
     std::size_t pivot_row = 0;
     for (std::size_t column = 0; column < columns && pivot_row < rows; ++column) {
@@ -2137,7 +2208,7 @@ std::vector<std::vector<double>> nullspace_basis(
                 pivot = row;
             }
         }
-        if (std::abs(rref[pivot * columns + column]) <= 1.0e-10) {
+        if (std::abs(rref[pivot * columns + column]) <= pivot_tolerance) {
             continue;
         }
         for (std::size_t entry = 0; entry < columns; ++entry) {
@@ -2185,6 +2256,9 @@ std::vector<std::vector<double>> nullspace_basis(
         const double norm = std::sqrt(std::inner_product(
             vector.begin(), vector.end(), vector.begin(), 0.0
         ));
+        if (!std::isfinite(norm) || norm <= pivot_tolerance) {
+            throw std::domain_error("null-space orthogonalization lost rank");
+        }
         for (double& value : vector) {
             value /= norm;
         }
@@ -2193,39 +2267,138 @@ std::vector<std::vector<double>> nullspace_basis(
     return basis;
 }
 
+std::vector<double> recompute_chart_equality_multipliers(
+    const ReactionNlpEvaluation& evaluation,
+    std::size_t equality_count
+);
+
 std::vector<double> recompute_equality_multipliers(
     const ConstraintRows& balances,
     const std::vector<double>& potentials
 ) {
-    const std::size_t equality_count = balances.matrix.rows;
     if (balances.matrix.columns != potentials.size()) {
         throw std::invalid_argument("equality multiplier dimensions are inconsistent");
     }
-    std::vector<double> gram(equality_count * equality_count, 0.0);
-    std::vector<double> right_hand_side(equality_count, 0.0);
+    ReactionNlpEvaluation evaluation;
+    evaluation.gradient = potentials;
+    evaluation.jacobian = balances.matrix.values;
+    return recompute_chart_equality_multipliers(
+        evaluation, balances.matrix.rows
+    );
+}
+
+std::vector<double> recompute_chart_equality_multipliers(
+    const ReactionNlpEvaluation& evaluation,
+    std::size_t equality_count
+) {
+    const std::size_t dimension = evaluation.gradient.size();
+    if (evaluation.jacobian.size() < equality_count * dimension) {
+        throw std::invalid_argument("chart equality multiplier dimensions are inconsistent");
+    }
+    if (equality_count > dimension) {
+        throw std::domain_error(
+            "rank deficiency: equality Jacobian has more rows than coordinates"
+        );
+    }
+    std::vector<double> row_norms(equality_count, 0.0);
+    std::vector<double> orthonormal_rows(equality_count * dimension, 0.0);
+    std::vector<double> upper(equality_count * equality_count, 0.0);
+    const double rank_tolerance =
+        4096.0 * std::numeric_limits<double>::epsilon()
+        * static_cast<double>(std::max(equality_count, dimension));
     for (std::size_t row = 0; row < equality_count; ++row) {
-        for (std::size_t other = 0; other < equality_count; ++other) {
-            for (std::size_t species = 0; species < potentials.size(); ++species) {
-                gram[row * equality_count + other] +=
-                    balances.matrix(row, species)
-                    * balances.matrix(other, species);
+        double norm_squared = 0.0;
+        for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+            const double value = evaluation.jacobian[
+                row * dimension + coordinate
+            ];
+            norm_squared += value * value;
+        }
+        row_norms[row] = std::sqrt(norm_squared);
+        if (!std::isfinite(row_norms[row]) || row_norms[row] == 0.0) {
+            throw std::domain_error(
+                "rank deficiency: equality Jacobian contains a zero row"
+            );
+        }
+        std::vector<double> vector(dimension, 0.0);
+        for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+            vector[coordinate] = evaluation.jacobian[
+                row * dimension + coordinate
+            ] / row_norms[row];
+        }
+        // Twice-reorthogonalized modified Gram-Schmidt is deterministic here
+        // and avoids both the squared conditioning and absolute-scale pivot
+        // floor of the former J J^T normal-equation solve.
+        for (int pass = 0; pass < 2; ++pass) {
+            for (std::size_t prior = 0; prior < row; ++prior) {
+                double projection = 0.0;
+                for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+                    projection += orthonormal_rows[
+                        prior * dimension + coordinate
+                    ] * vector[coordinate];
+                }
+                upper[prior * equality_count + row] += projection;
+                for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+                    vector[coordinate] -= projection * orthonormal_rows[
+                        prior * dimension + coordinate
+                    ];
+                }
             }
         }
-        for (std::size_t species = 0; species < potentials.size(); ++species) {
-            right_hand_side[row] -=
-                balances.matrix(row, species) * potentials[species];
+        const double residual_norm = std::sqrt(std::inner_product(
+            vector.begin(), vector.end(), vector.begin(), 0.0
+        ));
+        if (!std::isfinite(residual_norm) || residual_norm <= rank_tolerance) {
+            throw std::domain_error(
+                "rank deficiency: equality Jacobian rows are dependent"
+            );
+        }
+        upper[row * equality_count + row] = residual_norm;
+        for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+            orthonormal_rows[row * dimension + coordinate] =
+                vector[coordinate] / residual_norm;
         }
     }
-    if (!solve_square_system(std::move(gram), right_hand_side)) {
-        throw std::domain_error("equality multiplier system is singular");
+    std::vector<double> scaled_multipliers(equality_count, 0.0);
+    for (std::size_t row = 0; row < equality_count; ++row) {
+        for (std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+            scaled_multipliers[row] -= orthonormal_rows[
+                row * dimension + coordinate
+            ] * evaluation.gradient[coordinate];
+        }
     }
-    return right_hand_side;
+    for (std::size_t offset = 0; offset < equality_count; ++offset) {
+        const std::size_t row = equality_count - 1 - offset;
+        for (std::size_t column = row + 1; column < equality_count; ++column) {
+            scaled_multipliers[row] -= upper[row * equality_count + column]
+                * scaled_multipliers[column];
+        }
+        scaled_multipliers[row] /= upper[row * equality_count + row];
+    }
+    for (std::size_t row = 0; row < equality_count; ++row) {
+        scaled_multipliers[row] /= row_norms[row];
+    }
+    return scaled_multipliers;
 }
 
 struct ReducedHessianAnalysis {
     bool positive = false;
     std::string status = "second_order_inconclusive";
     std::vector<double> negative_direction;
+    std::vector<double> reduced_hessian;
+    std::vector<double> nullspace_basis;
+    std::size_t nullspace_rows = 0;
+    std::size_t nullspace_columns = 0;
+    std::vector<double> eigenvalues;
+    std::string spectrum_status = "not_evaluated";
+    std::size_t raw_positive_eigenvalues = 0;
+    std::size_t raw_zero_eigenvalues = 0;
+    std::size_t raw_negative_eigenvalues = 0;
+    std::size_t positive_eigenvalues = 0;
+    std::size_t zero_eigenvalues = 0;
+    std::size_t negative_eigenvalues = 0;
+    double hessian_scale = std::numeric_limits<double>::quiet_NaN();
+    double eigenvalue_tolerance = std::numeric_limits<double>::quiet_NaN();
 };
 
 ReducedHessianAnalysis analyze_reduced_hessian(
@@ -2237,17 +2410,26 @@ ReducedHessianAnalysis analyze_reduced_hessian(
     const std::vector<std::vector<double>> basis = nullspace_basis(
         evaluation.jacobian, constraint_count, dimension
     );
+    result.nullspace_rows = basis.size();
+    result.nullspace_columns = dimension;
+    for (const std::vector<double>& row : basis) {
+        result.nullspace_basis.insert(
+            result.nullspace_basis.end(), row.begin(), row.end()
+        );
+    }
     if (basis.empty()) {
         result.positive = true;
         result.status = "certified_local_minimum";
         return result;
     }
+    const std::vector<double>& certification_hessian =
+        evaluation.lagrangian_hessian;
     double hessian_scale = 1.0;
     for (std::size_t row = 0; row < dimension; ++row) {
         double row_sum = 0.0;
         for (std::size_t column = 0; column < dimension; ++column) {
             row_sum += std::abs(
-                evaluation.lagrangian_hessian[row * dimension + column]
+                certification_hessian[row * dimension + column]
             );
         }
         hessian_scale = std::max(hessian_scale, row_sum);
@@ -2258,12 +2440,15 @@ ReducedHessianAnalysis analyze_reduced_hessian(
             for (std::size_t left = 0; left < dimension; ++left) {
                 for (std::size_t right = 0; right < dimension; ++right) {
                     reduced[row * basis.size() + column] += basis[row][left]
-                        * evaluation.lagrangian_hessian[left * dimension + right]
+                        * certification_hessian[left * dimension + right]
                         * basis[column][right];
                 }
             }
         }
     }
+    result.hessian_scale = hessian_scale;
+    result.eigenvalue_tolerance = 1.0e-10 * hessian_scale;
+    result.reduced_hessian = reduced;
     auto certified_direction = [&](const std::vector<double>& direction) {
         if (direction.size() != basis.size()) {
             return std::vector<double>{};
@@ -2281,7 +2466,7 @@ ReducedHessianAnalysis analyze_reduced_hessian(
         for (std::size_t left = 0; left < dimension; ++left) {
             for (std::size_t right = 0; right < dimension; ++right) {
                 curvature += physical_direction[left]
-                    * evaluation.lagrangian_hessian[left * dimension + right]
+                    * certification_hessian[left * dimension + right]
                     * physical_direction[right];
             }
         }
@@ -2296,7 +2481,7 @@ ReducedHessianAnalysis analyze_reduced_hessian(
             return std::vector<double>{};
         }
         curvature /= norm * norm;
-        if (curvature >= -1.0e-10 * hessian_scale) {
+        if (curvature >= -result.eigenvalue_tolerance) {
             return std::vector<double>{};
         }
         for (double& value : physical_direction) {
@@ -2304,18 +2489,110 @@ ReducedHessianAnalysis analyze_reduced_hessian(
         }
         return physical_direction;
     };
-    std::vector<double> diagonal_scales(basis.size(), 0.0);
-    for (std::size_t index = 0; index < basis.size(); ++index) {
-        const double diagonal = reduced[index * basis.size() + index];
+    const std::size_t reduced_dimension = basis.size();
+    std::vector<double> diagonalized = reduced;
+    const std::size_t sweep_limit = 50 * reduced_dimension * reduced_dimension;
+    bool spectrum_converged = reduced_dimension <= 1;
+    for (std::size_t sweep = 0; sweep < sweep_limit; ++sweep) {
+        std::size_t pivot_row = 0;
+        std::size_t pivot_column = 0;
+        double largest = 0.0;
+        for (std::size_t row = 0; row < reduced_dimension; ++row) {
+            for (std::size_t column = row + 1;
+                 column < reduced_dimension;
+                 ++column) {
+                const double magnitude = std::abs(
+                    diagonalized[row * reduced_dimension + column]
+                );
+                if (magnitude > largest) {
+                    largest = magnitude;
+                    pivot_row = row;
+                    pivot_column = column;
+                }
+            }
+        }
+        if (largest <= std::numeric_limits<double>::epsilon() * hessian_scale) {
+            spectrum_converged = true;
+            break;
+        }
+        const double app = diagonalized[
+            pivot_row * reduced_dimension + pivot_row
+        ];
+        const double aqq = diagonalized[
+            pivot_column * reduced_dimension + pivot_column
+        ];
+        const double apq = diagonalized[
+            pivot_row * reduced_dimension + pivot_column
+        ];
+        const double angle = 0.5 * std::atan2(2.0 * apq, aqq - app);
+        const double cosine = std::cos(angle);
+        const double sine = std::sin(angle);
+        for (std::size_t index = 0; index < reduced_dimension; ++index) {
+            if (index == pivot_row || index == pivot_column) {
+                continue;
+            }
+            const double aip = diagonalized[
+                index * reduced_dimension + pivot_row
+            ];
+            const double aiq = diagonalized[
+                index * reduced_dimension + pivot_column
+            ];
+            const double rotated_p = cosine * aip - sine * aiq;
+            const double rotated_q = sine * aip + cosine * aiq;
+            diagonalized[index * reduced_dimension + pivot_row] = rotated_p;
+            diagonalized[pivot_row * reduced_dimension + index] = rotated_p;
+            diagonalized[index * reduced_dimension + pivot_column] = rotated_q;
+            diagonalized[pivot_column * reduced_dimension + index] = rotated_q;
+        }
+        diagonalized[pivot_row * reduced_dimension + pivot_row] =
+            cosine * cosine * app - 2.0 * sine * cosine * apq
+            + sine * sine * aqq;
+        diagonalized[pivot_column * reduced_dimension + pivot_column] =
+            sine * sine * app + 2.0 * sine * cosine * apq
+            + cosine * cosine * aqq;
+        diagonalized[pivot_row * reduced_dimension + pivot_column] = 0.0;
+        diagonalized[pivot_column * reduced_dimension + pivot_row] = 0.0;
+    }
+    result.spectrum_status = spectrum_converged ? "converged" : "not_converged";
+    result.eigenvalues.reserve(reduced_dimension);
+    for (std::size_t index = 0; index < reduced_dimension; ++index) {
+        result.eigenvalues.push_back(
+            diagonalized[index * reduced_dimension + index]
+        );
+    }
+    std::sort(result.eigenvalues.begin(), result.eigenvalues.end());
+    for (const double eigenvalue : result.eigenvalues) {
+        if (!std::isfinite(eigenvalue)) {
+            result.eigenvalues.clear();
+            result.spectrum_status = "nonfinite";
+            return result;
+        }
+        if (eigenvalue < -result.eigenvalue_tolerance) {
+            ++result.raw_negative_eigenvalues;
+        } else if (eigenvalue > result.eigenvalue_tolerance) {
+            ++result.raw_positive_eigenvalues;
+        } else {
+            ++result.raw_zero_eigenvalues;
+        }
+    }
+    result.positive_eigenvalues = result.raw_positive_eigenvalues;
+    result.zero_eigenvalues = result.raw_zero_eigenvalues;
+    result.negative_eigenvalues = result.raw_negative_eigenvalues;
+    // Preserve the established scale-invariant certification test.  The raw
+    // spectrum above is diagnostic evidence; it is not a substitute for the
+    // diagonally equilibrated second-order test when chart coordinates span
+    // many orders of magnitude.
+    std::vector<double> scaled_reduced = reduced;
+    std::vector<double> diagonal_scales(reduced_dimension, 0.0);
+    for (std::size_t index = 0; index < reduced_dimension; ++index) {
+        const double diagonal = scaled_reduced[
+            index * reduced_dimension + index
+        ];
         if (!std::isfinite(diagonal) || diagonal <= 0.0) {
             if (std::isfinite(diagonal) && diagonal < 0.0) {
-                result.negative_direction = certified_direction(
-                    [&] {
-                        std::vector<double> direction(basis.size(), 0.0);
-                        direction[index] = 1.0;
-                        return direction;
-                    }()
-                );
+                std::vector<double> direction(reduced_dimension, 0.0);
+                direction[index] = 1.0;
+                result.negative_direction = certified_direction(direction);
                 if (!result.negative_direction.empty()) {
                     result.status = "saddle_observed";
                 }
@@ -2324,71 +2601,105 @@ ReducedHessianAnalysis analyze_reduced_hessian(
         }
         diagonal_scales[index] = std::sqrt(diagonal);
     }
-    for (std::size_t row = 0; row < basis.size(); ++row) {
-        for (std::size_t column = 0; column < basis.size(); ++column) {
-            reduced[row * basis.size() + column] /=
+    for (std::size_t row = 0; row < reduced_dimension; ++row) {
+        for (std::size_t column = 0; column < reduced_dimension; ++column) {
+            scaled_reduced[row * reduced_dimension + column] /=
                 diagonal_scales[row] * diagonal_scales[column];
         }
     }
-    for (std::size_t column = 0; column < basis.size(); ++column) {
-        double diagonal = reduced[column * basis.size() + column];
+    for (std::size_t column = 0; column < reduced_dimension; ++column) {
+        double diagonal = scaled_reduced[
+            column * reduced_dimension + column
+        ];
         for (std::size_t prior = 0; prior < column; ++prior) {
-            const double value = reduced[column * basis.size() + prior];
+            const double value = scaled_reduced[
+                column * reduced_dimension + prior
+            ];
             diagonal -= value * value;
         }
         if (diagonal <= 1.0e-10) {
             if (std::isfinite(diagonal)) {
                 std::vector<double> right_hand_side(column, 0.0);
                 for (std::size_t row = 0; row < column; ++row) {
-                    double value = -reduced[row * basis.size() + column];
+                    double value = -scaled_reduced[
+                        row * reduced_dimension + column
+                    ];
                     for (std::size_t prior = 0; prior < row; ++prior) {
-                        value -= reduced[row * basis.size() + prior]
-                            * right_hand_side[prior];
+                        value -= scaled_reduced[
+                            row * reduced_dimension + prior
+                        ] * right_hand_side[prior];
                     }
-                    right_hand_side[row] = value
-                        / reduced[row * basis.size() + row];
+                    right_hand_side[row] = value / scaled_reduced[
+                        row * reduced_dimension + row
+                    ];
                 }
-                std::vector<double> reduced_direction(basis.size(), 0.0);
+                std::vector<double> reduced_direction(
+                    reduced_dimension, 0.0
+                );
                 for (std::size_t row = column; row-- > 0;) {
                     double value = right_hand_side[row];
-                    for (std::size_t next = row + 1; next < column; ++next) {
-                        value -= reduced[next * basis.size() + row]
-                            * reduced_direction[next];
+                    for (std::size_t next = row + 1;
+                         next < column;
+                         ++next) {
+                        value -= scaled_reduced[
+                            next * reduced_dimension + row
+                        ] * reduced_direction[next];
                     }
-                    reduced_direction[row] = value
-                        / reduced[row * basis.size() + row];
+                    reduced_direction[row] = value / scaled_reduced[
+                        row * reduced_dimension + row
+                    ];
                 }
                 reduced_direction[column] = 1.0;
-                for (std::size_t entry = 0; entry < basis.size(); ++entry) {
+                for (std::size_t entry = 0;
+                     entry < reduced_dimension;
+                     ++entry) {
                     reduced_direction[entry] /= diagonal_scales[entry];
                 }
-                result.negative_direction = certified_direction(reduced_direction);
+                result.negative_direction = certified_direction(
+                    reduced_direction
+                );
                 if (!result.negative_direction.empty()) {
                     result.status = "saddle_observed";
                 }
             }
             return result;
         }
-        reduced[column * basis.size() + column] = std::sqrt(diagonal);
-        for (std::size_t row = column + 1; row < basis.size(); ++row) {
-            double value = reduced[row * basis.size() + column];
+        scaled_reduced[column * reduced_dimension + column] =
+            std::sqrt(diagonal);
+        for (std::size_t row = column + 1;
+             row < reduced_dimension;
+             ++row) {
+            double value = scaled_reduced[
+                row * reduced_dimension + column
+            ];
             for (std::size_t prior = 0; prior < column; ++prior) {
-                value -= reduced[row * basis.size() + prior]
-                    * reduced[column * basis.size() + prior];
+                value -= scaled_reduced[row * reduced_dimension + prior]
+                    * scaled_reduced[column * reduced_dimension + prior];
             }
-            reduced[row * basis.size() + column] =
-                value / reduced[column * basis.size() + column];
+            scaled_reduced[row * reduced_dimension + column] =
+                value / scaled_reduced[
+                    column * reduced_dimension + column
+                ];
         }
     }
     result.positive = true;
     result.status = "certified_local_minimum";
+    // Sylvester inertia is invariant under the positive diagonal congruence
+    // used above.  A completed scaled Cholesky factor therefore certifies all
+    // reduced directions as positive even when raw chart eigenvalues span too
+    // many decades for a single unscaled zero threshold.
+    result.positive_eigenvalues = reduced_dimension;
+    result.zero_eigenvalues = 0;
+    result.negative_eigenvalues = 0;
     return result;
 }
 
 }  // namespace
 
 ManufacturedReducedHessianEvidence analyze_manufactured_reduced_hessian(
-    const std::vector<double>& hessian
+    const std::vector<double>& hessian,
+    const std::vector<double>& constraint_jacobian,
+    std::size_t constraint_count
 ) {
     const double dimension = std::sqrt(static_cast<double>(hessian.size()));
     const std::size_t coordinate_count = static_cast<std::size_t>(dimension);
@@ -2399,13 +2710,46 @@ ManufacturedReducedHessianEvidence analyze_manufactured_reduced_hessian(
         })) {
         throw std::invalid_argument("manufactured Hessian dimensions are invalid");
     }
+    if (constraint_count > coordinate_count
+        || constraint_jacobian.size() != constraint_count * coordinate_count
+        || !std::all_of(
+            constraint_jacobian.begin(),
+            constraint_jacobian.end(),
+            [](double value) { return std::isfinite(value); }
+        )) {
+        throw std::invalid_argument(
+            "manufactured constraint Jacobian dimensions are invalid"
+        );
+    }
     ReactionNlpEvaluation evaluation;
     evaluation.gradient.assign(coordinate_count, 0.0);
+    evaluation.jacobian = constraint_jacobian;
     evaluation.lagrangian_hessian = hessian;
-    const ReducedHessianAnalysis analysis = analyze_reduced_hessian(evaluation, 0);
+    const ReducedHessianAnalysis analysis = analyze_reduced_hessian(
+        evaluation, constraint_count
+    );
     ManufacturedReducedHessianEvidence result;
     result.positive = analysis.positive;
+    result.status = analysis.status;
     result.negative_direction = analysis.negative_direction;
+    result.reduced_hessian = analysis.reduced_hessian;
+    result.nullspace_basis = analysis.nullspace_basis;
+    result.nullspace_rows = analysis.nullspace_rows;
+    result.nullspace_columns = analysis.nullspace_columns;
+    result.eigenvalues = analysis.eigenvalues;
+    result.inertia = {
+        analysis.positive_eigenvalues,
+        analysis.zero_eigenvalues,
+        analysis.negative_eigenvalues,
+    };
+    result.raw_inertia = {
+        analysis.raw_positive_eigenvalues,
+        analysis.raw_zero_eigenvalues,
+        analysis.raw_negative_eigenvalues,
+    };
+    result.spectrum_status = analysis.spectrum_status;
+    result.hessian_scale = analysis.hessian_scale;
+    result.eigenvalue_tolerance = analysis.eigenvalue_tolerance;
     if (!result.negative_direction.empty()) {
         for (std::size_t left = 0; left < coordinate_count; ++left) {
             for (std::size_t right = 0; right < coordinate_count; ++right) {
@@ -2427,7 +2771,7 @@ std::vector<double> retract_manufactured_balance(
 ) {
     return balance_feasible_retraction(
         make_amount_chart(system.charges),
-        ConstraintRows{system.balance_matrix, system.balance_totals},
+        ConstraintRows{system.balance_matrix, system.balance_totals, {}},
         seed,
         lower,
         upper,
@@ -2659,6 +3003,52 @@ ChemicalSolveResult solve_reaction_attempt(
         system, gauge_coefficients
     );
     const AmountChart chart = make_amount_chart(system.charges);
+    if (chart.ionic()) {
+        result.derivative_coordinate_order.push_back("log_charge_equivalents");
+        for (std::size_t category = 0;
+             category + 1 < chart.cation_indices.size();
+             ++category) {
+            result.derivative_coordinate_order.push_back(
+                "cation_log_share_ratio:retained_species_index="
+                + std::to_string(chart.cation_indices[category])
+                + ":reference_retained_species_index="
+                + std::to_string(chart.cation_indices.back())
+            );
+        }
+        for (std::size_t category = 0;
+             category + 1 < chart.anion_indices.size();
+             ++category) {
+            result.derivative_coordinate_order.push_back(
+                "anion_log_share_ratio:retained_species_index="
+                + std::to_string(chart.anion_indices[category])
+                + ":reference_retained_species_index="
+                + std::to_string(chart.anion_indices.back())
+            );
+        }
+    }
+    for (const std::size_t species : chart.neutral_indices) {
+        result.derivative_coordinate_order.push_back(
+            "log_amount_mol:retained_species_index=" + std::to_string(species)
+        );
+    }
+    result.derivative_coordinate_order.push_back(
+        volume_transform != nullptr ? "log_packing_fraction" : "log_volume_m3"
+    );
+    for (std::size_t row = 0; row < system.balance_matrix.rows; ++row) {
+        result.derivative_constraint_order.push_back(
+            "balance_amount_mol:compiled_row=" + std::to_string(row)
+        );
+    }
+    if (domain.enforce_packing) {
+        result.derivative_constraint_order.push_back(
+            "packing_fraction:dimensionless"
+        );
+    }
+    if (std::isfinite(domain.total_ion_fraction_max)) {
+        result.derivative_constraint_order.push_back(
+            "total_ion_fraction_linearized_amount:mol"
+        );
+    }
     const std::vector<double>& initial_amounts = initialization.amounts;
     if (initial_amounts.size() != system.species_count
         || !std::all_of(initial_amounts.begin(), initial_amounts.end(), [](double amount) {
@@ -2768,7 +3158,9 @@ ChemicalSolveResult solve_reaction_attempt(
         lower.back() = std::log(initial_volume) - 30.0;
         upper.back() = std::log(initial_volume) + 30.0;
     }
-    const ConstraintRows balances{system.balance_matrix, system.balance_totals};
+    const ConstraintRows balances = normalized_constraint_rows(
+        system.balance_matrix, system.balance_totals
+    );
     auto* raw_problem = new ReactionTnlp(
         chart,
         balances,
@@ -2904,7 +3296,12 @@ ChemicalSolveResult solve_reaction_attempt(
     result.reaction_affinity_inf_norm = reaction_residual_inf_norm(
         system.reaction_matrix, potentials
     );
+    result.reaction_affinity_residuals = reaction_residuals(
+        system.reaction_matrix, potentials
+    );
     if (domain.enforce_packing || volume_transform != nullptr) {
+        result.packing_fraction_min = domain.packing_min;
+        result.packing_fraction_max = domain.packing_max;
         if (!evaluation.phase.has_packing) {
             result.provider_domain_status = "failed";
         } else {
@@ -2926,10 +3323,18 @@ ChemicalSolveResult solve_reaction_attempt(
                 ionic += result.amounts[species];
             }
         }
-        if (total <= 0.0 || ionic / total > domain.total_ion_fraction_max + 1.0e-12) {
+        result.total_ion_fraction = total > 0.0
+            ? ionic / total
+            : std::numeric_limits<double>::infinity();
+        result.total_ion_fraction_max = domain.total_ion_fraction_max;
+        if (total <= 0.0
+            || result.total_ion_fraction
+                > domain.total_ion_fraction_max + 1.0e-12) {
             result.provider_domain_status = "failed";
         }
     }
+    result.minimum_amount_mol = evaluation.amount_chart.minimum_amount;
+    result.trace_floor_mol = trace_floor;
     result.trace_status = evaluation.amount_chart.minimum_amount > trace_floor
         ? "interior"
         : "at_or_below_floor";
@@ -2953,6 +3358,12 @@ ChemicalSolveResult solve_reaction_attempt(
         sensitivity_interior = sensitivity_interior
             && variables[variable] - lower[variable] > kInactiveMargin
             && upper[variable] - variables[variable] > kInactiveMargin;
+        if (variables[variable] - lower[variable] <= kInactiveMargin) {
+            result.active_lower_bounds.push_back(variable);
+        }
+        if (upper[variable] - variables[variable] <= kInactiveMargin) {
+            result.active_upper_bounds.push_back(variable);
+        }
     }
     for (std::size_t row = balances.matrix.rows; row < evaluation.constraints.size(); ++row) {
         const double value = evaluation.constraints[row];
@@ -2991,6 +3402,7 @@ ChemicalSolveResult solve_reaction_attempt(
             active_constraint_bounds.push_back(row);
         }
     }
+    result.active_constraint_bounds = active_constraint_bounds;
     result.complementarity_inf_norm = complementarity;
     std::vector<double> equality_multipliers(
         reaction_constraint_count(balances, domain), 0.0
@@ -3002,7 +3414,9 @@ ChemicalSolveResult solve_reaction_attempt(
     ReactionNlpEvaluation equality_evaluation;
     try {
         const std::vector<double> recomputed =
-            recompute_equality_multipliers(balances, potentials);
+            recompute_chart_equality_multipliers(
+                evaluation, balances.matrix.rows
+            );
         physical_multipliers =
             recompute_equality_multipliers(physical_balances, potentials);
         std::copy(
@@ -3020,6 +3434,25 @@ ChemicalSolveResult solve_reaction_attempt(
             equality_multipliers,
             volume_transform
         );
+        result.objective_gradient = equality_evaluation.gradient;
+        result.constraint_values = equality_evaluation.constraints;
+        result.constraint_jacobian = equality_evaluation.jacobian;
+        result.equality_multipliers = equality_multipliers;
+        result.lagrangian_gradient = equality_evaluation.gradient;
+        for (std::size_t row = 0; row < equality_multipliers.size(); ++row) {
+            for (std::size_t column = 0; column < variables.size(); ++column) {
+                result.lagrangian_gradient[column] += equality_multipliers[row]
+                    * equality_evaluation.jacobian[
+                        row * variables.size() + column
+                    ];
+            }
+        }
+        result.chart_stationarity_inf_norm = vector_inf_norm(
+            result.lagrangian_gradient
+        );
+        result.lagrangian_hessian = equality_evaluation.lagrangian_hessian;
+        result.covariant_lagrangian_hessian =
+            equality_evaluation.stationary_lagrangian_hessian;
     } catch (const std::exception& error) {
         result.callback_error = error.what();
         result.numerical_status = "failed";
@@ -3033,9 +3466,36 @@ ChemicalSolveResult solve_reaction_attempt(
         result.local_minimum_status = curvature.positive
             ? "passed"
             : curvature.status;
+        result.reduced_hessian_status = curvature.status;
+        result.reduced_hessian = curvature.reduced_hessian;
+        result.reduced_hessian_nullspace_basis = curvature.nullspace_basis;
+        result.reduced_hessian_nullspace_rows = curvature.nullspace_rows;
+        result.reduced_hessian_nullspace_columns = curvature.nullspace_columns;
+        result.reduced_hessian_eigenvalues = curvature.eigenvalues;
+        result.reduced_hessian_spectrum_status = curvature.spectrum_status;
+        result.reduced_hessian_raw_positive_eigenvalues =
+            curvature.raw_positive_eigenvalues;
+        result.reduced_hessian_raw_zero_eigenvalues =
+            curvature.raw_zero_eigenvalues;
+        result.reduced_hessian_raw_negative_eigenvalues =
+            curvature.raw_negative_eigenvalues;
+        result.reduced_hessian_positive_eigenvalues =
+            curvature.positive_eigenvalues;
+        result.reduced_hessian_zero_eigenvalues =
+            curvature.zero_eigenvalues;
+        result.reduced_hessian_negative_eigenvalues =
+            curvature.negative_eigenvalues;
+        result.reduced_hessian_scale = curvature.hessian_scale;
+        result.reduced_hessian_eigenvalue_tolerance =
+            curvature.eigenvalue_tolerance;
         negative_curvature_direction = curvature.negative_direction;
+        if (curvature.spectrum_status == "nonfinite") {
+            result.callback_error =
+                "derivative inconsistency: reduced Lagrangian Hessian spectrum is nonfinite";
+        }
     } else {
         result.local_minimum_status = "not_adjudicated";
+        result.reduced_hessian_status = "active_set_not_interior";
     }
 
     std::vector<double> physical_stationarity = potentials;
@@ -3046,6 +3506,7 @@ ChemicalSolveResult solve_reaction_attempt(
         }
     }
     result.kkt_stationarity_inf_norm = vector_inf_norm(physical_stationarity);
+    result.physical_stationarity_residuals = physical_stationarity;
     try {
         const KktPolishEvaluation kkt = evaluate_kkt_polish(
             chart,
@@ -3061,6 +3522,17 @@ ChemicalSolveResult solve_reaction_attempt(
         );
         const EquilibratedSquareSystem equilibrated =
             equilibrate_square_system(kkt.jacobian);
+        const bool root_is_interior = result.active_lower_bounds.empty()
+            && result.active_upper_bounds.empty()
+            && result.active_constraint_bounds.empty();
+        if (root_is_interior) {
+            result.kkt_root_jacobian = kkt.jacobian;
+            result.kkt_root_rows = variables.size();
+            result.kkt_root_columns = variables.size();
+            result.kkt_root_status = "interior_no_active_bounds";
+        } else {
+            result.kkt_root_status = "unavailable_active_bounds";
+        }
         result.kkt_dimension = variables.size();
         result.kkt_rank = equilibrated.analysis.rank;
         result.condition_number_inf =
@@ -3071,14 +3543,21 @@ ChemicalSolveResult solve_reaction_attempt(
                 || result.condition_number_inf
                     > kSensitivityConditionNumberMax)) {
             result.local_minimum_status = "second_order_inconclusive";
+            result.reduced_hessian_status = "second_order_inconclusive";
         }
-    } catch (const std::exception&) {
+    } catch (const std::exception& error) {
         result.kkt_dimension = variables.size();
+        result.kkt_root_status = "evaluation_failed";
+        result.callback_error = "KKT derivative evaluation failed: "
+            + std::string(error.what());
         result.local_minimum_status = "second_order_inconclusive";
+        result.reduced_hessian_status = "second_order_inconclusive";
     }
     result.numerical_status = status == Ipopt::Solve_Succeeded
+            && result.callback_error.empty()
             && result.balance_inf_norm <= kBalanceTolerance
             && result.kkt_stationarity_inf_norm <= kKktTolerance
+            && result.chart_stationarity_inf_norm <= kKktTolerance
             && result.complementarity_inf_norm <= kKktTolerance
         ? "passed"
         : "failed";
@@ -3090,6 +3569,11 @@ ChemicalSolveResult solve_reaction_attempt(
             && result.provider_domain_status != "failed"
         ? "passed"
         : "failed";
+    if (result.numerical_status != "passed"
+        || result.physical_status != "passed") {
+        result.local_minimum_status = "not_adjudicated";
+        result.reduced_hessian_status = "first_order_not_certified";
+    }
     result.accepted = result.solver_status == "solve_succeeded"
         && result.callback_error.empty()
         && result.numerical_status == "passed"
@@ -3592,9 +4076,9 @@ ChemicalSolveResult solve_reaction(
     std::vector<ChemicalSearchAttempt> pending_recovery_attempts;
 
     const AmountChart search_chart = make_amount_chart(system.charges);
-    const ConstraintRows search_balances{
+    const ConstraintRows search_balances = normalized_constraint_rows(
         system.balance_matrix, system.balance_totals
-    };
+    );
     const auto reconstruct_start = [&](
         std::vector<double>& amounts,
         ChemicalSearchAttempt& attempt,
@@ -3619,13 +4103,13 @@ ChemicalSolveResult solve_reaction(
             );
             double balance_residual = 0.0;
             for (std::size_t row = 0;
-                 row < system.balance_matrix.rows;
+                 row < search_balances.matrix.rows;
                  ++row) {
-                double value = -system.balance_totals[row];
+                double value = -search_balances.totals[row];
                 for (std::size_t species = 0;
                      species < system.species_count;
                      ++species) {
-                    value += system.balance_matrix(row, species)
+                    value += search_balances.matrix(row, species)
                         * reconstructed.amounts[species];
                 }
                 balance_residual = std::max(
@@ -3955,7 +4439,7 @@ ChemicalSolveResult solve_reaction(
                     static_cast<long>(basin_ordinal);
             }
         }
-        prefix.selection_changed = previous_selection >= 0
+        prefix.selection_changed = !search.budget_prefixes.empty()
             && prefix.selected_basin_ordinal != previous_selection;
         previous_selection = prefix.selected_basin_ordinal;
         search.budget_prefixes.push_back(std::move(prefix));
@@ -3972,7 +4456,139 @@ ChemicalSolveResult solve_reaction(
                 .primary_ordinal
         ];
     } else {
-        result = terminals.empty() ? ChemicalSolveResult{} : terminals.front();
+        const auto evidence_completeness = [&](const ChemicalSolveResult& candidate) {
+            const bool valid_state = candidate.amounts.size() == system.species_count
+                && std::all_of(
+                    candidate.amounts.begin(), candidate.amounts.end(),
+                    [](double amount) {
+                        return std::isfinite(amount) && amount >= 0.0;
+                    }
+                )
+                && std::isfinite(candidate.volume_m3)
+                && candidate.volume_m3 > 0.0;
+            const int adjudicated_axes =
+                (candidate.numerical_status != "not_adjudicated" ? 1 : 0)
+                + (candidate.physical_status != "not_adjudicated" ? 1 : 0)
+                + (candidate.provider_domain_status != "not_adjudicated" ? 1 : 0)
+                + (candidate.local_minimum_status != "not_adjudicated" ? 1 : 0)
+                + (candidate.trace_status != "not_adjudicated" ? 1 : 0)
+                + (candidate.reduced_hessian_status != "not_adjudicated" ? 1 : 0)
+                + (candidate.kkt_root_status != "not_evaluated" ? 1 : 0);
+            return std::array<int, 7>{
+                adjudicated_axes,
+                candidate.callback_error.empty() ? 0 : 1,
+                valid_state ? 1 : 0,
+                candidate.kkt_dimension > 0 ? 1 : 0,
+                std::isfinite(candidate.chart_stationarity_inf_norm) ? 1 : 0,
+                candidate.solver_status.empty() ? 0 : 1,
+                candidate.solver_status == "solve_succeeded" ? 1 : 0,
+            };
+        };
+        const auto normalized_violation = [](const ChemicalSolveResult& candidate) {
+            const auto upper = [](double value, double limit) {
+                if (!std::isfinite(value) || !std::isfinite(limit) || limit < 0.0) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                if (limit == 0.0) {
+                    return value <= 0.0
+                        ? 0.0
+                        : std::numeric_limits<double>::infinity();
+                }
+                return std::max(0.0, value / limit - 1.0);
+            };
+            const auto lower = [](double value, double limit) {
+                if (!std::isfinite(value)) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                return value > limit
+                    ? 0.0
+                    : 1.0 + (limit - value) / std::max(
+                        std::abs(limit), std::numeric_limits<double>::min()
+                    );
+            };
+            const auto inclusive_lower = [](double value, double limit) {
+                if (!std::isfinite(value)) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                return value >= limit
+                    ? 0.0
+                    : (limit - value) / std::max(
+                        std::abs(limit), std::numeric_limits<double>::min()
+                    );
+            };
+            double violation = std::max({
+                upper(candidate.balance_inf_norm, kBalanceTolerance),
+                upper(candidate.charge_inf_norm, kBalanceTolerance),
+                upper(candidate.pressure_relative_residual, kPressureTolerance),
+                upper(candidate.reaction_affinity_inf_norm, kAffinityTolerance),
+                upper(candidate.kkt_stationarity_inf_norm, kKktTolerance),
+                upper(candidate.chart_stationarity_inf_norm, kKktTolerance),
+                upper(candidate.complementarity_inf_norm, kKktTolerance),
+            });
+            if (std::isfinite(candidate.trace_floor_mol)) {
+                violation = std::max(
+                    violation,
+                    lower(candidate.minimum_amount_mol, candidate.trace_floor_mol)
+                );
+            }
+            if (std::isfinite(candidate.packing_fraction_min)) {
+                violation = std::max(
+                    violation,
+                    inclusive_lower(
+                        candidate.packing_fraction,
+                        candidate.packing_fraction_min
+                    )
+                );
+            }
+            if (std::isfinite(candidate.packing_fraction_max)) {
+                violation = std::max(
+                    violation,
+                    upper(candidate.packing_fraction, candidate.packing_fraction_max)
+                );
+            }
+            if (std::isfinite(candidate.total_ion_fraction_max)) {
+                violation = std::max(
+                    violation,
+                    upper(
+                        candidate.total_ion_fraction,
+                        candidate.total_ion_fraction_max + 1.0e-12
+                    )
+                );
+            }
+            const bool derivative_evidence_finite =
+                candidate.callback_error.empty()
+                && !candidate.objective_gradient.empty()
+                && !candidate.lagrangian_hessian.empty()
+                && std::all_of(
+                    candidate.objective_gradient.begin(),
+                    candidate.objective_gradient.end(),
+                    [](double value) { return std::isfinite(value); }
+                )
+                && std::all_of(
+                    candidate.lagrangian_hessian.begin(),
+                    candidate.lagrangian_hessian.end(),
+                    [](double value) { return std::isfinite(value); }
+                );
+            return derivative_evidence_finite
+                ? violation
+                : std::numeric_limits<double>::infinity();
+        };
+        if (!terminals.empty()) {
+            std::size_t best = 0;
+            for (std::size_t candidate = 1; candidate < terminals.size(); ++candidate) {
+                const auto candidate_completeness =
+                    evidence_completeness(terminals[candidate]);
+                const auto best_completeness =
+                    evidence_completeness(terminals[best]);
+                if (candidate_completeness > best_completeness
+                    || (candidate_completeness == best_completeness
+                        && normalized_violation(terminals[candidate])
+                            < normalized_violation(terminals[best]))) {
+                    best = candidate;
+                }
+            }
+            result = terminals[best];
+        }
         bool all_saddle = !search.attempts.empty();
         bool all_inconclusive = !search.attempts.empty();
         bool all_boundary = !search.attempts.empty();
@@ -4036,20 +4652,29 @@ void expand_original_amounts_and_residuals(
     }
     for (std::size_t row = 0; row < system.supplied_balance_matrix.rows; ++row) {
         double residual = 0.0;
+        double row_norm_squared = 0.0;
         for (std::size_t species = 0;
              species < system.original_species_count;
              ++species) {
-            residual += system.supplied_balance_matrix(row, species)
+            const double coefficient =
+                system.supplied_balance_matrix(row, species);
+            residual += coefficient
                 * (
                     result.amounts[species]
                     - system.original_feed_amounts[species]
                 );
+            row_norm_squared += coefficient * coefficient;
         }
+        const double row_scale = std::sqrt(row_norm_squared);
+        const double normalized_residual = row_scale > 0.0
+            ? residual / row_scale
+            : residual;
         result.balance_inf_norm = std::max(
-            result.balance_inf_norm, std::abs(residual)
+            result.balance_inf_norm, std::abs(normalized_residual)
         );
     }
     double mass_residual = 0.0;
+    double mass_row_norm_squared = 0.0;
     double charge_residual = 0.0;
     for (std::size_t species = 0;
          species < system.original_species_count;
@@ -4059,11 +4684,18 @@ void expand_original_amounts_and_residuals(
                 result.amounts[species]
                 - system.original_feed_amounts[species]
             );
+        mass_row_norm_squared +=
+            system.original_molar_masses_kg_per_mol[species]
+            * system.original_molar_masses_kg_per_mol[species];
         charge_residual += static_cast<double>(system.original_charges[species])
             * result.amounts[species];
     }
+    const double mass_row_scale = std::sqrt(mass_row_norm_squared);
     result.balance_inf_norm = std::max(
-        result.balance_inf_norm, std::abs(mass_residual)
+        result.balance_inf_norm,
+        mass_row_scale > 0.0
+            ? std::abs(mass_residual / mass_row_scale)
+            : std::abs(mass_residual)
     );
     result.charge_inf_norm = std::max(
         result.charge_inf_norm, std::abs(charge_residual)
@@ -4075,6 +4707,122 @@ ChemicalSolveResult finalize_chemical_result(
     ChemicalSolveResult result,
     bool structural_face_supported
 ) {
+    const auto attach_failure_evidence = [&] {
+        if (result.accepted) {
+            result.failure_kind = "none";
+            result.failure_reason.clear();
+            return;
+        }
+        if (result.callback_error.find("derivative inconsistency")
+            != std::string::npos) {
+            result.failure_kind = "derivative_inconsistency";
+            result.failure_reason = result.callback_error;
+            return;
+        }
+        if (result.callback_error.find("rank deficiency") != std::string::npos) {
+            result.failure_kind = "rank_deficiency";
+            result.failure_reason = result.callback_error;
+            return;
+        }
+        if (!result.callback_error.empty()
+            && (result.callback_error.find("derivative") != std::string::npos
+                || result.callback_error.find("capability") != std::string::npos
+                || result.callback_error.find("ABI contract") != std::string::npos)) {
+            result.failure_kind = "unsupported_derivative_capability";
+            result.failure_reason = result.callback_error;
+            return;
+        }
+        if (result.kkt_root_status == "interior_no_active_bounds"
+            && result.kkt_dimension != 0
+            && result.kkt_rank < result.kkt_dimension) {
+            result.failure_kind = "rank_deficiency";
+            result.failure_reason = "rank_deficiency: KKT root-system rank "
+                + std::to_string(result.kkt_rank) + " of "
+                + std::to_string(result.kkt_dimension);
+            return;
+        }
+        if (result.kkt_root_status == "interior_no_active_bounds"
+            && result.kkt_dimension != 0
+            && (!std::isfinite(result.condition_number_inf)
+                || result.condition_number_inf > kSensitivityConditionNumberMax)) {
+            result.failure_kind = "ill_conditioning";
+            result.failure_reason =
+                "ill_conditioning: KKT root-system condition estimate exceeds "
+                + std::to_string(kSensitivityConditionNumberMax);
+            return;
+        }
+        if (result.search.status == "saddle_observed") {
+            result.failure_kind = "genuine_saddle";
+            result.failure_reason = "genuine_saddle: reduced Hessian has "
+                + std::to_string(result.reduced_hessian_negative_eigenvalues)
+                + " eigenvalue(s) below the declared negative-curvature tolerance; search status="
+                + result.search.status;
+            return;
+        }
+        if (result.search.status == "domain_rejected") {
+            result.failure_kind = "physical_domain_failure";
+            if (result.balance_inf_norm > kBalanceTolerance) {
+                result.failure_reason = "physical_domain_failure: first failed physical criterion=balance_inf_norm";
+            } else if (result.charge_inf_norm > kBalanceTolerance) {
+                result.failure_reason = "physical_domain_failure: first failed physical criterion=charge_inf_norm";
+            } else if (result.pressure_relative_residual > kPressureTolerance) {
+                result.failure_reason = "physical_domain_failure: first failed physical criterion=pressure_relative_residual";
+            } else if (result.reaction_affinity_inf_norm > kAffinityTolerance) {
+                result.failure_reason = "physical_domain_failure: first failed physical criterion=reaction_affinity_inf_norm";
+            } else if (result.trace_status != "interior") {
+                result.failure_reason = "physical_domain_failure: first failed physical criterion=trace_status";
+            } else {
+                result.failure_reason = "physical_domain_failure: first failed physical criterion=provider_domain_status";
+            }
+            result.failure_reason += "; search status=" + result.search.status;
+            return;
+        }
+        if (result.search.status == "search_exhausted_no_certified_candidate"
+            || result.numerical_status == "failed"
+            || result.physical_status == "failed") {
+            result.failure_kind = "exhausted_multistart_search";
+            result.failure_reason =
+                "exhausted_multistart_search: no candidate passed all first- and second-order certification gates";
+            if (result.numerical_status == "failed") {
+                if (result.solver_status != "solve_succeeded") {
+                    result.failure_reason += "; optimizer status="
+                        + result.solver_status;
+                } else if (!result.callback_error.empty()) {
+                    result.failure_reason += "; callback failure="
+                        + result.callback_error;
+                } else {
+                    result.failure_reason += "; first failed numerical criterion=";
+                    result.failure_reason += result.balance_inf_norm > kBalanceTolerance
+                        ? "balance_inf_norm"
+                        : result.complementarity_inf_norm > kKktTolerance
+                            ? "complementarity_inf_norm"
+                            : result.kkt_stationarity_inf_norm > kKktTolerance
+                                ? "kkt_stationarity_inf_norm"
+                                : "chart_stationarity_inf_norm";
+                }
+            }
+            if (result.physical_status == "failed") {
+                result.failure_reason += "; first failed physical criterion=";
+                result.failure_reason += result.balance_inf_norm > kBalanceTolerance
+                    ? "balance_inf_norm"
+                    : result.charge_inf_norm > kBalanceTolerance
+                        ? "charge_inf_norm"
+                        : result.pressure_relative_residual > kPressureTolerance
+                            ? "pressure_relative_residual"
+                            : result.reaction_affinity_inf_norm > kAffinityTolerance
+                                ? "reaction_affinity_inf_norm"
+                                : result.trace_status != "interior"
+                                    ? "trace_status"
+                                    : "provider_domain_status";
+            }
+            result.failure_reason += "; search status=" + result.search.status;
+            return;
+        }
+        result.failure_kind = "exhausted_multistart_search";
+        result.failure_reason =
+            "exhausted_multistart_search: no certified local minimum was observed; search status="
+            + result.search.status;
+    };
     const auto ensure_search_receipt = [&] {
         if (result.search.status != "not_evaluated") {
             return;
@@ -4149,6 +4897,7 @@ ChemicalSolveResult finalize_chemical_result(
         result.boundary_status = "boundary_direction_unresolved";
         result.amounts.clear();
         ensure_search_receipt();
+        attach_failure_evidence();
         return result;
     }
     expand_original_amounts_and_residuals(system, result);
@@ -4177,6 +4926,7 @@ ChemicalSolveResult finalize_chemical_result(
             std::numeric_limits<double>::quiet_NaN();
     }
     ensure_search_receipt();
+    attach_failure_evidence();
     return result;
 }
 
@@ -4761,7 +5511,9 @@ ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(
         }
     }
     const AmountChart chart = make_amount_chart(system.charges);
-    const ConstraintRows balances{system.balance_matrix, system.balance_totals};
+    const ConstraintRows balances{
+        system.balance_matrix, system.balance_totals, {}
+    };
     const ReactionNlpEvaluation evaluation = evaluate_reaction_nlp(
         chart,
         balances,
@@ -4814,7 +5566,9 @@ ManufacturedNlpEvaluation evaluate_manufactured_inverse_log_packing_nlp(
         }
     }
     const AmountChart chart = make_amount_chart(system.charges);
-    const ConstraintRows balances{system.balance_matrix, system.balance_totals};
+    const ConstraintRows balances{
+        system.balance_matrix, system.balance_totals, {}
+    };
     VolumeCoordinateTransform inverse_log_packing;
     inverse_log_packing.lower_coordinate = -40.0;
     inverse_log_packing.upper_coordinate = 40.0;
