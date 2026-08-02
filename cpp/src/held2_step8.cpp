@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 namespace epcsaft_equilibrium {
 namespace {
@@ -26,7 +27,279 @@ std::vector<double> independent(
     return result;
 }
 
+bool all_finite(const std::vector<double>& values) {
+    return std::all_of(
+        values.begin(), values.end(),
+        [](double value) { return std::isfinite(value); }
+    );
+}
+
+bool all_finite(const std::vector<std::array<double, 2>>& values) {
+    return std::all_of(
+        values.begin(), values.end(),
+        [](const auto& value) {
+            return std::isfinite(value[0]) && std::isfinite(value[1]);
+        }
+    );
+}
+
+bool all_finite(const Held2Coordinates& coordinates) {
+    if (!all_finite(coordinates.charges)
+        || !all_finite(coordinates.modified_factors)
+        || !all_finite(coordinates.independent_lower_bounds)
+        || !all_finite(coordinates.independent_upper_bounds)) {
+        return false;
+    }
+    return std::all_of(
+        coordinates.polytope_constraints.begin(),
+        coordinates.polytope_constraints.end(),
+        [](const Held2PolytopeConstraint& constraint) {
+            return all_finite(constraint.coefficients)
+                && std::isfinite(constraint.upper_bound);
+        }
+    );
+}
+
+bool same_coordinates(
+    const Held2Coordinates& left,
+    const Held2Coordinates& right
+) {
+    if (left.charges != right.charges
+        || left.eliminated_index != right.eliminated_index
+        || left.dependent_index != right.dependent_index
+        || left.paper_to_provider_indices
+            != right.paper_to_provider_indices
+        || left.provider_to_paper_indices
+            != right.provider_to_paper_indices
+        || left.compact_to_paper_indices
+            != right.compact_to_paper_indices
+        || left.retained_indices != right.retained_indices
+        || left.independent_indices != right.independent_indices
+        || left.modified_factors != right.modified_factors
+        || left.independent_lower_bounds
+            != right.independent_lower_bounds
+        || left.independent_upper_bounds
+            != right.independent_upper_bounds
+        || left.polytope_constraints.size()
+            != right.polytope_constraints.size()) {
+        return false;
+    }
+    for (std::size_t index = 0;
+         index < left.polytope_constraints.size(); ++index) {
+        const Held2PolytopeConstraint& lhs =
+            left.polytope_constraints[index];
+        const Held2PolytopeConstraint& rhs =
+            right.polytope_constraints[index];
+        if (lhs.coefficients != rhs.coefficients
+            || lhs.upper_bound != rhs.upper_bound) {
+            return false;
+        }
+    }
+    return true;
+}
+
+template <typename Value>
+void mix_hash(std::size_t& seed, const Value& value) {
+    const std::size_t hashed = std::hash<Value>{}(value);
+    seed ^= hashed + 0x9e3779b9U + (seed << 6U) + (seed >> 2U);
+}
+
+template <typename Value>
+void mix_values(std::size_t& seed, const std::vector<Value>& values) {
+    mix_hash(seed, values.size());
+    for (const Value& value : values) {
+        mix_hash(seed, value);
+    }
+}
+
+void mix_coordinates(std::size_t& seed, const Held2Coordinates& coordinates) {
+    mix_values(seed, coordinates.charges);
+    mix_hash(seed, coordinates.eliminated_index);
+    mix_hash(seed, coordinates.dependent_index);
+    mix_values(seed, coordinates.paper_to_provider_indices);
+    mix_values(seed, coordinates.provider_to_paper_indices);
+    mix_values(seed, coordinates.compact_to_paper_indices);
+    mix_values(seed, coordinates.retained_indices);
+    mix_values(seed, coordinates.independent_indices);
+    mix_values(seed, coordinates.modified_factors);
+    mix_values(seed, coordinates.independent_lower_bounds);
+    mix_values(seed, coordinates.independent_upper_bounds);
+    mix_hash(seed, coordinates.polytope_constraints.size());
+    for (const Held2PolytopeConstraint& constraint
+         : coordinates.polytope_constraints) {
+        mix_values(seed, constraint.coefficients);
+        mix_hash(seed, constraint.upper_bound);
+    }
+}
+
 }  // namespace
+
+bool Held2AlgorithmCache::ProblemKey::operator==(
+    const ProblemKey& other
+) const {
+    return candidate_ids == other.candidate_ids
+        && candidate_variables == other.candidate_variables
+        && same_coordinates(coordinates, other.coordinates)
+        && physical_feed == other.physical_feed
+        && phase_coordinate_bounds == other.phase_coordinate_bounds
+        && neighborhood_radius == other.neighborhood_radius;
+}
+
+std::size_t Held2AlgorithmCache::ProblemHash::operator()(
+    const ProblemKey& problem
+) const noexcept {
+    std::size_t seed = problem.candidate_ids.size();
+    for (std::uint64_t id : problem.candidate_ids) {
+        mix_hash(seed, id);
+    }
+    mix_values(seed, problem.candidate_variables);
+    mix_coordinates(seed, problem.coordinates);
+    mix_values(seed, problem.physical_feed);
+    mix_hash(seed, problem.phase_coordinate_bounds.size());
+    for (const auto& bounds : problem.phase_coordinate_bounds) {
+        mix_hash(seed, bounds[0]);
+        mix_hash(seed, bounds[1]);
+    }
+    mix_hash(seed, problem.neighborhood_radius);
+    return seed;
+}
+
+std::size_t Held2AlgorithmCache::StateHash::operator()(
+    const StateKey& state
+) const noexcept {
+    std::size_t seed = 0;
+    mix_values(seed, state.variables);
+    return seed;
+}
+
+std::size_t Held2AlgorithmCache::VolumeBoundsHash::operator()(
+    const VolumeBoundsKey& bounds
+) const noexcept {
+    std::size_t seed = 0;
+    mix_values(seed, bounds.composition);
+    return seed;
+}
+
+void Held2AlgorithmCache::begin_context(const void* context_token) {
+    if (context_token && context_token == context_token_) {
+        return;
+    }
+    states_.clear();
+    volume_bounds_.clear();
+    problems_.clear();
+    provider_state_evaluations_ = 0;
+    state_cache_hits_ = 0;
+    context_token_ = context_token;
+}
+
+Held2StateEvaluation Held2AlgorithmCache::evaluate_state(
+    const Held2StateEvaluator& evaluator,
+    const std::vector<double>& composition,
+    double log_volume,
+    bool* provider_evaluated
+) {
+    if (provider_evaluated) {
+        *provider_evaluated = false;
+    }
+    const bool cacheable = all_finite(composition)
+        && std::isfinite(log_volume);
+    StateKey key{composition};
+    key.variables.push_back(log_volume);
+    if (cacheable) {
+        const auto retained = states_.find(key);
+        if (retained != states_.end()) {
+            ++state_cache_hits_;
+            return retained->second;
+        }
+    }
+    Held2StateEvaluation state = evaluator(composition, log_volume);
+    ++provider_state_evaluations_;
+    if (provider_evaluated) {
+        *provider_evaluated = true;
+    }
+    if (cacheable) {
+        states_.insert_or_assign(std::move(key), state);
+    }
+    return state;
+}
+
+const std::array<double, 2>*
+Held2AlgorithmCache::find_volume_bounds(
+    const std::vector<double>& composition
+) const {
+    if (!all_finite(composition)) {
+        return nullptr;
+    }
+    const auto retained = volume_bounds_.find({composition});
+    return retained == volume_bounds_.end() ? nullptr : &retained->second;
+}
+
+void Held2AlgorithmCache::retain_volume_bounds(
+    const std::vector<double>& composition,
+    std::array<double, 2> bounds
+) {
+    if (!all_finite(composition)) {
+        return;
+    }
+    volume_bounds_.insert_or_assign({composition}, bounds);
+}
+
+const Held2Step8Result* Held2AlgorithmCache::find_problem(
+    const std::vector<std::uint64_t>& candidate_ids,
+    const std::vector<double>& candidate_variables,
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
+    double neighborhood_radius
+) const {
+    if (!all_finite(candidate_variables)
+        || !all_finite(coordinates)
+        || !all_finite(physical_feed)
+        || !all_finite(phase_coordinate_bounds)
+        || !std::isfinite(neighborhood_radius)) {
+        return nullptr;
+    }
+    const auto retained = problems_.find({
+        candidate_ids,
+        candidate_variables,
+        coordinates,
+        physical_feed,
+        phase_coordinate_bounds,
+        neighborhood_radius,
+    });
+    return retained == problems_.end() ? nullptr : &retained->second;
+}
+
+void Held2AlgorithmCache::retain_problem(
+    const std::vector<std::uint64_t>& candidate_ids,
+    const std::vector<double>& candidate_variables,
+    const Held2Coordinates& coordinates,
+    const std::vector<double>& physical_feed,
+    const std::vector<std::array<double, 2>>& phase_coordinate_bounds,
+    double neighborhood_radius,
+    Held2Step8Result result
+) {
+    if ((result.outcome != Held2Step8Outcome::CertifiedFeasible
+         && result.outcome != Held2Step8Outcome::CertifiedInfeasible)
+        || !all_finite(candidate_variables)
+        || !all_finite(coordinates)
+        || !all_finite(physical_feed)
+        || !all_finite(phase_coordinate_bounds)
+        || !std::isfinite(neighborhood_radius)) {
+        return;
+    }
+    problems_.insert_or_assign(
+        {
+            candidate_ids,
+            candidate_variables,
+            coordinates,
+            physical_feed,
+            phase_coordinate_bounds,
+            neighborhood_radius,
+        },
+        std::move(result)
+    );
+}
 
 Held2Step8Result run_held2_step8(
     const Held2Step1Result& step1,
@@ -34,9 +307,17 @@ Held2Step8Result run_held2_step8(
     const Held2StateEvaluator& evaluator,
     const Held2PackingFractionEvaluator& packing_fraction,
     const Held2Step8Result* previous,
-    double neighborhood_radius
+    double neighborhood_radius,
+    Held2AlgorithmCache* shared_cache,
+    const void* cache_context
 ) {
     Held2Step8Result result;
+    const int local_context = 0;
+    Held2AlgorithmCache local_cache;
+    Held2AlgorithmCache& cache = shared_cache ? *shared_cache : local_cache;
+    cache.begin_context(
+        shared_cache ? cache_context : static_cast<const void*>(&local_context)
+    );
     result.neighborhood_radius = neighborhood_radius;
     result.timing.invocation_count = 1;
     if (!step1.coordinates || !step1.independent_feed || !step1.volume_bounds
@@ -108,8 +389,6 @@ Held2Step8Result run_held2_step8(
             result.attempted_candidate_ids.push_back(id);
         }
     }
-    std::vector<double> previous_effective_problem_variables = previous
-        ? previous->problem_candidate_variables : std::vector<double>{};
     if (continue_certified_active_set) {
         for (Held2MPoint& point : selected_points) {
             const auto refined = std::find_if(
@@ -141,42 +420,6 @@ Held2Step8Result run_held2_step8(
                     point.independent_modified_fractions =
                         refined->independent_modified_fractions;
                     point.volume = refined->volume;
-                    const auto terminal_id = std::find(
-                        previous->candidate_ids.begin(),
-                        previous->candidate_ids.end(),
-                        point.insertion_id
-                    );
-                    const auto problem_id = std::find(
-                        previous->problem_candidate_ids.begin(),
-                        previous->problem_candidate_ids.end(),
-                        point.insertion_id
-                    );
-                    const std::size_t block_size =
-                        point.independent_modified_fractions.size() + 1;
-                    if (terminal_id != previous->candidate_ids.end()
-                        && problem_id
-                            != previous->problem_candidate_ids.end()
-                        && previous->candidate_variables.size()
-                            == previous->candidate_ids.size()
-                                * block_size
-                        && previous_effective_problem_variables.size()
-                            == previous->problem_candidate_ids.size()
-                                * block_size) {
-                        const std::size_t source = static_cast<std::size_t>(
-                            terminal_id - previous->candidate_ids.begin()
-                        ) * block_size;
-                        const std::size_t destination =
-                            static_cast<std::size_t>(
-                                problem_id
-                                - previous->problem_candidate_ids.begin()
-                            ) * block_size;
-                        std::copy_n(
-                            previous->candidate_variables.begin() + source,
-                            block_size,
-                            previous_effective_problem_variables.begin()
-                                + destination
-                        );
-                    }
                 }
             }
         }
@@ -189,27 +432,11 @@ Held2Step8Result run_held2_step8(
         );
         result.problem_candidate_variables.push_back(point.volume);
     }
-    const bool same_as_previous_problem = previous
-        && neighborhood_radius == previous->neighborhood_radius
-        && result.problem_candidate_ids == previous->problem_candidate_ids
-        && result.problem_candidate_variables
-            == previous->problem_candidate_variables;
-    const bool same_as_rejected_terminal = previous
-        && neighborhood_radius == previous->neighborhood_radius
-        && previous->outcome == Held2Step8Outcome::Indeterminate
-        && result.problem_candidate_ids == previous->candidate_ids
-        && result.problem_candidate_variables
-            == previous->candidate_variables;
-    const bool same_as_certified_effective_problem = previous
-        && neighborhood_radius == previous->neighborhood_radius
-        && previous->outcome == Held2Step8Outcome::CertifiedFeasible
-        && result.problem_candidate_ids
-            == previous->problem_candidate_ids
-        && result.problem_candidate_variables
-            == previous_effective_problem_variables;
-    if (same_as_previous_problem || same_as_rejected_terminal
-        || same_as_certified_effective_problem) {
-        Held2Step8Result unchanged = *previous;
+    const auto reuse_problem = [&](
+        const Held2Step8Result& retained,
+        const char* reason
+    ) {
+        Held2Step8Result unchanged = retained;
         unchanged.problem_candidate_ids = result.problem_candidate_ids;
         unchanged.problem_candidate_variables =
             result.problem_candidate_variables;
@@ -224,12 +451,12 @@ Held2Step8Result run_held2_step8(
         unchanged.timing.terminal_status =
             unchanged.outcome == Held2Step8Outcome::Indeterminate
             ? "indeterminate" : "complete";
-        unchanged.timing.terminal_reason = "unchanged_problem_67";
+        unchanged.timing.terminal_reason = reason;
         unchanged.timing.next_step =
             unchanged.outcome == Held2Step8Outcome::CertifiedFeasible
             ? 9 : 7;
         return unchanged;
-    }
+    };
     for (const Held2MPoint& point : selected_points) {
         result.candidate_ids.push_back(point.insertion_id);
     }
@@ -252,11 +479,22 @@ Held2Step8Result run_held2_step8(
         result.provider_packing_evaluations =
             provider_packing_evaluations;
     };
-    for (const Held2MPoint& point : selected_points) {
-        const std::array<double, 2> physical_bounds =
-            (*step1.volume_bounds)(point.independent_modified_fractions);
+    const auto cached_volume_bounds = [&](
+        const std::vector<double>& composition
+    ) {
+        if (const auto* retained = cache.find_volume_bounds(composition)) {
+            return *retained;
+        }
         ++provider_evaluations;
         ++provider_volume_bound_evaluations;
+        const std::array<double, 2> bounds =
+            (*step1.volume_bounds)(composition);
+        cache.retain_volume_bounds(composition, bounds);
+        return bounds;
+    };
+    for (const Held2MPoint& point : selected_points) {
+        const std::array<double, 2> physical_bounds =
+            cached_volume_bounds(point.independent_modified_fractions);
         candidates.push_back({
             point.independent_modified_fractions,
             point.volume,
@@ -268,22 +506,25 @@ Held2Step8Result run_held2_step8(
     }
     const Held2StateEvaluator counted_evaluator =
         [&evaluator, &provider_evaluations,
-         &provider_state_evaluations](
+         &provider_state_evaluations, &cache](
             const std::vector<double>& composition,
             double log_volume
         ) {
-            ++provider_evaluations;
-            ++provider_state_evaluations;
-            return evaluator(composition, log_volume);
+            bool provider_evaluated = false;
+            Held2StateEvaluation state = cache.evaluate_state(
+                evaluator, composition, log_volume, &provider_evaluated
+            );
+            if (provider_evaluated) {
+                ++provider_evaluations;
+                ++provider_state_evaluations;
+            }
+            return state;
         };
     const Held2VolumeBoundsEvaluator counted_volume_bounds =
-        [&step1, &provider_evaluations,
-         &provider_volume_bound_evaluations](
+        [&cached_volume_bounds](
             const std::vector<double>& composition
         ) {
-            ++provider_evaluations;
-            ++provider_volume_bound_evaluations;
-            return (*step1.volume_bounds)(composition);
+            return cached_volume_bounds(composition);
         };
     std::vector<double> initial;
     const std::size_t dimension =
@@ -352,6 +593,27 @@ Held2Step8Result run_held2_step8(
         held2_lift_independent_fractions(
             *step1.coordinates, *step1.independent_feed
         );
+    if (const auto* retained = cache.find_problem(
+            result.problem_candidate_ids,
+            result.problem_candidate_variables,
+            *step1.coordinates,
+            physical_feed,
+            bounds,
+            neighborhood_radius
+        )) {
+        return reuse_problem(*retained, "cached_problem_67");
+    }
+    const auto retain_problem = [&] {
+        cache.retain_problem(
+            result.problem_candidate_ids,
+            result.problem_candidate_variables,
+            *step1.coordinates,
+            physical_feed,
+            bounds,
+            result.neighborhood_radius,
+            result
+        );
+    };
     const auto solve = [&](
         std::vector<double> start,
         double radius
@@ -471,6 +733,7 @@ Held2Step8Result run_held2_step8(
         result.timing.terminal_status = "complete";
         result.timing.terminal_reason = result.reason;
         result.timing.next_step = 7;
+        retain_problem();
         return result;
     }
     if (solved.failure_reason == "collapsed_phase_set") {
@@ -496,10 +759,8 @@ Held2Step8Result run_held2_step8(
         const Held2Problem67Phase& phase = solved.phases[phase_index];
         const std::vector<double> composition =
             independent(*step1.coordinates, phase.modified_fractions);
-        ++provider_evaluations;
-        ++provider_state_evaluations;
         const Held2StateEvaluation state =
-            evaluator(composition, std::log(phase.volume));
+            counted_evaluator(composition, std::log(phase.volume));
         ++provider_evaluations;
         ++provider_packing_evaluations;
         const double phase_packing_fraction =
@@ -541,6 +802,7 @@ Held2Step8Result run_held2_step8(
     result.timing.terminal_status = "complete";
     result.timing.terminal_reason = result.reason;
     result.timing.next_step = 9;
+    retain_problem();
     return result;
 }
 

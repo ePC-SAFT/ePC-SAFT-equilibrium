@@ -166,6 +166,23 @@ refinement evidence is active and the reported coordinate maps to a neutral
 aqueous component; point identity or elapsed time alone is not a valid
 classifier.
 
+One exact cache is scoped to a single HELD2 flash and shares deterministic
+Provider state evaluations across Steps 2, 3, 5, 8, 9, and the ordinary
+Step-10 fallback. The distinct trace-domain evaluator is never served from
+that cache, and cache hits are excluded from reported Provider-work totals.
+Step 8 also reuses a previously certified feasible or Farkas-infeasible
+Problem (67) only when its ordered stable candidate IDs, candidate variables,
+coordinate transformation, physical feed, phase-coordinate bounds, immutable
+Provider-context generation, and requested neighborhood radius are exactly
+unchanged. The cache requires an explicit per-flash context token; changing
+or replacing any Provider callback requires a new token and clears all retained
+state, bounds, and Problem (67) evidence. An expanded-radius result is retained
+only under that expanded radius. The replay
+is reported as `cached_problem_67`. Indeterminate and collapsed candidate
+solves are path-dependent and are never retained across history. The immediate
+previous result may supply a warm start, but is never itself accepted as a
+cached adjudication.
+
 The smallest source-bound workflow is Perdomo et al. (2025), Table 3,
 NaCl-water at 298.15 K, 2508 Pa, and 5.6 mol NaCl per kg water. In the installed
 explicit-species ordering `(water, sodium-cation, chloride-anion)`, its frozen

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <ctime>
+#include <stdexcept>
 
 namespace epcsaft_equilibrium {
 namespace {
@@ -39,6 +40,28 @@ auto run_step(
     progress.optimizer_iterations = result.timing.optimizer_iterations;
     observe_held2(observer, progress);
     return result;
+}
+
+template <typename Callable>
+auto run_cached_state_step(
+    int step,
+    Callable&& callable,
+    Held2AlgorithmCache& cache,
+    Held2ProgressObserver* observer
+) {
+    const std::uint64_t hits_before = cache.state_cache_hits();
+    return run_step(step, [&] {
+        auto result = callable();
+        const std::uint64_t cache_hits =
+            cache.state_cache_hits() - hits_before;
+        if (cache_hits > result.timing.provider_evaluations) {
+            throw std::logic_error(
+                "HELD2 cache-hit diagnostics exceeded Provider callbacks"
+            );
+        }
+        result.timing.provider_evaluations -= cache_hits;
+        return result;
+    }, observer);
 }
 
 }  // namespace
@@ -95,6 +118,15 @@ Held2AlgorithmResult run_held2_algorithm(
         result.failure_reason = reason;
         return result;
     };
+    const int cache_context = 0;
+    Held2AlgorithmCache cache;
+    cache.begin_context(&cache_context);
+    const Held2StateEvaluator evaluate = [&](const auto& composition,
+                                              double log_volume) {
+        return cache.evaluate_state(
+            thermodynamics.evaluate, composition, log_volume
+        );
+    };
     result.step1 = run_step(1, [&] {
         return run_held2_step1(
             thermodynamics.component_ids,
@@ -110,14 +142,14 @@ Held2AlgorithmResult run_held2_algorithm(
     if (result.step1.status != "complete") {
         return fail("step1", result.step1.reason);
     }
-    result.step2 = run_step(2, [&] {
+    result.step2 = run_cached_state_step(2, [&] {
         return run_held2_step2(
             result.step1,
-            thermodynamics.evaluate,
+            evaluate,
             resources.step2_provider_evaluation_budget,
             observer
         );
-    }, observer);
+    }, cache, observer);
     result.step_timings.push_back(result.step2->timing);
     if (result.step2->outcome == Held2Step2Outcome::Indeterminate) {
         return fail("step2", result.step2->reason);
@@ -144,19 +176,29 @@ Held2AlgorithmResult run_held2_algorithm(
         result.outcome = "one_phase_no_negative_witness_detected";
         return result;
     }
+    std::uint64_t pressure_root_volume_bound_evaluations = 0;
     const Held2PressureRootEvaluator pressure_roots = [&](const auto& composition) {
+        ++pressure_root_volume_bound_evaluations;
         return evaluate_held2_pressure_envelope(
             composition,
             (*result.step1.volume_bounds)(composition),
-            thermodynamics.evaluate,
+            evaluate,
             64,
             8
         );
     };
     result.step3 = run_step(3, [&] {
-        return run_held2_step3(
+        const std::uint64_t states_before =
+            cache.provider_state_evaluations();
+        const std::uint64_t bounds_before =
+            pressure_root_volume_bound_evaluations;
+        Held2Step3Result step3 = run_held2_step3(
             result.step1, *result.step2, pressure_roots, observer
         );
+        step3.timing.provider_evaluations =
+            cache.provider_state_evaluations() - states_before
+            + pressure_root_volume_bound_evaluations - bounds_before;
+        return step3;
     }, observer);
     result.step_timings.push_back(result.step3->timing);
     if (result.step3->status != "complete" || !result.step3->state) {
@@ -175,16 +217,16 @@ Held2AlgorithmResult run_held2_algorithm(
             result.final_state = state;
             return fail("step4", step4.reason);
         }
-        result.step5_history.push_back(run_step(5, [&] {
+        result.step5_history.push_back(run_cached_state_step(5, [&] {
             return run_held2_step5(
                 result.step1,
                 step4,
                 state,
-                thermodynamics.evaluate,
+                evaluate,
                 resources,
                 observer
             );
-        }, observer));
+        }, cache, observer));
         result.step_timings.push_back(result.step5_history.back().timing);
         const Held2Step5Result& step5 = result.step5_history.back();
         if (step5.status != "complete") {
@@ -241,7 +283,9 @@ Held2AlgorithmResult run_held2_algorithm(
                 thermodynamics.evaluate,
                 thermodynamics.packing_fraction,
                 previous,
-                step8_neighborhood_radius
+                step8_neighborhood_radius,
+                &cache,
+                &cache_context
             );
         }, observer));
         result.step_timings.push_back(result.step8_history.back().timing);
@@ -274,11 +318,11 @@ Held2AlgorithmResult run_held2_algorithm(
             }
             continue;
         }
-        result.step9_history.push_back(run_step(9, [&] {
+        result.step9_history.push_back(run_cached_state_step(9, [&] {
             return run_held2_step9(
-                step4, step8, thermodynamics.evaluate, observer
+                step4, step8, evaluate, observer
             );
-        }, observer));
+        }, cache, observer));
         result.step_timings.push_back(result.step9_history.back().timing);
         const Held2Step9Result& step9 = result.step9_history.back();
         if (step9.next_action
@@ -299,17 +343,22 @@ Held2AlgorithmResult run_held2_algorithm(
             }
             continue;
         }
-        result.step10_history.push_back(run_step(10, [&] {
+        const auto run_step10 = [&] {
             return run_held2_step10(
                 result.step1,
                 step8,
                 step9,
                 thermodynamics.evaluate_trace
                     ? thermodynamics.evaluate_trace
-                    : thermodynamics.evaluate,
+                    : evaluate,
                 observer
             );
-        }, observer));
+        };
+        result.step10_history.push_back(
+            thermodynamics.evaluate_trace
+            ? run_step(10, run_step10, observer)
+            : run_cached_state_step(10, run_step10, cache, observer)
+        );
         result.step10 = result.step10_history.back();
         result.step_timings.push_back(result.step10->timing);
         if (result.step10->next_action
