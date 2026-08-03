@@ -2,6 +2,8 @@
 #include "chemical_observation.hpp"
 #include "provider.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -932,6 +934,105 @@ py::dict solve_provider_input(
     return result;
 }
 
+SourceReferenceTransferEvidence source_reference_transfer_evidence(
+    const py::dict& source_standard_state,
+    const char* key
+) {
+    if (!source_standard_state.contains(key)) {
+        throw py::value_error(
+            std::string("installed Provider source-reference transfer is missing: ")
+            + key
+        );
+    }
+    const py::dict payload = py::cast<py::dict>(source_standard_state[key]);
+    SourceReferenceTransferEvidence result;
+    result.status = py::cast<std::string>(payload["status"]);
+    result.domain_status = py::cast<std::string>(payload["domain_status"]);
+    result.convergence_status = py::cast<std::string>(
+        payload["convergence_status"]
+    );
+    result.reference_state_id = py::cast<std::string>(
+        payload["reference_state_id"]
+    );
+    result.activity_convention_id = py::cast<std::string>(
+        payload["activity_convention_id"]
+    );
+    result.component_ids = py::cast<std::vector<std::string>>(
+        payload["component_ids"]
+    );
+    result.neutral_basis_row_count = py::cast<std::size_t>(
+        payload["neutral_basis_row_count"]
+    );
+    result.neutral_basis = py::cast<std::vector<double>>(
+        payload["neutral_basis"]
+    );
+    result.log_fugacity_contractions = py::cast<std::vector<double>>(
+        payload["log_fugacity_contractions"]
+    );
+    result.activity_scale_log_contractions = py::cast<std::vector<double>>(
+        payload["activity_scale_log_contractions"]
+    );
+    result.transfer_log_contractions = py::cast<std::vector<double>>(
+        payload["transfer_log_contractions"]
+    );
+    result.source_composition = py::cast<std::vector<double>>(
+        payload["source_composition"]
+    );
+    result.derivative_availability = py::cast<std::vector<std::string>>(
+        payload["derivative_availability"]
+    );
+    result.pressure_derivatives_per_pa = py::cast<std::vector<double>>(
+        payload["pressure_derivatives_per_pa"]
+    );
+    result.temperature_k = py::cast<double>(payload["temperature_k"]);
+    result.pressure_pa = py::cast<double>(payload["pressure_pa"]);
+    result.source_reference_pressure_pa = py::cast<double>(
+        payload["source_reference_pressure_pa"]
+    );
+    result.standard_molality_mol_per_kg = py::cast<double>(
+        payload["standard_molality_mol_per_kg"]
+    );
+    result.reference_convergence_error = py::cast<double>(
+        payload["reference_convergence_error"]
+    );
+    result.parameter_fingerprint = py::cast<std::string>(
+        payload["parameter_fingerprint"]
+    );
+    result.topology_fingerprint = py::cast<std::string>(
+        payload["topology_fingerprint"]
+    );
+    result.component_order_fingerprint = py::cast<std::string>(
+        payload["component_order_fingerprint"]
+    );
+    result.reference_state_fingerprint = py::cast<std::string>(
+        payload["reference_state_fingerprint"]
+    );
+    result.domain_fingerprint = py::cast<std::string>(
+        payload["domain_fingerprint"]
+    );
+    result.artifact_fingerprint = py::cast<std::string>(
+        payload["artifact_fingerprint"]
+    );
+    result.helmholtz_basis_id = py::cast<std::string>(
+        payload["helmholtz_basis_id"]
+    );
+    const auto fingerprint_valid = [](const std::string& fingerprint) {
+        return fingerprint.size() == 71
+            && fingerprint.rfind("sha256:", 0) == 0;
+    };
+    if (!fingerprint_valid(result.parameter_fingerprint)
+        || !fingerprint_valid(result.topology_fingerprint)
+        || !fingerprint_valid(result.component_order_fingerprint)
+        || !fingerprint_valid(result.reference_state_fingerprint)
+        || !fingerprint_valid(result.domain_fingerprint)
+        || !fingerprint_valid(result.artifact_fingerprint)) {
+        throw py::value_error(
+            "installed Provider source-reference fingerprints are incomplete"
+        );
+    }
+    return result;
+}
+
 py::dict solve_provider_source(
     const py::capsule& capsule,
     const py::dict& spec,
@@ -958,13 +1059,33 @@ py::dict solve_provider_source(
     const double source_reference_pressure_pa = py::cast<double>(
         source_standard_state["reference_pressure_pa"]
     );
-    if (source_standard_state_id.empty() || source_activity_scale_id.empty()) {
+    const std::string source_reference_activity_convention_id =
+        py::cast<std::string>(
+            source_standard_state["source_reference_activity_convention_id"]
+        );
+    const double source_reference_standard_molality_mol_per_kg =
+        py::cast<double>(
+            source_standard_state[
+                "source_reference_standard_molality_mol_per_kg"
+            ]
+        );
+    if (source_standard_state_id.empty() || source_activity_scale_id.empty()
+        || source_reference_activity_convention_id.empty()) {
         throw py::value_error("source standard-state identity is incomplete");
     }
     if (!std::isfinite(source_reference_pressure_pa)
         || source_reference_pressure_pa <= 0.0) {
         throw py::value_error(
             "source standard-state reference pressure is invalid"
+        );
+    }
+    if (!std::isfinite(source_reference_standard_molality_mol_per_kg)
+        || source_reference_standard_molality_mol_per_kg <= 0.0) {
+        throw py::value_error("source standard molality is invalid");
+    }
+    if (sensitivities_requested || active_parameters != nullptr) {
+        throw py::value_error(
+            "installed Provider source-reference derivative is unavailable"
         );
     }
     for (const EquilibriumConstantRecord& record : input.equilibrium_constant_records) {
@@ -986,21 +1107,26 @@ py::dict solve_provider_source(
         }
     }
     const ProviderContext provider(sdk, input.provider_fingerprint);
-    const NeutralReferenceEvaluation reference = sensitivities_requested
-        ? provider.evaluate_neutral_reference_derivatives(
-            input.temperature_k,
-            input.pressure_pa,
-            active_parameters == nullptr
-                ? ProviderActiveParameterSet{}
-                : *active_parameters
-        )
-        : provider.evaluate_neutral_reference(
-            input.temperature_k, input.pressure_pa
+    const SourceReferenceTransferEvidence reference =
+        source_reference_transfer_evidence(
+            source_standard_state, "provider_transfer"
         );
+    if (reference.reference_state_id != source_standard_state_id
+        || reference.activity_convention_id
+            != source_reference_activity_convention_id
+        || reference.source_reference_pressure_pa
+            != source_reference_pressure_pa
+        || reference.standard_molality_mol_per_kg
+            != source_reference_standard_molality_mol_per_kg) {
+        throw py::value_error(
+            "installed Provider source-reference declaration is inconsistent"
+        );
+    }
     const SourceStandardStateResult transformed = transform_source_standard_state(
         input.reaction_matrix,
         input.ln_k,
         log_activity_scale_factors,
+        input.species_ids,
         input.charges,
         input.provider_fingerprint,
         input.temperature_k,
@@ -1020,17 +1146,12 @@ py::dict solve_provider_source(
         provider,
         packing_bounds,
         trace_floor,
-        sensitivities_requested
-            ? transformed.pressure_derivatives_per_pa
-            : std::vector<double>{},
-        sensitivities_requested
-            ? transformed.parameter_derivatives
-            : std::vector<double>{},
-        active_parameters
+        {},
+        {},
+        nullptr
     );
     py::dict sensitivities = py::cast<py::dict>(result["sensitivities"]);
-    sensitivities["reference_parameter_status"] =
-        sensitivities_requested ? "available" : "not_applicable";
+    sensitivities["reference_parameter_status"] = "not_applicable";
     sensitivities["reference_parameter_failure_reason"] = "";
     result["standard_offsets"] = transformed.standard_offsets;
     result["ln_k_provider_basis"] = transformed.ln_k_provider_basis;
@@ -1038,11 +1159,12 @@ py::dict solve_provider_source(
         transformed.representation_residual_inf_norm;
     result["source_standard_state_id"] = source_standard_state_id;
     result["source_activity_scale_id"] = source_activity_scale_id;
-    result["provider_reference_id"] = reference.basis_id;
-    result["reference_derivative_availability"] =
-        reference.derivative_availability;
+    result["provider_reference_id"] = reference.helmholtz_basis_id;
+    result["reference_derivative_availability"] = 0;
     result["reference_convergence_error"] =
         reference.reference_convergence_error;
+    result["source_reference_state_fingerprint"] =
+        reference.reference_state_fingerprint;
     return result;
 }
 
@@ -1169,7 +1291,7 @@ py::dict solve_chemical_equilibrium_continuation(
         initial_sdk, initial_input.provider_fingerprint
     );
     SourceStandardStateResult target_transformed;
-    NeutralReferenceEvaluation target_reference;
+    SourceReferenceTransferEvidence target_reference;
     std::string source_standard_state_id;
     std::string source_activity_scale_id;
     if (!source_standard_state.is_none()) {
@@ -1190,10 +1312,25 @@ py::dict solve_chemical_equilibrium_continuation(
         const double source_reference_pressure_pa = py::cast<double>(
             standard["reference_pressure_pa"]
         );
+        const std::string source_reference_activity_convention_id =
+            py::cast<std::string>(
+                standard["source_reference_activity_convention_id"]
+            );
+        const double source_reference_standard_molality_mol_per_kg =
+            py::cast<double>(
+                standard[
+                    "source_reference_standard_molality_mol_per_kg"
+                ]
+            );
         if (source_standard_state_id.empty()
             || source_activity_scale_id.empty()
+            || source_reference_activity_convention_id.empty()
             || !std::isfinite(source_reference_pressure_pa)
-            || source_reference_pressure_pa <= 0.0) {
+            || source_reference_pressure_pa <= 0.0
+            || !std::isfinite(
+                source_reference_standard_molality_mol_per_kg
+            )
+            || source_reference_standard_molality_mol_per_kg <= 0.0) {
             throw py::value_error(
                 "source standard-state identity or pressure is invalid"
             );
@@ -1212,17 +1349,35 @@ py::dict solve_chemical_equilibrium_continuation(
                 );
             }
         }
-        target_reference = target_provider.evaluate_neutral_reference(
-            target_input.temperature_k, target_input.pressure_pa
+        target_reference = source_reference_transfer_evidence(
+            standard, "provider_transfer"
         );
-        const NeutralReferenceEvaluation initial_reference =
-            initial_provider.evaluate_neutral_reference(
-                initial_input.temperature_k, initial_input.pressure_pa
+        const SourceReferenceTransferEvidence initial_reference =
+            source_reference_transfer_evidence(
+                standard, "initial_provider_transfer"
             );
+        const std::array<const SourceReferenceTransferEvidence*, 2> references{
+            &target_reference,
+            &initial_reference,
+        };
+        for (const SourceReferenceTransferEvidence* reference : references) {
+            if (reference->reference_state_id != source_standard_state_id
+                || reference->activity_convention_id
+                    != source_reference_activity_convention_id
+                || reference->source_reference_pressure_pa
+                    != source_reference_pressure_pa
+                || reference->standard_molality_mol_per_kg
+                    != source_reference_standard_molality_mol_per_kg) {
+                throw py::value_error(
+                    "installed Provider source-reference declaration is inconsistent"
+                );
+            }
+        }
         target_transformed = transform_source_standard_state(
             target_input.reaction_matrix,
             target_input.ln_k,
             log_activity_scale_factors,
+            target_input.species_ids,
             target_input.charges,
             target_input.provider_fingerprint,
             target_input.temperature_k,
@@ -1234,6 +1389,7 @@ py::dict solve_chemical_equilibrium_continuation(
                 initial_input.reaction_matrix,
                 initial_input.ln_k,
                 log_activity_scale_factors,
+                initial_input.species_ids,
                 initial_input.charges,
                 initial_input.provider_fingerprint,
                 initial_input.temperature_k,
@@ -1303,11 +1459,13 @@ py::dict solve_chemical_equilibrium_continuation(
             target_transformed.representation_residual_inf_norm;
         result["source_standard_state_id"] = source_standard_state_id;
         result["source_activity_scale_id"] = source_activity_scale_id;
-        result["provider_reference_id"] = target_reference.basis_id;
-        result["reference_derivative_availability"] =
-            target_reference.derivative_availability;
+        result["provider_reference_id"] =
+            target_reference.helmholtz_basis_id;
+        result["reference_derivative_availability"] = 0;
         result["reference_convergence_error"] =
             target_reference.reference_convergence_error;
+        result["source_reference_state_fingerprint"] =
+            target_reference.reference_state_fingerprint;
     }
     return result;
 }

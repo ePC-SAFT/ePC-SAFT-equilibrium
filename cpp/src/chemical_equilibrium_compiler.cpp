@@ -1022,23 +1022,29 @@ SourceStandardStateResult transform_source_standard_state(
     const DenseMatrix& reaction_matrix,
     const std::vector<double>& source_ln_k,
     const std::vector<double>& log_activity_scale_factors,
+    const std::vector<std::string>& species_ids,
     const std::vector<int>& charges,
     const std::string& provider_fingerprint,
     double temperature_k,
     double pressure_pa,
-    const NeutralReferenceEvaluation& reference
+    const SourceReferenceTransferEvidence& reference
 ) {
     if (reaction_matrix.rows == 0
         || reaction_matrix.values.size()
             != reaction_matrix.rows * reaction_matrix.columns
         || source_ln_k.size() != reaction_matrix.rows
         || log_activity_scale_factors.size() != reaction_matrix.columns
+        || species_ids.size() != reaction_matrix.columns
         || charges.size() != reaction_matrix.columns
-        || reference.component_count != reaction_matrix.columns
+        || reference.component_ids != species_ids
         || reference.neutral_basis_row_count == 0
         || reference.neutral_basis.size()
             != reference.neutral_basis_row_count * reaction_matrix.columns
         || reference.log_fugacity_contractions.size()
+            != reference.neutral_basis_row_count
+        || reference.activity_scale_log_contractions.size()
+            != reference.neutral_basis_row_count
+        || reference.transfer_log_contractions.size()
             != reference.neutral_basis_row_count) {
         throw std::invalid_argument(
             "source/reference standard-state dimensions are inconsistent"
@@ -1046,41 +1052,26 @@ SourceStandardStateResult transform_source_standard_state(
     }
     if (provider_fingerprint.empty()
         || provider_fingerprint != reference.parameter_fingerprint
-        || reference.basis_id != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1) {
-        throw std::invalid_argument("Provider neutral-reference identity is incompatible");
+        || reference.helmholtz_basis_id
+            != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1
+        || reference.status != "ok"
+        || reference.domain_status != "admitted"
+        || reference.convergence_status != "converged") {
+        throw std::invalid_argument("Provider source-reference identity is incompatible");
     }
-    const std::uint32_t supported_derivatives =
-        EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1
-        | EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PARAMETERS_V1;
-    if ((reference.derivative_availability & ~supported_derivatives) != 0) {
+    const bool pressure_derivative =
+        reference.derivative_availability
+            == std::vector<std::string>{"pressure"};
+    if (!reference.derivative_availability.empty() && !pressure_derivative) {
         throw std::invalid_argument(
-            "Provider neutral-reference derivative availability is unsupported"
+            "Provider source-reference derivative availability is unsupported"
         );
     }
-    if (reference.derivative_availability
-            == EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1
+    if (pressure_derivative
         && reference.pressure_derivatives_per_pa.size()
             != reference.neutral_basis_row_count) {
         throw std::invalid_argument(
-            "Provider neutral-reference pressure derivatives are incomplete"
-        );
-    }
-    if ((reference.derivative_availability
-            & EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1) != 0
-        && reference.pressure_derivatives_per_pa.size()
-            != reference.neutral_basis_row_count) {
-        throw std::invalid_argument(
-            "Provider neutral-reference pressure derivatives are incomplete"
-        );
-    }
-    if ((reference.derivative_availability
-            & EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PARAMETERS_V1) != 0
-        && (reference.active_parameter_count == 0
-            || reference.parameter_derivatives.size()
-                != reference.neutral_basis_row_count
-                    * reference.active_parameter_count)) {
-        throw std::invalid_argument(
-            "Provider neutral-reference parameter derivatives are incomplete"
+            "Provider source-reference pressure derivatives are incomplete"
         );
     }
     if (temperature_k != reference.temperature_k
@@ -1092,10 +1083,48 @@ SourceStandardStateResult transform_source_standard_state(
     require_finite_vector(
         log_activity_scale_factors, "source activity-scale factors"
     );
+    require_finite_vector(reference.neutral_basis, "source neutral basis");
+    require_finite_vector(
+        reference.log_fugacity_contractions,
+        "source fugacity contractions"
+    );
+    require_finite_vector(
+        reference.activity_scale_log_contractions,
+        "source activity-scale contractions"
+    );
+    require_finite_vector(
+        reference.transfer_log_contractions,
+        "source transfer contractions"
+    );
+    require_finite_vector(reference.source_composition, "source composition");
+    if (!std::isfinite(reference.reference_convergence_error)
+        || reference.reference_convergence_error < 0.0) {
+        throw std::invalid_argument(
+            "source-reference convergence evidence is invalid"
+        );
+    }
+    if (reference.source_composition.size() != reaction_matrix.columns) {
+        throw std::invalid_argument("source composition dimensions are inconsistent");
+    }
+    double source_sum = 0.0;
+    double source_charge = 0.0;
+    for (std::size_t species = 0; species < reaction_matrix.columns; ++species) {
+        const double fraction = reference.source_composition[species];
+        if (fraction < 0.0
+            || (charges[species] != 0 && fraction != 0.0)) {
+            throw std::invalid_argument("source composition is not salt free");
+        }
+        source_sum += fraction;
+        source_charge += fraction * static_cast<double>(charges[species]);
+    }
+    if (std::abs(source_sum - 1.0) > 1.0e-12
+        || std::abs(source_charge) > 1.0e-12) {
+        throw std::invalid_argument("source composition is not normalized and neutral");
+    }
 
     const DenseMatrix neutral_basis{
         reference.neutral_basis_row_count,
-        reference.component_count,
+        reference.component_ids.size(),
         reference.neutral_basis,
     };
     const RowQr factor = factor_row_basis(neutral_basis);
@@ -1114,10 +1143,8 @@ SourceStandardStateResult transform_source_standard_state(
         std::vector<double>(reaction_matrix.rows, 0.0),
         std::vector<double>(reaction_matrix.rows, 0.0),
         std::vector<double>(reaction_matrix.rows, 0.0),
-        std::vector<double>(
-            reaction_matrix.rows * reference.active_parameter_count, 0.0
-        ),
-        reference.active_parameter_count,
+        {},
+        0,
         0.0,
     };
     for (std::size_t reaction = 0; reaction < reaction_matrix.rows; ++reaction) {
@@ -1154,16 +1181,34 @@ SourceStandardStateResult transform_source_standard_state(
                 "source reaction is outside the Provider neutral-reference span"
             );
         }
-        double offset = std::inner_product(
+        const double declared_activity_offset = std::inner_product(
             stoichiometry.begin(),
             stoichiometry.end(),
             log_activity_scale_factors.begin(),
             0.0
         );
-        offset += std::inner_product(
+        const double evaluated_activity_offset = std::inner_product(
             coordinates.begin(),
             coordinates.end(),
-            reference.log_fugacity_contractions.begin(),
+            reference.activity_scale_log_contractions.begin(),
+            0.0
+        );
+        if (std::abs(declared_activity_offset - evaluated_activity_offset)
+            > numerical_tolerance(
+                std::max(
+                    std::abs(declared_activity_offset),
+                    std::abs(evaluated_activity_offset)
+                ),
+                reaction_matrix.columns
+            )) {
+            throw std::invalid_argument(
+                "source activity-scale conversion is inconsistent with Provider transfer"
+            );
+        }
+        const double offset = std::inner_product(
+            coordinates.begin(),
+            coordinates.end(),
+            reference.transfer_log_contractions.begin(),
             0.0
         );
         if (!std::isfinite(offset)
@@ -1174,8 +1219,7 @@ SourceStandardStateResult transform_source_standard_state(
         }
         result.standard_offsets[reaction] = offset;
         result.ln_k_provider_basis[reaction] = source_ln_k[reaction] + offset;
-        if ((reference.derivative_availability
-            & EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PRESSURE_V1) != 0) {
+        if (pressure_derivative) {
             result.pressure_derivatives_per_pa[reaction] =
                 std::inner_product(
                     coordinates.begin(),
@@ -1187,28 +1231,6 @@ SourceStandardStateResult transform_source_standard_state(
                 throw std::invalid_argument(
                     "source standard-state pressure derivative is non-finite"
                 );
-            }
-        }
-        if ((reference.derivative_availability
-            & EPCSAFT_NEUTRAL_REFERENCE_DERIVATIVE_PARAMETERS_V1) != 0) {
-            for (std::size_t parameter = 0;
-                 parameter < reference.active_parameter_count;
-                 ++parameter) {
-                double derivative = 0.0;
-                for (std::size_t basis = 0; basis < coordinates.size(); ++basis) {
-                    derivative += coordinates[basis]
-                        * reference.parameter_derivatives[
-                            basis * reference.active_parameter_count + parameter
-                        ];
-                }
-                if (!std::isfinite(derivative)) {
-                    throw std::invalid_argument(
-                        "source standard-state parameter derivative is non-finite"
-                    );
-                }
-                result.parameter_derivatives[
-                    reaction * reference.active_parameter_count + parameter
-                ] = derivative;
             }
         }
         result.representation_residual_inf_norm = std::max(

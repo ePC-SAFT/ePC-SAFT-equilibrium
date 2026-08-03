@@ -228,12 +228,15 @@ settings, chemistry data, aliases, or a second implementation. Its certificate
 axes keep artifact/input completeness, Ipopt status, numerical and physical
 checks, reduced-Hessian local status, predictive status, finite search, and
 globality separate. The manufactured installed-Provider evidence remains
-labeled manufactured/nonpredictive. Source-bound input consumes explicit
-source activity-scale shifts and the installed Provider neutral-reference
-callback at the actual system pressure, then passes Provider-basis constants
-and private transformed records bound to that trial pressure directly to the
-same compiler and `solve_provider_reaction` owner. The source standard state's
-declared reference pressure is retained separately as immutable provenance.
+labeled manufactured/nonpredictive. Source-bound input declares exact ordered
+components, a salt-free solvent composition, activity convention, standard
+molality, source pressure, and activity-scale shifts. Equilibrium calls the
+installed public EOS `source_reference_transfer` operation at the actual
+system pressure, validates its ordered charge-neutral basis and immutable
+fingerprints, and passes only the resulting Provider-basis constants to the
+same compiler and `solve_provider_reaction` owner. The source reference
+pressure is retained separately as immutable provenance, and the complete
+frozen EOS transfer receipt is attached to the public result.
 Failures preserve the returned terminal state and expose each scalar numerical
 and physical criterion independently, including the first failed criterion,
 active bounds, KKT rank/conditioning, and reduced-Hessian evidence. A
@@ -273,26 +276,26 @@ The typed sensitivity receipt reports rank, condition number, active bounds,
 amount-chart topology, and the immutable Provider parameter fingerprint. The
 result also binds installed Equilibrium and Provider distribution versions and
 RECORD fingerprints plus the Provider capsule name, ABI version, table size,
-and result-structure sizes. The pressure column includes the exact transformed
-source-reference pressure contribution when the installed neutral-reference
-derivative tail passes its pressure-domain, root-branch, topology,
-conditioning, ordering, and fingerprint certificates. Redundant source
+and result-structure sizes. Provider-basis inputs retain exact pressure and
+active-parameter sensitivity support. Source-bound sensitivity requests fail
+before optimization while the installed source-reference transfer advertises
+no derivatives. Redundant source
 reaction rows are reduced through the compiler's exact reaction transformation
 before entering the KKT column. Provider active-parameter coordinates are
 available only when the installed capability table advertises each requested
 typed coordinate and one atomic Provider callback supplies the active-model
 Helmholtz state derivatives, state-parameter block, pressure and
-chemical-potential projections, reference derivative, and packing state
+chemical-potential projections, and packing state
 gradient/Hessian. Request order is preserved. Missing blocks, unadvertised
 coordinates, active bounds, or unavailable KKT columns fail closed; no missing
 column is filled numerically. There is no
 chemistry registry, predictive admission, coupled-equilibrium result, or
 globality claim.
 
-A source-bound active request also requires the Provider's active
-neutral-reference value and parameter derivative at the same model point. If
-that prerequisite is unavailable, the operation rejects before solving rather
-than combining an active phase with a fixed-catalog reference value.
+A source-bound active request requires source-reference transfer derivatives
+for the requested coordinates. If that prerequisite is unavailable, the
+operation rejects before solving rather than combining an active phase with a
+fixed-catalog reference value.
 
 ## Shared package contract
 

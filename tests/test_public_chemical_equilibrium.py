@@ -42,6 +42,22 @@ def _ideal_phase() -> epcsaft_equilibrium.IdealGasPhase:
     )
 
 
+def test_public_source_standard_state_declares_exact_solvent_reference() -> None:
+    state = epcsaft_equilibrium.ChemicalStandardState(
+        id="declared-water-reference-v1",
+        activity_scale_id="aqueous-molality-v1",
+        log_activity_scale_factors=(0.0, -4.0, -4.0),
+        reference_pressure_pa=100_000.0,
+        source_reference_component_ids=("water", "cation", "anion"),
+        source_reference_solvent_composition=(1.0, 0.0, 0.0),
+        source_reference_activity_convention_id="molality-infinite-dilution-v1",
+        source_reference_standard_molality_mol_per_kg=1.0,
+    )
+
+    assert state.source_reference_component_ids == ("water", "cation", "anion")
+    assert state.source_reference_solvent_composition == (1.0, 0.0, 0.0)
+
+
 def test_public_chemical_equilibrium_solves_one_typed_ideal_problem() -> None:
     temperature = 350.0 * epcsaft.unit_registry.kelvin
     pressure = 200_000.0 * epcsaft.unit_registry.pascal

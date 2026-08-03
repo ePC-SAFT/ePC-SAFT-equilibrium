@@ -368,7 +368,7 @@ public_surface:
 
 homogeneous_reacting_phase:
   binding_decision: D-028
-  status: public-local-value-and-conditioned-sensitivity-source-complete-evidence
+  status: public-local-value-and-conditioned-provider-basis-sensitivity-source-complete-evidence
   authority_effect: none
   public_operation: chemical_equilibrium
   scope: one homogeneous fixed-temperature fixed-pressure reacting phase
@@ -382,8 +382,8 @@ homogeneous_reacting_phase:
     - molar-volume domain bounds
     - packing-fraction value, gradient, and Hessian
     - source temperature and total-ion composition bounds
-    - Provider-basis lnK or explicit source activity-scale shifts plus the neutral-reference callback
-    - certified neutral-reference pressure derivatives at the actual system pressure
+    - Provider-basis lnK or an explicit declared-solvent source-reference transfer receipt
+    - ordered charge-neutral transfer basis and immutable source-reference fingerprints
   source_pressure_semantics:
     provenance: source-standard-state reference pressure
     provider_evaluation: actual trial system pressure
@@ -392,10 +392,11 @@ homogeneous_reacting_phase:
     available:
       - compiled balance totals
       - compiled Provider-basis lnK
-      - pressure including transformed source-reference pressure derivatives
+      - pressure for Provider-basis equilibrium constants
       - ordered active Provider coordinates with complete atomic active-model tensors
     fail_closed:
       - unadvertised coordinates or incomplete Provider derivative blocks
+      - unavailable source-reference transfer derivatives
       - active bounds or unavailable, rank-deficient, or ill-conditioned KKT columns
   evidence_profiles:
     - installed_provider_manufactured_nonpredictive

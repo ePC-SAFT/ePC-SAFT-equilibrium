@@ -348,46 +348,14 @@ ChemicalObservationSolve solve_chemical_observation(
     std::vector<double> pressure_derivatives;
     std::vector<double> parameter_derivatives;
     if (row.source_standard_state.has_value()) {
-        const auto& source = *row.source_standard_state;
-        if (source.id.empty() || source.activity_scale_id.empty()
-            || source.log_activity_scale_factors.size() != input.species_ids.size()
-            || !std::isfinite(source.reference_pressure_pa)
-            || source.reference_pressure_pa <= 0.0) {
-            throw std::invalid_argument("source standard-state identity is incomplete");
-        }
-        for (const auto& record : input.equilibrium_constant_records) {
-            if (record.reference_id != source.id
-                || record.conversion_id
-                    != "source-standard-state-to-provider-neutral-reference"
-                || record.reaction_orientation != "products_positive"
-                || !record.dimensionless
-                || record.temperature_k != row.temperature_k
-                || record.pressure_pa != source.reference_pressure_pa) {
-                throw std::invalid_argument("source equilibrium-constant provenance is incompatible");
-            }
-        }
-        const auto reference = provider.evaluate_neutral_reference_derivatives(
-            row.temperature_k, row.pressure_pa, solved.active_parameters
+        throw std::invalid_argument(
+            "installed Provider source-reference derivatives are unavailable"
         );
-        const auto transformed = transform_source_standard_state(
-            input.reaction_matrix,
-            input.ln_k,
-            source.log_activity_scale_factors,
-            input.charges,
-            context.provider_fingerprint,
-            row.temperature_k,
-            row.pressure_pa,
-            reference
-        );
-        input.ln_k = transformed.ln_k_provider_basis;
-        for (auto& record : input.equilibrium_constant_records) {
-            record.reference_id = "provider-helmholtz-coordinate-basis";
-            record.conversion_id = "already-provider-basis";
-            record.pressure_pa = row.pressure_pa;
-        }
-        pressure_derivatives = transformed.pressure_derivatives_per_pa;
-        parameter_derivatives = transformed.parameter_derivatives;
     }
+    parameter_derivatives.assign(
+        input.reaction_matrix.rows * solved.active_parameters.parameters.size(),
+        0.0
+    );
     solved.result = solve_provider_reaction(
         compile_reaction_system(input),
         provider,

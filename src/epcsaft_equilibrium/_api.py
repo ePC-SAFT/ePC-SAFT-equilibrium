@@ -203,6 +203,27 @@ class ChemicalStandardState:
     activity_scale_id: str
     log_activity_scale_factors: tuple[float, ...]
     reference_pressure_pa: float
+    source_reference_component_ids: tuple[str, ...]
+    source_reference_solvent_composition: tuple[float, ...]
+    source_reference_activity_convention_id: str
+    source_reference_standard_molality_mol_per_kg: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "log_activity_scale_factors",
+            tuple(self.log_activity_scale_factors),
+        )
+        object.__setattr__(
+            self,
+            "source_reference_component_ids",
+            tuple(self.source_reference_component_ids),
+        )
+        object.__setattr__(
+            self,
+            "source_reference_solvent_composition",
+            tuple(self.source_reference_solvent_composition),
+        )
 
 
 @dataclass(frozen=True)
@@ -610,6 +631,7 @@ class ChemicalEquilibriumResult:
     provider_parameter_fingerprint: str | None
     equilibrium_constants: tuple[ChemicalEquilibriumConstant, ...]
     source_standard_state: ChemicalStandardState | None
+    source_reference_transfer: epcsaft.SourceReferenceTransfer | None
     provider_reference_id: str | None
     standard_offsets: tuple[float, ...] | None
     ln_k_provider_basis: tuple[float, ...] | None
@@ -1878,6 +1900,53 @@ def _classified_continuation_failure(
     return None
 
 
+def _classified_source_reference_failure(
+    failure_reason: str,
+) -> ChemicalEquilibriumDiagnostics | None:
+    classifications = (
+        (
+            "unsupported-source-reference-transfer",
+            "unsupported_source_reference_transfer",
+        ),
+        ("invalid-source-composition", "invalid_source_reference"),
+        ("nonfinite-source-reference-state", "invalid_source_reference"),
+        ("component-order-mismatch", "component_order_mismatch"),
+        ("source-reference component order", "component_order_mismatch"),
+        ("missing-parameter-or-topology", "missing_parameter_or_topology"),
+        ("provider-domain-rejection", "provider_domain_rejection"),
+        (
+            "reference-limit-convergence-failure",
+            "reference_limit_convergence_failure",
+        ),
+        ("derivative-unavailable", "source_reference_derivative_unavailable"),
+        (
+            "source-reference derivative is unavailable",
+            "source_reference_derivative_unavailable",
+        ),
+    )
+    for marker, failure_kind in classifications:
+        if marker in failure_reason:
+            return replace(
+                _failed_chemical_diagnostics(
+                    "source_reference_preflight_failed", failure_reason
+                ),
+                failure_kind=failure_kind,
+                provider_domain_status=(
+                    "failed"
+                    if failure_kind == "provider_domain_rejection"
+                    else "not_adjudicated"
+                ),
+            )
+    if "source-reference" in failure_reason or "source " in failure_reason:
+        return replace(
+            _failed_chemical_diagnostics(
+                "source_reference_preflight_failed", failure_reason
+            ),
+            failure_kind="source_reference_receipt_mismatch",
+        )
+    return None
+
+
 def _chemical_diagnostics(
     native: Mapping[str, object],
 ) -> ChemicalEquilibriumDiagnostics:
@@ -2517,6 +2586,116 @@ def _chemical_sensitivity(
     )
 
 
+def _source_reference_transfer(
+    phase: ProviderPhase,
+    standard_state: ChemicalStandardState,
+    *,
+    species_ids: tuple[str, ...],
+    temperature_k: float,
+    pressure_pa: float,
+    sensitivities_requested: bool,
+    active_parameters_requested: bool,
+) -> epcsaft.SourceReferenceTransfer:
+    if standard_state.source_reference_component_ids != species_ids:
+        raise ValueError(
+            "source-reference component order does not match the reaction system"
+        )
+    if tuple(phase.model.component_ids) != species_ids:
+        raise ValueError(
+            "source-reference component order does not match the installed Provider"
+        )
+    if len(standard_state.log_activity_scale_factors) != len(species_ids):
+        raise ValueError("source activity-scale factors do not match the species order")
+    required_derivatives = (
+        ()
+        if not sensitivities_requested
+        else (("pressure", "parameters") if active_parameters_requested else ("pressure",))
+    )
+    transfer = epcsaft.source_reference_transfer(
+        phase.model,
+        epcsaft.SourceReferenceDeclaration(
+            reference_state_id=standard_state.id,
+            component_ids=standard_state.source_reference_component_ids,
+            solvent_mole_fractions=(
+                standard_state.source_reference_solvent_composition
+            ),
+            activity_convention_id=(
+                standard_state.source_reference_activity_convention_id
+            ),
+            standard_molality_mol_per_kg=(
+                standard_state.source_reference_standard_molality_mol_per_kg
+            ),
+            reference_pressure_pa=standard_state.reference_pressure_pa,
+            required_derivatives=required_derivatives,
+        ),
+        T=temperature_k * epcsaft.unit_registry.kelvin,
+        P=pressure_pa * epcsaft.unit_registry.pascal,
+    )
+    if (
+        transfer.status != "ok"
+        or transfer.domain_status != "admitted"
+        or transfer.convergence_status != "converged"
+        or transfer.component_ids != species_ids
+        or transfer.reference_state_id != standard_state.id
+        or transfer.activity_convention_id
+        != standard_state.source_reference_activity_convention_id
+        or transfer.parameter_fingerprint != phase.expected_parameter_fingerprint
+        or transfer.temperature_k != temperature_k
+        or transfer.pressure_pa != pressure_pa
+        or transfer.source_reference_pressure_pa
+        != standard_state.reference_pressure_pa
+    ):
+        raise ValueError("installed Provider source-reference receipt is incompatible")
+    return transfer
+
+
+def _source_reference_payload(
+    transfer: epcsaft.SourceReferenceTransfer,
+) -> dict[str, object]:
+    return {
+        "status": transfer.status,
+        "domain_status": transfer.domain_status,
+        "convergence_status": transfer.convergence_status,
+        "reference_state_id": transfer.reference_state_id,
+        "activity_convention_id": transfer.activity_convention_id,
+        "component_ids": transfer.component_ids,
+        "neutral_basis_row_count": len(transfer.neutral_basis),
+        "neutral_basis": tuple(
+            value for row in transfer.neutral_basis for value in row
+        ),
+        "log_fugacity_contractions": transfer.log_fugacity_contractions,
+        "activity_scale_log_contractions": (
+            transfer.activity_scale_log_contractions
+        ),
+        "transfer_log_contractions": transfer.transfer_log_contractions,
+        "source_composition": transfer.source_composition,
+        "derivative_availability": transfer.derivative_availability,
+        "pressure_derivatives_per_pa": transfer.pressure_derivatives_per_pa,
+        "temperature_k": transfer.temperature_k,
+        "pressure_pa": transfer.pressure_pa,
+        "source_reference_pressure_pa": transfer.source_reference_pressure_pa,
+        "standard_molality_mol_per_kg": (
+            transfer.standard_molality_mol_per_kg
+        ),
+        "solvent_molar_mass_kg_per_mol": (
+            transfer.solvent_molar_mass_kg_per_mol
+        ),
+        "reference_limit_molality_mol_per_kg": (
+            transfer.reference_limit_molality_mol_per_kg
+        ),
+        "reference_convergence_error": transfer.reference_convergence_error,
+        "source_temperature_interval_k": transfer.source_temperature_interval_k,
+        "source_pressure_interval_pa": transfer.source_pressure_interval_pa,
+        "parameter_fingerprint": transfer.parameter_fingerprint,
+        "topology_fingerprint": transfer.topology_fingerprint,
+        "component_order_fingerprint": transfer.component_order_fingerprint,
+        "reference_state_fingerprint": transfer.reference_state_fingerprint,
+        "domain_fingerprint": transfer.domain_fingerprint,
+        "artifact_fingerprint": transfer.artifact_fingerprint,
+        "helmholtz_basis_id": transfer.helmholtz_basis_id,
+    }
+
+
 def chemical_equilibrium(
     phase: IdealGasPhase | ProviderPhase,
     temperature: Quantity[Any],
@@ -2579,11 +2758,25 @@ def chemical_equilibrium(
         temperature_k = _quantity(temperature, "kelvin", "temperature", "chemical_equilibrium")
         pressure_pa = _quantity(pressure, "pascal", "pressure", "chemical_equilibrium")
         standard_state = problem.source_standard_state
-        if standard_state is not None and (
-            not math.isfinite(standard_state.reference_pressure_pa)
-            or standard_state.reference_pressure_pa <= 0.0
-        ):
-            raise ValueError("source-standard-state reference pressure must be positive and finite")
+        if standard_state is not None:
+            if (
+                not math.isfinite(standard_state.reference_pressure_pa)
+                or standard_state.reference_pressure_pa <= 0.0
+            ):
+                raise ValueError(
+                    "source-standard-state reference pressure must be positive and finite"
+                )
+            if (
+                not standard_state.id
+                or not standard_state.activity_scale_id
+                or not standard_state.source_reference_activity_convention_id
+                or not math.isfinite(
+                    standard_state.source_reference_standard_molality_mol_per_kg
+                )
+                or standard_state.source_reference_standard_molality_mol_per_kg
+                <= 0.0
+            ):
+                raise ValueError("source-standard-state declaration is incomplete")
         if not math.isfinite(problem.strict_interior_amount_floor_mol) or (
             problem.strict_interior_amount_floor_mol <= 0.0
         ):
@@ -2618,6 +2811,8 @@ def chemical_equilibrium(
             "pressure_pa": pressure_pa,
         }
         packing_bounds: tuple[float, float] | None
+        source_transfer: epcsaft.SourceReferenceTransfer | None = None
+        initial_source_transfer: epcsaft.SourceReferenceTransfer | None = None
         if isinstance(phase, IdealGasPhase):
             if continuation is not None:
                 raise ValueError("Provider model continuation requires a ProviderPhase")
@@ -2662,6 +2857,16 @@ def chemical_equilibrium(
             thermodynamic_model = "installed_provider"
             provider_ids = tuple(phase.model.component_ids)
             provider_fingerprint = model_fingerprint
+            if standard_state is not None:
+                source_transfer = _source_reference_transfer(
+                    phase,
+                    standard_state,
+                    species_ids=problem.species_ids,
+                    temperature_k=temperature_k,
+                    pressure_pa=pressure_pa,
+                    sensitivities_requested=sensitivity_request is not None,
+                    active_parameters_requested=bool(active_parameters),
+                )
             if continuation is not None:
                 initial_phase = continuation.initial_phase
                 if not isinstance(initial_phase, ProviderPhase):
@@ -2735,8 +2940,20 @@ def chemical_equilibrium(
                         "initial equilibrium constants are not a complete "
                         "Provider-basis endpoint contract"
                     )
+                if standard_state is not None:
+                    initial_source_transfer = _source_reference_transfer(
+                        initial_phase,
+                        standard_state,
+                        species_ids=problem.species_ids,
+                        temperature_k=temperature_k,
+                        pressure_pa=pressure_pa,
+                        sensitivities_requested=False,
+                        active_parameters_requested=False,
+                    )
         else:
             raise TypeError("chemical_equilibrium requires a typed phase model")
+        if standard_state is not None and source_transfer is None:
+            raise RuntimeError("source-reference transfer was not evaluated")
         native_standard_state: dict[str, object] | None = (
             None
             if standard_state is None
@@ -2745,6 +2962,24 @@ def chemical_equilibrium(
                 "activity_scale_id": standard_state.activity_scale_id,
                 "log_activity_scale_factors": standard_state.log_activity_scale_factors,
                 "reference_pressure_pa": standard_state.reference_pressure_pa,
+                "source_reference_activity_convention_id": (
+                    standard_state.source_reference_activity_convention_id
+                ),
+                "source_reference_standard_molality_mol_per_kg": (
+                    standard_state.source_reference_standard_molality_mol_per_kg
+                ),
+                "provider_transfer": _source_reference_payload(
+                    cast(epcsaft.SourceReferenceTransfer, source_transfer)
+                ),
+                **(
+                    {}
+                    if initial_source_transfer is None
+                    else {
+                        "initial_provider_transfer": _source_reference_payload(
+                            initial_source_transfer
+                        )
+                    }
+                ),
             }
         )
         native = cast(
@@ -2811,7 +3046,7 @@ def chemical_equilibrium(
             if continuation is not None
             else ""
         )
-        classified = (
+        classified = _classified_source_reference_failure(reason) or (
             _classified_continuation_failure(reason, continuation_fingerprint)
             if continuation_fingerprint
             else None
@@ -2832,6 +3067,13 @@ def chemical_equilibrium(
             str(native["parameter_fingerprint"]) != provider_fingerprint
         ):
             raise ValueError("native result has the wrong Provider fingerprint")
+        if source_transfer is not None and (
+            str(native.get("source_reference_state_fingerprint", ""))
+            != source_transfer.reference_state_fingerprint
+            or str(native.get("provider_reference_id", ""))
+            != source_transfer.helmholtz_basis_id
+        ):
+            raise ValueError("native result has the wrong source-reference receipt")
         amounts = _vector(native["amounts"], len(problem.species_ids), "chemical amounts")
         total_amount = math.fsum(amounts)
         if total_amount <= 0.0 or not math.isfinite(total_amount):
@@ -2880,6 +3122,7 @@ def chemical_equilibrium(
         provider_parameter_fingerprint=provider_fingerprint,
         equilibrium_constants=problem.equilibrium_constants,
         source_standard_state=standard_state,
+        source_reference_transfer=source_transfer,
         provider_reference_id=provider_reference_id,
         standard_offsets=standard_offsets,
         ln_k_provider_basis=ln_k_provider_basis,
@@ -2994,6 +3237,15 @@ def chemical_observation_context(
         }
         standard_state: dict[str, object] | None = None
         if problem.source_standard_state is not None:
+            transfer = _source_reference_transfer(
+                phase,
+                problem.source_standard_state,
+                species_ids=problem.species_ids,
+                temperature_k=temperature_k,
+                pressure_pa=pressure_pa,
+                sensitivities_requested=True,
+                active_parameters_requested=True,
+            )
             standard_state = {
                 "id": problem.source_standard_state.id,
                 "activity_scale_id": problem.source_standard_state.activity_scale_id,
@@ -3001,6 +3253,13 @@ def chemical_observation_context(
                     problem.source_standard_state.log_activity_scale_factors
                 ),
                 "reference_pressure_pa": (problem.source_standard_state.reference_pressure_pa),
+                "source_reference_activity_convention_id": (
+                    problem.source_standard_state.source_reference_activity_convention_id
+                ),
+                "source_reference_standard_molality_mol_per_kg": (
+                    problem.source_standard_state.source_reference_standard_molality_mol_per_kg
+                ),
+                "provider_transfer": _source_reference_payload(transfer),
             }
         reference_id = (
             problem.source_standard_state.id

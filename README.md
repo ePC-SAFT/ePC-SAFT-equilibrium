@@ -218,15 +218,17 @@ source-complete Held/IAPWS water self-ionization value case. The public typed
 and optionally returns exact conditioned derivatives with respect to compiled
 balance totals, final EOS-basis `ln(K)`, and pressure. Value-only and
 value-plus-Jacobian responses are explicit. Requested unsupported columns fail
-closed. A source standard state's reference pressure remains immutable
-provenance, while the EOS reference is re-evaluated and the transformed
-EOS-basis record is bound at each actual trial pressure. Exact
-source-reference pressure derivatives are included in the returned pressure
-column when the installed derivative tail and its branch certificates are
-available. Typed active-parameter requests consume only coordinates advertised
+closed. A source standard state explicitly declares ordered components, a
+salt-free solvent composition, activity convention, standard molality, and
+reference pressure. The reference pressure remains immutable provenance, while
+the installed EOS evaluates the source limit and binds the transformed
+EOS-basis record at each actual trial pressure. The immutable EOS transfer
+receipt is returned with the result. Source-bound sensitivity requests fail
+before optimization until the installed transfer advertises the requested
+derivatives. Typed active-parameter requests consume only coordinates advertised
 by the installed EOS and require one atomic callback to supply the
-active-model Helmholtz, packing, pressure, chemical-potential, and
-neutral-reference derivative blocks. Unsupported or incomplete requests fail
+active-model Helmholtz, packing, pressure, and chemical-potential derivative
+blocks. Unsupported or incomplete requests fail
 closed; no derivative is approximated. Results bind species/parameter order, units, chart topology,
 EOS fingerprint, installed distribution RECORD fingerprints, and EOS
 SDK ABI identity. The reported `condition_number_inf` is the deterministic

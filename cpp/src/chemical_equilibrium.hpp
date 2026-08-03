@@ -331,7 +331,35 @@ struct ProviderPhaseBlockEvidence {
 
 class ProviderContext;
 struct ProviderActiveParameterSet;
-struct NeutralReferenceEvaluation;
+
+struct SourceReferenceTransferEvidence {
+    std::string status;
+    std::string domain_status;
+    std::string convergence_status;
+    std::string reference_state_id;
+    std::string activity_convention_id;
+    std::vector<std::string> component_ids;
+    std::size_t neutral_basis_row_count = 0;
+    std::vector<double> neutral_basis;
+    std::vector<double> log_fugacity_contractions;
+    std::vector<double> activity_scale_log_contractions;
+    std::vector<double> transfer_log_contractions;
+    std::vector<double> source_composition;
+    std::vector<std::string> derivative_availability;
+    std::vector<double> pressure_derivatives_per_pa;
+    double temperature_k = 0.0;
+    double pressure_pa = 0.0;
+    double source_reference_pressure_pa = 0.0;
+    double standard_molality_mol_per_kg = 0.0;
+    double reference_convergence_error = 0.0;
+    std::string parameter_fingerprint;
+    std::string topology_fingerprint;
+    std::string component_order_fingerprint;
+    std::string reference_state_fingerprint;
+    std::string domain_fingerprint;
+    std::string artifact_fingerprint;
+    std::string helmholtz_basis_id;
+};
 
 struct SourceStandardStateResult {
     std::vector<double> standard_offsets;
@@ -460,11 +488,12 @@ evaluate_manufactured_inverse_log_packing_nlp(
     const DenseMatrix& reaction_matrix,
     const std::vector<double>& source_ln_k,
     const std::vector<double>& log_activity_scale_factors,
+    const std::vector<std::string>& species_ids,
     const std::vector<int>& charges,
     const std::string& provider_fingerprint,
     double temperature_k,
     double pressure_pa,
-    const NeutralReferenceEvaluation& reference
+    const SourceReferenceTransferEvidence& reference
 );
 
 [[nodiscard]] ChemicalSolveResult solve_provider_reaction(
