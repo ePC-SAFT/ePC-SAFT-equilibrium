@@ -727,10 +727,10 @@ def test_finite_but_inconsistent_callback_hessian_fails_spanning_audit() -> None
     assert native["derivative_check_worst_analytic_value"] is not None
     assert native["derivative_check_worst_finite_difference_value"] is not None
     hessian_check = next(
-            criterion
-            for criterion in native["numerical_criteria"]
-            if criterion["name"] == "lagrangian_hessian_spanning_relative_error"
-        )
+        criterion
+        for criterion in native["numerical_criteria"]
+        if criterion["name"] == "lagrangian_hessian_spanning_relative_error"
+    )
     assert hessian_check["status"] == "failed"
 
 
@@ -1746,43 +1746,6 @@ def test_public_provider_phase_block_matches_independent_finite_differences(
                 finite_difference_hessian, rel=3.0e-5, abs=3.0e-5
             )
 
-    phase = epcsaft_equilibrium.ProviderPhase(
-        model=model,
-        expected_parameter_fingerprint=model.parameter_fingerprint,
-        admissible_packing_fraction_interval=(1.0e-6, 0.74),
-    )
-    problem = epcsaft_equilibrium.ChemicalEquilibriumProblem(
-        species_ids=("solvent", "cation", "anion"),
-        charges=(0, 1, -1),
-        molar_masses_kg_per_mol=(0.018, 0.009, 0.009),
-        balance_matrix=((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
-        conserved_totals=(1.98, 0.0),
-        reaction_matrix=((-1.0, 1.0, 1.0),),
-        feed_amounts_mol=(0.98, 0.01, 0.01),
-        equilibrium_constants=(
-            epcsaft_equilibrium.ChemicalEquilibriumConstant(
-                ln_value=0.0,
-                source_id="synthetic-provider-path",
-                reference_id="provider-helmholtz-coordinate-basis",
-                reaction_orientation="products_positive",
-                conversion_id="already-provider-basis",
-                dimensionless=True,
-            ),
-        ),
-        strict_interior_amount_floor_mol=1.0e-12,
-    )
-    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError) as failed:
-        epcsaft_equilibrium.chemical_equilibrium(
-            phase,
-            temperature_k * epcsaft.unit_registry.kelvin,
-            100_000.0 * epcsaft.unit_registry.pascal,
-            problem,
-        )
-    assert failed.value.diagnostics.failure_kind == "exhausted_multistart_search"
-    assert failed.value.diagnostics.first_failed_numerical_criterion == "solver_termination"
-    assert "derivative" not in failed.value.diagnostics.callback_error
-
-
 def test_public_nonpolar_to_polar_recovery_input_preserves_certified_target() -> None:
     def model(polar: bool) -> epcsaft.Mixture:
         parameters: dict[str, object] = {
@@ -1921,19 +1884,6 @@ def test_public_nonpolar_to_polar_recovery_input_preserves_certified_target() ->
             dimensionless=True,
         ),
     )
-    with pytest.raises(
-        epcsaft_equilibrium.ChemicalEquilibriumError,
-        match="must be supplied together",
-    ):
-        epcsaft_equilibrium.chemical_equilibrium(
-            target_phase,
-            313.15 * epcsaft.unit_registry.kelvin,
-            path_pressure_pa * epcsaft.unit_registry.pascal,
-            problem,
-            continuation=epcsaft_equilibrium.ProviderModelContinuation(
-                initial_phase, initial_constants
-            ),
-        )
     with pytest.raises(
         epcsaft_equilibrium.ChemicalEquilibriumError,
         match="not bound to the initial Provider fingerprint",

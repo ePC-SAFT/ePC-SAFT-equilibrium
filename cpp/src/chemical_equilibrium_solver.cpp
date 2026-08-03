@@ -5649,6 +5649,35 @@ ProviderPhaseBlockEvidence evaluate_provider_phase_block(
     };
 }
 
+namespace {
+
+PhaseBlockEvaluation provider_phase_evaluation(
+    const ProviderContext& provider,
+    double temperature_k,
+    const std::vector<double>& amounts,
+    double volume_m3
+) {
+    const ProviderPhaseBlockEvidence block = evaluate_provider_phase_block(
+        provider, temperature_k, amounts, volume_m3
+    );
+    PhaseBlockEvaluation result;
+    result.mechanical = {
+        block.value,
+        block.gradient,
+        block.hessian,
+        block.pressure_pa,
+    };
+    result.packing = {
+        block.packing_fraction,
+        block.packing_gradient,
+        block.packing_hessian,
+    };
+    result.has_packing = true;
+    return result;
+}
+
+}  // namespace
+
 ChemicalSolveResult solve_provider_reaction(
     const CompiledReactionSystem& system,
     const ProviderContext& provider,
@@ -5885,23 +5914,9 @@ ChemicalSolveResult solve_provider_reaction(
             }
             return result;
         }
-        const ProviderPhaseBlockEvidence block = evaluate_provider_phase_block(
+        return provider_phase_evaluation(
             provider, temperature, amounts, volume
         );
-        PhaseBlockEvaluation result;
-        result.mechanical = {
-            block.value,
-            block.gradient,
-            block.hessian,
-            block.pressure_pa,
-        };
-        result.packing = {
-            block.packing_fraction,
-            block.packing_gradient,
-            block.packing_hessian,
-        };
-        result.has_packing = true;
-        return result;
     };
     const ReactionDomain domain{
         false,
@@ -6287,40 +6302,16 @@ ChemicalSolveResult solve_provider_reaction_continuation(
     }
     target_result.search.continuation_accepted_lambda = 0.0;
 
-    const auto provider_phase = [](
-        const ProviderContext& provider,
-        double temperature,
-        const std::vector<double>& amounts,
-        double volume
-    ) {
-        const ProviderPhaseBlockEvidence block = evaluate_provider_phase_block(
-            provider, temperature, amounts, volume
-        );
-        PhaseBlockEvaluation result;
-        result.mechanical = {
-            block.value,
-            block.gradient,
-            block.hessian,
-            block.pressure_pa,
-        };
-        result.packing = {
-            block.packing_fraction,
-            block.packing_gradient,
-            block.packing_hessian,
-        };
-        result.has_packing = true;
-        return result;
-    };
     PhaseBlockEvaluation initial_target_block;
     PhaseBlockEvaluation initial_source_block;
     try {
-        initial_target_block = provider_phase(
+        initial_target_block = provider_phase_evaluation(
             target_provider,
             temperature_k,
             initial_result.amounts,
             initial_result.volume_m3
         );
-        initial_source_block = provider_phase(
+        initial_source_block = provider_phase_evaluation(
             initial_provider,
             temperature_k,
             initial_result.amounts,
@@ -6417,7 +6408,6 @@ ChemicalSolveResult solve_provider_reaction_continuation(
             &target_provider,
             &initial_provider,
             lambda,
-            provider_phase,
             target_packing_fraction_min,
             target_packing_fraction_max,
             initial_packing_fraction_min,
@@ -6427,10 +6417,10 @@ ChemicalSolveResult solve_provider_reaction_continuation(
             const std::vector<double>& amounts,
             double volume
         ) {
-            PhaseBlockEvaluation initial = provider_phase(
+            PhaseBlockEvaluation initial = provider_phase_evaluation(
                 initial_provider, temperature, amounts, volume
             );
-            PhaseBlockEvaluation target = provider_phase(
+            PhaseBlockEvaluation target = provider_phase_evaluation(
                 target_provider, temperature, amounts, volume
             );
             if (initial.packing.value < initial_packing_fraction_min
@@ -6493,7 +6483,7 @@ ChemicalSolveResult solve_provider_reaction_continuation(
         warm.amounts = current_amounts;
         ChemicalSolveResult candidate;
         try {
-            const PhaseBlockEvaluation target_block = provider_phase(
+            const PhaseBlockEvaluation target_block = provider_phase_evaluation(
                 target_provider, temperature_k, current_amounts, current_volume
             );
             volume_transform.initial_coordinate =
@@ -6545,7 +6535,7 @@ ChemicalSolveResult solve_provider_reaction_continuation(
                 basin.representative_attempt_ordinal = endpoint_attempt_ordinal;
                 basin.amounts = candidate.amounts;
                 basin.volume_m3 = candidate.volume_m3;
-                const PhaseBlockEvaluation final_phase = provider_phase(
+                const PhaseBlockEvaluation final_phase = provider_phase_evaluation(
                     target_provider,
                     temperature_k,
                     candidate.amounts,

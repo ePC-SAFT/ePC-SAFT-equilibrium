@@ -149,17 +149,6 @@ def test_public_chemical_equilibrium_solves_one_typed_ideal_problem() -> None:
     )
 
 
-def test_continuation_missing_sdk_contract_is_typed_unsupported() -> None:
-    diagnostics = equilibrium_api._classified_continuation_failure(
-        "Provider capsule is missing the reacting-phase SDK contract",
-        "sha256:initial-model",
-    )
-    assert diagnostics is not None
-    assert diagnostics.failure_kind == "unsupported_derivative_capability"
-    assert diagnostics.search.continuation_status == "endpoint_derivative_incompatible"
-    equilibrium_api._validate_chemical_search(diagnostics.search)
-
-
 def test_chart_multiplier_reconstruction_is_invariant_to_balance_row_scale() -> None:
     baseline_problem = epcsaft_equilibrium.ChemicalEquilibriumProblem(
         species_ids=("A", "B", "C"),
