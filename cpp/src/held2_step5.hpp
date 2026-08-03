@@ -17,7 +17,7 @@ using Held2PackingFractionEvaluator = std::function<double(
 )>;
 
 struct Held2ResourceProfile {
-    int step2_provider_evaluation_budget = 6500;
+    int step2_search_work_budget = 6500;
     int step5_start_cap = 128;
     int step7_major_iteration_cap = 128;
     int step5_recovery_start_cap = 2048;

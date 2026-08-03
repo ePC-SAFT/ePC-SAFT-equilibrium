@@ -576,6 +576,7 @@ Held2Step1Result run_held2_step1(
     double pressure_pa,
     const std::vector<double>& physical_feed,
     const Held2PhysicalVolumeBoundsEvaluator& physical_volume_bounds,
+    std::string provider_fingerprint,
     double total_ion_mole_fraction_max
 ) {
     const auto wall_start = std::chrono::steady_clock::now();
@@ -585,6 +586,7 @@ Held2Step1Result run_held2_step1(
     result.pressure_pa = pressure_pa;
     result.total_ion_mole_fraction_max =
         total_ion_mole_fraction_max;
+    result.provider_fingerprint = std::move(provider_fingerprint);
     const auto finish = [&](const char* reason, int next_step = 0) {
         return finish_step1(
             std::move(result), reason, next_step, wall_start, cpu_start
@@ -595,6 +597,9 @@ Held2Step1Result run_held2_step1(
     }
     if (!std::isfinite(pressure_pa) || pressure_pa <= 0.0) {
         return finish("invalid_pressure");
+    }
+    if (result.provider_fingerprint.empty()) {
+        return finish("invalid_provider_fingerprint");
     }
     if (
         component_ids.size() != charges.size()
@@ -659,11 +664,12 @@ Held2Step1Result run_held2_step1(
     if (!physical_volume_bounds) {
         return finish("missing_physical_volume_bounds");
     }
+    std::array<double, 2> feed_volume_bounds;
     try {
         ++result.timing.provider_evaluations;
-        static_cast<void>(checked_volume_bounds(
+        feed_volume_bounds = checked_volume_bounds(
             physical_volume_bounds, lifted_feed
-        ));
+        );
     } catch (const std::invalid_argument& error) {
         const std::string reason = error.what();
         return finish(
@@ -677,6 +683,7 @@ Held2Step1Result run_held2_step1(
 
     result.coordinates = coordinates;
     result.independent_feed = independent_feed;
+    result.feed_volume_bounds = feed_volume_bounds;
     result.volume_bounds = Held2VolumeBoundsEvaluator(
         [coordinates, physical_volume_bounds](
             const std::vector<double>& independent

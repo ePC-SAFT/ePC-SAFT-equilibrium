@@ -67,12 +67,20 @@ struct Held2Step8Result {
 
 class Held2AlgorithmCache {
 public:
-    void begin_context(const void* context_token);
+    Held2AlgorithmCache(
+        std::string provider_fingerprint,
+        Held2StateEvaluator state_evaluator,
+        Held2VolumeBoundsEvaluator volume_bounds_evaluator
+    );
+    [[nodiscard]] const std::string& provider_fingerprint() const noexcept {
+        return provider_fingerprint_;
+    }
     [[nodiscard]] Held2StateEvaluation evaluate_state(
-        const Held2StateEvaluator& evaluator,
         const std::vector<double>& composition,
-        double log_volume,
-        bool* provider_evaluated = nullptr
+        double log_volume
+    );
+    [[nodiscard]] std::array<double, 2> evaluate_volume_bounds(
+        const std::vector<double>& composition
     );
     [[nodiscard]] const std::array<double, 2>* find_volume_bounds(
         const std::vector<double>& composition
@@ -84,8 +92,8 @@ public:
     [[nodiscard]] std::uint64_t provider_state_evaluations() const {
         return provider_state_evaluations_;
     }
-    [[nodiscard]] std::uint64_t state_cache_hits() const {
-        return state_cache_hits_;
+    [[nodiscard]] std::uint64_t provider_volume_bound_evaluations() const {
+        return provider_volume_bound_evaluations_;
     }
     [[nodiscard]] const Held2Step8Result* find_problem(
         const std::vector<std::uint64_t>& candidate_ids,
@@ -157,19 +165,20 @@ private:
     > volume_bounds_;
     std::unordered_map<ProblemKey, Held2Step8Result, ProblemHash> problems_;
     std::uint64_t provider_state_evaluations_ = 0;
-    std::uint64_t state_cache_hits_ = 0;
-    const void* context_token_ = nullptr;
+    std::uint64_t provider_volume_bound_evaluations_ = 0;
+    std::string provider_fingerprint_;
+    Held2StateEvaluator state_evaluator_;
+    Held2VolumeBoundsEvaluator volume_bounds_evaluator_;
 };
 
 [[nodiscard]] Held2Step8Result run_held2_step8(
     const Held2Step1Result& step1,
     const Held2Step6Result& step6,
-    const Held2StateEvaluator& evaluator,
+    Held2AlgorithmCache& cache,
     const Held2PackingFractionEvaluator& packing_fraction,
     const Held2Step8Result* previous = nullptr,
     double neighborhood_radius = kHeld2Problem67InitialRadius,
-    Held2AlgorithmCache* cache = nullptr,
-    const void* cache_context = nullptr
+    Held2ThermodynamicAccessPolicy access_policy = {}
 );
 
 }  // namespace epcsaft_equilibrium

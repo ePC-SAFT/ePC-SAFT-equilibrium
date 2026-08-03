@@ -7,7 +7,7 @@ it does not admit, promote, or publish a capability.
 
 ## Authority and capability status
 
-Organization doctrine revision 5 defines the ecosystem authority hierarchy.
+Organization doctrine revision 7 defines the ecosystem authority hierarchy.
 Within this repository, `AGENTS.md` and `CONTEXT.md` govern package scope,
 `ARCHITECTURE.yaml` records the machine-readable architecture, and the design
 documents named below own the scientific and numerical contracts of individual
@@ -173,15 +173,72 @@ that cache, and cache hits are excluded from reported Provider-work totals.
 Step 8 also reuses a previously certified feasible or Farkas-infeasible
 Problem (67) only when its ordered stable candidate IDs, candidate variables,
 coordinate transformation, physical feed, phase-coordinate bounds, immutable
-Provider-context generation, and requested neighborhood radius are exactly
-unchanged. The cache requires an explicit per-flash context token; changing
-or replacing any Provider callback requires a new token and clears all retained
-state, bounds, and Problem (67) evidence. An expanded-radius result is retained
+Provider context, and requested neighborhood radius are exactly unchanged.
+The cache instance is created after Provider access is assembled and owns the
+state and volume-bound callbacks for its lifetime. Those callbacks cannot
+be rebound through the Step-8 API. The cache is used by one flash and destroyed
+with that flash; a separately constructed cache is required for a different
+Provider access. Step 1 and the cache carry the same exact Provider parameter
+fingerprint, and Step 8 fails closed before evaluation or replay when they do
+not match. Provider failures during phase-bound construction, Problem-(67)
+evaluation, or final phase reevaluation are returned as counted indeterminate
+evidence. An expanded-radius result is retained
 only under that expanded radius. The replay
 is reported as `cached_problem_67`. Indeterminate and collapsed candidate
 solves are path-dependent and are never retained across history. The immediate
 previous result may supply a warm start, but is never itself accepted as a
 cached adjudication.
+
+### Canonical HELD2 execution-efficiency contract
+
+The performance route is the scientific route; there is no benchmark-only
+controller, chemistry switch, point allowlist, expected-answer branch, or
+caller-selectable fast mode. The canonical workflow removes work in this
+order:
+
+1. Step 2 searches composition and normalized log-volume jointly,
+   independently certifies a strict negative witness, and reuses a successful
+   targeted pressure refinement instead of rediscovering the same seed.
+2. Step 5 consumes one persistent deterministic start stream. Numerical copies
+   do not create new cuts, and a return from Stage III does not replay consumed
+   starts.
+3. The Step-6 discovery gap is the named five-percent working gate. It moves a
+   sufficiently developed hull into the simultaneous Stage-III solve without
+   weakening any final KKT, balance, charge, pressure, domain, or phase-identity
+   certificate.
+4. One flash-scoped cache evaluates each exact ordinary thermodynamic state and
+   composition-dependent volume bound once. Objective, gradient, Hessian,
+   pressure-root, certification, and serialization consumers share the complete
+   state rather than calling the Provider through parallel value-only paths.
+5. Step 8 replays only certified feasible or independently Farkas-certified
+   infeasible Problem-(67) evidence under the complete exact key described
+   above. An indeterminate solve, collapsed phase set, changed radius, changed
+   candidate order, changed coordinate/feed/bounds payload, or changed Provider
+   context always requires fresh adjudication.
+6. Step 10 uses the ordinary cache only when it uses the ordinary evaluator.
+   The logarithmic charged-trace evaluator is a distinct mathematical domain
+   and is never served stale ordinary-state evidence.
+
+Elapsed time is validation evidence, not a solver input. The controller never
+branches on a clock, and parallel execution of independent feeds is not counted
+as a single-call optimization.
+
+Exact installed-artifact Validation at commit
+`9c3323abad6813bdc176d8cca0bc0df1640af2e1` retained all 39 Khudaida
+Figures 2--7 solutions: 37 completed within the 30-second target, all 39
+completed within the approved 35-second ceiling, and the maximum was 31.487
+seconds. The representative Figure-3 point-5 call fell from 49.015 to 23.194
+seconds while preserving its accepted solution; Step-8 optimizer solves fell
+from 46 to 45 and 32 exact certified Problem-(67) decisions were replayed from
+the cache. Provider-evaluation totals across those two artifacts are not
+compared because the optimized artifact corrected their accounting. The final
+EOS and Equilibrium wheel SHA-256 values are respectively
+`3073c100e065252d922481f3fda0a173973f1f7da2d86ec380738285df65e227`
+and
+`c93d2167397dc27626895ab56f05e12eb553aa6546ddef701bce052fe55cb90b`.
+Every final physical and KKT gate passed. Native grand AAD was below the
+published ePC-SAFT grand AAD at each Figure-2--7 condition; Figures 3--7 remain
+descriptive exploratory parameter extrapolations and create no admission.
 
 The smallest source-bound workflow is Perdomo et al. (2025), Table 3,
 NaCl-water at 298.15 K, 2508 Pa, and 5.6 mol NaCl per kg water. In the installed

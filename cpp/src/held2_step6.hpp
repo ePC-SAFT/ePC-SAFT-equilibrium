@@ -4,6 +4,10 @@
 
 namespace epcsaft_equilibrium {
 
+struct Held2ThermodynamicAccessPolicy {
+    bool packing_fraction_uses_provider = true;
+};
+
 struct Held2CandidateDecision {
     std::uint64_t insertion_id = 0;
     bool gap_passed = false;
@@ -26,7 +30,8 @@ struct Held2Step6Result {
     const Held2Step4Result& step4,
     const Held2PersistentState& state,
     const Held2PackingFractionEvaluator& packing_fraction,
-    Held2ProgressObserver* observer = nullptr
+    Held2ProgressObserver* observer = nullptr,
+    Held2ThermodynamicAccessPolicy access_policy = {}
 );
 
 }  // namespace epcsaft_equilibrium

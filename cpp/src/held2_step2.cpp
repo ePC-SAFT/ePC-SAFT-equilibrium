@@ -141,7 +141,7 @@ double direct_objective(
 
 Held2StageIDirectResult run_direct_search(
     std::size_t joint_dimension,
-    int provider_evaluation_budget,
+    int search_work_budget,
     int provider_evaluations_per_trial,
     const Held2StageIJointEvaluator& evaluator,
     Held2ProgressObserver* observer
@@ -152,7 +152,7 @@ Held2StageIDirectResult run_direct_search(
     optimizer.set_lower_bounds(std::vector<double>(joint_dimension, 0.0));
     optimizer.set_upper_bounds(std::vector<double>(joint_dimension, 1.0));
     optimizer.set_maxeval(
-        provider_evaluation_budget / provider_evaluations_per_trial
+        search_work_budget / provider_evaluations_per_trial
     );
     optimizer.set_min_objective(direct_objective, &context);
     std::vector<double> initial(joint_dimension, 0.5);
@@ -201,7 +201,7 @@ Held2TpdEvaluation evaluate_held2_tpd(
 Held2Step2Result run_held2_step2(
     const Held2Step1Result& step1,
     const Held2StateEvaluator& evaluator,
-    int provider_evaluation_budget,
+    int search_work_budget,
     Held2ProgressObserver* observer
 ) {
     constexpr int kPressureIntervals = 64;
@@ -237,7 +237,7 @@ Held2Step2Result run_held2_step2(
     };
     if (step1.status != "complete" || !step1.coordinates
         || !step1.independent_feed || !step1.volume_bounds
-        || !evaluator || provider_evaluation_budget < 2) {
+        || !evaluator || search_work_budget < 2) {
         return finish(
             Held2Step2Outcome::Indeterminate, "invalid_step2_input"
         );
@@ -622,7 +622,7 @@ Held2Step2Result run_held2_step2(
     const Held2StageIJointEvaluation complete_witness = assess_search(
         run_direct_search(
             dimension + 1,
-            provider_evaluation_budget,
+            search_work_budget,
             2,
             complete_joint,
             observer
@@ -647,9 +647,9 @@ Held2Step2Result run_held2_step2(
             result.timing.provider_evaluations
                 - preparation_allowance_begin;
         const int preparation_budget = preparation_allowance_consumed
-                >= static_cast<std::uint64_t>(provider_evaluation_budget)
+                >= static_cast<std::uint64_t>(search_work_budget)
             ? 0
-            : provider_evaluation_budget
+            : search_work_budget
                 - static_cast<int>(preparation_allowance_consumed);
         Held2StageIJointEvaluation prepared_witness;
         if (preparation_budget >= kPreparationProviderEvaluations) {

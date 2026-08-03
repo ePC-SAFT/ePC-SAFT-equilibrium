@@ -4,11 +4,10 @@ Repository Profile: scientific-computing
 
 Accepted capability: pure-component-saturation-v1.
 
-Before work, read doctrine revision 5 and the machine-readable access contract
-from `../ePC-SAFT-management/GOVERNANCE.md` and
-`../ePC-SAFT-management/manifests/management.json`. During the local checkout
-transition, resolve both files from `../ePC-SAFT-organization/`. Their published home is
-`https://github.com/ePC-SAFT/ePC-SAFT-management/blob/main/GOVERNANCE.md`.
+Before work, read doctrine revision 7 and the machine-readable access contract
+from `../ePC-SAFT-governance/GOVERNANCE.md` and
+`../ePC-SAFT-governance/manifests/management.json`. Their published home is
+`https://github.com/ePC-SAFT/ePC-SAFT-governance/blob/main/GOVERNANCE.md`.
 Local policy may narrow that doctrine but must not contradict it.
 
 This repository is limited to equilibrium routes, phase discovery,

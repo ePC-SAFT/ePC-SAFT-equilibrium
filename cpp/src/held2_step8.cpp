@@ -180,27 +180,26 @@ std::size_t Held2AlgorithmCache::VolumeBoundsHash::operator()(
     return seed;
 }
 
-void Held2AlgorithmCache::begin_context(const void* context_token) {
-    if (context_token && context_token == context_token_) {
-        return;
+Held2AlgorithmCache::Held2AlgorithmCache(
+    std::string provider_fingerprint,
+    Held2StateEvaluator state_evaluator,
+    Held2VolumeBoundsEvaluator volume_bounds_evaluator
+)
+    : provider_fingerprint_(std::move(provider_fingerprint)),
+      state_evaluator_(std::move(state_evaluator)),
+      volume_bounds_evaluator_(std::move(volume_bounds_evaluator)) {
+    if (provider_fingerprint_.empty() || !state_evaluator_
+        || !volume_bounds_evaluator_) {
+        throw std::invalid_argument(
+            "HELD2 cache requires immutable Provider context access"
+        );
     }
-    states_.clear();
-    volume_bounds_.clear();
-    problems_.clear();
-    provider_state_evaluations_ = 0;
-    state_cache_hits_ = 0;
-    context_token_ = context_token;
 }
 
 Held2StateEvaluation Held2AlgorithmCache::evaluate_state(
-    const Held2StateEvaluator& evaluator,
     const std::vector<double>& composition,
-    double log_volume,
-    bool* provider_evaluated
+    double log_volume
 ) {
-    if (provider_evaluated) {
-        *provider_evaluated = false;
-    }
     const bool cacheable = all_finite(composition)
         && std::isfinite(log_volume);
     StateKey key{composition};
@@ -208,19 +207,27 @@ Held2StateEvaluation Held2AlgorithmCache::evaluate_state(
     if (cacheable) {
         const auto retained = states_.find(key);
         if (retained != states_.end()) {
-            ++state_cache_hits_;
             return retained->second;
         }
     }
-    Held2StateEvaluation state = evaluator(composition, log_volume);
     ++provider_state_evaluations_;
-    if (provider_evaluated) {
-        *provider_evaluated = true;
-    }
+    Held2StateEvaluation state = state_evaluator_(composition, log_volume);
     if (cacheable) {
         states_.insert_or_assign(std::move(key), state);
     }
     return state;
+}
+
+std::array<double, 2> Held2AlgorithmCache::evaluate_volume_bounds(
+    const std::vector<double>& composition
+) {
+    if (const auto* retained = find_volume_bounds(composition)) {
+        return *retained;
+    }
+    ++provider_volume_bound_evaluations_;
+    const std::array<double, 2> bounds = volume_bounds_evaluator_(composition);
+    retain_volume_bounds(composition, bounds);
+    return bounds;
 }
 
 const std::array<double, 2>*
@@ -304,26 +311,25 @@ void Held2AlgorithmCache::retain_problem(
 Held2Step8Result run_held2_step8(
     const Held2Step1Result& step1,
     const Held2Step6Result& step6,
-    const Held2StateEvaluator& evaluator,
+    Held2AlgorithmCache& cache,
     const Held2PackingFractionEvaluator& packing_fraction,
     const Held2Step8Result* previous,
     double neighborhood_radius,
-    Held2AlgorithmCache* shared_cache,
-    const void* cache_context
+    Held2ThermodynamicAccessPolicy access_policy
 ) {
     Held2Step8Result result;
-    const int local_context = 0;
-    Held2AlgorithmCache local_cache;
-    Held2AlgorithmCache& cache = shared_cache ? *shared_cache : local_cache;
-    cache.begin_context(
-        shared_cache ? cache_context : static_cast<const void*>(&local_context)
-    );
     result.neighborhood_radius = neighborhood_radius;
     result.timing.invocation_count = 1;
     if (!step1.coordinates || !step1.independent_feed || !step1.volume_bounds
         || step6.status != "complete" || step6.candidates.size() < 2
-        || !evaluator || !packing_fraction) {
+        || !packing_fraction) {
         result.reason = "invalid_step8_input";
+        return result;
+    }
+    if (step1.provider_fingerprint != cache.provider_fingerprint()) {
+        result.reason = "provider_fingerprint_mismatch";
+        result.timing.terminal_status = "indeterminate";
+        result.timing.terminal_reason = result.reason;
         return result;
     }
     std::vector<Held2MPoint> selected_points;
@@ -466,12 +472,21 @@ Held2Step8Result run_held2_step8(
     std::vector<std::array<double, 2>> bounds;
     candidates.reserve(selected_points.size());
     bounds.reserve(selected_points.size());
-    std::uint64_t provider_evaluations = 0;
-    std::uint64_t provider_state_evaluations = 0;
-    std::uint64_t provider_volume_bound_evaluations = 0;
     std::uint64_t provider_packing_evaluations = 0;
+    const std::uint64_t shared_states_before =
+        cache.provider_state_evaluations();
+    const std::uint64_t shared_volume_bounds_before =
+        cache.provider_volume_bound_evaluations();
     const auto record_provider_work = [&] {
-        result.timing.provider_evaluations = provider_evaluations;
+        const std::uint64_t provider_state_evaluations =
+            cache.provider_state_evaluations() - shared_states_before;
+        const std::uint64_t provider_volume_bound_evaluations =
+            cache.provider_volume_bound_evaluations()
+            - shared_volume_bounds_before;
+        result.timing.provider_evaluations =
+            provider_state_evaluations
+            + provider_volume_bound_evaluations
+            + provider_packing_evaluations;
         result.provider_state_evaluations =
             provider_state_evaluations;
         result.provider_volume_bound_evaluations =
@@ -479,46 +494,42 @@ Held2Step8Result run_held2_step8(
         result.provider_packing_evaluations =
             provider_packing_evaluations;
     };
+    const auto provider_failure = [&](const char* reason) {
+        record_provider_work();
+        result.active_phases.clear();
+        result.outcome = Held2Step8Outcome::Indeterminate;
+        result.reason = reason;
+        result.timing.terminal_status = "indeterminate";
+        result.timing.terminal_reason = result.reason;
+        return result;
+    };
     const auto cached_volume_bounds = [&](
         const std::vector<double>& composition
     ) {
-        if (const auto* retained = cache.find_volume_bounds(composition)) {
-            return *retained;
-        }
-        ++provider_evaluations;
-        ++provider_volume_bound_evaluations;
-        const std::array<double, 2> bounds =
-            (*step1.volume_bounds)(composition);
-        cache.retain_volume_bounds(composition, bounds);
-        return bounds;
+        return cache.evaluate_volume_bounds(composition);
     };
-    for (const Held2MPoint& point : selected_points) {
-        const std::array<double, 2> physical_bounds =
-            cached_volume_bounds(point.independent_modified_fractions);
-        candidates.push_back({
-            point.independent_modified_fractions,
-            point.volume,
-            std::log(point.volume),
-        });
-        bounds.push_back({
-            std::log(physical_bounds[0]), std::log(physical_bounds[1]),
-        });
+    try {
+        for (const Held2MPoint& point : selected_points) {
+            const std::array<double, 2> physical_bounds =
+                cached_volume_bounds(point.independent_modified_fractions);
+            candidates.push_back({
+                point.independent_modified_fractions,
+                point.volume,
+                std::log(point.volume),
+            });
+            bounds.push_back({
+                std::log(physical_bounds[0]), std::log(physical_bounds[1]),
+            });
+        }
+    } catch (...) {
+        return provider_failure("provider_volume_bounds_failed");
     }
     const Held2StateEvaluator counted_evaluator =
-        [&evaluator, &provider_evaluations,
-         &provider_state_evaluations, &cache](
+        [&cache](
             const std::vector<double>& composition,
             double log_volume
         ) {
-            bool provider_evaluated = false;
-            Held2StateEvaluation state = cache.evaluate_state(
-                evaluator, composition, log_volume, &provider_evaluated
-            );
-            if (provider_evaluated) {
-                ++provider_evaluations;
-                ++provider_state_evaluations;
-            }
-            return state;
+            return cache.evaluate_state(composition, log_volume);
         };
     const Held2VolumeBoundsEvaluator counted_volume_bounds =
         [&cached_volume_bounds](
@@ -644,41 +655,45 @@ Held2Step8Result run_held2_step8(
                 value.bound_complementarity_inf_norm
             ).passed;
     };
-    Held2Problem67Result solved = solve(
-        std::move(initial), neighborhood_radius
-    );
-    if (solved.failure_reason == "problem_67_infeasible"
-        && neighborhood_radius == kHeld2Problem67InitialRadius) {
-        Held2Problem67Result expanded = solve(
-            {}, kHeld2Problem67ExpandedRadius
-        );
-        if (accepted_nlp_evidence(expanded)
-            && expanded.phases.size() >= 2) {
-            expanded.stage_iii_solve_count +=
-                solved.stage_iii_solve_count;
-            expanded.optimizer_iteration_count +=
-                solved.optimizer_iteration_count;
-            solved = std::move(expanded);
-            result.neighborhood_radius =
-                kHeld2Problem67ExpandedRadius;
-        } else {
-            solved.stage_iii_solve_count +=
-                expanded.stage_iii_solve_count;
-            solved.optimizer_iteration_count +=
-                expanded.optimizer_iteration_count;
+    Held2Problem67Result solved;
+    try {
+        solved = solve(std::move(initial), neighborhood_radius);
+        if (solved.failure_reason == "problem_67_infeasible"
+            && neighborhood_radius == kHeld2Problem67InitialRadius) {
+            Held2Problem67Result expanded = solve(
+                {}, kHeld2Problem67ExpandedRadius
+            );
+            if (accepted_nlp_evidence(expanded)
+                && expanded.phases.size() >= 2) {
+                expanded.stage_iii_solve_count +=
+                    solved.stage_iii_solve_count;
+                expanded.optimizer_iteration_count +=
+                    solved.optimizer_iteration_count;
+                solved = std::move(expanded);
+                result.neighborhood_radius =
+                    kHeld2Problem67ExpandedRadius;
+            } else {
+                solved.stage_iii_solve_count +=
+                    expanded.stage_iii_solve_count;
+                solved.optimizer_iteration_count +=
+                    expanded.optimizer_iteration_count;
+            }
         }
-    }
-    if (warm_started
-        && solved.numerical_status != "not_adjudicated"
-        && (!accepted_nlp_evidence(solved) || solved.phases.size() < 2)) {
-        result.cold_fallback_used = true;
-        Held2Problem67Result cold = solve(
-            {}, result.neighborhood_radius
-        );
-        cold.stage_iii_solve_count += solved.stage_iii_solve_count;
-        cold.optimizer_iteration_count +=
-            solved.optimizer_iteration_count;
-        solved = std::move(cold);
+        if (warm_started
+            && solved.numerical_status != "not_adjudicated"
+            && (!accepted_nlp_evidence(solved)
+                || solved.phases.size() < 2)) {
+            result.cold_fallback_used = true;
+            Held2Problem67Result cold = solve(
+                {}, result.neighborhood_radius
+            );
+            cold.stage_iii_solve_count += solved.stage_iii_solve_count;
+            cold.optimizer_iteration_count +=
+                solved.optimizer_iteration_count;
+            solved = std::move(cold);
+        }
+    } catch (...) {
+        return provider_failure("problem_67_provider_evaluation_failed");
     }
     record_provider_work();
     result.timing.optimizer_solves =
@@ -754,30 +769,35 @@ Held2Step8Result run_held2_step8(
         return result;
     }
 
-    for (std::size_t phase_index = 0;
-         phase_index < solved.phases.size(); ++phase_index) {
-        const Held2Problem67Phase& phase = solved.phases[phase_index];
-        const std::vector<double> composition =
-            independent(*step1.coordinates, phase.modified_fractions);
-        const Held2StateEvaluation state =
-            counted_evaluator(composition, std::log(phase.volume));
-        ++provider_evaluations;
-        ++provider_packing_evaluations;
-        const double phase_packing_fraction =
-            packing_fraction(composition, phase.volume);
-        result.active_phases.push_back({
-            result.candidate_ids.at(phase_index),
-            phase.phase_fraction,
-            composition,
-            phase.physical_fractions,
-            phase.volume,
-            phase_packing_fraction,
-            state.helmholtz_over_rt_reference_amount,
-            state.pressure_pa,
-            state.chemical_potentials_over_rt,
-            state.objective,
-            state.gradient,
-        });
+    try {
+        for (std::size_t phase_index = 0;
+             phase_index < solved.phases.size(); ++phase_index) {
+            const Held2Problem67Phase& phase = solved.phases[phase_index];
+            const std::vector<double> composition =
+                independent(*step1.coordinates, phase.modified_fractions);
+            const Held2StateEvaluation state =
+                counted_evaluator(composition, std::log(phase.volume));
+            if (access_policy.packing_fraction_uses_provider) {
+                ++provider_packing_evaluations;
+            }
+            const double phase_packing_fraction =
+                packing_fraction(composition, phase.volume);
+            result.active_phases.push_back({
+                result.candidate_ids.at(phase_index),
+                phase.phase_fraction,
+                composition,
+                phase.physical_fractions,
+                phase.volume,
+                phase_packing_fraction,
+                state.helmholtz_over_rt_reference_amount,
+                state.pressure_pa,
+                state.chemical_potentials_over_rt,
+                state.objective,
+                state.gradient,
+            });
+        }
+    } catch (...) {
+        return provider_failure("provider_phase_certification_failed");
     }
     record_provider_work();
     std::sort(

@@ -236,6 +236,7 @@ Held2ThermodynamicAccess make_installed_held2_access(
         provider, input
     );
     Held2ThermodynamicAccess result;
+    result.provider_fingerprint = provider.fingerprint();
     result.component_ids.reserve(provider.sdk().component_count);
     result.charges.reserve(provider.sdk().component_count);
     for (std::size_t component = 0;
@@ -262,12 +263,6 @@ Held2ThermodynamicAccess make_installed_held2_access(
     };
     result.volume_bounds_physical = [problem](const auto& physical) {
         return problem->volume_bounds(problem->independent(physical));
-    };
-    result.packing_fraction = [problem](
-        const auto& composition, double volume
-    ) {
-        return kHeld2PackingFractionMinimum
-            * problem->volume_bounds(composition)[1] / volume;
     };
     result.total_ion_mole_fraction_max =
         problem->total_ion_mole_fraction_max();
