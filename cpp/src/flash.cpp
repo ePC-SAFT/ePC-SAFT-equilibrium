@@ -17,7 +17,7 @@ namespace {
 
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
 constexpr const char* kNeutralFlashFingerprint =
-    "sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195";
+    "sha256:9e63656093548f1f64bec8cc5129421f6e1bc452b2ec3632ded65f5ac538b8e7";
 constexpr std::size_t kMixtureSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_mixture_phase)
     + sizeof(epcsaft_evaluate_mixture_phase_v1);

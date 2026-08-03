@@ -11,8 +11,21 @@ neutral methane/ethane HELD `T,P,z` calculation.
 import epcsaft
 from epcsaft_equilibrium import saturation
 
-parameters = epcsaft.Parameters.from_catalog(
-    "gross-2001-methane-ethane", components=("methane",), version=1
+parameters = epcsaft.Parameters.from_dictionary(
+    {
+        "schema": "epcsaft.parameters",
+        "schema_version": 1,
+        "components": ("methane",),
+        "parameters": {
+            "mw": (0.016043,),
+            "m": (1.0,),
+            "s": (3.7039,),
+            "e": (150.03,),
+            "k_ij": ((0.0,),),
+        },
+        "options": {"permittivity_model": "none"},
+        "validity": {"kind": "unknown"},
+    }
 )
 mixture = epcsaft.Mixture(parameters)
 
@@ -39,10 +52,21 @@ discovery certificate.
 import epcsaft
 from epcsaft_equilibrium import tp_flash
 
-parameters = epcsaft.Parameters.from_catalog(
-    "gross-2001-methane-ethane",
-    components=("methane", "ethane"),
-    version=1,
+parameters = epcsaft.Parameters.from_dictionary(
+    {
+        "schema": "epcsaft.parameters",
+        "schema_version": 1,
+        "components": ("methane", "ethane"),
+        "parameters": {
+            "mw": (0.016043, 0.03007),
+            "m": (1.0, 1.6069),
+            "s": (3.7039, 3.5206),
+            "e": (150.03, 191.42),
+            "k_ij": ((0.0, 0.0), (0.0, 0.0)),
+        },
+        "options": {"permittivity_model": "none"},
+        "validity": {"kind": "unknown"},
+    }
 )
 mixture = epcsaft.Mixture(parameters)
 
@@ -67,7 +91,7 @@ classify solver, numerical, and physical evidence independently as `passed`,
 `failed`, or `not_adjudicated`; those axes do not change the globality claim.
 
 The candidate fingerprint is
-`sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195`.
+`sha256:9e63656093548f1f64bec8cc5129421f6e1bc452b2ec3632ded65f5ac538b8e7`.
 The retained Pereira source is the permanent-lab Markdown at commit
 `13ce345b6dcc41d399bb2a4c7b9bedb18f74b45b`, blob
 `dde7f02d4c93cce86804a8e6b62d37602990ac21`; it is provenance, not a build,
@@ -193,8 +217,7 @@ uv run --isolated --no-project --python 3.13 \
 Run the compact package proof and scientific anchors with:
 
 ```text
-pytest -q
-python scripts/validate_saturation.py
+pytest -q tests/test_saturation.py
 ```
 
 The complete chemical-equilibrium test suite consumes the immutable

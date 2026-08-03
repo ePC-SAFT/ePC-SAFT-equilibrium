@@ -22,6 +22,7 @@ from chemical_equilibrium_cases import (
     bind_records as _bind_record,
 )
 from chemical_equilibrium_cases import typed_problem as _typed_problem
+from parameter_dictionaries import FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS
 
 import epcsaft_equilibrium
 from epcsaft_equilibrium import _equilibrium
@@ -1394,11 +1395,9 @@ def test_manufactured_charged_solution_is_species_order_invariant() -> None:
 def _figiel_provider_model(
     components: tuple[str, ...] = ("water", "sodium-cation", "chloride-anion"),
 ) -> epcsaft.Mixture:
-    parameters = epcsaft.Parameters.from_catalog(
-        "figiel-2025-reference-electrolytes",
-        components=components,
-        version=1,
-    )
+    if components != tuple(FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS["components"]):
+        raise ValueError("the compact Figiel test dictionary has one canonical component order")
+    parameters = epcsaft.Parameters.from_dictionary(FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS)
     return epcsaft.Mixture(parameters)
 
 
@@ -1414,10 +1413,8 @@ def test_unreachable_provider_state_fails_closed_in_subprocess(
         import epcsaft_equilibrium
 
         component_ids = ("water", "sodium-cation", "chloride-anion")
-        parameters = epcsaft.Parameters.from_catalog(
-            "figiel-2025-reference-electrolytes",
-            components=component_ids,
-            version=1,
+        parameters = epcsaft.Parameters.from_dictionary(
+            {FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS!r}
         )
         model = epcsaft.Mixture(parameters)
         phase = epcsaft_equilibrium.ProviderPhase(
