@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import ctypes
 import functools
 import hashlib
 import json
@@ -50,10 +49,6 @@ _BELOV_SOURCE_GIBBS = (
 _HELD_WATER_IONIZATION_FINGERPRINT = (
     "sha256:8499a0cedeb7e8e34f7d70fbbe4c03180aea0018acae932e831736ce293e2aca"
 )
-_FINGERPRINT_CAPACITY = 72
-_PROVIDER_ERROR_CAPACITY = 160
-
-
 def _packet_fingerprint(packet_root: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(item for item in packet_root.rglob("*") if item.is_file()):
@@ -101,142 +96,6 @@ def _held_parameters(components: tuple[str, ...]) -> epcsaft.Parameters:
         _held_parameter_packet() / "parameters",
         components=components,
     )
-
-
-class _NeutralReferenceResult(ctypes.Structure):
-    _fields_ = (
-        ("struct_size", ctypes.c_uint32),
-        ("status", ctypes.c_int32),
-        ("component_count", ctypes.c_size_t),
-        ("neutral_basis_row_count", ctypes.c_size_t),
-        ("neutral_basis_capacity", ctypes.c_size_t),
-        ("contraction_capacity", ctypes.c_size_t),
-        ("reference_composition_capacity", ctypes.c_size_t),
-        ("neutral_basis", ctypes.POINTER(ctypes.c_double)),
-        ("log_fugacity_contractions", ctypes.POINTER(ctypes.c_double)),
-        ("reference_composition", ctypes.POINTER(ctypes.c_double)),
-        ("derivative_availability", ctypes.c_uint32),
-        ("temperature_k", ctypes.c_double),
-        ("pressure_pa", ctypes.c_double),
-        ("solvent_molar_mass_kg_per_mol", ctypes.c_double),
-        ("reference_amount_mol", ctypes.c_double),
-        ("reference_number_density_mol_per_m3", ctypes.c_double),
-        ("reference_molality_mol_per_kg", ctypes.c_double),
-        ("reference_convergence_error", ctypes.c_double),
-        ("parameter_fingerprint", ctypes.c_char * _FINGERPRINT_CAPACITY),
-        ("helmholtz_basis_id", ctypes.c_char * _FINGERPRINT_CAPACITY),
-        ("error", ctypes.c_char * _PROVIDER_ERROR_CAPACITY),
-    )
-
-
-class _NeutralReferenceDerivativeResult(ctypes.Structure):
-    _fields_ = (
-        ("struct_size", ctypes.c_uint32),
-        ("status", ctypes.c_int32),
-        ("value", _NeutralReferenceResult),
-        ("active_parameter_count", ctypes.c_size_t),
-        ("pressure_derivative_capacity", ctypes.c_size_t),
-        ("parameter_derivative_capacity", ctypes.c_size_t),
-        ("pressure_derivatives_per_pa", ctypes.POINTER(ctypes.c_double)),
-        ("parameter_derivatives", ctypes.POINTER(ctypes.c_double)),
-        ("derivative_availability", ctypes.c_uint32),
-        ("source_pressure_min_pa", ctypes.c_double),
-        ("source_pressure_max_pa", ctypes.c_double),
-        ("maximum_root_residual_pa", ctypes.c_double),
-        ("minimum_pressure_density_derivative_pa_m3_per_mol", ctypes.c_double),
-        ("maximum_density_condition_number", ctypes.c_double),
-        ("reference_derivative_convergence_error", ctypes.c_double),
-        ("maximum_relative_root_bracket_width", ctypes.c_double),
-        ("maximum_relative_root_density_step", ctypes.c_double),
-        ("stable_root_count", ctypes.c_size_t),
-        ("selected_stable_root_index", ctypes.c_size_t),
-        ("reference_branch", ctypes.c_char * 16),
-        ("parameter_fingerprint", ctypes.c_char * _FINGERPRINT_CAPACITY),
-        ("topology_fingerprint", ctypes.c_char * _FINGERPRINT_CAPACITY),
-        ("helmholtz_basis_id", ctypes.c_char * _FINGERPRINT_CAPACITY),
-        ("error", ctypes.c_char * _PROVIDER_ERROR_CAPACITY),
-    )
-
-
-class _ChemicalSdkTable(ctypes.Structure):
-    _fields_ = (
-        ("abi_version", ctypes.c_uint32),
-        ("table_size", ctypes.c_size_t),
-        ("result_size", ctypes.c_size_t),
-        ("model_context", ctypes.c_void_p),
-        ("evaluate_pure_phase", ctypes.c_void_p),
-        ("parameterized_result_size", ctypes.c_size_t),
-        ("evaluate_pure_phase_parameters", ctypes.c_void_p),
-        ("component_count", ctypes.c_size_t),
-        ("mixture_result_size", ctypes.c_size_t),
-        ("evaluate_mixture_phase", ctypes.c_void_p),
-        ("evaluate_mixture_phase_kij", ctypes.c_void_p),
-        ("component_ids", ctypes.c_void_p),
-        ("component_charges", ctypes.c_void_p),
-        ("evaluate_electrolyte_phase", ctypes.c_void_p),
-        ("evaluate_molar_volume_bounds", ctypes.c_void_p),
-        ("evaluate_packing_fraction", ctypes.c_void_p),
-        ("source_temperature_min_k", ctypes.c_double),
-        ("source_temperature_max_k", ctypes.c_double),
-        ("total_ion_mole_fraction_max", ctypes.c_double),
-        ("ion_solvation_born_result_size", ctypes.c_size_t),
-        ("evaluate_ion_solvation_born", ctypes.c_void_p),
-        ("aqueous_miac_kij_result_size", ctypes.c_size_t),
-        ("evaluate_aqueous_miac_kij", ctypes.c_void_p),
-        ("neutral_reference_basis_row_count", ctypes.c_size_t),
-        ("neutral_reference_result_size", ctypes.c_size_t),
-        ("evaluate_neutral_reference", ctypes.c_void_p),
-        ("aqueous_miac_solvation_factor_result_size", ctypes.c_size_t),
-        ("evaluate_aqueous_miac_solvation_factor", ctypes.c_void_p),
-        ("evaluate_aqueous_miac_kij_batch", ctypes.c_void_p),
-        ("evaluate_aqueous_miac_solvation_factor_batch", ctypes.c_void_p),
-        ("evaluation_budget_size", ctypes.c_size_t),
-        ("evaluate_aqueous_miac_kij_batch_bounded", ctypes.c_void_p),
-        ("evaluate_aqueous_miac_solvation_factor_batch_bounded", ctypes.c_void_p),
-        ("capability_count", ctypes.c_size_t),
-        ("capabilities", ctypes.c_void_p),
-        ("evaluate_mixture_phase_lij", ctypes.c_void_p),
-        ("evaluate_pure_phase_parameter", ctypes.c_void_p),
-        ("ion_fraction_suppression_result_size", ctypes.c_size_t),
-        ("evaluate_ion_fraction_suppression", ctypes.c_void_p),
-        ("ion_solvation_kij_result_size", ctypes.c_size_t),
-        ("evaluate_ion_solvation_kij", ctypes.c_void_p),
-        ("ion_solvation_ionic_permittivity_result_size", ctypes.c_size_t),
-        ("evaluate_ion_solvation_ionic_permittivity", ctypes.c_void_p),
-        ("ion_solvation_solvent_permittivity_result_size", ctypes.c_size_t),
-        ("evaluate_ion_solvation_solvent_permittivity", ctypes.c_void_p),
-        ("associating_parameterized_result_size", ctypes.c_size_t),
-        ("evaluate_diameter_basis_associating_pure_phase_parameters", ctypes.c_void_p),
-        ("electrolyte_phase_value_result_size", ctypes.c_size_t),
-        ("evaluate_electrolyte_phase_value", ctypes.c_void_p),
-        ("neutral_reference_derivative_result_size", ctypes.c_size_t),
-        ("evaluate_neutral_reference_derivatives", ctypes.c_void_p),
-        ("reacting_phase_parameter_result_size", ctypes.c_size_t),
-        ("evaluate_reacting_phase_parameters", ctypes.c_void_p),
-        ("inverse_packing_geometry_result_size", ctypes.c_size_t),
-        ("evaluate_inverse_packing_geometry", ctypes.c_void_p),
-    )
-
-
-_NeutralReferenceCallback = ctypes.CFUNCTYPE(
-    ctypes.c_int,
-    ctypes.c_void_p,
-    ctypes.c_char_p,
-    ctypes.c_double,
-    ctypes.c_double,
-    ctypes.POINTER(_NeutralReferenceResult),
-)
-_NeutralReferenceDerivativeCallback = ctypes.CFUNCTYPE(
-    ctypes.c_int,
-    ctypes.c_void_p,
-    ctypes.c_char_p,
-    ctypes.c_char_p,
-    ctypes.c_double,
-    ctypes.c_double,
-    ctypes.c_void_p,
-    ctypes.c_size_t,
-    ctypes.POINTER(_NeutralReferenceDerivativeResult),
-)
 
 
 def _water_ionization_source() -> dict[str, object]:
@@ -2309,108 +2168,6 @@ def _provider_basis_spec(
     return spec, transformed
 
 
-def _linear_reference_capsule(
-    model: epcsaft.Mixture,
-    pressure_derivatives_per_pa: tuple[float, ...],
-) -> tuple[object, tuple[object, ...]]:
-    """Test-only broad linear reference layered over one installed Provider point."""
-    source_pressure_pa = 100_000.0
-    provider_capsule = epcsaft.native_sdk(model)
-    get_pointer = ctypes.pythonapi.PyCapsule_GetPointer
-    get_pointer.argtypes = (ctypes.py_object, ctypes.c_char_p)
-    get_pointer.restype = ctypes.c_void_p
-    provider_pointer = get_pointer(provider_capsule, b"epcsaft.native_sdk.v1")
-    provider_table = ctypes.cast(provider_pointer, ctypes.POINTER(_ChemicalSdkTable)).contents
-    assert provider_table.table_size >= ctypes.sizeof(_ChemicalSdkTable)
-    assert len(pressure_derivatives_per_pa) == provider_table.neutral_reference_basis_row_count
-
-    table = _ChemicalSdkTable.from_buffer_copy(
-        ctypes.string_at(provider_pointer, provider_table.table_size)
-    )
-    table.table_size = ctypes.sizeof(_ChemicalSdkTable)
-    provider_value = _NeutralReferenceCallback(table.evaluate_neutral_reference)
-    provider_derivatives = _NeutralReferenceDerivativeCallback(
-        table.evaluate_neutral_reference_derivatives
-    )
-
-    def apply_linear_reference(
-        pressure_pa: float,
-        value: _NeutralReferenceResult,
-    ) -> None:
-        for row, derivative in enumerate(pressure_derivatives_per_pa):
-            value.log_fugacity_contractions[row] += derivative * (pressure_pa - source_pressure_pa)
-        value.pressure_pa = pressure_pa
-
-    def evaluate_value(
-        context: int,
-        fingerprint: bytes,
-        temperature_k: float,
-        pressure_pa: float,
-        result: ctypes.POINTER(_NeutralReferenceResult),
-    ) -> int:
-        status = provider_value(
-            context,
-            fingerprint,
-            temperature_k,
-            source_pressure_pa,
-            result,
-        )
-        if status == 0:
-            apply_linear_reference(pressure_pa, result.contents)
-        return status
-
-    def evaluate_derivatives(
-        context: int,
-        fingerprint: bytes,
-        topology_fingerprint: bytes,
-        temperature_k: float,
-        pressure_pa: float,
-        active_parameters: int,
-        active_parameter_count: int,
-        result: ctypes.POINTER(_NeutralReferenceDerivativeResult),
-    ) -> int:
-        status = provider_derivatives(
-            context,
-            fingerprint,
-            topology_fingerprint,
-            temperature_k,
-            source_pressure_pa,
-            active_parameters,
-            active_parameter_count,
-            result,
-        )
-        if status == 0:
-            native = result.contents
-            apply_linear_reference(pressure_pa, native.value)
-            for row, derivative in enumerate(pressure_derivatives_per_pa):
-                native.pressure_derivatives_per_pa[row] = derivative
-            native.derivative_availability = 2
-            native.source_pressure_min_pa = 50_000.0
-            native.source_pressure_max_pa = 150_000.0
-        return status
-
-    value_callback = _NeutralReferenceCallback(evaluate_value)
-    derivative_callback = _NeutralReferenceDerivativeCallback(evaluate_derivatives)
-    table.evaluate_neutral_reference = ctypes.cast(value_callback, ctypes.c_void_p).value
-    table.evaluate_neutral_reference_derivatives = ctypes.cast(
-        derivative_callback, ctypes.c_void_p
-    ).value
-    name = ctypes.create_string_buffer(b"epcsaft.native_sdk.v1")
-    new_capsule = ctypes.pythonapi.PyCapsule_New
-    new_capsule.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p)
-    new_capsule.restype = ctypes.py_object
-    capsule = new_capsule(ctypes.addressof(table), name, None)
-    return capsule, (
-        provider_capsule,
-        provider_value,
-        provider_derivatives,
-        value_callback,
-        derivative_callback,
-        table,
-        name,
-    )
-
-
 def _provider_native(
     model: epcsaft.Mixture,
     spec: dict[str, object],
@@ -2549,36 +2306,6 @@ def test_source_reference_pressure_is_distinct_from_trial_pressure(
         captured.value.diagnostics.failure_kind
         == "source_reference_derivative_unavailable"
     )
-
-
-def test_source_pressure_derivatives_fail_before_optimization_when_unavailable() -> None:
-    model, spec, source_standard_state = _held_water_ionization_problem()
-    reaction = spec["reaction_matrix"][0]
-    source_ln_k = spec["ln_k"][0]
-    source_record = spec["equilibrium_constant_records"][0]
-    spec["reaction_matrix"] = (
-        reaction,
-        tuple(2.0 * coefficient for coefficient in reaction),
-    )
-    spec["ln_k"] = (source_ln_k, 2.0 * source_ln_k)
-    spec["equilibrium_constant_records"] = (
-        source_record,
-        {
-            **source_record,
-            "source_id": f"{source_record['source_id']}:scaled-by-two",
-        },
-    )
-
-    with pytest.raises(
-        epcsaft_equilibrium.ChemicalEquilibriumError,
-        match="derivative-unavailable",
-    ):
-        _provider_solve(
-            model,
-            spec,
-            source_standard_state,
-            epcsaft_equilibrium.ChemicalEquilibriumSensitivityRequest(),
-        )
 
 
 def test_source_transfer_failure_prevents_native_optimization(

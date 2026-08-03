@@ -981,9 +981,6 @@ SourceReferenceTransferEvidence source_reference_transfer_evidence(
     result.derivative_availability = py::cast<std::vector<std::string>>(
         payload["derivative_availability"]
     );
-    result.pressure_derivatives_per_pa = py::cast<std::vector<double>>(
-        payload["pressure_derivatives_per_pa"]
-    );
     result.temperature_k = py::cast<double>(payload["temperature_k"]);
     result.pressure_pa = py::cast<double>(payload["pressure_pa"]);
     result.source_reference_pressure_pa = py::cast<double>(

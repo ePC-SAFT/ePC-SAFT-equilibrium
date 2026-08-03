@@ -2670,22 +2670,13 @@ def _source_reference_payload(
         "transfer_log_contractions": transfer.transfer_log_contractions,
         "source_composition": transfer.source_composition,
         "derivative_availability": transfer.derivative_availability,
-        "pressure_derivatives_per_pa": transfer.pressure_derivatives_per_pa,
         "temperature_k": transfer.temperature_k,
         "pressure_pa": transfer.pressure_pa,
         "source_reference_pressure_pa": transfer.source_reference_pressure_pa,
         "standard_molality_mol_per_kg": (
             transfer.standard_molality_mol_per_kg
         ),
-        "solvent_molar_mass_kg_per_mol": (
-            transfer.solvent_molar_mass_kg_per_mol
-        ),
-        "reference_limit_molality_mol_per_kg": (
-            transfer.reference_limit_molality_mol_per_kg
-        ),
         "reference_convergence_error": transfer.reference_convergence_error,
-        "source_temperature_interval_k": transfer.source_temperature_interval_k,
-        "source_pressure_interval_pa": transfer.source_pressure_interval_pa,
         "parameter_fingerprint": transfer.parameter_fingerprint,
         "topology_fingerprint": transfer.topology_fingerprint,
         "component_order_fingerprint": transfer.component_order_fingerprint,
