@@ -17,6 +17,7 @@ struct FlashInput {
 struct Held2ThermodynamicAccess {
     std::vector<std::string> component_ids;
     std::vector<double> charges;
+    std::string provider_fingerprint;
     Held2StateEvaluator evaluate;
     Held2PhysicalVolumeBoundsEvaluator volume_bounds_physical;
     Held2PackingFractionEvaluator packing_fraction;

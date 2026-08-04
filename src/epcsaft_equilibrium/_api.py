@@ -539,19 +539,19 @@ class _Scope:
 
 _SCOPES = MappingProxyType(
     {
-        "sha256:905e7a6e22eb1073347575bf833d5aa059d9ccf562e4408cb186d74f580ba36f": _Scope(
+        "sha256:fe590be7d46775ff56a25c839c4b3b015cca516480db9732235e53e8064e206b": _Scope(
             component="methane",
             temperature_min_k=97.0,
             temperature_max_k=300.0,
             liquid_density_upper_mol_m3=40_000.0,
         ),
-        "sha256:b81f32e44adb46080dfa91026c6428045e04a219900305767672d0547f9a9fb9": _Scope(
+        "sha256:73aea4044ad3a49a8045861ba88c8e5966ad7b9db99e28f83df90c1d3d456223": _Scope(
             component="ethane",
             temperature_min_k=90.0,
             temperature_max_k=305.0,
             liquid_density_upper_mol_m3=40_000.0,
         ),
-        "sha256:1194db349d0608c89419e70c56ccec9ada2ae0884dd8e64e519e9560e7e8ae42": _Scope(
+        "sha256:03f6d54f5d839830b6802ea914585a7e5f2402a0fae61cf451b9fab2c083cfc5": _Scope(
             component="propane",
             temperature_min_k=85.0,
             temperature_max_k=523.0,
@@ -560,7 +560,7 @@ _SCOPES = MappingProxyType(
     }
 )
 
-_FLASH_FINGERPRINT = "sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195"
+_FLASH_FINGERPRINT = "sha256:9e63656093548f1f64bec8cc5129421f6e1bc452b2ec3632ded65f5ac538b8e7"
 _FLASH_TEMPERATURE_DOMAIN_K = (203.22, 243.61)
 _FLASH_PRESSURE_DOMAIN_PA = (2_124_000.0, 6_885_000.0)
 _FLASH_METHANE_FEED_DOMAIN = (0.4661, 0.66705)

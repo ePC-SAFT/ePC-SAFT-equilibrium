@@ -369,6 +369,9 @@ algorithm auditable for the installed Provider:
   pressure envelope at every composition;
 - independent negative-witness reevaluation;
 - Provider-evaluation resource accounting and deterministic persistent starts;
+- flash-scoped exact reuse of ordinary Provider states and volume bounds;
+- full-history reuse of only mathematically identical, independently certified
+  feasible or Farkas-infeasible Problem-(67) decisions;
 - immutable candidate identities and nontransitive pairwise-distinctness rules;
 - exact master-to-NLP initialization;
 - independently audited LP, KKT, balance, pressure, and domain evidence;
@@ -379,6 +382,24 @@ algorithm auditable for the installed Provider:
 
 These additions do not alter the EOS, claim global optimization, or introduce
 a sequential chemistry calculation.
+
+## Execution and performance evidence
+
+The implementation uses one scientific route for diagnostics, public calls,
+and Validation. Reuse is exact rather than tolerance-based: ordinary states,
+composition-dependent volume bounds, and certified Problem-(67) decisions are
+scoped to one flash and invalidated when any mathematical input or Provider
+context changes. Previous Step-8 states may initialize a solve but cannot
+replace its adjudication. Trace-domain evaluations remain separate.
+
+The 39-point Khudaida Figures 2--7 installed-artifact campaign at Validation
+commit `9c3323abad6813bdc176d8cca0bc0df1640af2e1` retained all accepted
+solutions and final physical/KKT gates. Thirty-seven calls completed within
+30 seconds; the remaining two completed in 31.487 and 31.402 seconds, below
+the approved 35-second ceiling. Native grand AAD was below the published
+ePC-SAFT grand AAD at every reported condition. Figures 3--7 remain exploratory
+parameter extrapolations, so this performance result does not expand the
+scientific admission.
 
 ## Evidence completed before reuse in GREPE
 

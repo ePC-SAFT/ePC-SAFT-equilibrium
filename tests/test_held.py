@@ -9,11 +9,12 @@ from decimal import Decimal, getcontext
 
 import epcsaft
 import pytest
+from parameter_dictionaries import METHANE_ETHANE_PARAMETERS, METHANE_PARAMETERS
 
 import epcsaft_equilibrium
 from epcsaft_equilibrium import _equilibrium
 
-BINARY_FINGERPRINT = "sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195"
+BINARY_FINGERPRINT = "sha256:9e63656093548f1f64bec8cc5129421f6e1bc452b2ec3632ded65f5ac538b8e7"
 GAS_CONSTANT_J_PER_MOL_K = 8.31446261815324
 
 # May et al. (2015), Table 5, retained source row may2015-ch4-c2h6-001.
@@ -142,11 +143,7 @@ OUTER_FINITE_FIXTURES = {
 
 
 def _binary_model() -> epcsaft.Mixture:
-    parameters = epcsaft.Parameters.from_catalog(
-        "gross-2001-methane-ethane",
-        components=("methane", "ethane"),
-        version=1,
-    )
+    parameters = epcsaft.Parameters.from_dictionary(METHANE_ETHANE_PARAMETERS)
     model = epcsaft.Mixture(parameters)
     assert model.parameter_fingerprint == BINARY_FINGERPRINT
     return model
@@ -845,11 +842,7 @@ def test_public_tp_flash_rejects_wrong_fingerprint_and_provider_abi(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pure_model = epcsaft.Mixture(
-        epcsaft.Parameters.from_catalog(
-            "gross-2001-methane-ethane",
-            components=("methane",),
-            version=1,
-        )
+        epcsaft.Parameters.from_dictionary(METHANE_PARAMETERS)
     )
     with pytest.raises(epcsaft_equilibrium.FlashError) as wrong_fingerprint:
         epcsaft_equilibrium.tp_flash(

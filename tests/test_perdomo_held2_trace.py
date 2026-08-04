@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import epcsaft
 import pytest
+from parameter_dictionaries import FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS
 
 import epcsaft_equilibrium
 from epcsaft_equilibrium import _api, _equilibrium
@@ -33,11 +34,7 @@ PERDOMO_TABLE3_FEED = _nacl_feed(PERDOMO_TABLE3_NACL_MOL_PER_KG_WATER)
 
 
 def _perdomo_table3_model() -> epcsaft.Mixture:
-    parameters = epcsaft.Parameters.from_catalog(
-        "figiel-2025-reference-electrolytes",
-        components=("water", "sodium-cation", "chloride-anion"),
-        version=1,
-    )
+    parameters = epcsaft.Parameters.from_dictionary(FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS)
     return epcsaft.Mixture(parameters)
 
 
@@ -338,15 +335,15 @@ def test_perdomo_table3_nacl_workflow() -> None:
     (
         pytest.param(
             3181.454397,
-                0.005000000139214637,
-                "physical_equilibrium_accepted",
-                0.21155648678431022,
-                (0.9851851723141468, 0.014814827685853224),
-                (
-                    (0.9999403402467356, 2.9829876632190147e-05, 2.9829876632190147e-05),
-                    (0.991809243149451, 0.004095378425274544, 0.004095378425274544),
-                ),
-                (1.7802235178776976e-05, 0.01151173970113826),
+            0.005000000139214637,
+            "physical_equilibrium_accepted",
+            0.21155648678431022,
+            (0.9851851723141468, 0.014814827685853224),
+            (
+                (0.9999403402467356, 2.9829876632190147e-05, 2.9829876632190147e-05),
+                (0.991809243149451, 0.004095378425274544, 0.004095378425274544),
+            ),
+            (1.7802235178776976e-05, 0.01151173970113826),
             id="figure1a-0.005molal-below-boundary",
         ),
         pytest.param(
@@ -390,7 +387,6 @@ def test_perdomo_nacl_public_results_remain_in_the_numerical_regression_region(
         pressure_pa * epcsaft.unit_registry.pascal,
         feed,
     )
-
     assert result.diagnostics.outcome == expected_outcome
     assert result.diagnostics.solver_status == "passed"
     assert result.diagnostics.numerical_status == "passed"
@@ -435,3 +431,7 @@ def test_perdomo_nacl_public_results_remain_in_the_numerical_regression_region(
             abs=PHASE_COMPOSITION_ATOL,
             rel=NUMERICAL_RTOL,
         )
+    if molality_mol_per_kg == PERDOMO_TABLE3_NACL_MOL_PER_KG_WATER:
+        assert performance.provider_evaluations <= 3_500
+        assert performance.optimizer_solves <= 2
+        assert performance.optimizer_iterations <= 3_500

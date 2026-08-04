@@ -6,12 +6,11 @@ saturation slice recorded by promotion receipt
 local fixed-temperature methane, ethane, or propane saturation boundary over a
 compatible installed EOS artifact.
 
-`governance_doctrine_revision: 5`
+`governance_doctrine_revision: 7`
 
-Canonical local doctrine: `../ePC-SAFT-management/GOVERNANCE.md`.
-During the local checkout transition, resolve doctrine and the access manifest
-from `../ePC-SAFT-organization/GOVERNANCE.md` and
-`../ePC-SAFT-organization/manifests/management.json`.
+Canonical local doctrine: `../ePC-SAFT-governance/GOVERNANCE.md`.
+The machine-readable access manifest is
+`../ePC-SAFT-governance/manifests/management.json`.
 
 ## Language
 
@@ -76,7 +75,7 @@ The repository now also contains the corrected complete local
 `8318e755d4a8e490822fdf7bb2685d8c5af6436c`, tree
 `3e8c98a13f1daca975b33c26fce3d143a1f34493`. It is limited to the reviewed
 Gross--Sadowski methane/ethane fingerprint
-`sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195`
+`sha256:9e63656093548f1f64bec8cc5129421f6e1bc452b2ec3632ded65f5ac538b8e7`
 and the audited May et al. (2015), Table 5 rectangle: 203.22--243.61 K,
 2.124--6.885 MPa, and methane feed 0.4661--0.66705.
 
@@ -120,12 +119,16 @@ enumeration, DIRECT-L reduced-envelope Stage I, HiGHS Stage-II upper LP, and
 deterministic capped-multistart exact-Hessian Ipopt for Step 5, and one
 exact-Hessian Problem-(67) owner with KKT-based
 phase retirement, duplicate merging, active-set re-solves, and hard physical
-certification. The integrated Steps 1--10 controller is fail-closed under
-declared Stage-I and Stage-II resource budgets and is shared by the native
-diagnostic and public Python development route. A compatible installed
-two-liquid subject, Validation, and public admission require separate
-authority. No case-specific constants or caller-selectable solver route is
-active.
+certification. One flash-scoped exact cache shares deterministic state and
+volume-bound evaluations across the ordinary Steps 2--10 route and reuses only
+fully certified, mathematically identical Problem-(67) decisions. The
+trace-domain evaluator remains separate; continuation state can initialize a
+solve but cannot adjudicate it. The integrated Steps 1--10 controller is
+fail-closed under declared Stage-I and Stage-II resource budgets and is shared
+by the native diagnostic and public Python development route. A compatible
+installed two-liquid subject, Validation, and public admission require
+separate authority. No case-specific constants or caller-selectable solver
+route is active.
 
 D-028 separately binds a private, non-production homogeneous reacting-phase
 foundation, now deepened by the private GREPE homogeneous chemical layer. The
