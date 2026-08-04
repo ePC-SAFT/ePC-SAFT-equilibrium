@@ -323,6 +323,9 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
     result["lagrangian_hessian_check_relative_error"] = optional_float(
         evaluation.lagrangian_hessian_check_relative_error
     );
+    result["reduced_hessian_check_relative_error"] = optional_float(
+        evaluation.reduced_hessian_check_relative_error
+    );
     result["derivative_check_worst_entry"] =
         evaluation.derivative_check_worst_entry;
     result["derivative_check_worst_relative_error"] = optional_float(
@@ -437,6 +440,13 @@ py::dict chemical_result(const ChemicalSolveResult& evaluation) {
         2.0e-4,
         "<=",
         evaluation.lagrangian_hessian_check_relative_error <= 2.0e-4
+    ));
+    numerical_criteria.append(criterion(
+        "reduced_hessian_spanning_relative_error",
+        evaluation.reduced_hessian_check_relative_error,
+        2.0e-4,
+        "<=",
+        evaluation.reduced_hessian_check_relative_error <= 2.0e-4
     ));
     numerical_criteria.append(criterion(
         "kkt_root_jacobian_spanning_relative_error",

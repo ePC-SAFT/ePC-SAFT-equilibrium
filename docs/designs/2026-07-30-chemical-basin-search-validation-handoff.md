@@ -5,7 +5,7 @@ from [Equilibrium issue #96](https://github.com/ePC-SAFT/ePC-SAFT-equilibrium/is
 to the immutable installed artifact used by downstream
 [Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
 and [Regression issue #16](https://github.com/ePC-SAFT/ePC-SAFT-regression/issues/16).
-It does not transfer chemistry ownership, define an MEA campaign, or claim
+It does not transfer chemistry ownership, define an application campaign, or claim
 global or phase stability.
 
 ## Immutable subject
@@ -52,31 +52,13 @@ before it emits an `OK` row. Rank-deficient, condition-limited, saddle,
 inconclusive, boundary, domain-rejected, or exhausted searches therefore fail
 the existing ABI gate without an ABI schema change.
 
-## Frozen downstream sentinel
+## Downstream evidence boundary
 
-The application-owned source subject remains:
-
-- MEA-Thermodynamics commit
-  `269c954230b73bffe19d157137143a52d9c685f6`, tree
-  `7d58f7b50b2d3e0682a862b92e8f1c998501cf80`;
-- Hilliard `vle_obs_0137`: 313.15 K, 7326.7 Pa, unloaded MEA mass
-  fraction 0.30, loading 0.466 mol CO2/mol MEA, and observed
-  `pCO2 = 574 Pa`;
-- Böttinger `cheq_canon_00194` at the same declared state, with observed
-  `x_MEACOO- = 0.0502`;
-- nine species and five source-bound reactions from
-  `mea-nine-species-reaction-source-contract-v2`; and
-- Provider regression-input parameter fingerprint
-  `sha256:3773585e061b37643f5c7794e18424b83c86b82fa658983a0ee13fd8f1876fd6`
-  and domain fingerprint
-  `93510b66543e4e9e49c409a658b1bf7a01599ccd9ce3feef41bbab6b6eb668ab`.
-
-The Equilibrium repository does not copy the application chemistry or source
-rows. [Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
-must consume those immutable application inputs and the two installed wheels
-above through public package boundaries. It must retain the complete search
-receipt even when the sentinel remains a saddle or no certified basin is
-found.
+The Equilibrium repository does not copy application chemistry, observations,
+parameter bundles, or source rows. Downstream Validation must identify its own
+immutable application inputs and consume the installed EOS and Equilibrium
+artifacts through public package boundaries. It must retain the complete search
+receipt even when a subject remains a saddle or no certified basin is found.
 
 ## Interpretation boundary
 

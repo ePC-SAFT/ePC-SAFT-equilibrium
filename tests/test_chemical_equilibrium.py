@@ -452,6 +452,8 @@ def test_manufactured_ideal_reactions_match_independent_analytic_states(
     assert diagnostics.constraint_jacobian_check_relative_error <= 1.0e-5
     assert diagnostics.lagrangian_hessian_check_relative_error is not None
     assert diagnostics.lagrangian_hessian_check_relative_error <= 2.0e-4
+    assert diagnostics.reduced_hessian_check_relative_error is not None
+    assert diagnostics.reduced_hessian_check_relative_error <= 2.0e-4
     assert diagnostics.derivative_check_worst_entry
     assert diagnostics.derivative_check_worst_relative_error is not None
     assert diagnostics.derivative_check_worst_analytic_value is not None

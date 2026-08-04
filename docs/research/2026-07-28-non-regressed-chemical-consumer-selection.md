@@ -11,7 +11,7 @@ installed-Provider reference-transformation consumer:
 2 H2O <=> H3O+ + OH-
 ```
 
-This case is non-MEA, nonideal, charge balanced, and source complete when its
+This case is nonideal, charge balanced, and source complete when its
 two source responsibilities remain explicit:
 
 - Held, Cameretti, and Sadowski (2008) supply the ePC-SAFT mechanical model

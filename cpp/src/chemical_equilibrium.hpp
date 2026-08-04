@@ -263,6 +263,8 @@ struct ChemicalSolveResult {
         std::numeric_limits<double>::quiet_NaN();
     double lagrangian_hessian_check_relative_error =
         std::numeric_limits<double>::quiet_NaN();
+    double reduced_hessian_check_relative_error =
+        std::numeric_limits<double>::quiet_NaN();
     std::string derivative_check_worst_entry;
     double derivative_check_worst_relative_error =
         std::numeric_limits<double>::quiet_NaN();

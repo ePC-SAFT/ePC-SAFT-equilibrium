@@ -113,15 +113,18 @@ def test_public_chemical_equilibrium_solves_one_typed_ideal_problem() -> None:
     assert result.diagnostics.search.selected_objective is not None
     assert result.diagnostics.search.selected_basin_ordinal == 0
     assert result.diagnostics.kkt_root_status == "interior_no_active_bounds"
+    assert result.diagnostics.reduced_hessian_check_relative_error is not None
+    assert result.diagnostics.reduced_hessian_check_relative_error <= 2.0e-4
     assert result.diagnostics.first_failed_numerical_criterion is None
     numerical_names = tuple(
         criterion.name for criterion in result.diagnostics.numerical_criteria
     )
-    assert numerical_names[-5:] == (
+    assert numerical_names[-6:] == (
         "derivative_evidence_finite",
         "objective_gradient_spanning_relative_error",
         "constraint_jacobian_spanning_relative_error",
         "lagrangian_hessian_spanning_relative_error",
+        "reduced_hessian_spanning_relative_error",
         "kkt_root_jacobian_spanning_relative_error",
     )
     assert len(result.diagnostics.search.attempts) == 5

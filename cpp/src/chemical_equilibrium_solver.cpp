@@ -2451,6 +2451,36 @@ struct ReducedHessianAnalysis {
     double eigenvalue_tolerance = std::numeric_limits<double>::quiet_NaN();
 };
 
+std::vector<double> project_hessian(
+    const std::vector<double>& basis,
+    std::size_t reduced_dimension,
+    std::size_t full_dimension,
+    const std::vector<double>& hessian
+) {
+    if (basis.size() != reduced_dimension * full_dimension
+        || hessian.size() != full_dimension * full_dimension) {
+        throw std::invalid_argument("Hessian projection dimensions are invalid");
+    }
+    std::vector<double> projected(
+        reduced_dimension * reduced_dimension,
+        0.0
+    );
+    for (std::size_t row = 0; row < reduced_dimension; ++row) {
+        for (std::size_t column = 0; column < reduced_dimension; ++column) {
+            for (std::size_t left = 0; left < full_dimension; ++left) {
+                for (std::size_t right = 0; right < full_dimension; ++right) {
+                    projected[row * reduced_dimension + column] += basis[
+                        row * full_dimension + left
+                    ] * hessian[left * full_dimension + right] * basis[
+                        column * full_dimension + right
+                    ];
+                }
+            }
+        }
+    }
+    return projected;
+}
+
 ReducedHessianAnalysis analyze_reduced_hessian(
     const ReactionNlpEvaluation& evaluation,
     std::size_t constraint_count
@@ -2494,18 +2524,12 @@ ReducedHessianAnalysis analyze_reduced_hessian(
         }
         hessian_scale = std::max(hessian_scale, row_sum);
     }
-    std::vector<double> reduced(basis.size() * basis.size(), 0.0);
-    for (std::size_t row = 0; row < basis.size(); ++row) {
-        for (std::size_t column = 0; column < basis.size(); ++column) {
-            for (std::size_t left = 0; left < dimension; ++left) {
-                for (std::size_t right = 0; right < dimension; ++right) {
-                    reduced[row * basis.size() + column] += basis[row][left]
-                        * certification_hessian[left * dimension + right]
-                        * basis[column][right];
-                }
-            }
-        }
-    }
+    const std::vector<double> reduced = project_hessian(
+        result.nullspace_basis,
+        result.nullspace_rows,
+        result.nullspace_columns,
+        certification_hessian
+    );
     result.hessian_scale = hessian_scale;
     result.eigenvalue_tolerance = 1.0e-10 * hessian_scale;
     result.reduced_hessian = reduced;
@@ -3544,6 +3568,7 @@ ChemicalSolveResult solve_reaction_attempt(
         result.numerical_status = "failed";
         return result;
     }
+    std::vector<double> finite_difference_lagrangian_hessian;
     try {
         constexpr double kObjectiveGradientCheckTolerance = 1.0e-5;
         constexpr double kConstraintJacobianCheckTolerance = 1.0e-5;
@@ -3556,6 +3581,10 @@ ChemicalSolveResult solve_reaction_attempt(
         result.objective_gradient_check_relative_error = 0.0;
         result.constraint_jacobian_check_relative_error = 0.0;
         result.lagrangian_hessian_check_relative_error = 0.0;
+        finite_difference_lagrangian_hessian.assign(
+            variables.size() * variables.size(),
+            std::numeric_limits<double>::quiet_NaN()
+        );
         result.derivative_check_worst_relative_error = -1.0;
         const auto record_check = [&result, &relative_error](
             const std::string& quantity,
@@ -3665,13 +3694,18 @@ ChemicalSolveResult solve_reaction_attempt(
             const std::vector<double> above_lagrangian_gradient =
                 lagrangian_gradient(above);
             for (std::size_t row = 0; row < variables.size(); ++row) {
+                const double finite_difference =
+                    (above_lagrangian_gradient[row]
+                        - below_lagrangian_gradient[row])
+                    / (2.0 * step);
+                finite_difference_lagrangian_hessian[
+                    row * variables.size() + column
+                ] = finite_difference;
                 record_check(
                     "lagrangian_hessian",
                     row,
                     column,
-                    (above_lagrangian_gradient[row]
-                        - below_lagrangian_gradient[row])
-                        / (2.0 * step),
+                    finite_difference,
                     equality_evaluation.lagrangian_hessian[
                         row * variables.size() + column
                     ],
@@ -3750,6 +3784,56 @@ ChemicalSolveResult solve_reaction_attempt(
         result.reduced_hessian_scale = curvature.hessian_scale;
         result.reduced_hessian_eigenvalue_tolerance =
             curvature.eigenvalue_tolerance;
+        result.reduced_hessian_check_relative_error = 0.0;
+        const std::vector<double> finite_difference_reduced_hessian =
+            project_hessian(
+                curvature.nullspace_basis,
+                curvature.nullspace_rows,
+                curvature.nullspace_columns,
+                finite_difference_lagrangian_hessian
+            );
+        for (std::size_t row = 0; row < curvature.nullspace_rows; ++row) {
+            for (std::size_t column = 0;
+                 column < curvature.nullspace_rows;
+                 ++column) {
+                const double finite_difference =
+                    finite_difference_reduced_hessian[
+                        row * curvature.nullspace_rows + column
+                    ];
+                const double analytic = curvature.reduced_hessian[
+                    row * curvature.nullspace_rows + column
+                ];
+                const double error = std::abs(finite_difference - analytic)
+                    / std::max({
+                        1.0,
+                        std::abs(finite_difference),
+                        std::abs(analytic)
+                    });
+                result.reduced_hessian_check_relative_error = std::max(
+                    result.reduced_hessian_check_relative_error,
+                    error
+                );
+                if (error > result.derivative_check_worst_relative_error) {
+                    result.derivative_check_worst_entry =
+                        "reduced_hessian[row=" + std::to_string(row)
+                        + ",coordinate=" + std::to_string(column) + "]";
+                    result.derivative_check_worst_relative_error = error;
+                    result.derivative_check_worst_analytic_value = analytic;
+                    result.derivative_check_worst_finite_difference_value =
+                        finite_difference;
+                    result.derivative_check_worst_step =
+                        result.derivative_check_step;
+                }
+            }
+        }
+        if (result.reduced_hessian_check_relative_error > 2.0e-4) {
+            result.callback_error =
+                "derivative inconsistency: spanning reduced-Hessian audit failed";
+            result.numerical_status = "failed";
+            result.local_minimum_status = "second_order_inconclusive";
+            result.reduced_hessian_status = "second_order_inconclusive";
+            return result;
+        }
         negative_curvature_direction = curvature.negative_direction;
         if (curvature.spectrum_status == "nonfinite") {
             result.callback_error =

@@ -27,7 +27,7 @@ The first implementation slice contains only:
 
 Historical chemical-equilibrium code is mathematical evidence only. The
 retired public route, selectors, workflows, internal Provider runtime,
-`eos_x_gamma` solvent-only reference construction, MEA/Lithium fixtures, and
+`eos_x_gamma` solvent-only reference construction, application fixtures, and
 compatibility surfaces are forbidden inputs to this implementation.
 
 Implementation update (2026-07-27): the private GREPE homogeneous layer now
@@ -205,10 +205,9 @@ and transfer/reaction/pressure certificates. Sequential speciation then flash
 is initialization only. HELD remains the phase-discovery owner.
 
 The required downstream order is: source-complete reacting liquid; reactive
-bubble plus exact implicit sensitivities for MEA; simultaneous phase-specific
-two-liquid reactions for Lithium; and mixed-observable Regression only after
-typed Provider parameter derivatives. None of those subjects is part of this
-slice.
+bubble plus exact implicit sensitivities; simultaneous phase-specific
+two-liquid reactions; and mixed-observable Regression only after typed Provider
+parameter derivatives. None of those application subjects is part of this slice.
 
 Structural support and accessible-face compilation do not authorize coupled
 phase equilibrium. The homogeneous result is one local candidate. Phase-family

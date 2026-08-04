@@ -443,6 +443,7 @@ class ChemicalEquilibriumDiagnostics:
     objective_gradient_check_relative_error: float | None
     constraint_jacobian_check_relative_error: float | None
     lagrangian_hessian_check_relative_error: float | None
+    reduced_hessian_check_relative_error: float | None
     derivative_check_worst_entry: str
     derivative_check_worst_relative_error: float | None
     derivative_check_worst_analytic_value: float | None
@@ -1807,6 +1808,7 @@ def _failed_chemical_diagnostics(
         objective_gradient_check_relative_error=None,
         constraint_jacobian_check_relative_error=None,
         lagrangian_hessian_check_relative_error=None,
+        reduced_hessian_check_relative_error=None,
         derivative_check_worst_entry="",
         derivative_check_worst_relative_error=None,
         derivative_check_worst_analytic_value=None,
@@ -2274,6 +2276,9 @@ def _chemical_diagnostics(
         ),
         lagrangian_hessian_check_relative_error=_optional_float(
             native, "lagrangian_hessian_check_relative_error"
+        ),
+        reduced_hessian_check_relative_error=_optional_float(
+            native, "reduced_hessian_check_relative_error"
         ),
         derivative_check_worst_entry=str(native["derivative_check_worst_entry"]),
         derivative_check_worst_relative_error=_optional_float(

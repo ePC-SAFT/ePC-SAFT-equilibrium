@@ -6,8 +6,8 @@
 
 **Issue:** [#96](https://github.com/ePC-SAFT/ePC-SAFT-equilibrium/issues/96)
 
-**Result freeze:** This record was committed before executing the new search
-against the Hilliard/Böttinger MEA sentinel. Sentinel behavior cannot change
+**Result freeze:** This record was committed before executing downstream
+installed-artifact validation. Application behavior cannot change
 the formulation, start order, budgets, tolerances, or acceptance rules below.
 
 ## Scope and authority
@@ -31,7 +31,7 @@ not establish phase stability, kinetic stability, global thermodynamic
 stability, predictive validity, infeasibility, or regression readiness.
 Finite-search exhaustion is evidence about the declared attempt sequence only.
 
-MEA supplies one immutable downstream stress subject. No production branch,
+Downstream validation may supply immutable stress subjects. No production branch,
 start, tolerance, or status depends on a chemistry name, source row, species
 name, or application.
 
@@ -314,20 +314,19 @@ Package evidence must cover these claim groups:
    and no feasible start;
 4. the existing independent directional checks of objective gradients,
    constraint Jacobians, and Lagrangian Hessians; and
-5. unchanged ideal, water self-ionization, observation, and non-MEA public
+5. unchanged ideal, water self-ionization, observation, and public
    behavior.
 
-The frozen Hilliard/Böttinger sentinel runs only after this record is committed.
-It either returns a reproducible certified local minimum or remains a blocker
-with the complete finite-search receipt.
+Any frozen downstream sentinel runs only after this record is committed. It
+either returns a reproducible certified local minimum or remains a blocker with
+the complete finite-search receipt.
 [Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
-owns the preregistered MEA matrix over immutable installed artifacts.
+owns preregistered application matrices over immutable installed artifacts.
 
 ### Post-design ownership clarification
 
-The user subsequently confirmed that MEA testing is a downstream application
-of this generic capability. The package leaf therefore freezes the immutable
-artifact, public receipt, and exact sentinel identity, while
+Application testing is downstream of this generic capability. The package leaf
+therefore freezes the immutable artifact and public receipt, while
 [Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
 owns both the first installed-artifact sentinel execution and the broader
 matrix. This clarification supersedes only the execution owner implied by the
