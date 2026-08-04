@@ -2,7 +2,7 @@ version: 1
 status: accepted-pure-saturation-with-local-held-development-candidates
 
 authority:
-  governance_doctrine_revision: 5
+  governance_doctrine_revision: 7
   runtime_source_of_truth: true
   runtime_source_of_truth_scope: package-implementation-not-capability-admission
   accepted_capability_authority: receipt-bound
@@ -327,6 +327,7 @@ public_surface:
     - ChemicalEquilibriumAttempt
     - ChemicalEquilibriumBasin
     - ChemicalEquilibriumBudgetPrefix
+    - ChemicalEquilibriumCriterion
     - ChemicalEquilibriumConstant
     - ChemicalEquilibriumDiagnostics
     - ChemicalEquilibriumError
@@ -345,6 +346,7 @@ public_surface:
     - IdealGasPhase
     - PhaseState
     - ProviderPhase
+    - ProviderModelContinuation
     - SaturationDiagnostics
     - SaturationError
     - SaturationResult
