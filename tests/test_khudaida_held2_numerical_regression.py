@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 
 import epcsaft
@@ -13,7 +12,9 @@ SOLUTION_ATOL = 1.0e-7
 SOLUTION_RTOL = 1.0e-7
 CONSERVATION_ATOL = 1.0e-10
 RESIDUAL_ATOL = 1.0e-8
-MAX_FLASH_WALL_SECONDS = 30.0
+MAX_PROVIDER_EVALUATIONS = 8_000
+MAX_OPTIMIZER_SOLVES = 250
+MAX_OPTIMIZER_ITERATIONS = 4_500
 KHUDAIDA_PARAMETER_FINGERPRINT = (
     "sha256:cd6ca3c2f91a299a44cf0f57b69d481c4049544a726f301ea1533a134400b961"
 )
@@ -126,15 +127,12 @@ def test_representative_khudaida_cases_retain_native_solution_and_convergence(
     khudaida_model: epcsaft.Mixture,
     case: _KhudaidaCase,
 ) -> None:
-    started = time.perf_counter()
     result = epcsaft_equilibrium.tp_flash(
         khudaida_model,
         case.temperature_k * epcsaft.unit_registry.kelvin,
         100000.0 * epcsaft.unit_registry.pascal,
         case.feed,
     )
-    wall_seconds = time.perf_counter() - started
-
     assert result.diagnostics.outcome == "physical_equilibrium_accepted"
     assert result.diagnostics.solver_status == "passed"
     assert result.diagnostics.numerical_status == "passed"
@@ -182,4 +180,8 @@ def test_representative_khudaida_cases_retain_native_solution_and_convergence(
     )
     assert max(abs(phase.pressure_pa - 100000.0) / 100000.0 for phase in phases) <= RESIDUAL_ATOL
     assert result.diagnostics.kkt_stationarity_max_abs <= RESIDUAL_ATOL
-    assert wall_seconds < MAX_FLASH_WALL_SECONDS
+    performance = result.diagnostics.performance
+    assert performance is not None
+    assert performance.provider_evaluations <= MAX_PROVIDER_EVALUATIONS
+    assert performance.optimizer_solves <= MAX_OPTIMIZER_SOLVES
+    assert performance.optimizer_iterations <= MAX_OPTIMIZER_ITERATIONS

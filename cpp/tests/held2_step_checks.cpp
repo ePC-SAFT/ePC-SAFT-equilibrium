@@ -604,6 +604,13 @@ std::pair<Held2Step1Result, Held2Step6Result> stage_iii_fixture() {
     return {std::move(prepared), std::move(candidates)};
 }
 
+double manufactured_packing_fraction(
+    const std::vector<double>& composition,
+    double
+) {
+    return composition.front();
+}
+
 Held2Step8Result manufactured_step8(
     const Held2Step1Result& prepared,
     const Held2Step6Result& candidates,
@@ -620,15 +627,14 @@ Held2Step8Result manufactured_step8(
         };
     Held2AlgorithmCache cache(
         prepared.provider_fingerprint,
-        evaluator, *prepared.volume_bounds
+        evaluator,
+        *prepared.volume_bounds,
+        manufactured_packing_fraction
     );
     return run_held2_step8(
         prepared,
         candidates,
         cache,
-        [](const auto& composition, double) {
-            return composition.front();
-        },
         previous,
         neighborhood_radius
     );
@@ -1689,6 +1695,9 @@ void run_held2_step8_checks() {
         },
         [](const auto&) -> std::array<double, 2> {
             throw std::runtime_error("manufactured bounds failure");
+        },
+        [](const auto&, double) -> double {
+            throw std::runtime_error("manufactured packing failure");
         }
     );
     bool failed_state_counted = false;
@@ -1705,8 +1714,18 @@ void run_held2_step8_checks() {
         failed_bounds_counted =
             failed_provider_cache.provider_volume_bound_evaluations() == 1;
     }
+    bool failed_packing_counted = false;
+    try {
+        static_cast<void>(
+            failed_provider_cache.evaluate_packing_fraction({0.5}, 1.0)
+        );
+    } catch (const std::runtime_error&) {
+        failed_packing_counted =
+            failed_provider_cache.provider_packing_evaluations() == 1;
+    }
     require(
-        failed_state_counted && failed_bounds_counted,
+        failed_state_counted && failed_bounds_counted
+            && failed_packing_counted,
         "HELD2 cache omitted failed Provider calls from accounting"
     );
     Held2AlgorithmCache failed_step8_cache(
@@ -1714,15 +1733,13 @@ void run_held2_step8_checks() {
         [](const auto&, double) -> Held2StateEvaluation {
             throw std::runtime_error("manufactured Step-8 state failure");
         },
-        *prepared.volume_bounds
+        *prepared.volume_bounds,
+        manufactured_packing_fraction
     );
     const Held2Step8Result failed_step8 = run_held2_step8(
         prepared,
         candidates,
-        failed_step8_cache,
-        [](const auto& composition, double) {
-            return composition.front();
-        }
+        failed_step8_cache
     );
     require(
         failed_step8.outcome == Held2Step8Outcome::Indeterminate
@@ -1752,15 +1769,13 @@ void run_held2_step8_checks() {
                 coordinates, composition, log_volume
             );
         },
-        *prepared.volume_bounds
+        *prepared.volume_bounds,
+        manufactured_packing_fraction
     );
     const Held2Step8Result late_failure = run_held2_step8(
         prepared,
         candidates,
-        late_failure_cache,
-        [](const auto& composition, double) {
-            return composition.front();
-        }
+        late_failure_cache
     );
     require(
         late_failure.outcome == Held2Step8Outcome::Indeterminate
@@ -1781,15 +1796,13 @@ void run_held2_step8_checks() {
         },
         [](const auto&) -> std::array<double, 2> {
             throw std::runtime_error("manufactured Step-8 bounds failure");
-        }
+        },
+        manufactured_packing_fraction
     );
     const Held2Step8Result failed_bounds_step8 = run_held2_step8(
         prepared,
         candidates,
-        failed_bounds_step8_cache,
-        [](const auto& composition, double) {
-            return composition.front();
-        }
+        failed_bounds_step8_cache
     );
     require(
         failed_bounds_step8.outcome == Held2Step8Outcome::Indeterminate
@@ -1806,20 +1819,17 @@ void run_held2_step8_checks() {
                 coordinates, composition, log_volume
             );
         },
-        *prepared.volume_bounds
-    );
-    const Held2Step8Result failed_certification = run_held2_step8(
-        prepared,
-        candidates,
-        failed_certification_cache,
+        *prepared.volume_bounds,
         [](const auto&, double) -> double {
             throw std::runtime_error(
                 "manufactured phase certification failure"
             );
-        },
-        nullptr,
-        kHeld2Problem67InitialRadius,
-        {true}
+        }
+    );
+    const Held2Step8Result failed_certification = run_held2_step8(
+        prepared,
+        candidates,
+        failed_certification_cache
     );
     require(
         failed_certification.outcome == Held2Step8Outcome::Indeterminate
@@ -1877,15 +1887,15 @@ void run_held2_step8_checks() {
     Held2AlgorithmCache provider_cache(
         cache_prepared.provider_fingerprint,
         duplicate_rejecting_provider,
-        *cache_prepared.volume_bounds
+        *cache_prepared.volume_bounds,
+        cache_packing
     );
     Held2Step1Result mismatched_provider = cache_prepared;
     mismatched_provider.provider_fingerprint = "sha256:different-provider";
     const Held2Step8Result mismatched_provider_result = run_held2_step8(
         mismatched_provider,
         candidates,
-        provider_cache,
-        cache_packing
+        provider_cache
     );
     require(
         mismatched_provider_result.outcome == Held2Step8Outcome::Indeterminate
@@ -1897,7 +1907,6 @@ void run_held2_step8_checks() {
     );
     const auto run_cached_problem = [
         &cache_prepared,
-        &cache_packing,
         &provider_cache
     ](
         const Held2Step6Result& selected,
@@ -1907,7 +1916,6 @@ void run_held2_step8_checks() {
             cache_prepared,
             selected,
             provider_cache,
-            cache_packing,
             nullptr,
             radius
         );
@@ -1949,7 +1957,6 @@ void run_held2_step8_checks() {
         cache_prepared,
         candidates,
         provider_cache,
-        cache_packing,
         nullptr,
         kHeld2Problem67InitialRadius
     );
@@ -1989,13 +1996,14 @@ void run_held2_step8_checks() {
         };
     Held2AlgorithmCache context_cache(
         context_prepared.provider_fingerprint,
-        mutable_provider, *context_prepared.volume_bounds
+        mutable_provider,
+        *context_prepared.volume_bounds,
+        cache_packing
     );
     const Held2Step8Result original_context_result = run_held2_step8(
         context_prepared,
         candidates,
         context_cache,
-        cache_packing,
         nullptr,
         kHeld2Problem67InitialRadius
     );
@@ -2011,13 +2019,14 @@ void run_held2_step8_checks() {
         };
     Held2AlgorithmCache changed_context_cache(
         context_prepared.provider_fingerprint,
-        mutable_provider, *context_prepared.volume_bounds
+        mutable_provider,
+        *context_prepared.volume_bounds,
+        cache_packing
     );
     const Held2Step8Result changed_context_result = run_held2_step8(
         context_prepared,
         candidates,
         changed_context_cache,
-        cache_packing,
         nullptr,
         kHeld2Problem67InitialRadius
     );
@@ -2290,16 +2299,17 @@ void run_held2_step8_checks() {
         };
         Held2AlgorithmCache cache(
             prepared.provider_fingerprint,
-            evaluator, *prepared.volume_bounds
+            evaluator,
+            *prepared.volume_bounds,
+            [&replay_evaluations](const auto& composition, double) {
+                ++replay_evaluations;
+                return composition.front();
+            }
         );
         return run_held2_step8(
             prepared,
             candidates,
             cache,
-            [&replay_evaluations](const auto& composition, double) {
-            ++replay_evaluations;
-            return composition.front();
-            },
             previous,
             radius
         );
@@ -2403,13 +2413,14 @@ void run_held2_step8_checks() {
         };
     Held2AlgorithmCache infeasible_cache(
         prepared.provider_fingerprint,
-        infeasible_evaluator, *prepared.volume_bounds
+        infeasible_evaluator,
+        *prepared.volume_bounds,
+        infeasible_packing
     );
     const Held2Step8Result retained_infeasible = run_held2_step8(
         prepared,
         candidates,
         infeasible_cache,
-        infeasible_packing,
         nullptr,
         kHeld2Problem67InitialRadius
     );
@@ -2421,7 +2432,6 @@ void run_held2_step8_checks() {
         prepared,
         intervening_infeasible_candidates,
         infeasible_cache,
-        infeasible_packing,
         nullptr,
         kHeld2Problem67InitialRadius
     );
@@ -2440,7 +2450,6 @@ void run_held2_step8_checks() {
         prepared,
         candidates,
         infeasible_cache,
-        infeasible_packing,
         &changed_warm_start,
         kHeld2Problem67InitialRadius
     );
@@ -2710,6 +2719,8 @@ void run_workflow_check() {
         std::make_shared<std::vector<std::vector<double>>>();
     auto volume_bound_queries =
         std::make_shared<std::vector<std::vector<double>>>();
+    auto packing_queries =
+        std::make_shared<std::vector<std::vector<double>>>();
     const Held2AlgorithmResult missing_access = run_held2_algorithm(
         {
             {"neutral", "cation", "anion"},
@@ -2719,6 +2730,7 @@ void run_workflow_check() {
             [](const auto&) {
                 return std::array<double, 2>{0.5, 1.5};
             },
+            {},
             std::numeric_limits<double>::quiet_NaN(),
             {},
         },
@@ -2771,6 +2783,21 @@ void run_workflow_check() {
                 volume_bound_queries->push_back(composition);
                 return std::array<double, 2>{0.5, 1.5};
             },
+            [packing_queries](const auto& composition, double volume) {
+                std::vector<double> key = composition;
+                key.push_back(volume);
+                if (std::find(
+                        packing_queries->begin(),
+                        packing_queries->end(),
+                        key
+                    ) != packing_queries->end()) {
+                    throw std::runtime_error(
+                        "HELD2 repeated exact Provider packing state across stages"
+                    );
+                }
+                packing_queries->push_back(std::move(key));
+                return composition.front();
+            },
             std::numeric_limits<double>::quiet_NaN(),
             {},
         },
@@ -2807,11 +2834,13 @@ void run_workflow_check() {
         "HELD2 diagnostics counted cache hits as Provider work: reported="
         + std::to_string(reported_provider_work)
         + ", states=" + std::to_string(provider_queries->size())
-        + ", bounds=" + std::to_string(volume_bound_queries->size());
+        + ", bounds=" + std::to_string(volume_bound_queries->size())
+        + ", packing=" + std::to_string(packing_queries->size());
     require(
         reported_provider_work
             == provider_queries->size()
-                + volume_bound_queries->size(),
+                + volume_bound_queries->size()
+                + packing_queries->size(),
         accounting_failure.c_str()
     );
 }

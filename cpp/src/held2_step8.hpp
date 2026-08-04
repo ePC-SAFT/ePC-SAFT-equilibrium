@@ -70,7 +70,8 @@ public:
     Held2AlgorithmCache(
         std::string provider_fingerprint,
         Held2StateEvaluator state_evaluator,
-        Held2VolumeBoundsEvaluator volume_bounds_evaluator
+        Held2VolumeBoundsEvaluator volume_bounds_evaluator,
+        Held2PackingFractionEvaluator packing_fraction_evaluator
     );
     [[nodiscard]] const std::string& provider_fingerprint() const noexcept {
         return provider_fingerprint_;
@@ -94,6 +95,13 @@ public:
     }
     [[nodiscard]] std::uint64_t provider_volume_bound_evaluations() const {
         return provider_volume_bound_evaluations_;
+    }
+    [[nodiscard]] double evaluate_packing_fraction(
+        const std::vector<double>& composition,
+        double volume
+    );
+    [[nodiscard]] std::uint64_t provider_packing_evaluations() const {
+        return provider_packing_evaluations_;
     }
     [[nodiscard]] const Held2Step8Result* find_problem(
         const std::vector<std::uint64_t>& candidate_ids,
@@ -156,6 +164,18 @@ private:
             const VolumeBoundsKey& bounds
         ) const noexcept;
     };
+    struct PackingKey {
+        std::vector<double> variables;
+
+        [[nodiscard]] bool operator==(const PackingKey& other) const {
+            return variables == other.variables;
+        }
+    };
+    struct PackingHash {
+        [[nodiscard]] std::size_t operator()(
+            const PackingKey& packing
+        ) const noexcept;
+    };
 
     std::unordered_map<
         StateKey, Held2StateEvaluation, StateHash
@@ -163,22 +183,23 @@ private:
     std::unordered_map<
         VolumeBoundsKey, std::array<double, 2>, VolumeBoundsHash
     > volume_bounds_;
+    std::unordered_map<PackingKey, double, PackingHash> packing_fractions_;
     std::unordered_map<ProblemKey, Held2Step8Result, ProblemHash> problems_;
     std::uint64_t provider_state_evaluations_ = 0;
     std::uint64_t provider_volume_bound_evaluations_ = 0;
+    std::uint64_t provider_packing_evaluations_ = 0;
     std::string provider_fingerprint_;
     Held2StateEvaluator state_evaluator_;
     Held2VolumeBoundsEvaluator volume_bounds_evaluator_;
+    Held2PackingFractionEvaluator packing_fraction_evaluator_;
 };
 
 [[nodiscard]] Held2Step8Result run_held2_step8(
     const Held2Step1Result& step1,
     const Held2Step6Result& step6,
     Held2AlgorithmCache& cache,
-    const Held2PackingFractionEvaluator& packing_fraction,
     const Held2Step8Result* previous = nullptr,
-    double neighborhood_radius = kHeld2Problem67InitialRadius,
-    Held2ThermodynamicAccessPolicy access_policy = {}
+    double neighborhood_radius = kHeld2Problem67InitialRadius
 );
 
 }  // namespace epcsaft_equilibrium

@@ -53,11 +53,14 @@ auto run_cached_thermodynamic_step(
         cache.provider_state_evaluations();
     const std::uint64_t bounds_before =
         cache.provider_volume_bound_evaluations();
+    const std::uint64_t packing_before =
+        cache.provider_packing_evaluations();
     return run_step(step, [&] {
         auto result = callable();
         result.timing.provider_evaluations =
             cache.provider_state_evaluations() - states_before
-            + cache.provider_volume_bound_evaluations() - bounds_before;
+            + cache.provider_volume_bound_evaluations() - bounds_before
+            + cache.provider_packing_evaluations() - packing_before;
         return result;
     }, observer);
 }
@@ -105,9 +108,6 @@ Held2AlgorithmResult run_held2_algorithm(
     Held2ProgressObserver* observer
 ) {
     Held2AlgorithmResult result;
-    constexpr Held2ThermodynamicAccessPolicy kFlashCachedAccess{
-        false,
-    };
     Held2ProgressEvent progress;
     progress.kind = Held2ProgressKind::CaseStart;
     progress.case_id = "installed-held2-paper-rewrite";
@@ -121,7 +121,8 @@ Held2AlgorithmResult run_held2_algorithm(
     };
     if (thermodynamics.provider_fingerprint.empty()
         || !thermodynamics.evaluate
-        || !thermodynamics.volume_bounds_physical) {
+        || !thermodynamics.volume_bounds_physical
+        || !thermodynamics.packing_fraction) {
         return fail("step1", "invalid_thermodynamic_access");
     }
     result.step1 = run_step(1, [&] {
@@ -146,7 +147,8 @@ Held2AlgorithmResult run_held2_algorithm(
     Held2AlgorithmCache cache(
         thermodynamics.provider_fingerprint,
         thermodynamics.evaluate,
-        uncached_volume_bounds
+        uncached_volume_bounds,
+        thermodynamics.packing_fraction
     );
     const Held2StateEvaluator evaluate = [&](const auto& composition,
                                               double log_volume) {
@@ -165,8 +167,7 @@ Held2AlgorithmResult run_held2_algorithm(
         const auto& composition,
         double volume
     ) {
-        return kHeld2PackingFractionMinimum
-            * (*cached_step1.volume_bounds)(composition)[1] / volume;
+        return cache.evaluate_packing_fraction(composition, volume);
     };
     result.step2 = run_cached_thermodynamic_step(2, [&] {
         return run_held2_step2(
@@ -264,7 +265,7 @@ Held2AlgorithmResult run_held2_algorithm(
                 state,
                 packing_fraction,
                 observer,
-                kFlashCachedAccess
+                {false}
             );
         }, cache, observer));
         result.step_timings.push_back(result.step6_history.back().timing);
@@ -306,10 +307,8 @@ Held2AlgorithmResult run_held2_algorithm(
                 result.step1,
                 step6,
                 cache,
-                packing_fraction,
                 previous,
-                step8_neighborhood_radius,
-                kFlashCachedAccess
+                step8_neighborhood_radius
             );
         }, observer));
         result.step_timings.push_back(result.step8_history.back().timing);

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 import epcsaft
 import pytest
 from parameter_dictionaries import FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS
@@ -333,21 +331,19 @@ def test_perdomo_table3_nacl_workflow() -> None:
         "expected_phase_fractions",
         "expected_mole_fractions",
         "expected_phase_volumes",
-        "max_wall_seconds",
     ),
     (
         pytest.param(
             3181.454397,
-                0.005000000139214637,
-                "physical_equilibrium_accepted",
-                0.21155648678431022,
-                (0.9851851723141468, 0.014814827685853224),
-                (
-                    (0.9999403402467356, 2.9829876632190147e-05, 2.9829876632190147e-05),
-                    (0.991809243149451, 0.004095378425274544, 0.004095378425274544),
-                ),
-                (1.7802235178776976e-05, 0.01151173970113826),
-                None,
+            0.005000000139214637,
+            "physical_equilibrium_accepted",
+            0.21155648678431022,
+            (0.9851851723141468, 0.014814827685853224),
+            (
+                (0.9999403402467356, 2.9829876632190147e-05, 2.9829876632190147e-05),
+                (0.991809243149451, 0.004095378425274544, 0.004095378425274544),
+            ),
+            (1.7802235178776976e-05, 0.01151173970113826),
             id="figure1a-0.005molal-below-boundary",
         ),
         pytest.param(
@@ -361,7 +357,6 @@ def test_perdomo_table3_nacl_workflow() -> None:
                 (0.9829751159939637, 0.008512442003018143, 0.008512442003018143),
             ),
             (1.8026580233950744e-05, 0.0018208010582469352),
-            None,
             id="figure1a-0.005molal-source-boundary",
         ),
         pytest.param(
@@ -372,7 +367,6 @@ def test_perdomo_table3_nacl_workflow() -> None:
             (1.0,),
             ((0.8321050353538131, 0.08394748232309347, 0.08394748232309347),),
             (0.9849669198212629,),
-            30.0,
             id="table3-5.6molal",
         ),
     ),
@@ -385,18 +379,14 @@ def test_perdomo_nacl_public_results_remain_in_the_numerical_regression_region(
     expected_phase_fractions: tuple[float, ...],
     expected_mole_fractions: tuple[tuple[float, ...], ...],
     expected_phase_volumes: tuple[float, ...],
-    max_wall_seconds: float | None,
 ) -> None:
     feed = _nacl_feed(molality_mol_per_kg)
-    started = time.perf_counter()
     result = epcsaft_equilibrium.tp_flash(
         _perdomo_table3_model(),
         298.15 * epcsaft.unit_registry.kelvin,
         pressure_pa * epcsaft.unit_registry.pascal,
         feed,
     )
-    wall_seconds = time.perf_counter() - started
-
     assert result.diagnostics.outcome == expected_outcome
     assert result.diagnostics.solver_status == "passed"
     assert result.diagnostics.numerical_status == "passed"
@@ -441,5 +431,7 @@ def test_perdomo_nacl_public_results_remain_in_the_numerical_regression_region(
             abs=PHASE_COMPOSITION_ATOL,
             rel=NUMERICAL_RTOL,
         )
-    if max_wall_seconds is not None:
-        assert wall_seconds < max_wall_seconds
+    if molality_mol_per_kg == PERDOMO_TABLE3_NACL_MOL_PER_KG_WATER:
+        assert performance.provider_evaluations <= 3_500
+        assert performance.optimizer_solves <= 2
+        assert performance.optimizer_iterations <= 3_500

@@ -27,6 +27,9 @@ constexpr std::size_t kElectrolyteSdkTableSize =
 constexpr std::size_t kMolarVolumeSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_molar_volume_bounds)
     + sizeof(epcsaft_evaluate_molar_volume_bounds_v1);
+constexpr std::size_t kPackingSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, evaluate_packing_fraction)
+    + sizeof(epcsaft_evaluate_packing_fraction_v1);
 constexpr std::size_t kSourceDomainSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, total_ion_mole_fraction_max)
     + sizeof(double);
@@ -61,6 +64,12 @@ void require_held2_sdk(const epcsaft_native_sdk_v1& sdk) {
         || sdk.evaluate_molar_volume_bounds == nullptr) {
         throw std::invalid_argument(
             "provider capsule is missing the molar-volume domain contract"
+        );
+    }
+    if (sdk.table_size < kPackingSdkTableSize
+        || sdk.evaluate_packing_fraction == nullptr) {
+        throw std::invalid_argument(
+            "provider capsule is missing the packing-fraction contract"
         );
     }
     if (sdk.table_size < kSourceDomainSdkTableSize) {
@@ -151,6 +160,17 @@ public:
             kHeld2PackingFractionMinimum,
             kHeld2PackingFractionMaximum
         );
+    }
+
+    [[nodiscard]] double packing_fraction(
+        const std::vector<double>& independent,
+        double volume
+    ) const {
+        return provider_.evaluate_packing_fraction(
+            input_.temperature_k,
+            held2_lift_independent_fractions(coordinates_, independent),
+            volume
+        ).value;
     }
 
     [[nodiscard]] std::vector<double> independent(
@@ -263,6 +283,11 @@ Held2ThermodynamicAccess make_installed_held2_access(
     };
     result.volume_bounds_physical = [problem](const auto& physical) {
         return problem->volume_bounds(problem->independent(physical));
+    };
+    result.packing_fraction = [problem](
+        const auto& composition, double volume
+    ) {
+        return problem->packing_fraction(composition, volume);
     };
     result.total_ion_mole_fraction_max =
         problem->total_ion_mole_fraction_max();

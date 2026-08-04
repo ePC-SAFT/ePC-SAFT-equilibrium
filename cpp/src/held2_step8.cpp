@@ -180,20 +180,51 @@ std::size_t Held2AlgorithmCache::VolumeBoundsHash::operator()(
     return seed;
 }
 
+std::size_t Held2AlgorithmCache::PackingHash::operator()(
+    const PackingKey& packing
+) const noexcept {
+    std::size_t seed = 0;
+    mix_values(seed, packing.variables);
+    return seed;
+}
+
 Held2AlgorithmCache::Held2AlgorithmCache(
     std::string provider_fingerprint,
     Held2StateEvaluator state_evaluator,
-    Held2VolumeBoundsEvaluator volume_bounds_evaluator
+    Held2VolumeBoundsEvaluator volume_bounds_evaluator,
+    Held2PackingFractionEvaluator packing_fraction_evaluator
 )
     : provider_fingerprint_(std::move(provider_fingerprint)),
       state_evaluator_(std::move(state_evaluator)),
-      volume_bounds_evaluator_(std::move(volume_bounds_evaluator)) {
+      volume_bounds_evaluator_(std::move(volume_bounds_evaluator)),
+      packing_fraction_evaluator_(std::move(packing_fraction_evaluator)) {
     if (provider_fingerprint_.empty() || !state_evaluator_
-        || !volume_bounds_evaluator_) {
+        || !volume_bounds_evaluator_ || !packing_fraction_evaluator_) {
         throw std::invalid_argument(
             "HELD2 cache requires immutable Provider context access"
         );
     }
+}
+
+double Held2AlgorithmCache::evaluate_packing_fraction(
+    const std::vector<double>& composition,
+    double volume
+) {
+    const bool cacheable = all_finite(composition) && std::isfinite(volume);
+    PackingKey key{composition};
+    key.variables.push_back(volume);
+    if (cacheable) {
+        const auto retained = packing_fractions_.find(key);
+        if (retained != packing_fractions_.end()) {
+            return retained->second;
+        }
+    }
+    ++provider_packing_evaluations_;
+    const double packing = packing_fraction_evaluator_(composition, volume);
+    if (cacheable) {
+        packing_fractions_.insert_or_assign(std::move(key), packing);
+    }
+    return packing;
 }
 
 Held2StateEvaluation Held2AlgorithmCache::evaluate_state(
@@ -312,17 +343,14 @@ Held2Step8Result run_held2_step8(
     const Held2Step1Result& step1,
     const Held2Step6Result& step6,
     Held2AlgorithmCache& cache,
-    const Held2PackingFractionEvaluator& packing_fraction,
     const Held2Step8Result* previous,
-    double neighborhood_radius,
-    Held2ThermodynamicAccessPolicy access_policy
+    double neighborhood_radius
 ) {
     Held2Step8Result result;
     result.neighborhood_radius = neighborhood_radius;
     result.timing.invocation_count = 1;
     if (!step1.coordinates || !step1.independent_feed || !step1.volume_bounds
-        || step6.status != "complete" || step6.candidates.size() < 2
-        || !packing_fraction) {
+        || step6.status != "complete" || step6.candidates.size() < 2) {
         result.reason = "invalid_step8_input";
         return result;
     }
@@ -472,17 +500,20 @@ Held2Step8Result run_held2_step8(
     std::vector<std::array<double, 2>> bounds;
     candidates.reserve(selected_points.size());
     bounds.reserve(selected_points.size());
-    std::uint64_t provider_packing_evaluations = 0;
     const std::uint64_t shared_states_before =
         cache.provider_state_evaluations();
     const std::uint64_t shared_volume_bounds_before =
         cache.provider_volume_bound_evaluations();
+    const std::uint64_t shared_packing_before =
+        cache.provider_packing_evaluations();
     const auto record_provider_work = [&] {
         const std::uint64_t provider_state_evaluations =
             cache.provider_state_evaluations() - shared_states_before;
         const std::uint64_t provider_volume_bound_evaluations =
             cache.provider_volume_bound_evaluations()
             - shared_volume_bounds_before;
+        const std::uint64_t provider_packing_evaluations =
+            cache.provider_packing_evaluations() - shared_packing_before;
         result.timing.provider_evaluations =
             provider_state_evaluations
             + provider_volume_bound_evaluations
@@ -777,11 +808,8 @@ Held2Step8Result run_held2_step8(
                 independent(*step1.coordinates, phase.modified_fractions);
             const Held2StateEvaluation state =
                 counted_evaluator(composition, std::log(phase.volume));
-            if (access_policy.packing_fraction_uses_provider) {
-                ++provider_packing_evaluations;
-            }
             const double phase_packing_fraction =
-                packing_fraction(composition, phase.volume);
+                cache.evaluate_packing_fraction(composition, phase.volume);
             result.active_phases.push_back({
                 result.candidate_ids.at(phase_index),
                 phase.phase_fraction,

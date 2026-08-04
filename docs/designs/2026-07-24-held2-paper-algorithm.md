@@ -300,19 +300,22 @@ Performance optimization may remove only repeated computation, never a
 scientific predicate or independent certificate. One cache is created inside
 `run_held2_algorithm` for one flash and is destroyed with that flash.
 
-The cache has three exact, non-toleranced identities:
+The cache has four exact, non-toleranced identities:
 
 1. an ordinary state is keyed by the complete independent
    modified-composition vector and log molar volume;
 2. a physical volume-bound result is keyed by the complete independent
    modified-composition vector; and
-3. Problem (67) is keyed by ordered stable candidate IDs, every candidate
+3. a Provider packing-fraction value is keyed by the complete independent
+   modified-composition vector and molar volume; and
+4. Problem (67) is keyed by ordered stable candidate IDs, every candidate
    variable, the complete coordinate transformation, physical feed, all
    phase-coordinate bounds, neighborhood radius, and the immutable Provider
    context bound to the cache instance.
 
 The cache is constructed after immutable Provider access is assembled and owns
-the ordinary state and volume-bound callbacks for its lifetime. Step 8 accepts
+the ordinary state, volume-bound, and packing-fraction callbacks for its
+lifetime. Step 8 accepts
 the cache itself, not a replaceable evaluator. A different Provider therefore
 requires a different cache instance; there is no caller-managed context token.
 Step 1 and the cache both carry the exact Provider parameter fingerprint, and

@@ -33,8 +33,8 @@ Before the new implementation was run, one accepted row was selected for each
 admitted component: methane 150 K, ethane 240 K, and propane 300 K. Component
 labels were lowercased. Temperature, NIST pressure, NIST saturated-liquid mass
 density, route pressure, route vapor molar density, route liquid molar density,
-and NIST URL were copied without interpolation or recalculation. Catalog names
-and fingerprints were attached from the pinned provider artifact. Molar mass
+and NIST URL were copied without interpolation or recalculation. Parameter
+fingerprints were attached from the pinned provider artifact. Molar mass
 was retained from the route row's mass-density to molar-density conversion and
 is used only to compare the new molar-density result with the NIST mass-density
 observation.

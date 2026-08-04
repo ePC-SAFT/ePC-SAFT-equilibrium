@@ -175,7 +175,8 @@ Problem (67) only when its ordered stable candidate IDs, candidate variables,
 coordinate transformation, physical feed, phase-coordinate bounds, immutable
 Provider context, and requested neighborhood radius are exactly unchanged.
 The cache instance is created after Provider access is assembled and owns the
-state and volume-bound callbacks for its lifetime. Those callbacks cannot
+state, volume-bound, and packing-fraction callbacks for its lifetime. Those
+callbacks cannot
 be rebound through the Step-8 API. The cache is used by one flash and destroyed
 with that flash; a separately constructed cache is required for a different
 Provider access. Step 1 and the cache carry the same exact Provider parameter
@@ -206,8 +207,9 @@ order:
    sufficiently developed hull into the simultaneous Stage-III solve without
    weakening any final KKT, balance, charge, pressure, domain, or phase-identity
    certificate.
-4. One flash-scoped cache evaluates each exact ordinary thermodynamic state and
-   composition-dependent volume bound once. Objective, gradient, Hessian,
+4. One flash-scoped cache evaluates each exact ordinary thermodynamic state,
+   composition-dependent volume bound, and packing-fraction state once.
+   Objective, gradient, Hessian,
    pressure-root, certification, and serialization consumers share the complete
    state rather than calling the Provider through parallel value-only paths.
 5. Step 8 replays only certified feasible or independently Farkas-certified
