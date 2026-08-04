@@ -1055,8 +1055,8 @@ SourceStandardStateResult transform_source_standard_state(
         || reference.helmholtz_basis_id
             != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1
         || reference.status != "ok"
-        || reference.domain_status != "admitted"
-        || reference.convergence_status != "converged") {
+        || reference.domain_status != "admitted-domain"
+        || reference.convergence_status != "converged-limit") {
         throw std::invalid_argument("Provider source-reference identity is incompatible");
     }
     if (!reference.derivative_availability.empty()) {

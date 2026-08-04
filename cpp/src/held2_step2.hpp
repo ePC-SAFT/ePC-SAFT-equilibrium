@@ -42,7 +42,7 @@ struct Held2Step2Result {
 [[nodiscard]] Held2Step2Result run_held2_step2(
     const Held2Step1Result& step1,
     const Held2StateEvaluator& evaluator,
-    int provider_evaluation_budget,
+    int search_work_budget,
     Held2ProgressObserver* observer = nullptr
 );
 

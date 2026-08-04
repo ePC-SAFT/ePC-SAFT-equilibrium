@@ -17,7 +17,7 @@ namespace {
 
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
 constexpr const char* kNeutralFlashFingerprint =
-    "sha256:8347d8daad42af60d61071f0584eb50d8866d98d9636872fd9d173f491ea7947";
+    "sha256:9e63656093548f1f64bec8cc5129421f6e1bc452b2ec3632ded65f5ac538b8e7";
 constexpr std::size_t kMixtureSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_mixture_phase)
     + sizeof(epcsaft_evaluate_mixture_phase_v1);
@@ -27,6 +27,9 @@ constexpr std::size_t kElectrolyteSdkTableSize =
 constexpr std::size_t kMolarVolumeSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, evaluate_molar_volume_bounds)
     + sizeof(epcsaft_evaluate_molar_volume_bounds_v1);
+constexpr std::size_t kPackingSdkTableSize =
+    offsetof(epcsaft_native_sdk_v1, evaluate_packing_fraction)
+    + sizeof(epcsaft_evaluate_packing_fraction_v1);
 constexpr std::size_t kSourceDomainSdkTableSize =
     offsetof(epcsaft_native_sdk_v1, total_ion_mole_fraction_max)
     + sizeof(double);
@@ -61,6 +64,12 @@ void require_held2_sdk(const epcsaft_native_sdk_v1& sdk) {
         || sdk.evaluate_molar_volume_bounds == nullptr) {
         throw std::invalid_argument(
             "provider capsule is missing the molar-volume domain contract"
+        );
+    }
+    if (sdk.table_size < kPackingSdkTableSize
+        || sdk.evaluate_packing_fraction == nullptr) {
+        throw std::invalid_argument(
+            "provider capsule is missing the packing-fraction contract"
         );
     }
     if (sdk.table_size < kSourceDomainSdkTableSize) {
@@ -153,6 +162,17 @@ public:
         );
     }
 
+    [[nodiscard]] double packing_fraction(
+        const std::vector<double>& independent,
+        double volume
+    ) const {
+        return provider_.evaluate_packing_fraction(
+            input_.temperature_k,
+            held2_lift_independent_fractions(coordinates_, independent),
+            volume
+        ).value;
+    }
+
     [[nodiscard]] std::vector<double> independent(
         const std::vector<double>& physical
     ) const {
@@ -236,6 +256,7 @@ Held2ThermodynamicAccess make_installed_held2_access(
         provider, input
     );
     Held2ThermodynamicAccess result;
+    result.provider_fingerprint = provider.fingerprint();
     result.component_ids.reserve(provider.sdk().component_count);
     result.charges.reserve(provider.sdk().component_count);
     for (std::size_t component = 0;
@@ -266,8 +287,7 @@ Held2ThermodynamicAccess make_installed_held2_access(
     result.packing_fraction = [problem](
         const auto& composition, double volume
     ) {
-        return kHeld2PackingFractionMinimum
-            * problem->volume_bounds(composition)[1] / volume;
+        return problem->packing_fraction(composition, volume);
     };
     result.total_ion_mole_fraction_max =
         problem->total_ion_mole_fraction_max();

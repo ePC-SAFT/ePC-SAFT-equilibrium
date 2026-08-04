@@ -2,10 +2,10 @@
 
 ## Status and authority
 
-This document is the normative specification for the clean-room rewrite of
-the charged-mixture HELD2.0 controller in this repository. The implementation
-must be traceable to this document. Existing HELD2 controller behavior is not
-authority and must not be copied merely for compatibility.
+This document is the normative specification for the canonical
+charged-mixture HELD2.0 controller in this repository. The implementation must
+remain traceable to this document. Superseded HELD2 controller behavior is not
+authority and must not be retained merely for compatibility.
 
 The primary scientific source is:
 
@@ -23,8 +23,9 @@ This document supersedes the Stage-II same-major search behavior described in
 `docs/designs/2026-07-22-held2-installed-completion.md`. In particular, HELD2.0
 does not require two new candidates from one major iteration.
 
-The installed Perdomo regression matrix is the current evidence checkpoint for
-later cleanup and performance work; it does not replace this specification.
+The package regression matrix protects compact scientific invariants. Exact
+installed-artifact performance and literature-comparison evidence lives in
+Validation and does not replace this specification.
 
 The paper conditions, package certificates, and deliberate implementation
 policies are cross-referenced in the
@@ -292,6 +293,65 @@ the entire set under the current \(UBD^V\) and \(\bar{\lambda}^k\).
 8. The final public result is constructed from the native result. Python
    postprocessing may not introduce component-count, charge, neutral-mixture,
    midpoint-feed, or route-specific scientific gates.
+
+## Canonical work-reuse and invalidation policy
+
+Performance optimization may remove only repeated computation, never a
+scientific predicate or independent certificate. One cache is created inside
+`run_held2_algorithm` for one flash and is destroyed with that flash.
+
+The cache has four exact, non-toleranced identities:
+
+1. an ordinary state is keyed by the complete independent
+   modified-composition vector and log molar volume;
+2. a physical volume-bound result is keyed by the complete independent
+   modified-composition vector; and
+3. a Provider packing-fraction value is keyed by the complete independent
+   modified-composition vector and molar volume; and
+4. Problem (67) is keyed by ordered stable candidate IDs, every candidate
+   variable, the complete coordinate transformation, physical feed, all
+   phase-coordinate bounds, neighborhood radius, and the immutable Provider
+   context bound to the cache instance.
+
+The cache is constructed after immutable Provider access is assembled and owns
+the ordinary state, volume-bound, and packing-fraction callbacks for its
+lifetime. Step 8 accepts
+the cache itself, not a replaceable evaluator. A different Provider therefore
+requires a different cache instance; there is no caller-managed context token.
+Step 1 and the cache both carry the exact Provider parameter fingerprint, and
+Step 8 rejects a mismatch before evaluating or replaying evidence. The cache is
+destroyed with its flash. Nonfinite inputs are not retained. The distinct
+Step-10 trace evaluator is outside the ordinary-state cache because it
+represents a different domain contract.
+
+Only a fully certified feasible Problem (67) or an independently audited
+Farkas-infeasible master may be replayed. Indeterminate, nonconverged,
+malformed, and collapsed-phase outcomes are path-dependent and are never
+retained as decisions. The immediate previous Step-8 result owns continuation
+selection and optimizer initialization only; it is not evidence reuse.
+Expanded-radius evidence is stored only under the expanded radius.
+
+Provider-work diagnostics count actual Provider calls. Cache hits and
+serialization do not inflate those totals. The nullable progress observer
+receives already-computed events, is silent by default, and cannot affect
+starts, tolerances, transitions, status, or results. These diagnostics are
+contract-bearing Validation evidence, not an alternate runtime avenue.
+Provider failures while constructing Step-8 phase bounds, solving Problem
+(67), or reevaluating final phases return an indeterminate result with the
+attempted calls counted; they never escape as accepted or reusable evidence.
+
+The Step-2 `search_work_budget` is a deterministic cap on conservative
+Provider-equivalent search work, including volume-bound/state work assumed per
+DIRECT-L trial. It preserves finite-search coverage independently of cache
+history; it is not the measured Provider-call total. Only the cache-owned
+counters populate the latter diagnostic.
+
+The five-percent Step-6 gap and the Step-9 paper convergence tolerances are
+working finite-search gates. They may move work between stages but cannot
+replace or loosen the final Stage-III KKT, material-balance, electroneutrality,
+pressure, Provider-domain, phase-identity, or physical-state certificates.
+Elapsed time is never a controller input, and concurrent feeds are not a
+substitute for reducing one `tp_flash` call.
 
 ## Stage I — stability test and initialization
 
@@ -1140,9 +1200,10 @@ If the resulting ordered stable-ID vector and effective neighborhood centers
 exactly identify a certified Problem (67) already retained by the current
 flash-scoped cache, reuse that result instead of replaying the same nonlinear
 problem. The exact key also includes the coordinate transformation, physical
-feed, phase-coordinate bounds, immutable Provider-context generation, and
-requested radius. A changed Provider callback requires a new per-flash context
-token, which clears all retained evidence. Reuse of a certified feasible result
+feed, phase-coordinate bounds, immutable Provider context, and
+requested radius. A changed Provider requires a separately constructed
+flash-scoped cache under its own immutable access because the bound
+callbacks cannot be replaced. Reuse of a certified feasible result
 still proceeds to
 Step 9 against the current Step-4 upper bound. Rejected acceleration evidence
 is never reused as an adjudication; it may provide a warm start, but requires a
@@ -1438,6 +1499,12 @@ whether or not the terminal trace was enabled.
 
 No serializer may replay Provider evaluations or optimizer iterates merely to
 construct diagnostics.
+
+The retained diagnostics are the minimum durable seam for distinguishing
+Provider work, optimizer work, finite-search progress, mechanism-triggered
+dilute/trace recovery, and cache reuse. Debug prints, value-only Provider
+callbacks, benchmark-only branches, and expected-answer hooks are not part of
+the controller.
 
 ## Verification and cutover criteria
 

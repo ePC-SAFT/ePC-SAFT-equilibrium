@@ -23,6 +23,7 @@ from chemical_equilibrium_cases import (
     bind_records as _bind_record,
 )
 from chemical_equilibrium_cases import typed_problem as _typed_problem
+from parameter_dictionaries import FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS
 
 import epcsaft_equilibrium
 from epcsaft_equilibrium import _api as equilibrium_api
@@ -1477,11 +1478,9 @@ def test_manufactured_charged_solution_is_species_order_invariant() -> None:
 def _figiel_provider_model(
     components: tuple[str, ...] = ("water", "sodium-cation", "chloride-anion"),
 ) -> epcsaft.Mixture:
-    parameters = epcsaft.Parameters.from_bundle(
-        Path(__file__).resolve().parents[2]
-        / "ePC-SAFT-data/packets/figiel-2025-reference-electrolytes/1/parameters",
-        components=components,
-    )
+    if components != tuple(FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS["components"]):
+        raise ValueError("the compact Figiel test dictionary has one canonical component order")
+    parameters = epcsaft.Parameters.from_dictionary(FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS)
     return epcsaft.Mixture(parameters)
 
 
@@ -1970,10 +1969,6 @@ def test_public_provider_certifies_multineutral_reactive_minimum() -> None:
 def test_unreachable_provider_state_fails_closed_in_subprocess(
     with_sensitivity: bool,
 ) -> None:
-    parameter_bundle = (
-        Path(__file__).resolve().parents[2]
-        / "ePC-SAFT-data/packets/figiel-2025-reference-electrolytes/1/parameters"
-    )
     script = textwrap.dedent(
         f"""
         import json
@@ -1982,9 +1977,8 @@ def test_unreachable_provider_state_fails_closed_in_subprocess(
         import epcsaft_equilibrium
 
         component_ids = ("water", "sodium-cation", "chloride-anion")
-        parameters = epcsaft.Parameters.from_bundle(
-            {str(parameter_bundle)!r},
-            components=component_ids,
+        parameters = epcsaft.Parameters.from_dictionary(
+            {FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS!r}
         )
         model = epcsaft.Mixture(parameters)
         phase = epcsaft_equilibrium.ProviderPhase(
@@ -2262,8 +2256,8 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     transfer = result.source_reference_transfer
     assert transfer is not None
     assert transfer.status == "ok"
-    assert transfer.domain_status == "admitted"
-    assert transfer.convergence_status == "converged"
+    assert transfer.domain_status == "admitted-domain"
+    assert transfer.convergence_status == "converged-limit"
     assert transfer.component_ids == tuple(model.component_ids)
     assert transfer.pressure_pa == spec["pressure_pa"]
     assert transfer.source_reference_pressure_pa == 100_000.0

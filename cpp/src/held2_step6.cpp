@@ -11,7 +11,8 @@ Held2Step6Result run_held2_step6(
     const Held2Step4Result& step4,
     const Held2PersistentState& state,
     const Held2PackingFractionEvaluator& packing_fraction,
-    Held2ProgressObserver*
+    Held2ProgressObserver*,
+    Held2ThermodynamicAccessPolicy access_policy
 ) {
     Held2Step6Result result;
     result.timing.invocation_count = 1;
@@ -60,7 +61,9 @@ Held2Step6Result run_held2_step6(
             continue;
         }
         Held2MPoint candidate = point;
-        ++result.timing.provider_evaluations;
+        if (access_policy.packing_fraction_uses_provider) {
+            ++result.timing.provider_evaluations;
+        }
         candidate.packing_fraction = packing_fraction(
             point.independent_modified_fractions, point.volume
         );

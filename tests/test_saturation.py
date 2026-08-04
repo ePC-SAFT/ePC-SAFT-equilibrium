@@ -8,7 +8,7 @@ from pathlib import Path
 
 import epcsaft
 import pytest
-from provider_data import packet_parameters
+from parameter_dictionaries import METHANE_ETHANE_PARAMETERS, PURE_SATURATION_PARAMETERS
 
 import epcsaft_equilibrium
 from epcsaft_equilibrium import _equilibrium
@@ -62,8 +62,7 @@ def _capsule(table: _NativeSdkTable, name: str = "epcsaft.native_sdk.v1") -> obj
 
 
 def _model(component: str = "methane") -> epcsaft.Mixture:
-    catalog = "gross-2001-propane" if component == "propane" else "gross-2001-methane-ethane"
-    parameters = packet_parameters(catalog, (component,))
+    parameters = epcsaft.Parameters.from_dictionary(PURE_SATURATION_PARAMETERS[component])
     return epcsaft.Mixture(parameters)
 
 
@@ -299,10 +298,7 @@ def test_public_saturation_rejects_noncanonical_or_out_of_scope_inputs() -> None
     with pytest.raises(ValueError, match="source domain"):
         epcsaft_equilibrium.saturation(methane, 96.0 * epcsaft.unit_registry.kelvin)
 
-    binary_parameters = packet_parameters(
-        "gross-2001-methane-ethane",
-        ("methane", "ethane"),
-    )
+    binary_parameters = epcsaft.Parameters.from_dictionary(METHANE_ETHANE_PARAMETERS)
     binary = epcsaft.Mixture(binary_parameters)
     with pytest.raises(ValueError, match="approved pure-component fingerprint"):
         epcsaft_equilibrium.saturation(binary, 150.0 * epcsaft.unit_registry.kelvin)
@@ -341,7 +337,7 @@ def test_public_ethane_saturation_separates_all_acceptance_layers(
 
     assert result.temperature_k == 240.0
     assert result.parameter_fingerprint == (
-        "sha256:6381ef30d4f25c63fee1fd098c7024dd59254f3021d0588ee46e4eecfb31619b"
+        "sha256:73aea4044ad3a49a8045861ba88c8e5966ad7b9db99e28f83df90c1d3d456223"
     )
     assert result.saturation_pressure_pa == pytest.approx(969_152.1055945412, rel=5.0e-6)
     assert result.vapor.amount_mol == 1.0
@@ -399,9 +395,7 @@ def test_public_saturation_matches_retained_lab_and_nist_anchors() -> None:
 
     for anchor in anchors:
         component = anchor["component"]
-        model = epcsaft.Mixture(
-            packet_parameters(anchor["catalog"], (component,))
-        )
+        model = _model(component)
         result = epcsaft_equilibrium.saturation(
             model,
             float(anchor["T_K"]) * epcsaft.unit_registry.kelvin,

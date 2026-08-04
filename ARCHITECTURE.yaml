@@ -53,13 +53,13 @@ accepted_capability:
     nist_liquid_density_relative_error_max: 1.0e-2
   admitted_inputs:
     - component: methane
-      parameter_fingerprint: sha256:905e7a6e22eb1073347575bf833d5aa059d9ccf562e4408cb186d74f580ba36f
+      parameter_fingerprint: sha256:fe590be7d46775ff56a25c839c4b3b015cca516480db9732235e53e8064e206b
       temperature_domain_k: [97.0, 300.0]
     - component: ethane
-      parameter_fingerprint: sha256:b81f32e44adb46080dfa91026c6428045e04a219900305767672d0547f9a9fb9
+      parameter_fingerprint: sha256:73aea4044ad3a49a8045861ba88c8e5966ad7b9db99e28f83df90c1d3d456223
       temperature_domain_k: [90.0, 305.0]
     - component: propane
-      parameter_fingerprint: sha256:1194db349d0608c89419e70c56ccec9ada2ae0884dd8e64e519e9560e7e8ae42
+      parameter_fingerprint: sha256:03f6d54f5d839830b6802ea914585a7e5f2402a0fae61cf451b9fab2c083cfc5
       temperature_domain_k: [85.0, 523.0]
 
 local_candidate:
@@ -76,7 +76,7 @@ local_candidate:
     complete Pereira HELD Stage-I/II/III controller inside the audited May et
     al. (2015), Table 5 rectangular temperature, pressure, and methane-feed
     domain, with one- or two-phase outcomes and no caller-supplied phase count.
-  parameter_fingerprint: sha256:3a840001adcb8b82f44e48307ad61e566f6a65d9b82d8312299a439dbce09195
+  parameter_fingerprint: sha256:9e63656093548f1f64bec8cc5129421f6e1bc452b2ec3632ded65f5ac538b8e7
   temperature_domain_k: [203.22, 243.61]
   pressure_domain_pa: [2124000.0, 6885000.0]
   methane_feed_domain: [0.4661, 0.66705]
@@ -480,7 +480,7 @@ evidence:
     solved_composition_miss_rows: ["002", "009", "010", "011"]
     no_package_accepted_local_state_row: "012"
     maximum_material_balance_error: 1.11e-16
-  pure_scientific_command: python scripts/validate_saturation.py
+  pure_scientific_command: pytest -q tests/test_saturation.py
   pure_physical_oracle: data/reference/pure_saturation_anchors.csv
   pure_isolated_artifact_evidence: receipts/promotion/promotion-0001-pure-saturation-v1-candidate.yaml
   pure_independent_review: reviews/2026-07-17-pure-saturation-v1.md

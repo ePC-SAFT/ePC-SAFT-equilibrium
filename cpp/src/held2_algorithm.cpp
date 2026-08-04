@@ -1,9 +1,9 @@
 #include "held2_algorithm.hpp"
+#include "held2_tolerances.hpp"
 
 #include <chrono>
 #include <cmath>
 #include <ctime>
-#include <stdexcept>
 
 namespace epcsaft_equilibrium {
 namespace {
@@ -43,23 +43,24 @@ auto run_step(
 }
 
 template <typename Callable>
-auto run_cached_state_step(
+auto run_cached_thermodynamic_step(
     int step,
     Callable&& callable,
     Held2AlgorithmCache& cache,
     Held2ProgressObserver* observer
 ) {
-    const std::uint64_t hits_before = cache.state_cache_hits();
+    const std::uint64_t states_before =
+        cache.provider_state_evaluations();
+    const std::uint64_t bounds_before =
+        cache.provider_volume_bound_evaluations();
+    const std::uint64_t packing_before =
+        cache.provider_packing_evaluations();
     return run_step(step, [&] {
         auto result = callable();
-        const std::uint64_t cache_hits =
-            cache.state_cache_hits() - hits_before;
-        if (cache_hits > result.timing.provider_evaluations) {
-            throw std::logic_error(
-                "HELD2 cache-hit diagnostics exceeded Provider callbacks"
-            );
-        }
-        result.timing.provider_evaluations -= cache_hits;
+        result.timing.provider_evaluations =
+            cache.provider_state_evaluations() - states_before
+            + cache.provider_volume_bound_evaluations() - bounds_before
+            + cache.provider_packing_evaluations() - packing_before;
         return result;
     }, observer);
 }
@@ -118,15 +119,12 @@ Held2AlgorithmResult run_held2_algorithm(
         result.failure_reason = reason;
         return result;
     };
-    const int cache_context = 0;
-    Held2AlgorithmCache cache;
-    cache.begin_context(&cache_context);
-    const Held2StateEvaluator evaluate = [&](const auto& composition,
-                                              double log_volume) {
-        return cache.evaluate_state(
-            thermodynamics.evaluate, composition, log_volume
-        );
-    };
+    if (thermodynamics.provider_fingerprint.empty()
+        || !thermodynamics.evaluate
+        || !thermodynamics.volume_bounds_physical
+        || !thermodynamics.packing_fraction) {
+        return fail("step1", "invalid_thermodynamic_access");
+    }
     result.step1 = run_step(1, [&] {
         return run_held2_step1(
             thermodynamics.component_ids,
@@ -135,6 +133,7 @@ Held2AlgorithmResult run_held2_algorithm(
             input.pressure_pa,
             input.overall_mole_fractions,
             thermodynamics.volume_bounds_physical,
+            thermodynamics.provider_fingerprint,
             thermodynamics.total_ion_mole_fraction_max
         );
     }, observer);
@@ -142,11 +141,39 @@ Held2AlgorithmResult run_held2_algorithm(
     if (result.step1.status != "complete") {
         return fail("step1", result.step1.reason);
     }
-    result.step2 = run_cached_state_step(2, [&] {
+    Held2Step1Result cached_step1 = result.step1;
+    const Held2VolumeBoundsEvaluator uncached_volume_bounds =
+        *result.step1.volume_bounds;
+    Held2AlgorithmCache cache(
+        thermodynamics.provider_fingerprint,
+        thermodynamics.evaluate,
+        uncached_volume_bounds,
+        thermodynamics.packing_fraction
+    );
+    const Held2StateEvaluator evaluate = [&](const auto& composition,
+                                              double log_volume) {
+        return cache.evaluate_state(composition, log_volume);
+    };
+    cache.retain_volume_bounds(
+        *result.step1.independent_feed,
+        *result.step1.feed_volume_bounds
+    );
+    cached_step1.volume_bounds = Held2VolumeBoundsEvaluator(
+        [&](const auto& composition) {
+            return cache.evaluate_volume_bounds(composition);
+        }
+    );
+    const Held2PackingFractionEvaluator packing_fraction = [&](
+        const auto& composition,
+        double volume
+    ) {
+        return cache.evaluate_packing_fraction(composition, volume);
+    };
+    result.step2 = run_cached_thermodynamic_step(2, [&] {
         return run_held2_step2(
-            result.step1,
+            cached_step1,
             evaluate,
-            resources.step2_provider_evaluation_budget,
+            resources.step2_search_work_budget,
             observer
         );
     }, cache, observer);
@@ -160,11 +187,11 @@ Held2AlgorithmResult run_held2_algorithm(
         result.phases = {{
             0,
             1.0,
-            *result.step1.independent_feed,
+            *cached_step1.independent_feed,
             input.overall_mole_fractions,
             reference.volume,
-            thermodynamics.packing_fraction(
-                *result.step1.independent_feed, reference.volume
+            packing_fraction(
+                *cached_step1.independent_feed, reference.volume
             ),
             reference.helmholtz_over_rt_reference_amount,
             reference.pressure_pa,
@@ -176,12 +203,10 @@ Held2AlgorithmResult run_held2_algorithm(
         result.outcome = "one_phase_no_negative_witness_detected";
         return result;
     }
-    std::uint64_t pressure_root_volume_bound_evaluations = 0;
     const Held2PressureRootEvaluator pressure_roots = [&](const auto& composition) {
-        ++pressure_root_volume_bound_evaluations;
         return evaluate_held2_pressure_envelope(
             composition,
-            (*result.step1.volume_bounds)(composition),
+            (*cached_step1.volume_bounds)(composition),
             evaluate,
             64,
             8
@@ -191,13 +216,13 @@ Held2AlgorithmResult run_held2_algorithm(
         const std::uint64_t states_before =
             cache.provider_state_evaluations();
         const std::uint64_t bounds_before =
-            pressure_root_volume_bound_evaluations;
+            cache.provider_volume_bound_evaluations();
         Held2Step3Result step3 = run_held2_step3(
-            result.step1, *result.step2, pressure_roots, observer
+            cached_step1, *result.step2, pressure_roots, observer
         );
         step3.timing.provider_evaluations =
             cache.provider_state_evaluations() - states_before
-            + pressure_root_volume_bound_evaluations - bounds_before;
+            + cache.provider_volume_bound_evaluations() - bounds_before;
         return step3;
     }, observer);
     result.step_timings.push_back(result.step3->timing);
@@ -217,9 +242,9 @@ Held2AlgorithmResult run_held2_algorithm(
             result.final_state = state;
             return fail("step4", step4.reason);
         }
-        result.step5_history.push_back(run_cached_state_step(5, [&] {
+        result.step5_history.push_back(run_cached_thermodynamic_step(5, [&] {
             return run_held2_step5(
-                result.step1,
+                cached_step1,
                 step4,
                 state,
                 evaluate,
@@ -233,15 +258,16 @@ Held2AlgorithmResult run_held2_algorithm(
             result.final_state = state;
             return fail("step5", step5.reason);
         }
-        result.step6_history.push_back(run_step(6, [&] {
+        result.step6_history.push_back(run_cached_thermodynamic_step(6, [&] {
             return run_held2_step6(
-                result.step1,
+                cached_step1,
                 step4,
                 state,
-                thermodynamics.packing_fraction,
-                observer
+                packing_fraction,
+                observer,
+                {false}
             );
-        }, observer));
+        }, cache, observer));
         result.step_timings.push_back(result.step6_history.back().timing);
         const Held2Step6Result& step6 = result.step6_history.back();
         if (step6.status != "complete") {
@@ -280,12 +306,9 @@ Held2AlgorithmResult run_held2_algorithm(
             return run_held2_step8(
                 result.step1,
                 step6,
-                thermodynamics.evaluate,
-                thermodynamics.packing_fraction,
+                cache,
                 previous,
-                step8_neighborhood_radius,
-                &cache,
-                &cache_context
+                step8_neighborhood_radius
             );
         }, observer));
         result.step_timings.push_back(result.step8_history.back().timing);
@@ -318,7 +341,7 @@ Held2AlgorithmResult run_held2_algorithm(
             }
             continue;
         }
-        result.step9_history.push_back(run_cached_state_step(9, [&] {
+        result.step9_history.push_back(run_cached_thermodynamic_step(9, [&] {
             return run_held2_step9(
                 step4, step8, evaluate, observer
             );
@@ -345,7 +368,7 @@ Held2AlgorithmResult run_held2_algorithm(
         }
         const auto run_step10 = [&] {
             return run_held2_step10(
-                result.step1,
+                cached_step1,
                 step8,
                 step9,
                 thermodynamics.evaluate_trace
@@ -357,7 +380,7 @@ Held2AlgorithmResult run_held2_algorithm(
         result.step10_history.push_back(
             thermodynamics.evaluate_trace
             ? run_step(10, run_step10, observer)
-            : run_cached_state_step(10, run_step10, cache, observer)
+            : run_cached_thermodynamic_step(10, run_step10, cache, observer)
         );
         result.step10 = result.step10_history.back();
         result.step_timings.push_back(result.step10->timing);
