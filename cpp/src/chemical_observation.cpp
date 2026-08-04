@@ -9,7 +9,6 @@
 #include <limits>
 #include <memory>
 #include <numeric>
-#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -156,13 +155,6 @@ struct ChemicalObservationPrimitive {
     std::size_t component_index = 0;
 };
 
-struct ChemicalObservationSourceStandardState {
-    std::string id;
-    std::string activity_scale_id;
-    std::vector<double> log_activity_scale_factors;
-    double reference_pressure_pa = 0.0;
-};
-
 struct ChemicalObservationRow {
     std::string row_id;
     std::string state_id;
@@ -175,7 +167,6 @@ struct ChemicalObservationRow {
     ReactionSystemInput input;
     double temperature_k = 0.0;
     double pressure_pa = 0.0;
-    std::optional<ChemicalObservationSourceStandardState> source_standard_state;
 };
 
 struct ChemicalObservationContext {
@@ -347,11 +338,6 @@ ChemicalObservationSolve solve_chemical_observation(
     ReactionSystemInput input = row.input;
     std::vector<double> pressure_derivatives;
     std::vector<double> parameter_derivatives;
-    if (row.source_standard_state.has_value()) {
-        throw std::invalid_argument(
-            "installed Provider source-reference derivatives are unavailable"
-        );
-    }
     parameter_derivatives.assign(
         input.reaction_matrix.rows * solved.active_parameters.parameters.size(),
         0.0
@@ -616,19 +602,6 @@ int evaluate_chemical_observation_v1(
     }
 }
 
-ChemicalObservationSourceStandardState observation_standard_state(
-    const py::dict& source
-) {
-    ChemicalObservationSourceStandardState result;
-    result.id = py::cast<std::string>(source["id"]);
-    result.activity_scale_id = py::cast<std::string>(source["activity_scale_id"]);
-    result.log_activity_scale_factors = py::cast<std::vector<double>>(
-        source["log_activity_scale_factors"]
-    );
-    result.reference_pressure_pa = py::cast<double>(source["reference_pressure_pa"]);
-    return result;
-}
-
 ChemicalObservationRow observation_row(
     const py::dict& record,
     const ChemicalProviderMetadata& metadata
@@ -679,12 +652,6 @@ ChemicalObservationRow observation_row(
         );
     }
     validate_provider_identity(metadata, row.input);
-    const auto source = record["source_standard_state"];
-    if (!source.is_none()) {
-        row.source_standard_state = observation_standard_state(
-            py::cast<py::dict>(source)
-        );
-    }
     return row;
 }
 

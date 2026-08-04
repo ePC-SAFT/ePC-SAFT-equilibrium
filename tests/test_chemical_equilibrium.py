@@ -26,7 +26,6 @@ from chemical_equilibrium_cases import typed_problem as _typed_problem
 from parameter_dictionaries import FIGIEL_REFERENCE_ELECTROLYTE_PARAMETERS
 
 import epcsaft_equilibrium
-from epcsaft_equilibrium import _api as equilibrium_api
 from epcsaft_equilibrium import _equilibrium
 
 # gvbelov/Heterogeneous-Equilibrium commit c74b87545a3418262e8e38a7c7a2e31e1b12966a,
@@ -448,6 +447,11 @@ def test_manufactured_ideal_reactions_match_independent_analytic_states(
     assert diagnostics.derivative_check_step > 0.0
     assert diagnostics.objective_gradient_check_relative_error is not None
     assert diagnostics.objective_gradient_check_relative_error <= 1.0e-5
+    assert diagnostics.physical_objective_gradient_check_relative_error is not None
+    assert diagnostics.physical_objective_gradient_check_relative_error <= 1.0e-5
+    assert len(diagnostics.physical_objective_gradient) == (
+        diagnostics.physical_to_chart_shape[0]
+    )
     assert diagnostics.constraint_jacobian_check_relative_error is not None
     assert diagnostics.constraint_jacobian_check_relative_error <= 1.0e-5
     assert diagnostics.lagrangian_hessian_check_relative_error is not None
@@ -609,7 +613,6 @@ def test_manufactured_nonconvex_search_retains_and_selects_distinct_basins() -> 
 
     search = native["search"]
     assert search["status"] == "certified_local_minimum"
-    assert search["continuation_status"] == "not_used"
     assert search["primary_budget"] == 25
     assert search["primary_attempt_count"] == 5
     assert search["generated_start_count"] == 5
@@ -1016,6 +1019,18 @@ def test_manufactured_reaction_with_ill_conditioned_kkt_has_no_sensitivity() -> 
     assert native["reduced_hessian_status"] == "second_order_inconclusive"
     assert native["search"]["status"] == "second_order_inconclusive"
     assert native["failure_kind"] == "ill_conditioning"
+    criteria = {record["name"]: record for record in native["numerical_criteria"]}
+    assert criteria["kkt_rank"]["status"] == "passed"
+    assert criteria["kkt_condition_number_inf"]["status"] == "failed"
+    assert criteria["kkt_condition_number_inf"]["value"] > criteria[
+        "kkt_condition_number_inf"
+    ]["limit"]
+    assert criteria["strict_local_minimum"]["status"] == "failed"
+    assert next(
+        record["name"]
+        for record in native["numerical_criteria"]
+        if record["status"] == "failed"
+    ) == "kkt_condition_number_inf"
 
 
 @pytest.mark.parametrize("trace_floor", (1.0e-50, 1.0e-55))
@@ -1437,6 +1452,20 @@ def test_manufactured_solver_rejects_trace_false_success() -> None:
     assert sensitivities["parameter_order"] == ()
 
 
+def test_active_coordinate_bound_has_typed_kkt_unavailability() -> None:
+    trace = copy.deepcopy(_base_system())
+    trace["ln_k"] = (math.log(1.0e-10),)
+    _bind_record(trace)
+
+    native = _equilibrium._chemical_equilibrium(None, trace, None, None, 1.0e-4)
+
+    assert native["active_lower_bounds"] == [1]
+    assert native["kkt_root_status"] == "unavailable_active_bounds"
+    assert native["kkt_root_shape"] == (0, 0)
+    assert native["kkt_root_jacobian"] == []
+    assert native["local_minimum_status"] != "passed"
+
+
 def test_manufactured_charged_solution_is_species_order_invariant() -> None:
     temperature_k = 300.0
     original = {
@@ -1606,256 +1635,6 @@ def test_public_provider_phase_block_matches_independent_finite_differences(
             assert analytic_directional_hessian == pytest.approx(
                 finite_difference_hessian, rel=3.0e-5, abs=3.0e-5
             )
-
-def test_public_nonpolar_to_polar_recovery_input_preserves_certified_target() -> None:
-    def model(polar: bool) -> epcsaft.Mixture:
-        parameters: dict[str, object] = {
-            "mw": (0.018, None, None),
-            "m": (1.2, 1.0, 1.0),
-            "s": (2.8, 2.8, 2.8),
-            "e": (350.0, 230.0, 170.0),
-            "z": (0, 1, -1),
-            "d_born": (None, 3.4, 4.1),
-            "f_solv": (1.5, 1.0, 1.0),
-            "epsilon_r": (78.0, None, None),
-            "k_ij": (
-                (0.0, -0.3, -0.3),
-                (-0.3, 0.0, 0.8),
-                (-0.3, 0.8, 0.0),
-            ),
-            "sites": (
-                {
-                    "component_id": "solvent",
-                    "site_id": "a",
-                    "site_class": "donor",
-                    "multiplicity": 1,
-                },
-                {
-                    "component_id": "solvent",
-                    "site_id": "b",
-                    "site_class": "acceptor",
-                    "multiplicity": 1,
-                },
-            ),
-            "association": (
-                {
-                    "component_id_a": "solvent",
-                    "site_id_a": "a",
-                    "component_id_b": "solvent",
-                    "site_id_b": "b",
-                    "association_energy_over_k": 2425.7,
-                    "association_volume": 0.04509,
-                },
-            ),
-        }
-        options: dict[str, object] = {
-            "epsilon_r_ion": 8.0,
-            "a_dh": 7.01,
-            "permittivity_model": "ion-fraction-suppression",
-        }
-        if polar:
-            parameters["dipole_moment"] = (0.2, None, None)
-            parameters["quadrupole_moment"] = (0.2, None, None)
-            options["polar_formulation"] = "gross-vrabec-point-multipole"
-        return epcsaft.Mixture.from_dictionary(
-            {
-                "schema": "epcsaft.parameters",
-                "schema_version": 1,
-                "components": ("solvent", "cation", "anion"),
-                "parameters": parameters,
-                "options": options,
-                "validity": {
-                    "kind": "reported-conditions",
-                    "temperature_min_k": 298.0,
-                    "temperature_max_k": 350.0,
-                    "pressure_min_pa": 1.0,
-                    "pressure_max_pa": 100_000_000.0,
-                },
-            }
-        )
-
-    initial_model = model(False)
-    target_model = model(True)
-    initial_block = _equilibrium._chemical_evaluate_provider_block(
-        epcsaft.native_sdk(initial_model),
-        313.15,
-        (0.98, 0.01, 0.01),
-        0.025,
-        initial_model.parameter_fingerprint,
-    )
-    initial_gradient = tuple(float(value) for value in initial_block["gradient"])
-    initial_ln_k = -initial_gradient[0] + initial_gradient[1] + initial_gradient[2]
-    target_block = _equilibrium._chemical_evaluate_provider_block(
-        epcsaft.native_sdk(target_model),
-        313.15,
-        (0.98, 0.01, 0.01),
-        0.025,
-        target_model.parameter_fingerprint,
-    )
-    target_gradient = tuple(float(value) for value in target_block["gradient"])
-    target_ln_k = -target_gradient[0] + target_gradient[1] + target_gradient[2]
-    path_pressure_pa = float(initial_block["pressure_pa"])
-    initial_phase = epcsaft_equilibrium.ProviderPhase(
-        initial_model, initial_model.parameter_fingerprint, (1.0e-6, 0.74)
-    )
-    target_phase = epcsaft_equilibrium.ProviderPhase(
-        target_model, target_model.parameter_fingerprint, (1.0e-6, 0.74)
-    )
-    problem = epcsaft_equilibrium.ChemicalEquilibriumProblem(
-        species_ids=("solvent", "cation", "anion"),
-        charges=(0, 1, -1),
-        molar_masses_kg_per_mol=(0.018, 0.009, 0.009),
-        balance_matrix=((2.0, 1.0, 1.0), (0.0, 1.0, -1.0)),
-        conserved_totals=(1.98, 0.0),
-        reaction_matrix=((-1.0, 1.0, 1.0),),
-        feed_amounts_mol=(0.98, 0.01, 0.01),
-        equilibrium_constants=(
-            epcsaft_equilibrium.ChemicalEquilibriumConstant(
-                ln_value=target_ln_k,
-                source_id="synthetic-model-family",
-                reference_id="provider-helmholtz-coordinate-basis",
-                reaction_orientation="products_positive",
-                conversion_id="already-provider-basis",
-                dimensionless=True,
-            ),
-        ),
-        strict_interior_amount_floor_mol=1.0e-30,
-    )
-
-    with pytest.raises(
-        epcsaft_equilibrium.ChemicalEquilibriumError,
-        match="endpoint-bound initial equilibrium constants",
-    ) as missing_endpoint_constants:
-        epcsaft_equilibrium.chemical_equilibrium(
-            target_phase,
-            313.15 * epcsaft.unit_registry.kelvin,
-            path_pressure_pa * epcsaft.unit_registry.pascal,
-            problem,
-            continuation=epcsaft_equilibrium.ProviderModelContinuation(initial_phase),
-        )
-    assert missing_endpoint_constants.value.diagnostics.failure_kind == "input_or_native_error"
-
-    initial_constants = (
-        epcsaft_equilibrium.ChemicalEquilibriumConstant(
-            ln_value=initial_ln_k,
-            source_id="synthetic-model-family-initial-endpoint",
-            reference_id="provider-helmholtz-coordinate-basis",
-            reaction_orientation="products_positive",
-            conversion_id="already-provider-basis",
-            dimensionless=True,
-        ),
-    )
-    with pytest.raises(
-        epcsaft_equilibrium.ChemicalEquilibriumError,
-        match="not bound to the initial Provider fingerprint",
-    ) as wrong_endpoint_fingerprint:
-        epcsaft_equilibrium.chemical_equilibrium(
-            target_phase,
-            313.15 * epcsaft.unit_registry.kelvin,
-            path_pressure_pa * epcsaft.unit_registry.pascal,
-            problem,
-            continuation=epcsaft_equilibrium.ProviderModelContinuation(
-                initial_phase, initial_constants, target_model.parameter_fingerprint
-            ),
-        )
-    assert wrong_endpoint_fingerprint.value.diagnostics.failure_kind == "input_or_native_error"
-
-    incompatible_initial_phase = epcsaft_equilibrium.ProviderPhase(
-        initial_model,
-        initial_model.parameter_fingerprint,
-        (0.80, 0.90),
-    )
-    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError) as preflight:
-        epcsaft_equilibrium.chemical_equilibrium(
-            target_phase,
-            313.15 * epcsaft.unit_registry.kelvin,
-            path_pressure_pa * epcsaft.unit_registry.pascal,
-            problem,
-            continuation=epcsaft_equilibrium.ProviderModelContinuation(
-                incompatible_initial_phase,
-                initial_constants,
-                initial_model.parameter_fingerprint,
-            ),
-        )
-    assert preflight.value.diagnostics.failure_kind == "physical_domain_failure"
-    assert preflight.value.diagnostics.search.continuation_status == "endpoint_domain_incompatible"
-    assert preflight.value.diagnostics.search.continuation_blocker
-
-    solved = epcsaft_equilibrium.chemical_equilibrium(
-        target_phase,
-        313.15 * epcsaft.unit_registry.kelvin,
-        path_pressure_pa * epcsaft.unit_registry.pascal,
-        problem,
-        continuation=epcsaft_equilibrium.ProviderModelContinuation(
-            initial_phase,
-            initial_constants,
-            initial_model.parameter_fingerprint,
-        ),
-    )
-
-    assert solved.model_fingerprint == target_model.parameter_fingerprint
-    assert solved.diagnostics.chemical_certification_level == "LOCAL_EQUILIBRIUM"
-    assert solved.diagnostics.search.continuation_status == "not_used"
-    assert not solved.diagnostics.search.continuation_initial_model_fingerprint
-    assert solved.diagnostics.search.selected_objective == min(
-        basin.objective for basin in solved.diagnostics.search.basins
-    )
-    assert solved.diagnostics.search.continuation_attempt_count == 0
-    assert not any(
-        attempt.kind == "continuation" for attempt in solved.diagnostics.search.attempts
-    )
-
-    record = {
-        "source_id": "synthetic-model-family",
-        "reference_id": "provider-helmholtz-coordinate-basis",
-        "reaction_orientation": "products_positive",
-        "conversion_id": "already-provider-basis",
-        "dimensionless": True,
-        "temperature_k": 313.15,
-        "pressure_pa": path_pressure_pa,
-    }
-    native_spec = {
-        "species_ids": problem.species_ids,
-        "charges": problem.charges,
-        "molar_masses_kg_per_mol": problem.molar_masses_kg_per_mol,
-        "provider_fingerprint": target_model.parameter_fingerprint,
-        "balance_matrix": problem.balance_matrix,
-        "conserved_totals": problem.conserved_totals,
-        "reaction_matrix": problem.reaction_matrix,
-        "feed_amounts": problem.feed_amounts_mol,
-        "ln_k": (target_ln_k,),
-        "equilibrium_constant_records": (record,),
-        "temperature_k": 313.15,
-        "pressure_pa": path_pressure_pa,
-    }
-    forced = _equilibrium._chemical_equilibrium_continuation(
-        epcsaft.native_sdk(target_model),
-        epcsaft.native_sdk(initial_model),
-        native_spec,
-        initial_model.parameter_fingerprint,
-        {
-            "provider_fingerprint": initial_model.parameter_fingerprint,
-            "ln_k": (initial_ln_k,),
-            "equilibrium_constant_records": (
-                {**record, "source_id": "synthetic-model-family-initial-endpoint"},
-            ),
-        },
-        None,
-        (1.0e-6, 0.74),
-        (1.0e-6, 0.74),
-        problem.strict_interior_amount_floor_mol,
-        True,
-    )
-    forced_diagnostics = equilibrium_api._chemical_diagnostics(forced)
-    assert forced_diagnostics.search.continuation_status == "completed"
-    assert forced_diagnostics.search.continuation_accepted_lambda == 1.0
-    assert forced_diagnostics.search.continuation_attempt_count > 0
-    assert any(
-        attempt.kind == "continuation"
-        and attempt.start_identity == "model_continuation:lambda=1.000000"
-        for attempt in forced_diagnostics.search.attempts
-    )
-
 
 def test_public_provider_certifies_multineutral_reactive_minimum() -> None:
     components = ("solvent", "cosolvent", "cation", "anion")
@@ -2102,6 +1881,31 @@ def _held_water_ionization_problem() -> tuple[
     )
 
 
+def _typed_standard_state(
+    source_standard_state: dict[str, object],
+) -> epcsaft_equilibrium.ChemicalStandardState:
+    return epcsaft_equilibrium.ChemicalStandardState(
+        id=source_standard_state["id"],
+        activity_scale_id=source_standard_state["activity_scale_id"],
+        log_activity_scale_factors=tuple(source_standard_state["log_activity_scale_factors"]),
+        reference_pressure_pa=source_standard_state["reference_pressure_pa"],
+        source_reference_component_ids=tuple(
+            source_standard_state["source_reference_component_ids"]
+        ),
+        source_reference_solvent_composition=tuple(
+            source_standard_state["source_reference_solvent_composition"]
+        ),
+        source_reference_activity_convention_id=source_standard_state[
+            "source_reference_activity_convention_id"
+        ],
+        source_reference_standard_molality_mol_per_kg=(
+            source_standard_state[
+                "source_reference_standard_molality_mol_per_kg"
+            ]
+        ),
+    )
+
+
 def _provider_solve(
     model: epcsaft.Mixture,
     spec: dict[str, object],
@@ -2111,26 +1915,7 @@ def _provider_solve(
     standard_state = (
         None
         if source_standard_state is None
-        else epcsaft_equilibrium.ChemicalStandardState(
-            id=source_standard_state["id"],
-            activity_scale_id=source_standard_state["activity_scale_id"],
-            log_activity_scale_factors=tuple(source_standard_state["log_activity_scale_factors"]),
-            reference_pressure_pa=source_standard_state["reference_pressure_pa"],
-            source_reference_component_ids=tuple(
-                source_standard_state["source_reference_component_ids"]
-            ),
-            source_reference_solvent_composition=tuple(
-                source_standard_state["source_reference_solvent_composition"]
-            ),
-            source_reference_activity_convention_id=source_standard_state[
-                "source_reference_activity_convention_id"
-            ],
-            source_reference_standard_molality_mol_per_kg=(
-                source_standard_state[
-                    "source_reference_standard_molality_mol_per_kg"
-                ]
-            ),
-        )
+        else _typed_standard_state(source_standard_state)
     )
     return epcsaft_equilibrium.chemical_equilibrium(
         epcsaft_equilibrium.ProviderPhase(
@@ -2264,6 +2049,14 @@ def test_held_water_self_ionization_consumes_source_reference_and_provider() -> 
     assert transfer.pressure_pa == spec["pressure_pa"]
     assert transfer.source_reference_pressure_pa == 100_000.0
     assert transfer.parameter_fingerprint == model.parameter_fingerprint
+    for fingerprint in (
+        transfer.topology_fingerprint,
+        transfer.component_order_fingerprint,
+        transfer.reference_state_fingerprint,
+        transfer.domain_fingerprint,
+        transfer.artifact_fingerprint,
+    ):
+        assert fingerprint.startswith("sha256:")
     assert result.source_standard_state.reference_pressure_pa == 100_000.0
     artifact = result.artifact_identity
     assert artifact.provider_distribution == "epcsaft"
@@ -2335,57 +2128,6 @@ def test_source_transfer_failure_prevents_native_optimization(
     )
 
 
-def test_source_continuation_evaluates_both_provider_endpoints(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    model, spec, source_standard_state = _held_water_ionization_problem()
-    original = epcsaft.source_reference_transfer
-    calls: list[str] = []
-
-    def recording_transfer(*args: object, **kwargs: object) -> object:
-        calls.append(args[0].parameter_fingerprint)  # type: ignore[union-attr]
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(epcsaft, "source_reference_transfer", recording_transfer)
-    standard_state = epcsaft_equilibrium.ChemicalStandardState(
-        id=source_standard_state["id"],
-        activity_scale_id=source_standard_state["activity_scale_id"],
-        log_activity_scale_factors=tuple(
-            source_standard_state["log_activity_scale_factors"]
-        ),
-        reference_pressure_pa=source_standard_state["reference_pressure_pa"],
-        source_reference_component_ids=tuple(
-            source_standard_state["source_reference_component_ids"]
-        ),
-        source_reference_solvent_composition=tuple(
-            source_standard_state["source_reference_solvent_composition"]
-        ),
-        source_reference_activity_convention_id=source_standard_state[
-            "source_reference_activity_convention_id"
-        ],
-        source_reference_standard_molality_mol_per_kg=source_standard_state[
-            "source_reference_standard_molality_mol_per_kg"
-        ],
-    )
-    phase = epcsaft_equilibrium.ProviderPhase(
-        model=model,
-        expected_parameter_fingerprint=model.parameter_fingerprint,
-        admissible_packing_fraction_interval=(1.0e-6, 0.74),
-    )
-
-    result = epcsaft_equilibrium.chemical_equilibrium(
-        phase,
-        spec["temperature_k"] * epcsaft.unit_registry.kelvin,
-        spec["pressure_pa"] * epcsaft.unit_registry.pascal,
-        _typed_problem(spec, source_standard_state=standard_state),
-        continuation=epcsaft_equilibrium.ProviderModelContinuation(phase),
-    )
-
-    assert calls == [model.parameter_fingerprint, model.parameter_fingerprint]
-    assert result.source_reference_transfer is not None
-    assert result.diagnostics.chemical_certification_level == "LOCAL_EQUILIBRIUM"
-
-
 def test_source_transfer_rejects_nonfinite_contractions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2407,6 +2149,52 @@ def test_source_transfer_rejects_nonfinite_contractions(
     with pytest.raises(
         epcsaft_equilibrium.ChemicalEquilibriumError,
         match="source activity-scale contractions must be finite",
+    ) as captured:
+        _provider_solve(model, spec, source_standard_state)
+    assert (
+        captured.value.diagnostics.failure_kind
+        == "source_reference_receipt_mismatch"
+    )
+
+
+@pytest.mark.parametrize(
+    ("receipt_change", "message"),
+    (
+        (
+            {"topology_fingerprint": f"sha256:{'f' * 64}"},
+            "source-reference topology or domain is incompatible",
+        ),
+        (
+            {"source_temperature_interval_k": (299.0, 300.0)},
+            "source-reference topology or domain is incompatible",
+        ),
+        (
+            {"component_ids": ("hydroxide-anion", "hydronium-cation", "water")},
+            "source-reference receipt is incompatible",
+        ),
+        (
+            {"artifact_fingerprint": f"sha256:{'z' * 64}"},
+            "source-reference fingerprints are incomplete",
+        ),
+    ),
+)
+def test_source_transfer_rejects_identity_or_domain_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_change: dict[str, object],
+    message: str,
+) -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    original = epcsaft.source_reference_transfer
+
+    def malformed_transfer(*args: object, **kwargs: object) -> object:
+        transfer = original(*args, **kwargs)
+        return replace(transfer, **receipt_change)
+
+    monkeypatch.setattr(epcsaft, "source_reference_transfer", malformed_transfer)
+
+    with pytest.raises(
+        epcsaft_equilibrium.ChemicalEquilibriumError,
+        match=message,
     ) as captured:
         _provider_solve(model, spec, source_standard_state)
     assert (
@@ -2647,6 +2435,42 @@ def test_installed_generic_observation_handle_batches_rows_and_exact_columns() -
         )
 
 
+def test_observation_context_rejects_source_reference_before_native_setup() -> None:
+    model, spec, source_standard_state = _held_water_ionization_problem()
+    phase = epcsaft_equilibrium.ProviderPhase(
+        model=model,
+        expected_parameter_fingerprint=model.parameter_fingerprint,
+        admissible_packing_fraction_interval=(1.0e-6, 0.74),
+    )
+    row = epcsaft_equilibrium.ChemicalObservationRow(
+        row_id="source-bound-row",
+        state_id="source-bound-state",
+        state_schema_id="fixed_TP_homogeneous_liquid_v1",
+        source_id="source-record",
+        transform_id="natural_log",
+        temperature=spec["temperature_k"] * epcsaft.unit_registry.kelvin,
+        pressure=spec["pressure_pa"] * epcsaft.unit_registry.pascal,
+        problem=_typed_problem(
+            spec,
+            source_standard_state=_typed_standard_state(source_standard_state),
+        ),
+        primitive=epcsaft_equilibrium.ChemicalObservationPrimitive(
+            kind="neutral_component_fugacity_pa",
+            component_id="water",
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="source-reference derivatives are unsupported",
+    ):
+        epcsaft_equilibrium.chemical_observation_context(
+            phase,
+            rows=(row,),
+            active_parameters=(_held_active_parameter(),),
+        )
+
+
 def test_installed_provider_basis_active_request_has_zero_lnk_cross_block() -> None:
     model, source_spec, source_standard_state = _held_water_ionization_problem()
     spec, _ = _provider_basis_spec(
@@ -2683,7 +2507,7 @@ def test_installed_provider_active_request_rejects_unadvertised_unit() -> None:
         )
 
 
-def test_active_provider_substatus_tracks_kkt_unavailability() -> None:
+def test_active_provider_substatus_tracks_parameter_unavailability() -> None:
     model, source_spec, source_standard_state = _held_water_ionization_problem()
     spec, _ = _provider_basis_spec(model, source_spec, source_standard_state)
     balances = spec["balance_matrix"]
@@ -2831,19 +2655,6 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
 
     result = _provider_solve(model, spec)
 
-    phase = epcsaft_equilibrium.ProviderPhase(
-        model=model,
-        expected_parameter_fingerprint=model.parameter_fingerprint,
-        admissible_packing_fraction_interval=(1.0e-6, 0.74),
-    )
-    direct_with_recovery_input = epcsaft_equilibrium.chemical_equilibrium(
-        phase,
-        temperature_k * epcsaft.unit_registry.kelvin,
-        target["pressure_pa"] * epcsaft.unit_registry.pascal,
-        _typed_problem(spec),
-        continuation=epcsaft_equilibrium.ProviderModelContinuation(phase),
-    )
-
     assert result.thermodynamic_model == "installed_provider"
     final = _equilibrium._chemical_evaluate_provider_block(
         capsule,
@@ -2865,9 +2676,6 @@ def test_installed_provider_manufactured_reaction_consumes_exact_phase_and_domai
     assert result.diagnostics.boundary_status == "strict_interior"
     assert 1.0e-6 < result.diagnostics.packing_fraction < 0.74
     assert result.diagnostics.globality_status == "not_guaranteed"
-    assert direct_with_recovery_input.diagnostics.search.continuation_status == "not_used"
-    assert direct_with_recovery_input.amounts_mol == pytest.approx(result.amounts_mol)
-
     rejected = _provider_native(
         model,
         spec,

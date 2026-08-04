@@ -8,6 +8,16 @@
 
 namespace epcsaft_equilibrium {
 
+inline constexpr double kChemicalBalanceTolerance = 1.0e-9;
+inline constexpr double kChemicalPressureTolerance = 1.0e-8;
+inline constexpr double kChemicalAffinityTolerance = 1.0e-7;
+inline constexpr double kChemicalKktTolerance = 1.0e-7;
+inline constexpr double kChemicalChartPullbackTolerance = 1.0e-10;
+inline constexpr double kChemicalObjectiveDerivativeTolerance = 1.0e-5;
+inline constexpr double kChemicalConstraintDerivativeTolerance = 1.0e-5;
+inline constexpr double kChemicalHessianDerivativeTolerance = 2.0e-4;
+inline constexpr double kChemicalConditionNumberMax = 1.0e6;
+
 struct DenseMatrix {
     std::size_t rows = 0;
     std::size_t columns = 0;
@@ -116,7 +126,6 @@ struct ChemicalSearchAttempt {
     std::string start_identity;
     std::string start_construction_status = "not_evaluated";
     std::string retraction_status = "not_needed";
-    std::string continuation_status = "not_used";
     std::string provider_domain_status = "not_adjudicated";
     std::string solver_status;
     std::string callback_error;
@@ -158,12 +167,6 @@ struct ChemicalSearchBudgetPrefix {
 
 struct ChemicalSearchEvidence {
     std::string status = "not_evaluated";
-    std::string continuation_status = "not_used";
-    std::string continuation_blocker;
-    std::string continuation_initial_model_fingerprint;
-    double continuation_accepted_lambda =
-        std::numeric_limits<double>::quiet_NaN();
-    std::size_t continuation_attempt_count = 0;
     std::size_t primary_budget = 25;
     std::size_t primary_attempt_count = 0;
     std::size_t generated_start_count = 0;
@@ -218,6 +221,7 @@ struct ChemicalSolveResult {
     std::size_t physical_constraint_rows = 0;
     std::size_t physical_constraint_columns = 0;
     std::vector<double> physical_lagrangian_gradient;
+    std::vector<double> physical_objective_gradient;
     std::vector<double> physical_to_chart_jacobian;
     std::size_t physical_to_chart_rows = 0;
     std::size_t physical_to_chart_columns = 0;
@@ -258,6 +262,8 @@ struct ChemicalSolveResult {
     std::vector<double> covariant_lagrangian_hessian;
     double derivative_check_step = std::numeric_limits<double>::quiet_NaN();
     double objective_gradient_check_relative_error =
+        std::numeric_limits<double>::quiet_NaN();
+    double physical_objective_gradient_check_relative_error =
         std::numeric_limits<double>::quiet_NaN();
     double constraint_jacobian_check_relative_error =
         std::numeric_limits<double>::quiet_NaN();
@@ -353,6 +359,10 @@ struct SourceReferenceTransferEvidence {
     double source_reference_pressure_pa = 0.0;
     double standard_molality_mol_per_kg = 0.0;
     double reference_convergence_error = 0.0;
+    double source_temperature_min_k = 0.0;
+    double source_temperature_max_k = 0.0;
+    double source_pressure_min_pa = 0.0;
+    double source_pressure_max_pa = 0.0;
     std::string parameter_fingerprint;
     std::string topology_fingerprint;
     std::string component_order_fingerprint;
@@ -507,24 +517,6 @@ evaluate_manufactured_inverse_log_packing_nlp(
     const std::vector<double>& ln_k_parameter_derivatives = {},
     const ProviderActiveParameterSet* active_parameters = nullptr,
     int max_iterations = 500
-);
-
-[[nodiscard]] ChemicalSolveResult solve_provider_reaction_continuation(
-    const CompiledReactionSystem& target_system,
-    const ProviderContext& target_provider,
-    double target_packing_fraction_min,
-    double target_packing_fraction_max,
-    double target_total_ion_fraction_max,
-    const CompiledReactionSystem& initial_system,
-    const ProviderContext& initial_provider,
-    double initial_packing_fraction_min,
-    double initial_packing_fraction_max,
-    double initial_total_ion_fraction_max,
-    double temperature_k,
-    double pressure_pa,
-    double trace_floor,
-    int max_iterations = 500,
-    bool continue_after_certified_target = false
 );
 
 }  // namespace epcsaft_equilibrium

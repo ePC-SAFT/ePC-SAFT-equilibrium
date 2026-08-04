@@ -86,7 +86,6 @@ def test_public_chemical_equilibrium_solves_one_typed_ideal_problem() -> None:
     assert result.diagnostics.predictive_status == "not_adjudicated"
     assert result.diagnostics.globality_status == "not_guaranteed"
     assert result.diagnostics.search.status == "certified_local_minimum"
-    assert result.diagnostics.search.continuation_status == "not_used"
     assert result.diagnostics.search.primary_attempt_count == 5
     assert result.diagnostics.search.primary_budget == 25
     assert result.diagnostics.search.generated_start_count == 5
@@ -119,14 +118,18 @@ def test_public_chemical_equilibrium_solves_one_typed_ideal_problem() -> None:
     numerical_names = tuple(
         criterion.name for criterion in result.diagnostics.numerical_criteria
     )
-    assert numerical_names[-6:] == (
+    assert {
         "derivative_evidence_finite",
         "objective_gradient_spanning_relative_error",
+        "physical_objective_gradient_spanning_relative_error",
         "constraint_jacobian_spanning_relative_error",
         "lagrangian_hessian_spanning_relative_error",
         "reduced_hessian_spanning_relative_error",
         "kkt_root_jacobian_spanning_relative_error",
-    )
+        "kkt_rank",
+        "kkt_condition_number_inf",
+        "strict_local_minimum",
+    } <= set(numerical_names)
     assert len(result.diagnostics.search.attempts) == 5
     assert len(result.diagnostics.search.basins) == 1
     assert result.local_scope == "fixed_TP_single_homogeneous_phase"
@@ -389,6 +392,33 @@ def test_structural_face_reduction_is_invariant_to_reaction_row_scale() -> None:
     assert scaled.diagnostics.chemical_certification_level == "LOCAL_EQUILIBRIUM"
 
 
+def test_public_active_bound_reports_typed_kkt_unavailability() -> None:
+    base = _ideal_problem()
+    problem = replace(
+        base,
+        equilibrium_constants=(
+            replace(base.equilibrium_constants[0], ln_value=math.log(1.0e-10)),
+        ),
+        strict_interior_amount_floor_mol=1.0e-4,
+    )
+
+    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError) as failed:
+        epcsaft_equilibrium.chemical_equilibrium(
+            _ideal_phase(),
+            350.0 * epcsaft.unit_registry.kelvin,
+            200_000.0 * epcsaft.unit_registry.pascal,
+            problem,
+        )
+
+    diagnostics = failed.value.diagnostics
+    assert diagnostics.active_lower_bounds == (1,)
+    assert diagnostics.kkt_root_status == "unavailable_active_bounds"
+    assert diagnostics.kkt_root_shape == (0, 0)
+    assert diagnostics.kkt_root_jacobian == ()
+    assert diagnostics.local_minimum_status != "passed"
+    assert diagnostics.chemical_certification_level != "LOCAL_EQUILIBRIUM"
+
+
 def test_public_chemical_equilibrium_rejects_incomplete_jacobian_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -541,7 +571,6 @@ def test_public_nonfinite_reduced_hessian_preserves_derivative_blocker(
         ("unknown_status", "invalid status"),
         ("nonfinite_attempt", "nonfinite value"),
         ("inconsistent_prefix", "budget prefix"),
-        ("inconsistent_continuation", "continuation attempt accounting"),
     ),
 )
 def test_public_chemical_equilibrium_rejects_malformed_search_receipt(
@@ -560,10 +589,6 @@ def test_public_chemical_equilibrium_rejects_malformed_search_receipt(
             search["attempts"][0]["objective"] = math.nan
         elif mutation == "inconsistent_prefix":
             search["budget_prefixes"][-1]["attempted_primary_ordinals"] = (0,)
-        else:
-            search["continuation_status"] = "completed"
-            search["continuation_initial_model_fingerprint"] = "sha256:manufactured"
-            search["continuation_accepted_lambda"] = 1.0
         native["search"] = search
         return native
 
@@ -589,7 +614,7 @@ def test_public_chemical_equilibrium_rejects_malformed_search_receipt(
     (
         ("spectrum_status", "spectrum status"),
         ("raw_inertia", "spectrum and inertia"),
-        ("nullspace_shape", "inconsistent dimensions"),
+        ("nullspace_shape", "basis dimensions"),
     ),
 )
 def test_public_chemical_equilibrium_rejects_malformed_curvature_receipt(
@@ -643,7 +668,6 @@ def test_public_chemical_equilibrium_exports_typed_value_and_jacobian_contract()
         "ChemicalStandardState",
         "IdealGasPhase",
         "ProviderPhase",
-        "ProviderModelContinuation",
         "chemical_equilibrium",
     }
     assert expected <= set(epcsaft_equilibrium.__all__)
@@ -653,7 +677,6 @@ def test_public_chemical_equilibrium_exports_typed_value_and_jacobian_contract()
         "pressure",
         "problem",
         "sensitivity_request",
-        "continuation",
     )
     for retired in (
         "_chemical_solve_manufactured",

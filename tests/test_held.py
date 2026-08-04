@@ -968,7 +968,6 @@ def test_public_surface_has_no_retired_routes_or_solver_controls() -> None:
         "IdealGasPhase",
         "PhaseState",
         "ProviderPhase",
-        "ProviderModelContinuation",
         "SaturationDiagnostics",
         "SaturationError",
         "SaturationResult",

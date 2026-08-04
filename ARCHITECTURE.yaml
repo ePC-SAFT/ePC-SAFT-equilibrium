@@ -346,7 +346,6 @@ public_surface:
     - IdealGasPhase
     - PhaseState
     - ProviderPhase
-    - ProviderModelContinuation
     - SaturationDiagnostics
     - SaturationError
     - SaturationResult

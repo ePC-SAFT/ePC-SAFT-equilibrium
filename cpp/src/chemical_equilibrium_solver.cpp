@@ -24,13 +24,14 @@ namespace {
 
 constexpr double kGasConstantJPerMolK = 8.31446261815324;
 constexpr double kInfinity = 1.0e19;
-constexpr double kBalanceTolerance = 1.0e-9;
-constexpr double kPressureTolerance = 1.0e-8;
-constexpr double kAffinityTolerance = 1.0e-7;
-constexpr double kKktTolerance = 1.0e-7;
-constexpr double kChartPhysicalPullbackTolerance = 1.0e-10;
+constexpr double kBalanceTolerance = kChemicalBalanceTolerance;
+constexpr double kPressureTolerance = kChemicalPressureTolerance;
+constexpr double kAffinityTolerance = kChemicalAffinityTolerance;
+constexpr double kKktTolerance = kChemicalKktTolerance;
+constexpr double kChartPhysicalPullbackTolerance =
+    kChemicalChartPullbackTolerance;
 constexpr double kProviderDomainTolerance = 1.0e-12;
-constexpr double kSensitivityConditionNumberMax = 1.0e6;
+constexpr double kSensitivityConditionNumberMax = kChemicalConditionNumberMax;
 
 std::string ipopt_status_name(Ipopt::ApplicationReturnStatus status) {
     switch (status) {
@@ -521,6 +522,7 @@ struct ReactionNlpEvaluation {
     std::vector<double> volume_gradient;
     std::vector<double> volume_hessian;
     std::vector<double> volume_parameter_derivatives;
+    std::vector<double> physical_objective_gradient;
     std::vector<double> physical_lagrangian_gradient;
     std::vector<double> physical_to_chart_jacobian;
     double volume = 0.0;
@@ -611,6 +613,7 @@ ReactionNlpEvaluation evaluate_reaction_nlp(
         physical_gradient[species] += g_ref[species];
     }
     physical_gradient.back() += pressure_over_rt;
+    result.physical_objective_gradient = physical_gradient;
     result.gradient.assign(variable_count, 0.0);
     for (std::size_t reduced = 0; reduced < amount_dimension; ++reduced) {
         for (std::size_t species = 0; species < g_ref.size(); ++species) {
@@ -3543,6 +3546,8 @@ ChemicalSolveResult solve_reaction_attempt(
             equality_evaluation.stationary_lagrangian_hessian;
         result.physical_lagrangian_gradient =
             equality_evaluation.physical_lagrangian_gradient;
+        result.physical_objective_gradient =
+            equality_evaluation.physical_objective_gradient;
         result.physical_to_chart_jacobian =
             equality_evaluation.physical_to_chart_jacobian;
         result.physical_to_chart_rows =
@@ -3570,15 +3575,19 @@ ChemicalSolveResult solve_reaction_attempt(
     }
     std::vector<double> finite_difference_lagrangian_hessian;
     try {
-        constexpr double kObjectiveGradientCheckTolerance = 1.0e-5;
-        constexpr double kConstraintJacobianCheckTolerance = 1.0e-5;
-        constexpr double kLagrangianHessianCheckTolerance = 2.0e-4;
+        constexpr double kObjectiveGradientCheckTolerance =
+            kChemicalObjectiveDerivativeTolerance;
+        constexpr double kConstraintJacobianCheckTolerance =
+            kChemicalConstraintDerivativeTolerance;
+        constexpr double kLagrangianHessianCheckTolerance =
+            kChemicalHessianDerivativeTolerance;
         const auto relative_error = [](double observed, double expected) {
             return std::abs(observed - expected)
                 / std::max({1.0, std::abs(observed), std::abs(expected)});
         };
         result.derivative_check_step = std::numeric_limits<double>::infinity();
         result.objective_gradient_check_relative_error = 0.0;
+        result.physical_objective_gradient_check_relative_error = 0.0;
         result.constraint_jacobian_check_relative_error = 0.0;
         result.lagrangian_hessian_check_relative_error = 0.0;
         finite_difference_lagrangian_hessian.assign(
@@ -3618,6 +3627,124 @@ ChemicalSolveResult solve_reaction_attempt(
             }
             return gradient;
         };
+        const auto physical_objective = [&](const std::vector<double>& amounts,
+                                            double volume) {
+            const PhaseBlockEvaluation phase = phase_evaluator(
+                temperature_k, amounts, volume
+            );
+            double objective = phase.mechanical.value
+                + pressure_pa * volume
+                    / (kGasConstantJPerMolK * temperature_k);
+            for (std::size_t species = 0; species < amounts.size(); ++species) {
+                objective += g_ref[species] * amounts[species];
+            }
+            return objective;
+        };
+        std::vector<std::vector<double>> physical_directions;
+        physical_directions.reserve(variables.size());
+        std::size_t charged_reference = system.species_count;
+        for (std::size_t species = 0;
+             species < system.species_count;
+             ++species) {
+            if (system.charges[species] == 0) {
+                std::vector<double> direction(
+                    system.species_count + 1, 0.0
+                );
+                direction[species] = equality_evaluation.amount_chart.amounts[
+                    species
+                ];
+                physical_directions.push_back(std::move(direction));
+            } else if (charged_reference == system.species_count) {
+                charged_reference = species;
+            }
+        }
+        if (charged_reference != system.species_count) {
+            const double reference_charge = static_cast<double>(
+                system.charges[charged_reference]
+            );
+            const double reference_amount =
+                equality_evaluation.amount_chart.amounts[charged_reference];
+            for (std::size_t species = charged_reference + 1;
+                 species < system.species_count;
+                 ++species) {
+                if (system.charges[species] == 0) {
+                    continue;
+                }
+                const double species_charge = static_cast<double>(
+                    system.charges[species]
+                );
+                const double scale = std::min(
+                    equality_evaluation.amount_chart.amounts[species],
+                    reference_amount
+                        * std::abs(reference_charge / species_charge)
+                );
+                if (!std::isfinite(scale) || scale <= 0.0) {
+                    throw std::runtime_error(
+                        "physical derivative direction is unavailable"
+                    );
+                }
+                std::vector<double> direction(
+                    system.species_count + 1, 0.0
+                );
+                direction[species] = scale;
+                direction[charged_reference] =
+                    -species_charge * scale / reference_charge;
+                physical_directions.push_back(std::move(direction));
+            }
+        }
+        std::vector<double> volume_direction(
+            system.species_count + 1, 0.0
+        );
+        volume_direction.back() = equality_evaluation.volume;
+        physical_directions.push_back(std::move(volume_direction));
+        if (physical_directions.size() != variables.size()) {
+            throw std::runtime_error(
+                "physical derivative basis dimension is inconsistent"
+            );
+        }
+        const double physical_step = std::cbrt(
+            std::numeric_limits<double>::epsilon()
+        );
+        result.derivative_check_step = std::min(
+            result.derivative_check_step, physical_step
+        );
+        for (std::size_t direction_index = 0;
+             direction_index < physical_directions.size();
+             ++direction_index) {
+            std::vector<double> below_amounts =
+                equality_evaluation.amount_chart.amounts;
+            std::vector<double> above_amounts = below_amounts;
+            const auto& direction = physical_directions[direction_index];
+            for (std::size_t species = 0;
+                 species < system.species_count;
+                 ++species) {
+                below_amounts[species] -= physical_step * direction[species];
+                above_amounts[species] += physical_step * direction[species];
+            }
+            const double below_volume = equality_evaluation.volume
+                - physical_step * direction.back();
+            const double above_volume = equality_evaluation.volume
+                + physical_step * direction.back();
+            double analytic_directional_gradient = 0.0;
+            for (std::size_t physical = 0;
+                 physical < direction.size();
+                 ++physical) {
+                analytic_directional_gradient +=
+                    equality_evaluation.physical_objective_gradient[physical]
+                    * direction[physical];
+            }
+            record_check(
+                "physical_objective_gradient",
+                direction_index,
+                direction_index,
+                (physical_objective(above_amounts, above_volume)
+                    - physical_objective(below_amounts, below_volume))
+                    / (2.0 * physical_step),
+                analytic_directional_gradient,
+                physical_step,
+                result.physical_objective_gradient_check_relative_error
+            );
+        }
         for (std::size_t column = 0; column < variables.size(); ++column) {
             double step = std::cbrt(std::numeric_limits<double>::epsilon())
                 * std::max(1.0, std::abs(variables[column]));
@@ -3715,6 +3842,8 @@ ChemicalSolveResult solve_reaction_attempt(
             }
         }
         if (result.objective_gradient_check_relative_error
+                > kObjectiveGradientCheckTolerance
+            || result.physical_objective_gradient_check_relative_error
                 > kObjectiveGradientCheckTolerance
             || result.constraint_jacobian_check_relative_error
                 > kConstraintJacobianCheckTolerance
@@ -3826,7 +3955,8 @@ ChemicalSolveResult solve_reaction_attempt(
                 }
             }
         }
-        if (result.reduced_hessian_check_relative_error > 2.0e-4) {
+        if (result.reduced_hessian_check_relative_error
+            > kChemicalHessianDerivativeTolerance) {
             result.callback_error =
                 "derivative inconsistency: spanning reduced-Hessian audit failed";
             result.numerical_status = "failed";
@@ -3935,7 +4065,8 @@ ChemicalSolveResult solve_reaction_attempt(
                     }
                 }
             }
-            if (result.kkt_root_jacobian_check_relative_error > 2.0e-4) {
+            if (result.kkt_root_jacobian_check_relative_error
+                > kChemicalHessianDerivativeTolerance) {
                 throw std::runtime_error(
                     "spanning KKT-root Jacobian audit failed"
                 );
@@ -4162,7 +4293,6 @@ ChemicalSolveResult solve_reaction_attempt(
                 + ";seed=" + std::to_string(selected_backtrack);
             recovery_attempt.start_construction_status = "accepted";
             recovery_attempt.retraction_status = "passed";
-            recovery_attempt.continuation_status = "not_used";
             try {
                 candidate = solve_reaction_attempt(
                     system,
@@ -4239,7 +4369,6 @@ ChemicalSolveResult solve_reaction_attempt(
             ChemicalSearchAttempt originating_attempt;
             originating_attempt.kind = "primary";
             originating_attempt.start_construction_status = "accepted";
-            originating_attempt.continuation_status = "not_used";
             originating_attempt.provider_domain_status =
                 result.provider_domain_status;
             originating_attempt.solver_status = result.solver_status;
@@ -4672,7 +4801,6 @@ ChemicalSolveResult solve_reaction(
         attempt.ordinal = ordinal;
         attempt.primary_ordinal = ordinal;
         attempt.start_identity = starts[ordinal].identity;
-        attempt.continuation_status = "not_used";
         MaxMinInitializationResult start_initialization = initialization;
         start_initialization.strict_positive_feasible =
             initialization.strict_positive_feasible;
@@ -6144,638 +6272,6 @@ ChemicalSolveResult solve_provider_reaction(
         ),
         false
     );
-}
-
-ChemicalSolveResult solve_provider_reaction_continuation(
-    const CompiledReactionSystem& target_system,
-    const ProviderContext& target_provider,
-    double target_packing_fraction_min,
-    double target_packing_fraction_max,
-    double target_total_ion_fraction_max,
-    const CompiledReactionSystem& initial_system,
-    const ProviderContext& initial_provider,
-    double initial_packing_fraction_min,
-    double initial_packing_fraction_max,
-    double initial_total_ion_fraction_max,
-    double temperature_k,
-    double pressure_pa,
-    double trace_floor,
-    int max_iterations,
-    bool continue_after_certified_target
-) {
-    constexpr double kContinuationDuplicateStateTolerance = 1.0e-8;
-    constexpr double kContinuationDuplicateVolumeTolerance = 1.0e-8;
-    constexpr double kContinuationDuplicateObjectiveFactor = 256.0;
-    const auto same_matrix = [](const DenseMatrix& left, const DenseMatrix& right) {
-        return left.rows == right.rows
-            && left.columns == right.columns
-            && left.values == right.values;
-    };
-    if (target_system.species_count != initial_system.species_count
-        || target_system.charges != initial_system.charges
-        || target_system.feed_amounts != initial_system.feed_amounts
-        || target_system.balance_totals != initial_system.balance_totals
-        || !same_matrix(
-            target_system.balance_matrix, initial_system.balance_matrix
-        )
-        || !same_matrix(
-            target_system.reaction_matrix, initial_system.reaction_matrix
-        )
-        || !target_system.removed_species_indices.empty()
-        || !initial_system.removed_species_indices.empty()) {
-        throw std::invalid_argument(
-            "Provider continuation endpoints do not share one compiled reaction system"
-        );
-    }
-    const double packing_fraction_min = std::max(
-        target_packing_fraction_min, initial_packing_fraction_min
-    );
-    const double packing_fraction_max = std::min(
-        target_packing_fraction_max, initial_packing_fraction_max
-    );
-    if (!std::isfinite(packing_fraction_min)
-        || !std::isfinite(packing_fraction_max)
-        || packing_fraction_min <= 0.0
-        || packing_fraction_max <= packing_fraction_min) {
-        throw std::invalid_argument(
-            "Provider continuation packing domains do not overlap"
-        );
-    }
-    double total_ion_fraction_max = std::numeric_limits<double>::quiet_NaN();
-    if (std::isfinite(target_total_ion_fraction_max)
-        && std::isfinite(initial_total_ion_fraction_max)) {
-        total_ion_fraction_max = std::min(
-            target_total_ion_fraction_max, initial_total_ion_fraction_max
-        );
-    } else if (std::isfinite(target_total_ion_fraction_max)) {
-        total_ion_fraction_max = target_total_ion_fraction_max;
-    } else if (std::isfinite(initial_total_ion_fraction_max)) {
-        total_ion_fraction_max = initial_total_ion_fraction_max;
-    }
-
-    ChemicalSolveResult target_result = solve_provider_reaction(
-        target_system,
-        target_provider,
-        temperature_k,
-        pressure_pa,
-        target_packing_fraction_min,
-        target_packing_fraction_max,
-        target_total_ion_fraction_max,
-        trace_floor,
-        {},
-        {},
-        nullptr,
-        max_iterations
-    );
-    if (target_result.accepted && !continue_after_certified_target) {
-        return target_result;
-    }
-    ChemicalSolveResult initial_result = solve_provider_reaction(
-        initial_system,
-        initial_provider,
-        temperature_k,
-        pressure_pa,
-        initial_packing_fraction_min,
-        initial_packing_fraction_max,
-        initial_total_ion_fraction_max,
-        trace_floor,
-        {},
-        {},
-        nullptr,
-        max_iterations
-    );
-    const auto continuation_failure = [&target_result]() {
-        if (!target_result.accepted
-            && !target_result.search.continuation_blocker.empty()) {
-            const std::string& blocker =
-                target_result.search.continuation_blocker;
-            if (blocker == "derivative_inconsistency"
-                || blocker.find("derivative inconsistency") != std::string::npos) {
-                target_result.failure_kind = "derivative_inconsistency";
-            } else if (
-                blocker == "unsupported_derivative_capability"
-                || blocker.find("unsupported") != std::string::npos
-                || blocker.find("capability") != std::string::npos
-                || blocker.find("ABI contract") != std::string::npos
-            ) {
-                target_result.failure_kind =
-                    "unsupported_derivative_capability";
-            } else if (blocker == "rank_deficiency") {
-                target_result.failure_kind = "rank_deficiency";
-            } else if (blocker == "ill_conditioning") {
-                target_result.failure_kind = "ill_conditioning";
-            } else if (
-                blocker == "physical_domain_failure"
-                || blocker == "provider_domain_status"
-                || blocker == "strict_interior_amount_floor"
-                || blocker == "endpoint_packing_fraction_domain"
-                || blocker.find("endpoint_evaluation_failure")
-                    != std::string::npos
-            ) {
-                target_result.failure_kind = "physical_domain_failure";
-            } else if (blocker == "genuine_saddle") {
-                target_result.failure_kind = "genuine_saddle";
-            }
-            target_result.failure_reason = target_result.failure_kind
-                + ": continuation status="
-                + target_result.search.continuation_status
-                + "; continuation blocker="
-                + blocker;
-            if (std::isfinite(
-                    target_result.search.continuation_accepted_lambda
-                )) {
-                target_result.failure_reason +=
-                    "; maximum certified continuation lambda="
-                    + std::to_string(
-                        target_result.search.continuation_accepted_lambda
-                    );
-            }
-        }
-        return target_result;
-    };
-    const auto append_attempt = [&target_result](
-        const ChemicalSolveResult& candidate,
-        const std::string& identity,
-        const std::string& continuation_status,
-        bool preserve_local_lineage
-    ) {
-        const std::size_t parent_ordinal = target_result.search.attempts.size();
-        ChemicalSearchAttempt attempt;
-        bool has_originating_attempt = false;
-        const bool single_corrector_lineage = preserve_local_lineage;
-        if (single_corrector_lineage) {
-            for (const ChemicalSearchAttempt& nested : candidate.search.attempts) {
-                if (nested.kind == "primary") {
-                    attempt = nested;
-                    has_originating_attempt = true;
-                    break;
-                }
-            }
-        }
-        attempt.ordinal = parent_ordinal;
-        attempt.kind = "continuation";
-        attempt.parent_ordinal = -1;
-        attempt.basin_ordinal = -1;
-        attempt.start_identity = identity;
-        attempt.start_construction_status = "accepted";
-        attempt.continuation_status = continuation_status;
-        if (!has_originating_attempt) {
-            attempt.provider_domain_status = candidate.provider_domain_status;
-            attempt.solver_status = candidate.solver_status;
-            attempt.callback_error = candidate.callback_error;
-            attempt.terminal_status = chemical_terminal_status(candidate);
-            attempt.amounts = candidate.amounts;
-            attempt.volume_m3 = std::isfinite(candidate.volume_m3)
-                    && candidate.volume_m3 > 0.0
-                ? candidate.volume_m3
-                : std::numeric_limits<double>::quiet_NaN();
-            attempt.balance_inf_norm = candidate.balance_inf_norm;
-            attempt.charge_inf_norm = candidate.charge_inf_norm;
-            attempt.pressure_relative_residual =
-                candidate.pressure_relative_residual;
-            attempt.reaction_affinity_inf_norm =
-                candidate.reaction_affinity_inf_norm;
-            attempt.kkt_stationarity_inf_norm =
-                candidate.kkt_stationarity_inf_norm;
-            attempt.complementarity_inf_norm =
-                candidate.complementarity_inf_norm;
-            attempt.kkt_dimension = candidate.kkt_dimension;
-            attempt.kkt_rank = candidate.kkt_rank;
-            attempt.condition_number_inf = candidate.condition_number_inf;
-            attempt.local_minimum_status = candidate.local_minimum_status;
-            attempt.trace_status = candidate.trace_status;
-            attempt.recovery_seed_count =
-                candidate.negative_curvature_recovery_seed_count;
-            attempt.recovery_solve_count =
-                candidate.negative_curvature_recovery_attempts;
-        }
-        target_result.search.attempts.push_back(std::move(attempt));
-        std::size_t representative_ordinal = parent_ordinal;
-        for (const ChemicalSearchAttempt& nested : candidate.search.attempts) {
-            if (!single_corrector_lineage || nested.kind != "recovery") {
-                continue;
-            }
-            ChemicalSearchAttempt recovery = nested;
-            recovery.ordinal = target_result.search.attempts.size();
-            recovery.kind = "continuation_recovery";
-            recovery.parent_ordinal = static_cast<long>(parent_ordinal);
-            recovery.basin_ordinal = -1;
-            recovery.start_identity = identity + ";" + nested.start_identity;
-            recovery.continuation_status = continuation_status;
-            if (recovery.amounts == candidate.amounts
-                && recovery.volume_m3 == candidate.volume_m3) {
-                representative_ordinal = recovery.ordinal;
-            }
-            target_result.search.attempts.push_back(std::move(recovery));
-        }
-        return representative_ordinal;
-    };
-    append_attempt(
-        initial_result,
-        "model_continuation:lambda=0",
-        "initial_model",
-        false
-    );
-    if (!initial_result.accepted) {
-        target_result.search.continuation_status = "initial_model_not_certified";
-        target_result.search.continuation_blocker =
-            initial_result.failure_kind.empty()
-            ? "initial_model_not_certified"
-            : initial_result.failure_kind;
-        return continuation_failure();
-    }
-    target_result.search.continuation_accepted_lambda = 0.0;
-
-    PhaseBlockEvaluation initial_target_block;
-    PhaseBlockEvaluation initial_source_block;
-    try {
-        initial_target_block = provider_phase_evaluation(
-            target_provider,
-            temperature_k,
-            initial_result.amounts,
-            initial_result.volume_m3
-        );
-        initial_source_block = provider_phase_evaluation(
-            initial_provider,
-            temperature_k,
-            initial_result.amounts,
-            initial_result.volume_m3
-        );
-    } catch (const std::exception& error) {
-        target_result.search.continuation_status =
-            "endpoint_domain_incompatible";
-        target_result.search.continuation_blocker =
-            "provider_endpoint_evaluation_failure: "
-            + std::string(error.what());
-        return continuation_failure();
-    }
-    if (initial_target_block.packing.value < target_packing_fraction_min
-        || initial_target_block.packing.value > target_packing_fraction_max
-        || initial_source_block.packing.value < initial_packing_fraction_min
-        || initial_source_block.packing.value > initial_packing_fraction_max) {
-        target_result.search.continuation_status =
-            "endpoint_domain_incompatible";
-        target_result.search.continuation_blocker =
-            "endpoint_packing_fraction_domain";
-        return continuation_failure();
-    }
-
-    const MaxMinInitializationResult target_initialization =
-        max_min_initialization(
-            target_system.balance_matrix,
-            target_system.feed_amounts,
-            target_system.charges,
-            trace_floor,
-            total_ion_fraction_max
-        );
-    if (!target_initialization.strict_positive_feasible) {
-        target_result.search.continuation_status =
-            "no_strictly_feasible_continuation_start";
-        target_result.search.continuation_blocker =
-            "strict_interior_amount_floor";
-        return continuation_failure();
-    }
-    VolumeCoordinateTransform volume_transform;
-    volume_transform.lower_coordinate = std::log(packing_fraction_min);
-    volume_transform.upper_coordinate = std::nextafter(
-        std::log(packing_fraction_max), -std::numeric_limits<double>::infinity()
-    );
-    volume_transform.evaluate = [&target_provider](
-        double temperature,
-        const std::vector<double>& amounts,
-        double coordinate
-    ) {
-        const InversePackingGeometryEvaluation block =
-            target_provider.evaluate_inverse_packing_geometry(
-                temperature, amounts, coordinate, ProviderActiveParameterSet{}
-            );
-        const std::size_t state_count = amounts.size() + 1;
-        if (block.gradient.size() != state_count
-            || block.hessian.size() != state_count * state_count) {
-            throw std::invalid_argument(
-                "Provider continuation inverse-packing dimensions changed"
-            );
-        }
-        return VolumeCoordinateEvaluation{
-            block.volume_m3,
-            block.gradient,
-            block.hessian,
-            {},
-        };
-    };
-    const ReactionDomain domain{
-        false,
-        packing_fraction_min,
-        packing_fraction_max,
-        total_ion_fraction_max,
-    };
-    std::vector<double> current_amounts = initial_result.amounts;
-    double current_volume = initial_result.volume_m3;
-    double accepted_lambda = 0.0;
-    double step = 0.25;
-    constexpr double kMinimumContinuationStep = 1.0 / 256.0;
-    constexpr std::size_t kMaximumContinuationAttempts = 32;
-    for (std::size_t path_attempt = 0;
-         path_attempt < kMaximumContinuationAttempts
-            && accepted_lambda < 1.0;
-         ++path_attempt) {
-        const double lambda = std::min(1.0, accepted_lambda + step);
-        CompiledReactionSystem path_system = target_system;
-        for (std::size_t species = 0;
-             species < path_system.g_ref.size();
-             ++species) {
-            path_system.g_ref[species] =
-                (1.0 - lambda) * initial_system.g_ref[species]
-                + lambda * target_system.g_ref[species];
-        }
-        const PhaseEvaluator phase_evaluator = [
-            &target_provider,
-            &initial_provider,
-            lambda,
-            target_packing_fraction_min,
-            target_packing_fraction_max,
-            initial_packing_fraction_min,
-            initial_packing_fraction_max
-        ](
-            double temperature,
-            const std::vector<double>& amounts,
-            double volume
-        ) {
-            PhaseBlockEvaluation initial = provider_phase_evaluation(
-                initial_provider, temperature, amounts, volume
-            );
-            PhaseBlockEvaluation target = provider_phase_evaluation(
-                target_provider, temperature, amounts, volume
-            );
-            if (initial.packing.value < initial_packing_fraction_min
-                || initial.packing.value > initial_packing_fraction_max
-                || target.packing.value < target_packing_fraction_min
-                || target.packing.value > target_packing_fraction_max
-                || initial.mechanical.gradient.size()
-                    != target.mechanical.gradient.size()
-                || initial.mechanical.hessian.size()
-                    != target.mechanical.hessian.size()
-                || initial.packing.gradient.size()
-                    != target.packing.gradient.size()
-                || initial.packing.hessian.size()
-                    != target.packing.hessian.size()) {
-                throw std::invalid_argument(
-                    "Provider continuation endpoint derivative bases are incompatible"
-                );
-            }
-            PhaseBlockEvaluation result = target;
-            result.mechanical.value =
-                (1.0 - lambda) * initial.mechanical.value
-                + lambda * target.mechanical.value;
-            result.mechanical.pressure_pa =
-                (1.0 - lambda) * initial.mechanical.pressure_pa
-                + lambda * target.mechanical.pressure_pa;
-            for (std::size_t index = 0;
-                 index < result.mechanical.gradient.size();
-                 ++index) {
-                result.mechanical.gradient[index] =
-                    (1.0 - lambda) * initial.mechanical.gradient[index]
-                    + lambda * target.mechanical.gradient[index];
-            }
-            for (std::size_t index = 0;
-                 index < result.mechanical.hessian.size();
-                 ++index) {
-                result.mechanical.hessian[index] =
-                    (1.0 - lambda) * initial.mechanical.hessian[index]
-                    + lambda * target.mechanical.hessian[index];
-            }
-            result.packing.value =
-                (1.0 - lambda) * initial.packing.value
-                + lambda * target.packing.value;
-            for (std::size_t index = 0;
-                 index < result.packing.gradient.size();
-                 ++index) {
-                result.packing.gradient[index] =
-                    (1.0 - lambda) * initial.packing.gradient[index]
-                    + lambda * target.packing.gradient[index];
-            }
-            for (std::size_t index = 0;
-                 index < result.packing.hessian.size();
-                 ++index) {
-                result.packing.hessian[index] =
-                    (1.0 - lambda) * initial.packing.hessian[index]
-                    + lambda * target.packing.hessian[index];
-            }
-            return result;
-        };
-        MaxMinInitializationResult warm = target_initialization;
-        warm.amounts = current_amounts;
-        ChemicalSolveResult candidate;
-        try {
-            const PhaseBlockEvaluation target_block = provider_phase_evaluation(
-                target_provider, temperature_k, current_amounts, current_volume
-            );
-            volume_transform.initial_coordinate =
-                std::log(target_block.packing.value);
-            candidate = solve_reaction_attempt(
-                path_system,
-                temperature_k,
-                pressure_pa,
-                {},
-                trace_floor,
-                max_iterations,
-                warm,
-                phase_evaluator,
-                domain,
-                current_volume,
-                {},
-                {},
-                {
-                    std::numeric_limits<double>::quiet_NaN(),
-                    std::numeric_limits<double>::quiet_NaN(),
-                },
-                &volume_transform,
-                true
-            );
-        } catch (const std::exception& error) {
-            candidate.callback_error = error.what();
-            candidate.solver_status = "continuation_step_failed";
-            candidate.numerical_status = "failed";
-        }
-        const std::size_t endpoint_attempt_ordinal = append_attempt(
-            candidate,
-            "model_continuation:lambda=" + std::to_string(lambda),
-            candidate.accepted ? "step_accepted" : "step_rejected",
-            true
-        );
-        ++target_result.search.continuation_attempt_count;
-        if (candidate.accepted) {
-            accepted_lambda = lambda;
-            target_result.search.continuation_accepted_lambda = lambda;
-            target_result.search.continuation_blocker.clear();
-            current_amounts = candidate.amounts;
-            current_volume = candidate.volume_m3;
-            step = std::min(0.25, 2.0 * step);
-            if (accepted_lambda == 1.0) {
-                ChemicalSearchEvidence merged_search = target_result.search;
-                merged_search.status = "certified_local_minimum";
-                merged_search.continuation_status = "completed";
-                ChemicalSearchBasin basin;
-                basin.representative_attempt_ordinal = endpoint_attempt_ordinal;
-                basin.amounts = candidate.amounts;
-                basin.volume_m3 = candidate.volume_m3;
-                const PhaseBlockEvaluation final_phase = provider_phase_evaluation(
-                    target_provider,
-                    temperature_k,
-                    candidate.amounts,
-                    candidate.volume_m3
-                );
-                basin.objective = final_phase.mechanical.value
-                    + pressure_pa
-                        / (kGasConstantJPerMolK * temperature_k)
-                        * candidate.volume_m3;
-                for (std::size_t species = 0;
-                     species < candidate.amounts.size();
-                     ++species) {
-                    basin.objective += target_system.g_ref[species]
-                        * candidate.amounts[species];
-                }
-                long endpoint_basin = -1;
-                bool endpoint_matched_existing_basin = false;
-                for (const ChemicalSearchBasin& observed : merged_search.basins) {
-                    double amount_difference = 0.0;
-                    double candidate_total = 0.0;
-                    double observed_total = 0.0;
-                    for (std::size_t species = 0;
-                         species < basin.amounts.size();
-                         ++species) {
-                        amount_difference = std::max(
-                            amount_difference,
-                            std::abs(
-                                basin.amounts[species]
-                                - observed.amounts[species]
-                            )
-                        );
-                        candidate_total += basin.amounts[species];
-                        observed_total += observed.amounts[species];
-                    }
-                    const double amount_scale = std::max({
-                        candidate_total, observed_total, trace_floor,
-                    });
-                    const double objective_tolerance =
-                        kContinuationDuplicateObjectiveFactor
-                        * std::numeric_limits<double>::epsilon()
-                        * std::max({
-                            1.0,
-                            std::abs(basin.objective),
-                            std::abs(observed.objective),
-                        });
-                    if (amount_difference / amount_scale
-                            <= kContinuationDuplicateStateTolerance
-                        && std::abs(std::log(
-                            basin.volume_m3 / observed.volume_m3
-                        )) <= kContinuationDuplicateVolumeTolerance
-                        && std::abs(basin.objective - observed.objective)
-                            <= objective_tolerance) {
-                        endpoint_basin = static_cast<long>(observed.ordinal);
-                        endpoint_matched_existing_basin = true;
-                        break;
-                    }
-                }
-                if (endpoint_basin < 0) {
-                    basin.ordinal = merged_search.basins.size();
-                    endpoint_basin = static_cast<long>(basin.ordinal);
-                    merged_search.basins.push_back(basin);
-                }
-                merged_search.attempts[endpoint_attempt_ordinal].basin_ordinal =
-                    endpoint_basin;
-                merged_search.attempts[endpoint_attempt_ordinal].objective =
-                    basin.objective;
-                merged_search.selected_basin_ordinal = -1;
-                merged_search.selected_objective =
-                    std::numeric_limits<double>::quiet_NaN();
-                for (const ChemicalSearchBasin& observed : merged_search.basins) {
-                    if (merged_search.selected_basin_ordinal < 0) {
-                        merged_search.selected_basin_ordinal =
-                            static_cast<long>(observed.ordinal);
-                        merged_search.selected_objective = observed.objective;
-                        continue;
-                    }
-                    const double tolerance =
-                        kContinuationDuplicateObjectiveFactor
-                        * std::numeric_limits<double>::epsilon()
-                        * std::max({
-                            1.0,
-                            std::abs(merged_search.selected_objective),
-                            std::abs(observed.objective),
-                        });
-                    if (observed.objective
-                            < merged_search.selected_objective - tolerance) {
-                        merged_search.selected_basin_ordinal =
-                            static_cast<long>(observed.ordinal);
-                        merged_search.selected_objective = observed.objective;
-                    }
-                }
-                if (target_result.accepted
-                    && (endpoint_matched_existing_basin
-                        || merged_search.selected_basin_ordinal
-                            != endpoint_basin)) {
-                    target_result.search = std::move(merged_search);
-                    return finalize_chemical_result(
-                        target_system, std::move(target_result), false
-                    );
-                }
-                candidate.search = std::move(merged_search);
-                return finalize_chemical_result(
-                    target_system, std::move(candidate), false
-                );
-            }
-            continue;
-        }
-        target_result.search.continuation_blocker =
-            !candidate.callback_error.empty()
-            ? "provider_callback_or_derivative_failure: "
-                + candidate.callback_error
-            : candidate.solver_status != "solve_succeeded"
-            ? "optimizer_status: " + candidate.solver_status
-            : candidate.balance_inf_norm > kBalanceTolerance
-            ? "balance_inf_norm"
-            : candidate.charge_inf_norm > kBalanceTolerance
-                ? "charge_inf_norm"
-                : candidate.pressure_relative_residual > kPressureTolerance
-                ? "pressure_relative_residual"
-                : candidate.reaction_affinity_inf_norm > kAffinityTolerance
-                    ? "reaction_affinity_inf_norm"
-                    : candidate.provider_domain_status == "failed"
-                        ? "provider_domain_status"
-                        : candidate.trace_status != "interior"
-                            ? "strict_interior_amount_floor"
-                            : candidate.complementarity_inf_norm > kKktTolerance
-                                ? "complementarity_inf_norm"
-                            : candidate.kkt_stationarity_inf_norm > kKktTolerance
-                                ? "physical_kkt_stationarity_inf_norm"
-                                : candidate.chart_stationarity_inf_norm
-                                        > kKktTolerance
-                                    ? "chart_stationarity_inf_norm"
-                                    : candidate.chart_physical_pullback_residual_inf_norm
-                                            > kChartPhysicalPullbackTolerance
-                                        ? "chart_physical_pullback_residual_inf_norm"
-                                    : candidate.kkt_dimension != 0
-                                            && candidate.kkt_rank
-                                                < candidate.kkt_dimension
-                                        ? "rank_deficiency"
-                                        : candidate.kkt_dimension != 0
-                                                && (!std::isfinite(
-                                                        candidate.condition_number_inf
-                                                    )
-                                                    || candidate.condition_number_inf
-                                                        > kSensitivityConditionNumberMax)
-                                            ? "ill_conditioning"
-                                            : "second_order_certification";
-        step *= 0.5;
-        if (step < kMinimumContinuationStep) {
-            target_result.search.continuation_status =
-                "step_refinement_exhausted";
-            return continuation_failure();
-        }
-    }
-    target_result.search.continuation_status = "attempt_budget_exhausted";
-    return continuation_failure();
 }
 
 ManufacturedNlpEvaluation evaluate_manufactured_reaction_nlp(

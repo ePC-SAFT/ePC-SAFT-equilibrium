@@ -244,15 +244,6 @@ class ProviderPhase:
 
 
 @dataclass(frozen=True)
-class ProviderModelContinuation:
-    """A caller-supplied Provider endpoint for deterministic model homotopy."""
-
-    initial_phase: ProviderPhase
-    initial_equilibrium_constants: tuple[ChemicalEquilibriumConstant, ...] | None = None
-    initial_equilibrium_constants_model_fingerprint: str | None = None
-
-
-@dataclass(frozen=True)
 class ChemicalEquilibriumProblem:
     """One reaction system with an explicit strict-interior admission boundary."""
 
@@ -279,7 +270,6 @@ class ChemicalEquilibriumAttempt:
     start_identity: str
     start_construction_status: str
     retraction_status: str
-    continuation_status: str
     provider_domain_status: str
     solver_status: str
     callback_error: str
@@ -330,11 +320,6 @@ class ChemicalEquilibriumSearch:
     """Complete deterministic finite-basin search receipt."""
 
     status: str
-    continuation_status: str
-    continuation_blocker: str
-    continuation_initial_model_fingerprint: str
-    continuation_accepted_lambda: float | None
-    continuation_attempt_count: int
     primary_budget: int
     primary_attempt_count: int
     generated_start_count: int
@@ -405,6 +390,7 @@ class ChemicalEquilibriumDiagnostics:
     physical_constraint_jacobian: tuple[float, ...]
     physical_constraint_shape: tuple[int, int]
     physical_lagrangian_gradient: tuple[float, ...]
+    physical_objective_gradient: tuple[float, ...]
     physical_to_chart_jacobian: tuple[float, ...]
     physical_to_chart_shape: tuple[int, int]
     chart_physical_pullback_residual_inf_norm: float | None
@@ -441,6 +427,7 @@ class ChemicalEquilibriumDiagnostics:
     covariant_lagrangian_hessian: tuple[float, ...]
     derivative_check_step: float | None
     objective_gradient_check_relative_error: float | None
+    physical_objective_gradient_check_relative_error: float | None
     constraint_jacobian_check_relative_error: float | None
     lagrangian_hessian_check_relative_error: float | None
     reduced_hessian_check_relative_error: float | None
@@ -1337,11 +1324,6 @@ def tp_flash(
 def _empty_chemical_search(status: str = "not_evaluated") -> ChemicalEquilibriumSearch:
     return ChemicalEquilibriumSearch(
         status=status,
-        continuation_status="not_used",
-        continuation_blocker="",
-        continuation_initial_model_fingerprint="",
-        continuation_accepted_lambda=None,
-        continuation_attempt_count=0,
         primary_budget=0,
         primary_attempt_count=0,
         generated_start_count=0,
@@ -1377,43 +1359,8 @@ _CHEMICAL_TERMINAL_STATUSES = _CHEMICAL_SEARCH_STATUSES | {"solver_failed"}
 def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
     if search.status not in _CHEMICAL_SEARCH_STATUSES:
         raise ValueError("native chemical search has an invalid status")
-    if search.continuation_status not in {
-        "not_used",
-        "completed",
-        "initial_model_not_certified",
-        "endpoint_domain_incompatible",
-        "endpoint_derivative_incompatible",
-        "no_strictly_feasible_continuation_start",
-        "step_refinement_exhausted",
-        "attempt_budget_exhausted",
-    }:
-        raise ValueError("native chemical search has an invalid continuation status")
     if search.selection_label != "lowest_observed_certified_local_value":
         raise ValueError("native chemical search has an invalid selection label")
-    if (
-        search.continuation_attempt_count < 0
-        or (
-            search.continuation_accepted_lambda is not None
-            and not 0.0 <= search.continuation_accepted_lambda <= 1.0
-        )
-        or (
-            search.continuation_status == "not_used"
-            and (
-                search.continuation_attempt_count != 0
-                or search.continuation_accepted_lambda is not None
-                or search.continuation_blocker
-                or search.continuation_initial_model_fingerprint
-            )
-        )
-        or (
-            search.continuation_status != "not_used"
-            and not search.continuation_initial_model_fingerprint
-        )
-        or (
-            search.continuation_status == "completed" and search.continuation_accepted_lambda != 1.0
-        )
-    ):
-        raise ValueError("native chemical continuation evidence is inconsistent")
     if not 0 <= search.primary_attempt_count <= search.primary_budget <= 25:
         raise ValueError("native chemical search has an invalid primary budget")
     if (
@@ -1444,49 +1391,16 @@ def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
         for attempt in search.attempts[: search.primary_attempt_count]
     ):
         raise ValueError("native chemical search primary lineage is inconsistent")
-    continuation_parents = tuple(
-        attempt for attempt in search.attempts if attempt.kind == "continuation"
-    )
-    continuation_preflight = (
-        search.continuation_status
-        in {"endpoint_domain_incompatible", "endpoint_derivative_incompatible"}
-        and search.continuation_attempt_count == 0
-        and not search.attempts
-    )
-    if (search.continuation_status == "not_used" and continuation_parents) or (
-        search.continuation_status != "not_used"
-        and not continuation_preflight
-        and (
-            len(continuation_parents) != search.continuation_attempt_count + 1
-            or not continuation_parents
-            or continuation_parents[0].continuation_status != "initial_model"
-        )
-    ):
-        raise ValueError("native chemical continuation attempt accounting is inconsistent")
     for attempt in search.attempts:
-        if attempt.kind not in {
-            "primary",
-            "recovery",
-            "continuation",
-            "continuation_recovery",
-        }:
+        if attempt.kind not in {"primary", "recovery"}:
             raise ValueError("native chemical search has an invalid attempt kind")
-        if (
-            attempt.kind not in {"continuation", "continuation_recovery"}
-            and not 0 <= attempt.primary_ordinal < search.primary_attempt_count
-        ):
+        if not 0 <= attempt.primary_ordinal < search.primary_attempt_count:
             raise ValueError("native chemical search primary ordinal is out of range")
         if attempt.kind == "recovery" and (
             attempt.parent_ordinal != attempt.primary_ordinal
             or attempt.parent_ordinal >= search.primary_attempt_count
         ):
             raise ValueError("native chemical search recovery lineage is inconsistent")
-        if attempt.kind == "continuation_recovery" and (
-            attempt.parent_ordinal is None
-            or attempt.parent_ordinal >= attempt.ordinal
-            or search.attempts[attempt.parent_ordinal].kind != "continuation"
-        ):
-            raise ValueError("native chemical continuation recovery lineage is inconsistent")
         if attempt.start_construction_status not in {
             "accepted",
             "rejected",
@@ -1500,13 +1414,6 @@ def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
             "balance_preserved_by_reaction_extent",
         }:
             raise ValueError("native chemical search has an invalid retraction status")
-        if attempt.continuation_status not in {
-            "not_used",
-            "initial_model",
-            "step_accepted",
-            "step_rejected",
-        }:
-            raise ValueError("native chemical attempt has an invalid continuation status")
         if attempt.provider_domain_status not in {
             "passed",
             "failed",
@@ -1636,7 +1543,6 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
             start_identity=str(record["start_identity"]),
             start_construction_status=str(record["start_construction_status"]),
             retraction_status=str(record["retraction_status"]),
-            continuation_status=str(record["continuation_status"]),
             provider_domain_status=str(record["provider_domain_status"]),
             solver_status=str(record["solver_status"]),
             callback_error=str(record["callback_error"]),
@@ -1695,13 +1601,6 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
     )
     search = ChemicalEquilibriumSearch(
         status=str(payload["status"]),
-        continuation_status=str(payload["continuation_status"]),
-        continuation_blocker=str(payload["continuation_blocker"]),
-        continuation_initial_model_fingerprint=str(
-            payload["continuation_initial_model_fingerprint"]
-        ),
-        continuation_accepted_lambda=_optional_float(payload, "continuation_accepted_lambda"),
-        continuation_attempt_count=int(cast(int, payload["continuation_attempt_count"])),
         primary_budget=int(cast(int, payload["primary_budget"])),
         primary_attempt_count=int(cast(int, payload["primary_attempt_count"])),
         generated_start_count=int(cast(int, payload["generated_start_count"])),
@@ -1770,6 +1669,7 @@ def _failed_chemical_diagnostics(
         physical_constraint_jacobian=(),
         physical_constraint_shape=(0, 0),
         physical_lagrangian_gradient=(),
+        physical_objective_gradient=(),
         physical_to_chart_jacobian=(),
         physical_to_chart_shape=(0, 0),
         chart_physical_pullback_residual_inf_norm=None,
@@ -1806,6 +1706,7 @@ def _failed_chemical_diagnostics(
         covariant_lagrangian_hessian=(),
         derivative_check_step=None,
         objective_gradient_check_relative_error=None,
+        physical_objective_gradient_check_relative_error=None,
         constraint_jacobian_check_relative_error=None,
         lagrangian_hessian_check_relative_error=None,
         reduced_hessian_check_relative_error=None,
@@ -1829,77 +1730,6 @@ def _failed_chemical_diagnostics(
         reference_convergence_error=None,
         reference_derivative_availability=None,
     )
-
-
-def _failed_continuation_diagnostics(
-    failure_reason: str,
-    initial_model_fingerprint: str,
-    *,
-    failure_kind: str,
-    continuation_status: str,
-) -> ChemicalEquilibriumDiagnostics:
-    search = replace(
-        _empty_chemical_search(),
-        continuation_status=continuation_status,
-        continuation_blocker=failure_reason,
-        continuation_initial_model_fingerprint=initial_model_fingerprint,
-    )
-    return replace(
-        _failed_chemical_diagnostics("continuation_preflight_failed", failure_reason),
-        failure_kind=failure_kind,
-        failure_reason=f"{failure_kind}: {failure_reason}",
-        provider_domain_status=(
-            "failed" if failure_kind == "physical_domain_failure" else "not_adjudicated"
-        ),
-        search=search,
-    )
-
-
-def _classified_continuation_failure(
-    failure_reason: str, initial_model_fingerprint: str
-) -> ChemicalEquilibriumDiagnostics | None:
-    """Type only native continuation failures with an unambiguous contract meaning."""
-    classifications = (
-        (
-            "temperature is outside a Provider continuation endpoint domain",
-            "physical_domain_failure",
-            "endpoint_domain_incompatible",
-        ),
-        (
-            "Provider continuation packing domains do not overlap",
-            "physical_domain_failure",
-            "endpoint_domain_incompatible",
-        ),
-        (
-            "Provider continuation endpoint derivative bases are incompatible",
-            "derivative_inconsistency",
-            "endpoint_derivative_incompatible",
-        ),
-        (
-            "Provider continuation inverse-packing dimensions changed",
-            "derivative_inconsistency",
-            "endpoint_derivative_incompatible",
-        ),
-        (
-            "Provider capsule is missing the reacting-phase SDK contract",
-            "unsupported_derivative_capability",
-            "endpoint_derivative_incompatible",
-        ),
-        (
-            "Provider capsule is missing the reacting-phase callbacks",
-            "unsupported_derivative_capability",
-            "endpoint_derivative_incompatible",
-        ),
-    )
-    for native_reason, failure_kind, status in classifications:
-        if failure_reason == native_reason:
-            return _failed_continuation_diagnostics(
-                failure_reason,
-                initial_model_fingerprint,
-                failure_kind=failure_kind,
-                continuation_status=status,
-            )
-    return None
 
 
 def _classified_source_reference_failure(
@@ -2078,6 +1908,7 @@ def _chemical_diagnostics(
         str(value) for value in cast(Sequence[str], native["derivative_constraint_order"])
     )
     physical_lagrangian_gradient = _float_tuple(native["physical_lagrangian_gradient"])
+    physical_objective_gradient = _float_tuple(native["physical_objective_gradient"])
     physical_to_chart_jacobian = _float_tuple(native["physical_to_chart_jacobian"])
     physical_to_chart_shape = tuple(
         int(value) for value in cast(Sequence[int], native["physical_to_chart_shape"])
@@ -2100,11 +1931,10 @@ def _chemical_diagnostics(
         or len(equality_multipliers) != len(constraint_values)
         or len(reduced_hessian) != reduced_dimension * reduced_dimension
         or len(reduced_hessian_nullspace_shape) != 2
-        or reduced_hessian_nullspace_shape != (reduced_dimension, derivative_dimension)
-        or len(reduced_hessian_nullspace_basis) != reduced_dimension * derivative_dimension
         or len(kkt_root_shape) != 2
         or len(physical_to_chart_shape) != 2
         or len(physical_lagrangian_gradient) != physical_to_chart_shape[0]
+        or len(physical_objective_gradient) != physical_to_chart_shape[0]
         or len(physical_to_chart_jacobian)
         != physical_to_chart_shape[0] * physical_to_chart_shape[1]
         or len(kkt_root_jacobian) != kkt_root_shape[0] * kkt_root_shape[1]
@@ -2115,6 +1945,19 @@ def _chemical_diagnostics(
         != physical_constraint_shape[0] * physical_constraint_shape[1]
     ):
         raise ValueError("native chemical derivative evidence has inconsistent dimensions")
+    if reduced_dimension:
+        if (
+            reduced_hessian_nullspace_shape
+            != (reduced_dimension, derivative_dimension)
+            or len(reduced_hessian_nullspace_basis)
+            != reduced_dimension * derivative_dimension
+        ):
+            raise ValueError("native reduced-Hessian basis dimensions are inconsistent")
+    elif reduced_hessian_nullspace_shape not in {
+        (0, 0),
+        (0, derivative_dimension),
+    } or reduced_hessian_nullspace_basis:
+        raise ValueError("native empty reduced-Hessian basis is inconsistent")
     if kkt_root_status not in {
         "not_evaluated",
         "interior_no_active_bounds",
@@ -2227,6 +2070,7 @@ def _chemical_diagnostics(
         physical_constraint_jacobian=physical_constraint_jacobian,
         physical_constraint_shape=physical_constraint_shape,
         physical_lagrangian_gradient=physical_lagrangian_gradient,
+        physical_objective_gradient=physical_objective_gradient,
         physical_to_chart_jacobian=physical_to_chart_jacobian,
         physical_to_chart_shape=physical_to_chart_shape,
         chart_physical_pullback_residual_inf_norm=_optional_float(
@@ -2270,6 +2114,9 @@ def _chemical_diagnostics(
         derivative_check_step=_optional_float(native, "derivative_check_step"),
         objective_gradient_check_relative_error=_optional_float(
             native, "objective_gradient_check_relative_error"
+        ),
+        physical_objective_gradient_check_relative_error=_optional_float(
+            native, "physical_objective_gradient_check_relative_error"
         ),
         constraint_jacobian_check_relative_error=_optional_float(
             native, "constraint_jacobian_check_relative_error"
@@ -2682,6 +2529,10 @@ def _source_reference_payload(
             transfer.standard_molality_mol_per_kg
         ),
         "reference_convergence_error": transfer.reference_convergence_error,
+        "source_temperature_min_k": transfer.source_temperature_interval_k[0],
+        "source_temperature_max_k": transfer.source_temperature_interval_k[1],
+        "source_pressure_min_pa": transfer.source_pressure_interval_pa[0],
+        "source_pressure_max_pa": transfer.source_pressure_interval_pa[1],
         "parameter_fingerprint": transfer.parameter_fingerprint,
         "topology_fingerprint": transfer.topology_fingerprint,
         "component_order_fingerprint": transfer.component_order_fingerprint,
@@ -2699,7 +2550,6 @@ def chemical_equilibrium(
     problem: ChemicalEquilibriumProblem,
     *,
     sensitivity_request: ChemicalEquilibriumSensitivityRequest | None = None,
-    continuation: ProviderModelContinuation | None = None,
 ) -> ChemicalEquilibriumResult:
     """Solve and certify one local fixed-T,P homogeneous reacting phase."""
 
@@ -2710,10 +2560,6 @@ def chemical_equilibrium(
             sensitivity_request, ChemicalEquilibriumSensitivityRequest
         ):
             raise TypeError("sensitivity_request must be a typed sensitivity request")
-        if continuation is not None and not isinstance(continuation, ProviderModelContinuation):
-            raise TypeError("continuation must be a typed Provider model continuation")
-        if continuation is not None and sensitivity_request is not None:
-            raise ValueError("Provider model continuation does not support sensitivity requests")
         active_parameters = (
             () if sensitivity_request is None else sensitivity_request.active_parameters
         )
@@ -2808,10 +2654,7 @@ def chemical_equilibrium(
         }
         packing_bounds: tuple[float, float] | None
         source_transfer: epcsaft.SourceReferenceTransfer | None = None
-        initial_source_transfer: epcsaft.SourceReferenceTransfer | None = None
         if isinstance(phase, IdealGasPhase):
-            if continuation is not None:
-                raise ValueError("Provider model continuation requires a ProviderPhase")
             if active_parameters:
                 raise ValueError("ideal-gas sensitivity cannot request Provider coordinates")
             if problem.source_standard_state is not None:
@@ -2863,89 +2706,6 @@ def chemical_equilibrium(
                     sensitivities_requested=sensitivity_request is not None,
                     active_parameters_requested=bool(active_parameters),
                 )
-            if continuation is not None:
-                initial_phase = continuation.initial_phase
-                if not isinstance(initial_phase, ProviderPhase):
-                    raise TypeError("Provider model continuation requires an initial ProviderPhase")
-                if not isinstance(initial_phase.model, epcsaft.Mixture):
-                    raise TypeError("continuation initial phase requires an epcsaft.Mixture")
-                if (
-                    not initial_phase.expected_parameter_fingerprint
-                    or initial_phase.expected_parameter_fingerprint
-                    != initial_phase.model.parameter_fingerprint
-                ):
-                    raise ValueError("installed continuation Provider fingerprint does not match")
-                initial_bounds = tuple(
-                    float(value) for value in initial_phase.admissible_packing_fraction_interval
-                )
-                if (
-                    len(initial_bounds) != 2
-                    or not all(math.isfinite(value) for value in initial_bounds)
-                    or not 0.0 < initial_bounds[0] < initial_bounds[1]
-                ):
-                    raise ValueError(
-                        "continuation packing-fraction bounds must be finite and increasing"
-                    )
-                initial_constants = continuation.initial_equilibrium_constants
-                initial_constants_fingerprint = (
-                    continuation.initial_equilibrium_constants_model_fingerprint
-                )
-                if (initial_constants is None) != (initial_constants_fingerprint is None):
-                    raise ValueError(
-                        "initial equilibrium constants and their Provider fingerprint "
-                        "must be supplied together"
-                    )
-                if (
-                    initial_constants_fingerprint is not None
-                    and initial_constants_fingerprint
-                    != initial_phase.expected_parameter_fingerprint
-                ):
-                    raise ValueError(
-                        "initial equilibrium constants are not bound to the initial "
-                        "Provider fingerprint"
-                    )
-                if standard_state is not None and initial_constants is not None:
-                    raise ValueError(
-                        "source-standard continuation transforms one source contract "
-                        "at both endpoints"
-                    )
-                if (
-                    standard_state is None
-                    and initial_phase.expected_parameter_fingerprint
-                    != phase.expected_parameter_fingerprint
-                    and initial_constants is None
-                ):
-                    raise ValueError(
-                        "different Provider endpoints require endpoint-bound initial "
-                        "equilibrium constants"
-                    )
-                if initial_constants is not None and (
-                    len(initial_constants) != len(problem.reaction_matrix)
-                    or any(
-                        not isinstance(record, ChemicalEquilibriumConstant)
-                        or not math.isfinite(record.ln_value)
-                        or not record.source_id
-                        or record.reference_id != "provider-helmholtz-coordinate-basis"
-                        or record.reaction_orientation != "products_positive"
-                        or record.conversion_id != "already-provider-basis"
-                        or not record.dimensionless
-                        for record in initial_constants
-                    )
-                ):
-                    raise ValueError(
-                        "initial equilibrium constants are not a complete "
-                        "Provider-basis endpoint contract"
-                    )
-                if standard_state is not None:
-                    initial_source_transfer = _source_reference_transfer(
-                        initial_phase,
-                        standard_state,
-                        species_ids=problem.species_ids,
-                        temperature_k=temperature_k,
-                        pressure_pa=pressure_pa,
-                        sensitivities_requested=False,
-                        active_parameters_requested=False,
-                    )
         else:
             raise TypeError("chemical_equilibrium requires a typed phase model")
         if standard_state is not None and source_transfer is None:
@@ -2967,64 +2727,17 @@ def chemical_equilibrium(
                 "provider_transfer": _source_reference_payload(
                     cast(epcsaft.SourceReferenceTransfer, source_transfer)
                 ),
-                **(
-                    {}
-                    if initial_source_transfer is None
-                    else {
-                        "initial_provider_transfer": _source_reference_payload(
-                            initial_source_transfer
-                        )
-                    }
-                ),
             }
         )
         native = cast(
             Mapping[str, object],
-            (
-                _equilibrium._chemical_equilibrium(
-                    capsule,
-                    spec,
-                    native_standard_state,
-                    packing_bounds,
-                    problem.strict_interior_amount_floor_mol,
-                    None if sensitivity_request is None else active_parameter_payload,
-                )
-                if continuation is None
-                else _equilibrium._chemical_equilibrium_continuation(
-                    capsule,
-                    epcsaft.native_sdk(continuation.initial_phase.model),
-                    spec,
-                    continuation.initial_phase.expected_parameter_fingerprint,
-                    (
-                        None
-                        if continuation.initial_equilibrium_constants is None
-                        else {
-                            "provider_fingerprint": (
-                                continuation.initial_equilibrium_constants_model_fingerprint
-                            ),
-                            "ln_k": tuple(
-                                record.ln_value
-                                for record in continuation.initial_equilibrium_constants
-                            ),
-                            "equilibrium_constant_records": tuple(
-                                {
-                                    "source_id": record.source_id,
-                                    "reference_id": record.reference_id,
-                                    "reaction_orientation": record.reaction_orientation,
-                                    "conversion_id": record.conversion_id,
-                                    "dimensionless": record.dimensionless,
-                                    "temperature_k": temperature_k,
-                                    "pressure_pa": pressure_pa,
-                                }
-                                for record in continuation.initial_equilibrium_constants
-                            ),
-                        }
-                    ),
-                    native_standard_state,
-                    cast(tuple[float, float], packing_bounds),
-                    continuation.initial_phase.admissible_packing_fraction_interval,
-                    problem.strict_interior_amount_floor_mol,
-                )
+            _equilibrium._chemical_equilibrium(
+                capsule,
+                spec,
+                native_standard_state,
+                packing_bounds,
+                problem.strict_interior_amount_floor_mol,
+                None if sensitivity_request is None else active_parameter_payload,
             ),
         )
         diagnostics = _chemical_diagnostics(native)
@@ -3037,16 +2750,7 @@ def chemical_equilibrium(
         ValueError,
     ) as error:
         reason = str(error)
-        continuation_fingerprint = (
-            getattr(continuation.initial_phase, "expected_parameter_fingerprint", "")
-            if continuation is not None
-            else ""
-        )
-        classified = _classified_source_reference_failure(reason) or (
-            _classified_continuation_failure(reason, continuation_fingerprint)
-            if continuation_fingerprint
-            else None
-        )
+        classified = _classified_source_reference_failure(reason)
         diagnostics = classified or _failed_chemical_diagnostics(
             "input_or_native_error", reason
         )
@@ -3178,6 +2882,10 @@ def chemical_observation_context(
         problem = row.problem
         if not isinstance(problem, ChemicalEquilibriumProblem):
             raise TypeError("chemical-observation row requires a typed problem")
+        if problem.source_standard_state is not None:
+            raise ValueError(
+                "chemical-observation source-reference derivatives are unsupported"
+            )
         if not isinstance(row.primitive, ChemicalObservationPrimitive):
             raise TypeError("chemical-observation row requires a typed primitive")
         if not row.row_id or not row.state_id or not row.state_schema_id or not row.source_id:
@@ -3209,11 +2917,7 @@ def chemical_observation_context(
                 "conversion_id": record.conversion_id,
                 "dimensionless": record.dimensionless,
                 "temperature_k": temperature_k,
-                "pressure_pa": (
-                    problem.source_standard_state.reference_pressure_pa
-                    if problem.source_standard_state is not None
-                    else pressure_pa
-                ),
+                "pressure_pa": pressure_pa,
             }
             for record in problem.equilibrium_constants
         )
@@ -3231,44 +2935,13 @@ def chemical_observation_context(
             "temperature_k": temperature_k,
             "pressure_pa": pressure_pa,
         }
-        standard_state: dict[str, object] | None = None
-        if problem.source_standard_state is not None:
-            transfer = _source_reference_transfer(
-                phase,
-                problem.source_standard_state,
-                species_ids=problem.species_ids,
-                temperature_k=temperature_k,
-                pressure_pa=pressure_pa,
-                sensitivities_requested=True,
-                active_parameters_requested=True,
-            )
-            standard_state = {
-                "id": problem.source_standard_state.id,
-                "activity_scale_id": problem.source_standard_state.activity_scale_id,
-                "log_activity_scale_factors": (
-                    problem.source_standard_state.log_activity_scale_factors
-                ),
-                "reference_pressure_pa": (problem.source_standard_state.reference_pressure_pa),
-                "source_reference_activity_convention_id": (
-                    problem.source_standard_state.source_reference_activity_convention_id
-                ),
-                "source_reference_standard_molality_mol_per_kg": (
-                    problem.source_standard_state.source_reference_standard_molality_mol_per_kg
-                ),
-                "provider_transfer": _source_reference_payload(transfer),
-            }
-        reference_id = (
-            problem.source_standard_state.id
-            if problem.source_standard_state is not None
-            else "provider-helmholtz-coordinate-basis"
-        )
+        reference_id = "provider-helmholtz-coordinate-basis"
         reference_fingerprint = (
             "sha256:"
             + hashlib.sha256(
                 json.dumps(
                     {
                         "reference_id": reference_id,
-                        "source_standard_state": standard_state,
                         "equilibrium_constants": constants,
                     },
                     allow_nan=False,
@@ -3287,7 +2960,6 @@ def chemical_observation_context(
                 "reference_id": reference_id,
                 "reference_fingerprint": reference_fingerprint,
                 "problem": problem_record,
-                "source_standard_state": standard_state,
                 "primitive": {
                     "kind": row.primitive.kind,
                     "component_id": row.primitive.component_id,
@@ -3400,14 +3072,7 @@ def chemical_observation_context(
             for item in row_records
         ),
         transform_ids=tuple(item.transform_id for item in row_records),
-        reference_ids=tuple(
-            (
-                item.problem.source_standard_state.id
-                if item.problem.source_standard_state is not None
-                else "provider-helmholtz-coordinate-basis"
-            )
-            for item in row_records
-        ),
+        reference_ids=tuple("provider-helmholtz-coordinate-basis" for _ in row_records),
         reference_fingerprints=tuple(
             str(record["reference_fingerprint"]) for record in native_rows
         ),

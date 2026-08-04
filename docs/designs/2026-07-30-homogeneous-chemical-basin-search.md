@@ -154,10 +154,7 @@ check, or domain check remains a rejected start record; detected roots omitted
 by the fixed primary ceiling are counted as budget-truncated.
 
 The ordinary primary search does not hide a continuation start. If it finds no
-certified target-model basin and the caller supplied a typed Provider-model
-continuation, the independently receipted recovery route is governed by
-[`2026-08-02-provider-model-continuation.md`](2026-08-02-provider-model-continuation.md).
-The fixed ordinary basin search and its receipt remain unchanged and mandatory.
+certified basin, the receipt remains exhausted.
 
 ## Negative-curvature recovery
 
@@ -264,7 +261,7 @@ new solves.
 Every attempt record includes:
 
 - primary ordinal, kind, parent ordinal, and deterministic start identity;
-- start construction, retraction, continuation, and Provider-domain status;
+- start construction, retraction, and Provider-domain status;
 - solver and callback status;
 - finite terminal amounts, volume, and objective when available;
 - balance, charge, pressure, affinity, KKT, complementarity, trace, rank,

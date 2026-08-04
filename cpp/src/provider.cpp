@@ -348,6 +348,72 @@ ProviderContext::ProviderContext(const epcsaft_native_sdk_v1& sdk, std::string f
     }
 }
 
+std::string ProviderContext::reacting_topology_fingerprint() const {
+    if (sdk_.table_size < kCapabilitySdkTableSize
+        || sdk_.capability_count == 0
+        || sdk_.capabilities == nullptr) {
+        throw std::invalid_argument(
+            "Provider reacting-phase topology metadata is unavailable"
+        );
+    }
+    std::string topology;
+    for (std::size_t index = 0; index < sdk_.capability_count; ++index) {
+        const auto& descriptor = sdk_.capabilities[index];
+        if (descriptor.struct_size != sizeof(descriptor)
+            || descriptor.schema_version
+                != EPCSAFT_NATIVE_CAPABILITY_SCHEMA_VERSION_V1
+            || descriptor.model_domain
+                != EPCSAFT_NATIVE_MODEL_DOMAIN_REACTING_ELECTROLYTE_PHASE_V1
+            || descriptor.component_count != sdk_.component_count
+            || descriptor.component_ids == nullptr) {
+            continue;
+        }
+        bool component_order_matches = true;
+        for (std::size_t component = 0;
+             component < sdk_.component_count;
+             ++component) {
+            component_order_matches = component_order_matches
+                && descriptor.component_ids[component] != nullptr
+                && sdk_.component_ids[component] != nullptr
+                && std::string_view(descriptor.component_ids[component])
+                    == sdk_.component_ids[component];
+        }
+        const std::string descriptor_parameter = decode_provider_char_array(
+            descriptor.parameter_fingerprint,
+            sizeof(descriptor.parameter_fingerprint),
+            "Provider reacting-phase parameter fingerprint"
+        );
+        const std::string descriptor_topology = decode_provider_char_array(
+            descriptor.topology_fingerprint,
+            sizeof(descriptor.topology_fingerprint),
+            "Provider reacting-phase topology fingerprint"
+        );
+        const std::string descriptor_basis = decode_provider_char_array(
+            descriptor.helmholtz_basis_id,
+            sizeof(descriptor.helmholtz_basis_id),
+            "Provider reacting-phase Helmholtz basis"
+        );
+        if (!component_order_matches
+            || descriptor_parameter != fingerprint_
+            || descriptor_topology.empty()
+            || descriptor_basis != EPCSAFT_NATIVE_HELMHOLTZ_BASIS_ID_V1) {
+            continue;
+        }
+        if (!topology.empty() && topology != descriptor_topology) {
+            throw std::invalid_argument(
+                "Provider reacting-phase topology fingerprints are inconsistent"
+            );
+        }
+        topology = descriptor_topology;
+    }
+    if (topology.empty()) {
+        throw std::invalid_argument(
+            "Provider reacting-phase topology metadata is incompatible"
+        );
+    }
+    return topology;
+}
+
 PhaseEvaluation ProviderContext::evaluate(
     double temperature_k,
     double amount_mol,

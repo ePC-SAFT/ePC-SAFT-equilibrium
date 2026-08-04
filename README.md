@@ -265,7 +265,10 @@ raw and certified inertia, spectrum convergence, scale, and tolerance. The
 derivative coordinate order and objective/constraint bases are explicit. The
 full chart Lagrangian Hessian, chart-consistent equality multipliers,
 null-space basis and covariant physical congruence are exposed for derivative
-and projection checks. For strictly interior states, diagnostics also expose
+and projection checks. Independent central finite differences check the chart
+and physical-space objective gradients, equality Jacobian, full Lagrangian
+Hessian, and null-space reduced Hessian. For strictly interior states,
+diagnostics also expose
 the balance/affinity/pressure KKT root-system Jacobian; active-bound states
 mark that matrix unavailable instead of mislabeling an incomplete active-set
 system. Second-order admission uses the
