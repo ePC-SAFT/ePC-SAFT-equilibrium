@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from importlib import metadata
 from types import MappingProxyType
@@ -203,6 +203,27 @@ class ChemicalStandardState:
     activity_scale_id: str
     log_activity_scale_factors: tuple[float, ...]
     reference_pressure_pa: float
+    source_reference_component_ids: tuple[str, ...]
+    source_reference_solvent_composition: tuple[float, ...]
+    source_reference_activity_convention_id: str
+    source_reference_standard_molality_mol_per_kg: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "log_activity_scale_factors",
+            tuple(self.log_activity_scale_factors),
+        )
+        object.__setattr__(
+            self,
+            "source_reference_component_ids",
+            tuple(self.source_reference_component_ids),
+        )
+        object.__setattr__(
+            self,
+            "source_reference_solvent_composition",
+            tuple(self.source_reference_solvent_composition),
+        )
 
 
 @dataclass(frozen=True)
@@ -249,7 +270,6 @@ class ChemicalEquilibriumAttempt:
     start_identity: str
     start_construction_status: str
     retraction_status: str
-    continuation_status: str
     provider_domain_status: str
     solver_status: str
     callback_error: str
@@ -300,9 +320,15 @@ class ChemicalEquilibriumSearch:
     """Complete deterministic finite-basin search receipt."""
 
     status: str
-    continuation_status: str
     primary_budget: int
     primary_attempt_count: int
+    generated_start_count: int
+    budget_truncated_start_count: int
+    duplicate_start_count: int
+    infeasible_start_count: int
+    evaluated_start_count: int
+    domain_rejected_start_count: int
+    construction_rejected_start_count: int
     attempts: tuple[ChemicalEquilibriumAttempt, ...]
     basins: tuple[ChemicalEquilibriumBasin, ...]
     budget_prefixes: tuple[ChemicalEquilibriumBudgetPrefix, ...]
@@ -312,11 +338,23 @@ class ChemicalEquilibriumSearch:
 
 
 @dataclass(frozen=True)
+class ChemicalEquilibriumCriterion:
+    """One named scalar certification check with its declared threshold."""
+
+    name: str
+    status: str
+    value: float
+    limit: float
+    comparison: str
+
+
+@dataclass(frozen=True)
 class ChemicalEquilibriumDiagnostics:
     """Independent local chemical-equilibrium admission axes and residuals."""
 
     solver_status: str
     callback_error: str
+    failure_kind: str
     failure_reason: str
     chemical_certification_level: str
     boundary_status: str
@@ -332,13 +370,83 @@ class ChemicalEquilibriumDiagnostics:
     trace_status: str
     globality_status: str
     search: ChemicalEquilibriumSearch
+    amounts_mol: tuple[float, ...]
+    volume_m3: float | None
     balance_inf_norm: float | None
     charge_inf_norm: float | None
     pressure_relative_residual: float | None
     reaction_affinity_inf_norm: float | None
+    reaction_affinity_residuals: tuple[float, ...]
     packing_fraction: float | None
+    packing_fraction_min: float | None
+    packing_fraction_max: float | None
+    total_ion_fraction: float | None
+    total_ion_fraction_max: float | None
+    minimum_amount_mol: float | None
+    trace_floor_mol: float | None
     kkt_stationarity_inf_norm: float | None
+    physical_stationarity_residuals: tuple[float, ...]
+    physical_equality_multipliers: tuple[float, ...]
+    physical_constraint_jacobian: tuple[float, ...]
+    physical_constraint_shape: tuple[int, int]
+    physical_lagrangian_gradient: tuple[float, ...]
+    physical_objective_gradient: tuple[float, ...]
+    physical_to_chart_jacobian: tuple[float, ...]
+    physical_to_chart_shape: tuple[int, int]
+    chart_physical_pullback_residual_inf_norm: float | None
     complementarity_inf_norm: float | None
+    numerical_criteria: tuple[ChemicalEquilibriumCriterion, ...]
+    physical_criteria: tuple[ChemicalEquilibriumCriterion, ...]
+    first_failed_numerical_criterion: str | None
+    first_failed_physical_criterion: str | None
+    kkt_dimension: int
+    kkt_rank: int
+    condition_number_inf: float | None
+    active_lower_bounds: tuple[int, ...]
+    active_upper_bounds: tuple[int, ...]
+    active_constraint_bounds: tuple[int, ...]
+    active_trace_species: tuple[int, ...]
+    chart_topology: str
+    reduced_hessian_status: str
+    reduced_hessian: tuple[float, ...]
+    reduced_hessian_nullspace_basis: tuple[float, ...]
+    reduced_hessian_nullspace_shape: tuple[int, int]
+    reduced_hessian_eigenvalues: tuple[float, ...]
+    reduced_hessian_spectrum_status: str
+    reduced_hessian_raw_inertia: tuple[int, int, int]
+    reduced_hessian_inertia: tuple[int, int, int]
+    reduced_hessian_scale: float | None
+    reduced_hessian_eigenvalue_tolerance: float | None
+    objective_gradient: tuple[float, ...]
+    constraint_values: tuple[float, ...]
+    constraint_jacobian: tuple[float, ...]
+    lagrangian_gradient: tuple[float, ...]
+    equality_multipliers: tuple[float, ...]
+    chart_stationarity_inf_norm: float | None
+    lagrangian_hessian: tuple[float, ...]
+    covariant_lagrangian_hessian: tuple[float, ...]
+    derivative_check_step: float | None
+    objective_gradient_check_relative_error: float | None
+    physical_objective_gradient_check_relative_error: float | None
+    constraint_jacobian_check_relative_error: float | None
+    lagrangian_hessian_check_relative_error: float | None
+    reduced_hessian_check_relative_error: float | None
+    derivative_check_worst_entry: str
+    derivative_check_worst_relative_error: float | None
+    derivative_check_worst_analytic_value: float | None
+    derivative_check_worst_finite_difference_value: float | None
+    derivative_check_worst_step: float | None
+    derivative_coordinate_order: tuple[str, ...]
+    derivative_objective_basis: str
+    derivative_constraint_basis: str
+    derivative_constraint_order: tuple[str, ...]
+    objective_gradient_shape: tuple[int, ...]
+    constraint_jacobian_shape: tuple[int, int]
+    lagrangian_hessian_shape: tuple[int, int]
+    kkt_root_jacobian: tuple[float, ...]
+    kkt_root_shape: tuple[int, int]
+    kkt_root_status: str
+    kkt_root_jacobian_check_relative_error: float | None
     reference_representation_residual_inf_norm: float | None
     reference_convergence_error: float | None
     reference_derivative_availability: int | None
@@ -511,6 +619,7 @@ class ChemicalEquilibriumResult:
     provider_parameter_fingerprint: str | None
     equilibrium_constants: tuple[ChemicalEquilibriumConstant, ...]
     source_standard_state: ChemicalStandardState | None
+    source_reference_transfer: epcsaft.SourceReferenceTransfer | None
     provider_reference_id: str | None
     standard_offsets: tuple[float, ...] | None
     ln_k_provider_basis: tuple[float, ...] | None
@@ -862,9 +971,7 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
     step8_provider_packing_evaluations = 0
     step8_problem_candidate_count = 0
     step8_attempted_candidate_count = 0
-    problem_signatures: list[
-        tuple[tuple[int, ...], tuple[float, ...], float]
-    ] = []
+    problem_signatures: list[tuple[tuple[int, ...], tuple[float, ...], float]] = []
     for raw_step8 in cast(Sequence[object], payload.get("step8_history", ())):
         if not isinstance(raw_step8, Mapping):
             raise ValueError("native HELD2 Step 8 history must contain mappings")
@@ -912,9 +1019,7 @@ def _held2_performance(payload: Mapping[str, object]) -> HeldPerformanceDiagnost
             raise ValueError("native HELD2 Step 8 neighborhood radius is invalid")
         step8_problem_candidate_count += len(problem_ids)
         step8_attempted_candidate_count += len(attempted_ids)
-        problem_signatures.append(
-            (problem_ids, problem_variables, neighborhood_radius)
-        )
+        problem_signatures.append((problem_ids, problem_variables, neighborhood_radius))
 
     step10_timings = tuple(timing for timing in timings if timing.step == 10)
     trace_refinement_component_indices: set[int] = set()
@@ -1219,9 +1324,15 @@ def tp_flash(
 def _empty_chemical_search(status: str = "not_evaluated") -> ChemicalEquilibriumSearch:
     return ChemicalEquilibriumSearch(
         status=status,
-        continuation_status="not_used",
-        primary_budget=25,
+        primary_budget=0,
         primary_attempt_count=0,
+        generated_start_count=0,
+        budget_truncated_start_count=0,
+        duplicate_start_count=0,
+        infeasible_start_count=0,
+        evaluated_start_count=0,
+        domain_rejected_start_count=0,
+        construction_rejected_start_count=0,
         attempts=(),
         basins=(),
         budget_prefixes=(),
@@ -1248,15 +1359,30 @@ _CHEMICAL_TERMINAL_STATUSES = _CHEMICAL_SEARCH_STATUSES | {"solver_failed"}
 def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
     if search.status not in _CHEMICAL_SEARCH_STATUSES:
         raise ValueError("native chemical search has an invalid status")
-    if search.continuation_status != "not_used":
-        raise ValueError("native chemical search has an invalid continuation status")
     if search.selection_label != "lowest_observed_certified_local_value":
         raise ValueError("native chemical search has an invalid selection label")
     if not 0 <= search.primary_attempt_count <= search.primary_budget <= 25:
         raise ValueError("native chemical search has an invalid primary budget")
-    if tuple(attempt.ordinal for attempt in search.attempts) != tuple(
-        range(len(search.attempts))
+    if (
+        (search.status != "not_evaluated" and search.primary_attempt_count == 0)
+        or search.generated_start_count
+        != search.primary_attempt_count
+        + search.budget_truncated_start_count
+        + search.duplicate_start_count
+        + search.infeasible_start_count
+        or search.budget_truncated_start_count < 0
+        or not 0 <= search.evaluated_start_count <= search.primary_attempt_count
+        or not 0
+        <= search.domain_rejected_start_count
+        <= search.primary_attempt_count - search.evaluated_start_count
+        or not 0 <= search.construction_rejected_start_count
+        or search.evaluated_start_count
+        + search.domain_rejected_start_count
+        + search.construction_rejected_start_count
+        != search.primary_attempt_count
     ):
+        raise ValueError("native chemical search start accounting is inconsistent")
+    if tuple(attempt.ordinal for attempt in search.attempts) != tuple(range(len(search.attempts))):
         raise ValueError("native chemical search attempt ordinals are inconsistent")
     if len(search.attempts) < search.primary_attempt_count or any(
         attempt.kind != "primary"
@@ -1288,8 +1414,6 @@ def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
             "balance_preserved_by_reaction_extent",
         }:
             raise ValueError("native chemical search has an invalid retraction status")
-        if attempt.continuation_status != "not_used":
-            raise ValueError("native chemical attempt has an invalid continuation status")
         if attempt.provider_domain_status not in {
             "passed",
             "failed",
@@ -1342,9 +1466,7 @@ def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
             0 <= attempt.basin_ordinal < len(search.basins)
         ):
             raise ValueError("native chemical attempt basin reference is out of range")
-    if tuple(basin.ordinal for basin in search.basins) != tuple(
-        range(len(search.basins))
-    ):
+    if tuple(basin.ordinal for basin in search.basins) != tuple(range(len(search.basins))):
         raise ValueError("native chemical basin ordinals are inconsistent")
     for basin in search.basins:
         if not 0 <= basin.representative_attempt_ordinal < len(search.attempts):
@@ -1374,14 +1496,24 @@ def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
             or search.selected_objective != selected.objective
         ):
             raise ValueError("native chemical search selection is inconsistent")
+    expected_prefix_budgets = tuple(
+        dict.fromkeys(
+            min(requested, search.primary_attempt_count)
+            for requested in (1, 5, 13, 25)
+            if search.primary_attempt_count > 0
+        )
+    )
+    if tuple(prefix.primary_budget for prefix in search.budget_prefixes) != (
+        expected_prefix_budgets
+    ):
+        raise ValueError("native chemical search budget prefixes are incomplete")
     previous_budget = 0
     previous_selection: int | None = None
     for index, prefix in enumerate(search.budget_prefixes):
         if (
             prefix.primary_budget <= previous_budget
             or prefix.primary_budget > search.primary_attempt_count
-            or prefix.attempted_primary_ordinals
-            != tuple(range(prefix.primary_budget))
+            or prefix.attempted_primary_ordinals != tuple(range(prefix.primary_budget))
             or len(set(prefix.basin_ordinals)) != len(prefix.basin_ordinals)
             or any(not 0 <= ordinal < len(search.basins) for ordinal in prefix.basin_ordinals)
             or (
@@ -1389,10 +1521,7 @@ def _validate_chemical_search(search: ChemicalEquilibriumSearch) -> None:
                 and prefix.selected_basin_ordinal not in prefix.basin_ordinals
             )
             or prefix.selection_changed
-            != (
-                index > 0
-                and prefix.selected_basin_ordinal != previous_selection
-            )
+            != (index > 0 and prefix.selected_basin_ordinal != previous_selection)
         ):
             raise ValueError("native chemical search budget prefix is inconsistent")
         previous_budget = prefix.primary_budget
@@ -1414,30 +1543,19 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
             start_identity=str(record["start_identity"]),
             start_construction_status=str(record["start_construction_status"]),
             retraction_status=str(record["retraction_status"]),
-            continuation_status=str(record["continuation_status"]),
             provider_domain_status=str(record["provider_domain_status"]),
             solver_status=str(record["solver_status"]),
             callback_error=str(record["callback_error"]),
             terminal_status=str(record["terminal_status"]),
-            amounts_mol=tuple(
-                float(value) for value in cast(Sequence[float], record["amounts"])
-            ),
+            amounts_mol=tuple(float(value) for value in cast(Sequence[float], record["amounts"])),
             volume_m3=_optional_float(record, "volume_m3"),
             objective=_optional_float(record, "objective"),
             balance_inf_norm=_optional_float(record, "balance_inf_norm"),
             charge_inf_norm=_optional_float(record, "charge_inf_norm"),
-            pressure_relative_residual=_optional_float(
-                record, "pressure_relative_residual"
-            ),
-            reaction_affinity_inf_norm=_optional_float(
-                record, "reaction_affinity_inf_norm"
-            ),
-            kkt_stationarity_inf_norm=_optional_float(
-                record, "kkt_stationarity_inf_norm"
-            ),
-            complementarity_inf_norm=_optional_float(
-                record, "complementarity_inf_norm"
-            ),
+            pressure_relative_residual=_optional_float(record, "pressure_relative_residual"),
+            reaction_affinity_inf_norm=_optional_float(record, "reaction_affinity_inf_norm"),
+            kkt_stationarity_inf_norm=_optional_float(record, "kkt_stationarity_inf_norm"),
+            complementarity_inf_norm=_optional_float(record, "complementarity_inf_norm"),
             kkt_dimension=int(cast(int, record["kkt_dimension"])),
             kkt_rank=int(cast(int, record["kkt_rank"])),
             condition_number_inf=_optional_float(record, "condition_number_inf"),
@@ -1456,12 +1574,8 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
     basins = tuple(
         ChemicalEquilibriumBasin(
             ordinal=int(cast(int, record["ordinal"])),
-            representative_attempt_ordinal=int(
-                cast(int, record["representative_attempt_ordinal"])
-            ),
-            amounts_mol=tuple(
-                float(value) for value in cast(Sequence[float], record["amounts"])
-            ),
+            representative_attempt_ordinal=int(cast(int, record["representative_attempt_ordinal"])),
+            amounts_mol=tuple(float(value) for value in cast(Sequence[float], record["amounts"])),
             volume_m3=float(cast(float, record["volume_m3"])),
             objective=float(cast(float, record["objective"])),
         )
@@ -1471,14 +1585,10 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
         ChemicalEquilibriumBudgetPrefix(
             primary_budget=int(cast(int, record["primary_budget"])),
             attempted_primary_ordinals=tuple(
-                int(value)
-                for value in cast(
-                    Sequence[int], record["attempted_primary_ordinals"]
-                )
+                int(value) for value in cast(Sequence[int], record["attempted_primary_ordinals"])
             ),
             basin_ordinals=tuple(
-                int(value)
-                for value in cast(Sequence[int], record["basin_ordinals"])
+                int(value) for value in cast(Sequence[int], record["basin_ordinals"])
             ),
             selected_basin_ordinal=(
                 int(cast(int, record["selected_basin_ordinal"]))
@@ -1491,9 +1601,17 @@ def _chemical_search(native: Mapping[str, object]) -> ChemicalEquilibriumSearch:
     )
     search = ChemicalEquilibriumSearch(
         status=str(payload["status"]),
-        continuation_status=str(payload["continuation_status"]),
         primary_budget=int(cast(int, payload["primary_budget"])),
         primary_attempt_count=int(cast(int, payload["primary_attempt_count"])),
+        generated_start_count=int(cast(int, payload["generated_start_count"])),
+        budget_truncated_start_count=int(cast(int, payload["budget_truncated_start_count"])),
+        duplicate_start_count=int(cast(int, payload["duplicate_start_count"])),
+        infeasible_start_count=int(cast(int, payload["infeasible_start_count"])),
+        evaluated_start_count=int(cast(int, payload["evaluated_start_count"])),
+        domain_rejected_start_count=int(cast(int, payload["domain_rejected_start_count"])),
+        construction_rejected_start_count=int(
+            cast(int, payload["construction_rejected_start_count"])
+        ),
         attempts=attempts,
         basins=basins,
         budget_prefixes=prefixes,
@@ -1515,6 +1633,7 @@ def _failed_chemical_diagnostics(
     return ChemicalEquilibriumDiagnostics(
         solver_status=status,
         callback_error="",
+        failure_kind="input_or_native_error",
         failure_reason=failure_reason,
         chemical_certification_level="NOT_EVALUATED",
         boundary_status="not_adjudicated",
@@ -1530,41 +1649,395 @@ def _failed_chemical_diagnostics(
         trace_status="not_adjudicated",
         globality_status="not_adjudicated",
         search=_empty_chemical_search(),
+        amounts_mol=(),
+        volume_m3=None,
         balance_inf_norm=None,
         charge_inf_norm=None,
         pressure_relative_residual=None,
         reaction_affinity_inf_norm=None,
+        reaction_affinity_residuals=(),
         packing_fraction=None,
+        packing_fraction_min=None,
+        packing_fraction_max=None,
+        total_ion_fraction=None,
+        total_ion_fraction_max=None,
+        minimum_amount_mol=None,
+        trace_floor_mol=None,
         kkt_stationarity_inf_norm=None,
+        physical_stationarity_residuals=(),
+        physical_equality_multipliers=(),
+        physical_constraint_jacobian=(),
+        physical_constraint_shape=(0, 0),
+        physical_lagrangian_gradient=(),
+        physical_objective_gradient=(),
+        physical_to_chart_jacobian=(),
+        physical_to_chart_shape=(0, 0),
+        chart_physical_pullback_residual_inf_norm=None,
         complementarity_inf_norm=None,
+        numerical_criteria=(),
+        physical_criteria=(),
+        first_failed_numerical_criterion=None,
+        first_failed_physical_criterion=None,
+        kkt_dimension=0,
+        kkt_rank=0,
+        condition_number_inf=None,
+        active_lower_bounds=(),
+        active_upper_bounds=(),
+        active_constraint_bounds=(),
+        active_trace_species=(),
+        chart_topology="not_adjudicated",
+        reduced_hessian_status="not_adjudicated",
+        reduced_hessian=(),
+        reduced_hessian_nullspace_basis=(),
+        reduced_hessian_nullspace_shape=(0, 0),
+        reduced_hessian_eigenvalues=(),
+        reduced_hessian_spectrum_status="not_adjudicated",
+        reduced_hessian_raw_inertia=(0, 0, 0),
+        reduced_hessian_inertia=(0, 0, 0),
+        reduced_hessian_scale=None,
+        reduced_hessian_eigenvalue_tolerance=None,
+        objective_gradient=(),
+        constraint_values=(),
+        constraint_jacobian=(),
+        lagrangian_gradient=(),
+        equality_multipliers=(),
+        chart_stationarity_inf_norm=None,
+        lagrangian_hessian=(),
+        covariant_lagrangian_hessian=(),
+        derivative_check_step=None,
+        objective_gradient_check_relative_error=None,
+        physical_objective_gradient_check_relative_error=None,
+        constraint_jacobian_check_relative_error=None,
+        lagrangian_hessian_check_relative_error=None,
+        reduced_hessian_check_relative_error=None,
+        derivative_check_worst_entry="",
+        derivative_check_worst_relative_error=None,
+        derivative_check_worst_analytic_value=None,
+        derivative_check_worst_finite_difference_value=None,
+        derivative_check_worst_step=None,
+        derivative_coordinate_order=(),
+        derivative_objective_basis="dimensionless_fixed_TP_A_plus_PV_plus_reference_over_RT",
+        derivative_constraint_basis="ordered_per_row_in_derivative_constraint_order",
+        derivative_constraint_order=(),
+        objective_gradient_shape=(0,),
+        constraint_jacobian_shape=(0, 0),
+        lagrangian_hessian_shape=(0, 0),
+        kkt_root_jacobian=(),
+        kkt_root_shape=(0, 0),
+        kkt_root_status="not_evaluated",
+        kkt_root_jacobian_check_relative_error=None,
         reference_representation_residual_inf_norm=None,
         reference_convergence_error=None,
         reference_derivative_availability=None,
     )
 
 
+def _classified_source_reference_failure(
+    failure_reason: str,
+) -> ChemicalEquilibriumDiagnostics | None:
+    classifications = (
+        (
+            "unsupported-source-reference-transfer",
+            "unsupported_source_reference_transfer",
+        ),
+        ("invalid-source-composition", "invalid_source_reference"),
+        ("nonfinite-source-reference-state", "invalid_source_reference"),
+        ("component-order-mismatch", "component_order_mismatch"),
+        ("source-reference component order", "component_order_mismatch"),
+        ("missing-parameter-or-topology", "missing_parameter_or_topology"),
+        ("provider-domain-rejection", "provider_domain_rejection"),
+        (
+            "reference-limit-convergence-failure",
+            "reference_limit_convergence_failure",
+        ),
+        ("derivative-unavailable", "source_reference_derivative_unavailable"),
+        (
+            "source-reference derivative is unavailable",
+            "source_reference_derivative_unavailable",
+        ),
+    )
+    for marker, failure_kind in classifications:
+        if marker in failure_reason:
+            return replace(
+                _failed_chemical_diagnostics(
+                    "source_reference_preflight_failed", failure_reason
+                ),
+                failure_kind=failure_kind,
+                provider_domain_status=(
+                    "failed"
+                    if failure_kind == "provider_domain_rejection"
+                    else "not_adjudicated"
+                ),
+            )
+    if "source-reference" in failure_reason or "source " in failure_reason:
+        return replace(
+            _failed_chemical_diagnostics(
+                "source_reference_preflight_failed", failure_reason
+            ),
+            failure_kind="source_reference_receipt_mismatch",
+        )
+    return None
+
+
 def _chemical_diagnostics(
     native: Mapping[str, object],
 ) -> ChemicalEquilibriumDiagnostics:
+    def criteria(name: str) -> tuple[ChemicalEquilibriumCriterion, ...]:
+        def passes(record: ChemicalEquilibriumCriterion) -> bool:
+            if not math.isfinite(record.value):
+                return False
+            if record.comparison == "<=":
+                return record.value <= record.limit
+            if record.comparison == ">":
+                return record.value > record.limit
+            if record.comparison == ">=":
+                return record.value >= record.limit
+            raise ValueError(f"native {name} comparison is invalid")
+
+        records = tuple(
+            ChemicalEquilibriumCriterion(
+                name=str(cast(Mapping[str, object], record)["name"]),
+                status=str(cast(Mapping[str, object], record)["status"]),
+                value=float(cast(float, cast(Mapping[str, object], record)["value"])),
+                limit=float(cast(float, cast(Mapping[str, object], record)["limit"])),
+                comparison=str(cast(Mapping[str, object], record)["comparison"]),
+            )
+            for record in cast(Sequence[object], native[name])
+        )
+        if any(record.status not in {"passed", "failed"} for record in records):
+            raise ValueError(f"native {name} status is invalid")
+        if any(
+            record.comparison not in {"<=", ">", ">="}
+            or not math.isfinite(record.limit)
+            or record.limit < 0.0
+            or (record.status == "passed") != passes(record)
+            for record in records
+        ):
+            raise ValueError(f"native {name} evidence is inconsistent")
+        return records
+
+    numerical_criteria = criteria("numerical_criteria")
+    physical_criteria = criteria("physical_criteria")
+    first_failed_numerical = next(
+        (record.name for record in numerical_criteria if record.status == "failed"), None
+    )
+    first_failed_physical = next(
+        (record.name for record in physical_criteria if record.status == "failed"), None
+    )
+    reduced_inertia = tuple(
+        int(value) for value in cast(Sequence[int], native["reduced_hessian_inertia"])
+    )
+    if len(reduced_inertia) != 3 or any(value < 0 for value in reduced_inertia):
+        raise ValueError("native reduced-Hessian inertia is invalid")
+    reduced_raw_inertia = tuple(
+        int(value) for value in cast(Sequence[int], native["reduced_hessian_raw_inertia"])
+    )
+    if len(reduced_raw_inertia) != 3 or any(value < 0 for value in reduced_raw_inertia):
+        raise ValueError("native raw reduced-Hessian inertia is invalid")
+    failure_kind = str(native["failure_kind"])
+    if failure_kind not in {
+        "none",
+        "genuine_saddle",
+        "derivative_inconsistency",
+        "rank_deficiency",
+        "ill_conditioning",
+        "physical_domain_failure",
+        "exhausted_multistart_search",
+        "unsupported_derivative_capability",
+    }:
+        raise ValueError("native chemical failure kind is invalid")
+    if bool(native["accepted"]) != (failure_kind == "none"):
+        raise ValueError("native chemical acceptance and failure kind disagree")
+    accepted = bool(native["accepted"])
+    certification = str(native["chemical_certification_level"])
+    numerical_status = str(native["numerical_status"])
+    physical_status = str(native["physical_status"])
+    local_minimum_status = str(native["local_minimum_status"])
+    search = _chemical_search(native)
+    if accepted != (certification == "LOCAL_EQUILIBRIUM") or (
+        accepted
+        and (
+            numerical_status != "passed"
+            or physical_status != "passed"
+            or local_minimum_status != "passed"
+            or search.status != "certified_local_minimum"
+            or first_failed_numerical is not None
+            or first_failed_physical is not None
+        )
+    ):
+        raise ValueError("native chemical acceptance and certification evidence disagree")
+    kkt_dimension = int(cast(int, native["kkt_dimension"]))
+    kkt_rank = int(cast(int, native["kkt_rank"]))
+    if kkt_dimension < 0 or not 0 <= kkt_rank <= kkt_dimension:
+        raise ValueError("native chemical KKT rank evidence is invalid")
+    objective_gradient = _float_tuple(native["objective_gradient"])
+    reaction_affinity_residuals = _float_tuple(native["reaction_affinity_residuals"])
+    physical_stationarity_residuals = _float_tuple(native["physical_stationarity_residuals"])
+    physical_equality_multipliers = _float_tuple(native["physical_equality_multipliers"])
+    physical_constraint_jacobian = _float_tuple(native["physical_constraint_jacobian"])
+    physical_constraint_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["physical_constraint_shape"])
+    )
+    constraint_values = _float_tuple(native["constraint_values"])
+    constraint_jacobian = _float_tuple(native["constraint_jacobian"])
+    lagrangian_gradient = _float_tuple(native["lagrangian_gradient"])
+    equality_multipliers = _float_tuple(native["equality_multipliers"])
+    lagrangian_hessian = _float_tuple(native["lagrangian_hessian"])
+    covariant_lagrangian_hessian = _float_tuple(native["covariant_lagrangian_hessian"])
+    reduced_hessian = _float_tuple(native["reduced_hessian"])
+    reduced_hessian_eigenvalues = _float_tuple(native["reduced_hessian_eigenvalues"])
+    reduced_hessian_nullspace_basis = _float_tuple(native["reduced_hessian_nullspace_basis"])
+    reduced_hessian_nullspace_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["reduced_hessian_nullspace_shape"])
+    )
+    spectrum_status = str(native["reduced_hessian_spectrum_status"])
+    derivative_dimension = len(objective_gradient)
+    derivative_coordinate_order = tuple(
+        str(value) for value in cast(Sequence[str], native["derivative_coordinate_order"])
+    )
+    objective_gradient_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["objective_gradient_shape"])
+    )
+    constraint_jacobian_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["constraint_jacobian_shape"])
+    )
+    lagrangian_hessian_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["lagrangian_hessian_shape"])
+    )
+    derivative_constraint_order = tuple(
+        str(value) for value in cast(Sequence[str], native["derivative_constraint_order"])
+    )
+    physical_lagrangian_gradient = _float_tuple(native["physical_lagrangian_gradient"])
+    physical_objective_gradient = _float_tuple(native["physical_objective_gradient"])
+    physical_to_chart_jacobian = _float_tuple(native["physical_to_chart_jacobian"])
+    physical_to_chart_shape = tuple(
+        int(value) for value in cast(Sequence[int], native["physical_to_chart_shape"])
+    )
+    kkt_root_jacobian = _float_tuple(native["kkt_root_jacobian"])
+    kkt_root_shape = tuple(int(value) for value in cast(Sequence[int], native["kkt_root_shape"]))
+    kkt_root_status = str(native["kkt_root_status"])
+    reduced_dimension = math.isqrt(len(reduced_hessian))
+    tolerance = _optional_float(native, "reduced_hessian_eigenvalue_tolerance")
+    if (
+        len(lagrangian_gradient) != derivative_dimension
+        or len(constraint_jacobian) != len(constraint_values) * derivative_dimension
+        or len(lagrangian_hessian) != derivative_dimension * derivative_dimension
+        or len(covariant_lagrangian_hessian) != derivative_dimension * derivative_dimension
+        or len(derivative_coordinate_order) != derivative_dimension
+        or objective_gradient_shape != (derivative_dimension,)
+        or constraint_jacobian_shape != (len(constraint_values), derivative_dimension)
+        or lagrangian_hessian_shape != (derivative_dimension, derivative_dimension)
+        or len(derivative_constraint_order) != len(constraint_values)
+        or len(equality_multipliers) != len(constraint_values)
+        or len(reduced_hessian) != reduced_dimension * reduced_dimension
+        or len(reduced_hessian_nullspace_shape) != 2
+        or len(kkt_root_shape) != 2
+        or len(physical_to_chart_shape) != 2
+        or len(physical_lagrangian_gradient) != physical_to_chart_shape[0]
+        or len(physical_objective_gradient) != physical_to_chart_shape[0]
+        or len(physical_to_chart_jacobian)
+        != physical_to_chart_shape[0] * physical_to_chart_shape[1]
+        or len(kkt_root_jacobian) != kkt_root_shape[0] * kkt_root_shape[1]
+        or len(physical_constraint_shape) != 2
+        or len(physical_equality_multipliers) != physical_constraint_shape[0]
+        or len(physical_stationarity_residuals) != physical_constraint_shape[1]
+        or len(physical_constraint_jacobian)
+        != physical_constraint_shape[0] * physical_constraint_shape[1]
+    ):
+        raise ValueError("native chemical derivative evidence has inconsistent dimensions")
+    if reduced_dimension:
+        if (
+            reduced_hessian_nullspace_shape
+            != (reduced_dimension, derivative_dimension)
+            or len(reduced_hessian_nullspace_basis)
+            != reduced_dimension * derivative_dimension
+        ):
+            raise ValueError("native reduced-Hessian basis dimensions are inconsistent")
+    elif reduced_hessian_nullspace_shape not in {
+        (0, 0),
+        (0, derivative_dimension),
+    } or reduced_hessian_nullspace_basis:
+        raise ValueError("native empty reduced-Hessian basis is inconsistent")
+    if kkt_root_status not in {
+        "not_evaluated",
+        "interior_no_active_bounds",
+        "unavailable_active_bounds",
+        "evaluation_failed",
+    }:
+        raise ValueError("native KKT root-system status is invalid")
+    if kkt_root_status == "interior_no_active_bounds":
+        if (
+            kkt_root_shape != (kkt_dimension, kkt_dimension)
+            or len(kkt_root_jacobian) != kkt_dimension * kkt_dimension
+        ):
+            raise ValueError("native KKT root-system evidence is inconsistent")
+    elif kkt_root_shape != (0, 0) or kkt_root_jacobian:
+        raise ValueError("native unavailable KKT root-system evidence is not empty")
+    if spectrum_status not in {
+        "not_adjudicated",
+        "not_evaluated",
+        "converged",
+        "not_converged",
+        "nonfinite",
+    }:
+        raise ValueError("native reduced-Hessian spectrum status is invalid")
+    if reduced_dimension and spectrum_status in {"converged", "not_converged"}:
+        if len(reduced_hessian_eigenvalues) != reduced_dimension or tolerance is None:
+            raise ValueError("native reduced-Hessian spectrum dimensions are invalid")
+        classified = (
+            sum(value > tolerance for value in reduced_hessian_eigenvalues),
+            sum(abs(value) <= tolerance for value in reduced_hessian_eigenvalues),
+            sum(value < -tolerance for value in reduced_hessian_eigenvalues),
+        )
+        if reduced_raw_inertia != classified or sum(reduced_inertia) != reduced_dimension:
+            raise ValueError("native reduced-Hessian spectrum and inertia disagree")
+    elif reduced_dimension and spectrum_status == "nonfinite":
+        if (
+            reduced_hessian_eigenvalues
+            or reduced_raw_inertia != (0, 0, 0)
+            or reduced_inertia != (0, 0, 0)
+        ):
+            raise ValueError("native nonfinite reduced-Hessian evidence is inconsistent")
+    elif reduced_dimension:
+        raise ValueError("native reduced-Hessian spectrum was not evaluated")
+    elif reduced_raw_inertia != (0, 0, 0) or reduced_inertia != (0, 0, 0):
+        raise ValueError("native empty reduced-Hessian inertia is invalid")
+    reported_affinity_norm = float(cast(float, native["reaction_affinity_inf_norm"]))
+    reported_stationarity_norm = float(cast(float, native["kkt_stationarity_inf_norm"]))
+    if (
+        reaction_affinity_residuals
+        and not math.isclose(
+            max(abs(value) for value in reaction_affinity_residuals),
+            reported_affinity_norm,
+            rel_tol=2.0e-12,
+            abs_tol=2.0e-12,
+        )
+    ) or (
+        physical_stationarity_residuals
+        and not math.isclose(
+            max(abs(value) for value in physical_stationarity_residuals),
+            reported_stationarity_norm,
+            rel_tol=2.0e-12,
+            abs_tol=2.0e-12,
+        )
+    ):
+        raise ValueError("native chemical residual vectors and norms disagree")
+    sensitivities = cast(Mapping[str, object], native["sensitivities"])
     return ChemicalEquilibriumDiagnostics(
         solver_status=str(native["solver_status"]),
         callback_error=str(native["callback_error"]),
-        failure_reason=(
-            str(native["callback_error"])
-            or f"not certified: {native['chemical_certification_level']}"
-        )
-        if not bool(native["accepted"])
-        else "",
-        chemical_certification_level=str(native["chemical_certification_level"]),
+        failure_kind=failure_kind,
+        failure_reason=str(native["failure_reason"]),
+        chemical_certification_level=certification,
         boundary_status=str(native["boundary_status"]),
         structural_zero_species_indices=tuple(
             int(index) for index in cast(Sequence[int], native["structural_zero_species_indices"])
         ),
-        numerical_status=str(native["numerical_status"]),
-        physical_status=str(native["physical_status"]),
+        numerical_status=numerical_status,
+        physical_status=physical_status,
         predictive_status="not_adjudicated",
         provider_domain_status=str(native["provider_domain_status"]),
-        local_minimum_status=str(native["local_minimum_status"]),
+        local_minimum_status=local_minimum_status,
         negative_curvature_recovery_status=str(
             native.get("negative_curvature_recovery_status", "not_needed")
         ),
@@ -1576,14 +2049,108 @@ def _chemical_diagnostics(
         ),
         trace_status=str(native["trace_status"]),
         globality_status=str(native["globality_certificate"]),
-        search=_chemical_search(native),
+        search=search,
+        amounts_mol=_float_tuple(native["amounts"]),
+        volume_m3=_optional_float(native, "volume_m3"),
         balance_inf_norm=float(cast(float, native["balance_inf_norm"])),
         charge_inf_norm=float(cast(float, native["charge_inf_norm"])),
         pressure_relative_residual=float(cast(float, native["pressure_relative_residual"])),
-        reaction_affinity_inf_norm=float(cast(float, native["reaction_affinity_inf_norm"])),
+        reaction_affinity_inf_norm=reported_affinity_norm,
+        reaction_affinity_residuals=reaction_affinity_residuals,
         packing_fraction=float(cast(float, native["packing_fraction"])),
-        kkt_stationarity_inf_norm=float(cast(float, native["kkt_stationarity_inf_norm"])),
+        packing_fraction_min=_optional_float(native, "packing_fraction_min"),
+        packing_fraction_max=_optional_float(native, "packing_fraction_max"),
+        total_ion_fraction=_optional_float(native, "total_ion_fraction"),
+        total_ion_fraction_max=_optional_float(native, "total_ion_fraction_max"),
+        minimum_amount_mol=_optional_float(native, "minimum_amount_mol"),
+        trace_floor_mol=_optional_float(native, "trace_floor_mol"),
+        kkt_stationarity_inf_norm=reported_stationarity_norm,
+        physical_stationarity_residuals=physical_stationarity_residuals,
+        physical_equality_multipliers=physical_equality_multipliers,
+        physical_constraint_jacobian=physical_constraint_jacobian,
+        physical_constraint_shape=physical_constraint_shape,
+        physical_lagrangian_gradient=physical_lagrangian_gradient,
+        physical_objective_gradient=physical_objective_gradient,
+        physical_to_chart_jacobian=physical_to_chart_jacobian,
+        physical_to_chart_shape=physical_to_chart_shape,
+        chart_physical_pullback_residual_inf_norm=_optional_float(
+            native, "chart_physical_pullback_residual_inf_norm"
+        ),
         complementarity_inf_norm=float(cast(float, native["complementarity_inf_norm"])),
+        numerical_criteria=numerical_criteria,
+        physical_criteria=physical_criteria,
+        first_failed_numerical_criterion=first_failed_numerical,
+        first_failed_physical_criterion=first_failed_physical,
+        kkt_dimension=kkt_dimension,
+        kkt_rank=kkt_rank,
+        condition_number_inf=_optional_float(native, "condition_number_inf"),
+        active_lower_bounds=_index_tuple(native["active_lower_bounds"], "active lower bounds"),
+        active_upper_bounds=_index_tuple(native["active_upper_bounds"], "active upper bounds"),
+        active_constraint_bounds=_index_tuple(
+            native["active_constraint_bounds"], "active constraint bounds"
+        ),
+        active_trace_species=_index_tuple(
+            sensitivities["active_trace_species"], "active trace species"
+        ),
+        chart_topology=str(sensitivities["chart_topology"]),
+        reduced_hessian_status=str(native["reduced_hessian_status"]),
+        reduced_hessian=reduced_hessian,
+        reduced_hessian_nullspace_basis=reduced_hessian_nullspace_basis,
+        reduced_hessian_nullspace_shape=reduced_hessian_nullspace_shape,
+        reduced_hessian_eigenvalues=reduced_hessian_eigenvalues,
+        reduced_hessian_spectrum_status=spectrum_status,
+        reduced_hessian_raw_inertia=reduced_raw_inertia,
+        reduced_hessian_inertia=reduced_inertia,
+        reduced_hessian_scale=_optional_float(native, "reduced_hessian_scale"),
+        reduced_hessian_eigenvalue_tolerance=tolerance,
+        objective_gradient=objective_gradient,
+        constraint_values=constraint_values,
+        constraint_jacobian=constraint_jacobian,
+        lagrangian_gradient=lagrangian_gradient,
+        equality_multipliers=equality_multipliers,
+        chart_stationarity_inf_norm=_optional_float(native, "chart_stationarity_inf_norm"),
+        lagrangian_hessian=lagrangian_hessian,
+        covariant_lagrangian_hessian=covariant_lagrangian_hessian,
+        derivative_check_step=_optional_float(native, "derivative_check_step"),
+        objective_gradient_check_relative_error=_optional_float(
+            native, "objective_gradient_check_relative_error"
+        ),
+        physical_objective_gradient_check_relative_error=_optional_float(
+            native, "physical_objective_gradient_check_relative_error"
+        ),
+        constraint_jacobian_check_relative_error=_optional_float(
+            native, "constraint_jacobian_check_relative_error"
+        ),
+        lagrangian_hessian_check_relative_error=_optional_float(
+            native, "lagrangian_hessian_check_relative_error"
+        ),
+        reduced_hessian_check_relative_error=_optional_float(
+            native, "reduced_hessian_check_relative_error"
+        ),
+        derivative_check_worst_entry=str(native["derivative_check_worst_entry"]),
+        derivative_check_worst_relative_error=_optional_float(
+            native, "derivative_check_worst_relative_error"
+        ),
+        derivative_check_worst_analytic_value=_optional_float(
+            native, "derivative_check_worst_analytic_value"
+        ),
+        derivative_check_worst_finite_difference_value=_optional_float(
+            native, "derivative_check_worst_finite_difference_value"
+        ),
+        derivative_check_worst_step=_optional_float(native, "derivative_check_worst_step"),
+        derivative_coordinate_order=derivative_coordinate_order,
+        derivative_objective_basis=str(native["derivative_objective_basis"]),
+        derivative_constraint_basis=str(native["derivative_constraint_basis"]),
+        derivative_constraint_order=derivative_constraint_order,
+        objective_gradient_shape=objective_gradient_shape,
+        constraint_jacobian_shape=constraint_jacobian_shape,
+        lagrangian_hessian_shape=lagrangian_hessian_shape,
+        kkt_root_jacobian=kkt_root_jacobian,
+        kkt_root_shape=kkt_root_shape,
+        kkt_root_status=kkt_root_status,
+        kkt_root_jacobian_check_relative_error=_optional_float(
+            native, "kkt_root_jacobian_check_relative_error"
+        ),
         reference_representation_residual_inf_norm=_optional_float(
             native, "reference_representation_residual_inf_norm"
         )
@@ -1617,9 +2184,7 @@ def _distribution_file_identity(
     path = metadata.distribution(distribution_name).locate_file(relative_path)
     payload = path.read_bytes()
     if not payload:
-        raise ValueError(
-            f"installed {distribution_name} file identity is unavailable"
-        )
+        raise ValueError(f"installed {distribution_name} file identity is unavailable")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
@@ -1767,9 +2332,7 @@ def _chemical_sensitivity(
     parameter_names = tuple(
         str(value) for value in cast(Sequence[object], payload["parameter_order"])
     )
-    parameters = tuple(
-        _sensitivity_parameter(name, active_parameters) for name in parameter_names
-    )
+    parameters = tuple(_sensitivity_parameter(name, active_parameters) for name in parameter_names)
     amount_derivatives = tuple(
         _vector(row, len(species_ids), "chemical sensitivity amount row")
         for row in cast(Sequence[object], payload["amount_derivatives"])
@@ -1791,9 +2354,7 @@ def _chemical_sensitivity(
             + reaction_parameters
             + (_sensitivity_parameter("pressure_pa"),)
             + tuple(
-                _sensitivity_parameter(
-                    _active_parameter_name(parameter), active_parameters
-                )
+                _sensitivity_parameter(_active_parameter_name(parameter), active_parameters)
                 for parameter in active_parameters
             )
         )
@@ -1877,6 +2438,111 @@ def _chemical_sensitivity(
     )
 
 
+def _source_reference_transfer(
+    phase: ProviderPhase,
+    standard_state: ChemicalStandardState,
+    *,
+    species_ids: tuple[str, ...],
+    temperature_k: float,
+    pressure_pa: float,
+    sensitivities_requested: bool,
+    active_parameters_requested: bool,
+) -> epcsaft.SourceReferenceTransfer:
+    if standard_state.source_reference_component_ids != species_ids:
+        raise ValueError(
+            "source-reference component order does not match the reaction system"
+        )
+    if tuple(phase.model.component_ids) != species_ids:
+        raise ValueError(
+            "source-reference component order does not match the installed Provider"
+        )
+    if len(standard_state.log_activity_scale_factors) != len(species_ids):
+        raise ValueError("source activity-scale factors do not match the species order")
+    required_derivatives = (
+        ()
+        if not sensitivities_requested
+        else (("pressure", "parameters") if active_parameters_requested else ("pressure",))
+    )
+    transfer = epcsaft.source_reference_transfer(
+        phase.model,
+        epcsaft.SourceReferenceDeclaration(
+            reference_state_id=standard_state.id,
+            component_ids=standard_state.source_reference_component_ids,
+            solvent_mole_fractions=(
+                standard_state.source_reference_solvent_composition
+            ),
+            activity_convention_id=(
+                standard_state.source_reference_activity_convention_id
+            ),
+            standard_molality_mol_per_kg=(
+                standard_state.source_reference_standard_molality_mol_per_kg
+            ),
+            reference_pressure_pa=standard_state.reference_pressure_pa,
+            required_derivatives=required_derivatives,
+        ),
+        T=temperature_k * epcsaft.unit_registry.kelvin,
+        P=pressure_pa * epcsaft.unit_registry.pascal,
+    )
+    if (
+        transfer.status != "ok"
+        or transfer.domain_status != "admitted-domain"
+        or transfer.convergence_status != "converged-limit"
+        or transfer.component_ids != species_ids
+        or transfer.reference_state_id != standard_state.id
+        or transfer.activity_convention_id
+        != standard_state.source_reference_activity_convention_id
+        or transfer.parameter_fingerprint != phase.expected_parameter_fingerprint
+        or transfer.temperature_k != temperature_k
+        or transfer.pressure_pa != pressure_pa
+        or transfer.source_reference_pressure_pa
+        != standard_state.reference_pressure_pa
+    ):
+        raise ValueError("installed Provider source-reference receipt is incompatible")
+    return transfer
+
+
+def _source_reference_payload(
+    transfer: epcsaft.SourceReferenceTransfer,
+) -> dict[str, object]:
+    return {
+        "status": transfer.status,
+        "domain_status": transfer.domain_status,
+        "convergence_status": transfer.convergence_status,
+        "reference_state_id": transfer.reference_state_id,
+        "activity_convention_id": transfer.activity_convention_id,
+        "component_ids": transfer.component_ids,
+        "neutral_basis_row_count": len(transfer.neutral_basis),
+        "neutral_basis": tuple(
+            value for row in transfer.neutral_basis for value in row
+        ),
+        "log_fugacity_contractions": transfer.log_fugacity_contractions,
+        "activity_scale_log_contractions": (
+            transfer.activity_scale_log_contractions
+        ),
+        "transfer_log_contractions": transfer.transfer_log_contractions,
+        "source_composition": transfer.source_composition,
+        "derivative_availability": transfer.derivative_availability,
+        "temperature_k": transfer.temperature_k,
+        "pressure_pa": transfer.pressure_pa,
+        "source_reference_pressure_pa": transfer.source_reference_pressure_pa,
+        "standard_molality_mol_per_kg": (
+            transfer.standard_molality_mol_per_kg
+        ),
+        "reference_convergence_error": transfer.reference_convergence_error,
+        "source_temperature_min_k": transfer.source_temperature_interval_k[0],
+        "source_temperature_max_k": transfer.source_temperature_interval_k[1],
+        "source_pressure_min_pa": transfer.source_pressure_interval_pa[0],
+        "source_pressure_max_pa": transfer.source_pressure_interval_pa[1],
+        "parameter_fingerprint": transfer.parameter_fingerprint,
+        "topology_fingerprint": transfer.topology_fingerprint,
+        "component_order_fingerprint": transfer.component_order_fingerprint,
+        "reference_state_fingerprint": transfer.reference_state_fingerprint,
+        "domain_fingerprint": transfer.domain_fingerprint,
+        "artifact_fingerprint": transfer.artifact_fingerprint,
+        "helmholtz_basis_id": transfer.helmholtz_basis_id,
+    }
+
+
 def chemical_equilibrium(
     phase: IdealGasPhase | ProviderPhase,
     temperature: Quantity[Any],
@@ -1895,9 +2561,7 @@ def chemical_equilibrium(
         ):
             raise TypeError("sensitivity_request must be a typed sensitivity request")
         active_parameters = (
-            ()
-            if sensitivity_request is None
-            else sensitivity_request.active_parameters
+            () if sensitivity_request is None else sensitivity_request.active_parameters
         )
         if any(
             not isinstance(parameter, ChemicalEquilibriumActiveParameter)
@@ -1916,15 +2580,13 @@ def chemical_equilibrium(
         )
         for parameter in active_parameters:
             component_shape_valid = (
-                parameter.identity == "component"
-                and len(parameter.component_ids) == 1
-            ) or (
-                parameter.identity == "unordered_component_pair"
-                and len(parameter.component_ids) == 2
-                and parameter.component_ids[0] != parameter.component_ids[1]
-            ) or (
-                parameter.identity == "model"
-                and not parameter.component_ids
+                (parameter.identity == "component" and len(parameter.component_ids) == 1)
+                or (
+                    parameter.identity == "unordered_component_pair"
+                    and len(parameter.component_ids) == 2
+                    and parameter.component_ids[0] != parameter.component_ids[1]
+                )
+                or (parameter.identity == "model" and not parameter.component_ids)
             )
             if (
                 not parameter.family
@@ -1938,11 +2600,25 @@ def chemical_equilibrium(
         temperature_k = _quantity(temperature, "kelvin", "temperature", "chemical_equilibrium")
         pressure_pa = _quantity(pressure, "pascal", "pressure", "chemical_equilibrium")
         standard_state = problem.source_standard_state
-        if standard_state is not None and (
-            not math.isfinite(standard_state.reference_pressure_pa)
-            or standard_state.reference_pressure_pa <= 0.0
-        ):
-            raise ValueError("source-standard-state reference pressure must be positive and finite")
+        if standard_state is not None:
+            if (
+                not math.isfinite(standard_state.reference_pressure_pa)
+                or standard_state.reference_pressure_pa <= 0.0
+            ):
+                raise ValueError(
+                    "source-standard-state reference pressure must be positive and finite"
+                )
+            if (
+                not standard_state.id
+                or not standard_state.activity_scale_id
+                or not standard_state.source_reference_activity_convention_id
+                or not math.isfinite(
+                    standard_state.source_reference_standard_molality_mol_per_kg
+                )
+                or standard_state.source_reference_standard_molality_mol_per_kg
+                <= 0.0
+            ):
+                raise ValueError("source-standard-state declaration is incomplete")
         if not math.isfinite(problem.strict_interior_amount_floor_mol) or (
             problem.strict_interior_amount_floor_mol <= 0.0
         ):
@@ -1977,6 +2653,7 @@ def chemical_equilibrium(
             "pressure_pa": pressure_pa,
         }
         packing_bounds: tuple[float, float] | None
+        source_transfer: epcsaft.SourceReferenceTransfer | None = None
         if isinstance(phase, IdealGasPhase):
             if active_parameters:
                 raise ValueError("ideal-gas sensitivity cannot request Provider coordinates")
@@ -2019,8 +2696,20 @@ def chemical_equilibrium(
             thermodynamic_model = "installed_provider"
             provider_ids = tuple(phase.model.component_ids)
             provider_fingerprint = model_fingerprint
+            if standard_state is not None:
+                source_transfer = _source_reference_transfer(
+                    phase,
+                    standard_state,
+                    species_ids=problem.species_ids,
+                    temperature_k=temperature_k,
+                    pressure_pa=pressure_pa,
+                    sensitivities_requested=sensitivity_request is not None,
+                    active_parameters_requested=bool(active_parameters),
+                )
         else:
             raise TypeError("chemical_equilibrium requires a typed phase model")
+        if standard_state is not None and source_transfer is None:
+            raise RuntimeError("source-reference transfer was not evaluated")
         native_standard_state: dict[str, object] | None = (
             None
             if standard_state is None
@@ -2029,6 +2718,15 @@ def chemical_equilibrium(
                 "activity_scale_id": standard_state.activity_scale_id,
                 "log_activity_scale_factors": standard_state.log_activity_scale_factors,
                 "reference_pressure_pa": standard_state.reference_pressure_pa,
+                "source_reference_activity_convention_id": (
+                    standard_state.source_reference_activity_convention_id
+                ),
+                "source_reference_standard_molality_mol_per_kg": (
+                    standard_state.source_reference_standard_molality_mol_per_kg
+                ),
+                "provider_transfer": _source_reference_payload(
+                    cast(epcsaft.SourceReferenceTransfer, source_transfer)
+                ),
             }
         )
         native = cast(
@@ -2051,22 +2749,31 @@ def chemical_equilibrium(
         TypeError,
         ValueError,
     ) as error:
+        reason = str(error)
+        classified = _classified_source_reference_failure(reason)
+        diagnostics = classified or _failed_chemical_diagnostics(
+            "input_or_native_error", reason
+        )
         raise ChemicalEquilibriumError(
-            str(error),
-            _failed_chemical_diagnostics("input_or_native_error", str(error)),
+            reason,
+            diagnostics,
         ) from error
 
     try:
         if not bool(native["accepted"]):
-            reason = str(native["callback_error"]) or (
-                f"chemical equilibrium was not certified: "
-                f"{diagnostics.chemical_certification_level}"
-            )
+            reason = diagnostics.failure_reason or str(native["callback_error"])
             raise ChemicalEquilibriumError(reason, diagnostics)
         if provider_fingerprint is not None and (
             str(native["parameter_fingerprint"]) != provider_fingerprint
         ):
             raise ValueError("native result has the wrong Provider fingerprint")
+        if source_transfer is not None and (
+            str(native.get("source_reference_state_fingerprint", ""))
+            != source_transfer.reference_state_fingerprint
+            or str(native.get("provider_reference_id", ""))
+            != source_transfer.helmholtz_basis_id
+        ):
+            raise ValueError("native result has the wrong source-reference receipt")
         amounts = _vector(native["amounts"], len(problem.species_ids), "chemical amounts")
         total_amount = math.fsum(amounts)
         if total_amount <= 0.0 or not math.isfinite(total_amount):
@@ -2115,6 +2822,7 @@ def chemical_equilibrium(
         provider_parameter_fingerprint=provider_fingerprint,
         equilibrium_constants=problem.equilibrium_constants,
         source_standard_state=standard_state,
+        source_reference_transfer=source_transfer,
         provider_reference_id=provider_reference_id,
         standard_offsets=standard_offsets,
         ln_k_provider_basis=ln_k_provider_basis,
@@ -2155,10 +2863,7 @@ def chemical_observation_context(
         raise ValueError("chemical-observation context requires rows and parameters")
     if any(not isinstance(item, ChemicalObservationRow) for item in row_records):
         raise TypeError("chemical-observation rows use the typed row record")
-    if any(
-        not isinstance(item, ChemicalEquilibriumActiveParameter)
-        for item in parameter_records
-    ):
+    if any(not isinstance(item, ChemicalEquilibriumActiveParameter) for item in parameter_records):
         raise TypeError("active parameters use the typed request record")
     if not isinstance(phase.model, epcsaft.Mixture):
         raise TypeError("ProviderPhase requires an epcsaft.Mixture")
@@ -2177,6 +2882,10 @@ def chemical_observation_context(
         problem = row.problem
         if not isinstance(problem, ChemicalEquilibriumProblem):
             raise TypeError("chemical-observation row requires a typed problem")
+        if problem.source_standard_state is not None:
+            raise ValueError(
+                "chemical-observation source-reference derivatives are unsupported"
+            )
         if not isinstance(row.primitive, ChemicalObservationPrimitive):
             raise TypeError("chemical-observation row requires a typed primitive")
         if not row.row_id or not row.state_id or not row.state_schema_id or not row.source_id:
@@ -2208,11 +2917,7 @@ def chemical_observation_context(
                 "conversion_id": record.conversion_id,
                 "dimensionless": record.dimensionless,
                 "temperature_k": temperature_k,
-                "pressure_pa": (
-                    problem.source_standard_state.reference_pressure_pa
-                    if problem.source_standard_state is not None
-                    else pressure_pa
-                ),
+                "pressure_pa": pressure_pa,
             }
             for record in problem.equilibrium_constants
         )
@@ -2230,35 +2935,21 @@ def chemical_observation_context(
             "temperature_k": temperature_k,
             "pressure_pa": pressure_pa,
         }
-        standard_state: dict[str, object] | None = None
-        if problem.source_standard_state is not None:
-            standard_state = {
-                "id": problem.source_standard_state.id,
-                "activity_scale_id": problem.source_standard_state.activity_scale_id,
-                "log_activity_scale_factors": (
-                    problem.source_standard_state.log_activity_scale_factors
-                ),
-                "reference_pressure_pa": (
-                    problem.source_standard_state.reference_pressure_pa
-                ),
-            }
-        reference_id = (
-            problem.source_standard_state.id
-            if problem.source_standard_state is not None
-            else "provider-helmholtz-coordinate-basis"
+        reference_id = "provider-helmholtz-coordinate-basis"
+        reference_fingerprint = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    {
+                        "reference_id": reference_id,
+                        "equilibrium_constants": constants,
+                    },
+                    allow_nan=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode("utf-8")
+            ).hexdigest()
         )
-        reference_fingerprint = "sha256:" + hashlib.sha256(
-            json.dumps(
-                {
-                    "reference_id": reference_id,
-                    "source_standard_state": standard_state,
-                    "equilibrium_constants": constants,
-                },
-                allow_nan=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode("utf-8")
-        ).hexdigest()
         native_rows.append(
             {
                 "row_id": row.row_id,
@@ -2269,7 +2960,6 @@ def chemical_observation_context(
                 "reference_id": reference_id,
                 "reference_fingerprint": reference_fingerprint,
                 "problem": problem_record,
-                "source_standard_state": standard_state,
                 "primitive": {
                     "kind": row.primitive.kind,
                     "component_id": row.primitive.component_id,
@@ -2297,52 +2987,57 @@ def chemical_observation_context(
         "epcsaft_equilibrium/include/epcsaft/regression/evaluator_v1.h",
     )
     provider_artifact_identity = (
-        f"epcsaft=={provider_version};RECORD={provider_record};"
-        f"HEADER={provider_header}"
+        f"epcsaft=={provider_version};RECORD={provider_record};HEADER={provider_header}"
     )
     owner_artifact_identity = (
-        f"epcsaft-equilibrium=={owner_version};RECORD={owner_record};"
-        f"HEADER={owner_header}"
+        f"epcsaft-equilibrium=={owner_version};RECORD={owner_record};HEADER={owner_header}"
     )
     evaluator_identity = "epcsaft-equilibrium.homogeneous-liquid-observation.v1"
     capability_id = "homogeneous-liquid-positive-scalars-v1"
-    capability_fingerprint = "sha256:" + hashlib.sha256(
-        (
-            capability_id
-            + "\nneutral_component_fugacity_pa:Pa"
-            + "\nspecies_mole_fraction:dimensionless"
-            + "\nidentity\nnatural_log"
-        ).encode("utf-8")
-    ).hexdigest()
-    contract_fingerprint = "sha256:" + hashlib.sha256(
-        json.dumps(
-            {
-                "rows": native_rows,
-                "parameters": native_parameters,
-            },
-            allow_nan=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode("utf-8")
-    ).hexdigest()
-    artifact_identity = "sha256:" + hashlib.sha256(
-        (
-            evaluator_identity
-            + "\n"
-            + capability_fingerprint
-            + "\n"
-            + provider_artifact_identity
-            + "\n"
-            + owner_artifact_identity
-            + "\n"
-            + contract_fingerprint
-            + "\n"
-            + phase.expected_parameter_fingerprint
-        ).encode("utf-8")
-    ).hexdigest()
-    trace_floors = {
-        float(item.problem.strict_interior_amount_floor_mol) for item in row_records
-    }
+    capability_fingerprint = (
+        "sha256:"
+        + hashlib.sha256(
+            (
+                capability_id
+                + "\nneutral_component_fugacity_pa:Pa"
+                + "\nspecies_mole_fraction:dimensionless"
+                + "\nidentity\nnatural_log"
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    contract_fingerprint = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(
+                {
+                    "rows": native_rows,
+                    "parameters": native_parameters,
+                },
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    artifact_identity = (
+        "sha256:"
+        + hashlib.sha256(
+            (
+                evaluator_identity
+                + "\n"
+                + capability_fingerprint
+                + "\n"
+                + provider_artifact_identity
+                + "\n"
+                + owner_artifact_identity
+                + "\n"
+                + contract_fingerprint
+                + "\n"
+                + phase.expected_parameter_fingerprint
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    trace_floors = {float(item.problem.strict_interior_amount_floor_mol) for item in row_records}
     if len(trace_floors) != 1:
         raise ValueError("chemical-observation rows require one trace-floor contract")
     capsule = _equilibrium._chemical_observation_context(
@@ -2366,30 +3061,18 @@ def chemical_observation_context(
         state_schema_ids=tuple(item.state_schema_id for item in row_records),
         source_ids=tuple(item.source_id for item in row_records),
         primitive_ids=tuple(
-            f"{item.primitive.kind};{item.primitive.component_id}"
-            for item in row_records
+            f"{item.primitive.kind};{item.primitive.component_id}" for item in row_records
         ),
         parameter_ids=tuple(
             f"{item.family};{item.identity};{','.join(item.component_ids)}"
             for item in parameter_records
         ),
         primitive_units=tuple(
-            (
-                "Pa"
-                if item.primitive.kind == "neutral_component_fugacity_pa"
-                else "dimensionless"
-            )
+            ("Pa" if item.primitive.kind == "neutral_component_fugacity_pa" else "dimensionless")
             for item in row_records
         ),
         transform_ids=tuple(item.transform_id for item in row_records),
-        reference_ids=tuple(
-            (
-                item.problem.source_standard_state.id
-                if item.problem.source_standard_state is not None
-                else "provider-helmholtz-coordinate-basis"
-            )
-            for item in row_records
-        ),
+        reference_ids=tuple("provider-helmholtz-coordinate-basis" for _ in row_records),
         reference_fingerprints=tuple(
             str(record["reference_fingerprint"]) for record in native_rows
         ),

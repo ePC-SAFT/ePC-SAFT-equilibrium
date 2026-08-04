@@ -19,7 +19,7 @@ replace a formulation owner.
 | Pure-component saturation | [Pure-saturation slice](designs/2026-07-17-pure-saturation-slice.md) | Accepted only for the exact methane, ethane, and propane scope in `promotion-0018-equilibrium-pure-saturation-v1` |
 | Neutral Pereira HELD | [Neutral HELD v1](designs/2026-07-17-neutral-held-v1.md) | Frozen local candidate; installed campaign retained as `NON_ADMISSION`; controller redesign deferred |
 | Strong-electrolyte Perdomo HELD2 | [Paper-faithful Steps 1--10](designs/2026-07-24-held2-paper-algorithm.md), [publication companion](designs/2026-07-29-held2-publication-algorithm.md), with [earlier design provenance](designs/2026-07-21-perdomo-held2.md) | Public development dispatch over one native core with fail-closed installed evidence; no admitted electrolyte LLE capability |
-| Homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md), [GREPE homogeneous layer](designs/2026-07-27-grepe-homogeneous-chemical-layer.md), [deterministic basin-search contract](designs/2026-07-30-homogeneous-chemical-basin-search.md), and [installed-artifact handoff](designs/2026-07-30-chemical-basin-search-validation-handoff.md) | Public typed local value operation with optional conditioned state-input sensitivities; deterministic finite basin search for the lowest observed certified strict local minimum; no predictive, phase-stability, or global admission |
+| Homogeneous reacting phase | [Private reacting-phase kernel](designs/2026-07-21-private-reacting-phase-kernel.md), [GREPE homogeneous layer](designs/2026-07-27-grepe-homogeneous-chemical-layer.md), [deterministic basin-search contract](designs/2026-07-30-homogeneous-chemical-basin-search.md), and [installed-artifact handoff](designs/2026-07-30-chemical-basin-search-validation-handoff.md) | Public typed local value operation with optional conditioned state-input sensitivities and deterministic finite basin search for the lowest observed certified strict local minimum; no predictive, phase-stability, or global admission |
 | Superseded fixed two-phase route | [Historical fixed-route design](designs/2026-07-17-neutral-two-phase-tp-flash.md) | Removed without alias; retained only as provenance |
 | Ascani counterion-pair electrolyte equilibrium | No current runtime design | Closed future formulation; historical lab evidence only |
 | Coupled multiphase chemical equilibrium | [GREPE reactive phase equilibrium](designs/2026-07-28-grepe-reactive-phase-equilibrium.md), [implementation plan](plans/2026-07-29-grepe-reactive-lle-plan.md), and [benchmark review](designs/2026-07-29-reactive-lle-benchmark-review.md) | Normative future implementation contract for an at-most-two-liquid first slice; no public schema or runtime route |
@@ -287,12 +287,34 @@ settings, chemistry data, aliases, or a second implementation. Its certificate
 axes keep artifact/input completeness, Ipopt status, numerical and physical
 checks, reduced-Hessian local status, predictive status, finite search, and
 globality separate. The manufactured installed-Provider evidence remains
-labeled manufactured/nonpredictive. Source-bound input consumes explicit
-source activity-scale shifts and the installed Provider neutral-reference
-callback at the actual system pressure, then passes Provider-basis constants
-and private transformed records bound to that trial pressure directly to the
-same compiler and `solve_provider_reaction` owner. The source standard state's
-declared reference pressure is retained separately as immutable provenance.
+labeled manufactured/nonpredictive. Source-bound input declares exact ordered
+components, a salt-free solvent composition, activity convention, standard
+molality, source pressure, and activity-scale shifts. Equilibrium calls the
+installed public EOS `source_reference_transfer` operation at the actual
+system pressure, validates its ordered charge-neutral basis and immutable
+fingerprints, and passes only the resulting Provider-basis constants to the
+same compiler and `solve_provider_reaction` owner. The source reference
+pressure is retained separately as immutable provenance, and the complete
+frozen EOS transfer receipt is attached to the public result.
+Failures preserve the returned terminal state and expose each scalar numerical
+and physical criterion independently, including the first failed criterion,
+active bounds, KKT rank/conditioning, and reduced-Hessian evidence. A
+`solve_succeeded` optimizer status is never a chemical certificate by itself.
+Second-order admission first reconstructs equality multipliers from the actual
+chart objective gradient and constraint Jacobian, rather than transferring a
+least-squares multiplier from a differently scaled physical system. It then
+uses the full chart Lagrangian Hessian. The physical Lagrangian's covariant
+congruence remains separate derivative-check evidence. Diagnostics name every
+derivative coordinate and constraint row in storage order and declare their
+bases; they also expose the equality multipliers and null-space basis needed to
+reproduce the projections. Strictly interior states expose the separate
+balance/affinity/pressure KKT root-system Jacobian. When any bound is active,
+that matrix is explicitly unavailable rather than presented as a complete
+active-set KKT system.
+The reported raw eigenvalue spectrum, its convergence status, and raw inertia
+are separate from the certified inertia produced by the scale-invariant
+diagonal congruence and Cholesky test; neither is silently substituted for the
+other.
 Its source-complete sentinel is `2 H2O <=> H3O+ + OH-` at 298.15 K and 1 bar
 using frozen IAPWS R11-07(2019) reaction data and the immutable Held-2008
 Provider catalog. This establishes one local, strictly interior, fixed-`T,P`
@@ -313,26 +335,26 @@ The typed sensitivity receipt reports rank, condition number, active bounds,
 amount-chart topology, and the immutable Provider parameter fingerprint. The
 result also binds installed Equilibrium and Provider distribution versions and
 RECORD fingerprints plus the Provider capsule name, ABI version, table size,
-and result-structure sizes. The pressure column includes the exact transformed
-source-reference pressure contribution when the installed neutral-reference
-derivative tail passes its pressure-domain, root-branch, topology,
-conditioning, ordering, and fingerprint certificates. Redundant source
+and result-structure sizes. Provider-basis inputs retain exact pressure and
+active-parameter sensitivity support. Source-bound sensitivity requests fail
+before optimization while the installed source-reference transfer advertises
+no derivatives. Redundant source
 reaction rows are reduced through the compiler's exact reaction transformation
 before entering the KKT column. Provider active-parameter coordinates are
 available only when the installed capability table advertises each requested
 typed coordinate and one atomic Provider callback supplies the active-model
 Helmholtz state derivatives, state-parameter block, pressure and
-chemical-potential projections, reference derivative, and packing state
+chemical-potential projections, and packing state
 gradient/Hessian. Request order is preserved. Missing blocks, unadvertised
 coordinates, active bounds, or unavailable KKT columns fail closed; no missing
 column is filled numerically. There is no
 chemistry registry, predictive admission, coupled-equilibrium result, or
 globality claim.
 
-A source-bound active request also requires the Provider's active
-neutral-reference value and parameter derivative at the same model point. If
-that prerequisite is unavailable, the operation rejects before solving rather
-than combining an active phase with a fixed-catalog reference value.
+A source-bound active request requires source-reference transfer derivatives
+for the requested coordinates. If that prerequisite is unavailable, the
+operation rejects before solving rather than combining an active phase with a
+fixed-catalog reference value.
 
 ## Shared package contract
 

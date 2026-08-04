@@ -75,7 +75,6 @@ def _chemical_equilibrium(
     trace_floor: float,
     active_parameters: tuple[dict[str, object], ...] | None = ...,
 ) -> dict[str, Any]: ...
-
 def _chemical_observation_context(
     provider_capsule: object,
     rows: tuple[dict[str, object], ...],

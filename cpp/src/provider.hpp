@@ -106,6 +106,8 @@ class ProviderContext {
 public:
     ProviderContext(const epcsaft_native_sdk_v1& sdk, std::string fingerprint);
 
+    [[nodiscard]] std::string reacting_topology_fingerprint() const;
+
     [[nodiscard]] PhaseEvaluation evaluate(
         double temperature_k,
         double amount_mol,

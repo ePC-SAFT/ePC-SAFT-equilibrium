@@ -154,19 +154,19 @@ callbacks. A source-derived Belov-Aristova gas restriction supplies algorithm
 and trace-range evidence through the seam and remains
 `manufactured_nonpredictive`. A source-complete Held-2008/IAPWS
 R11-07(2019) water self-ionization sentinel exercises the installed EOS
-neutral-reference transport through the same solver at 298.15 K and
+declared-solvent source-reference transfer through the same solver at 298.15 K and
 1 bar. It establishes one local fixed-state value result, not application
 chemistry, predictive, phase-stability, coupled-equilibrium, or globality.
 The public operation optionally returns exact conditioned derivatives for
 compiled totals, final EOS-basis reaction constants, and pressure. A
 source standard state's declared reference pressure remains provenance; the
-neutral reference and transformed EOS-basis records are evaluated and
-bound at the actual system pressure. The pressure column includes exact
-source-reference pressure derivatives when the installed derivative tail and
-branch certificates are available. A typed active-parameter request is also
+source limit and transformed EOS-basis records are evaluated and bound at the
+actual system pressure, and the immutable transfer receipt is retained.
+Source-bound sensitivity requests fail before optimization until the installed
+transfer advertises the requested derivatives. A typed active-parameter request is also
 available when the installed EOS advertises the exact coordinate and its
-atomic active-model Helmholtz, packing, pressure, chemical-potential, and
-neutral-reference derivative blocks. Unsupported coordinates, incomplete
+atomic active-model Helmholtz, packing, pressure, and chemical-potential
+derivative blocks. Unsupported coordinates, incomplete
 blocks, active bounds, or unavailable KKT columns fail closed. D-026 remains
 the public HELD2 admission gate.
 

@@ -292,8 +292,9 @@ The prior branch contained Provider neutral-reference transport,
 source-standard-state transformation results, standalone private bindings, and
 many tests. No qualified real source-bound reaction case consumed that stack
 end to end. The retained solver evidence supplied synthetic equilibrium
-constants already expressed in the Provider basis, while the MEA case remained
-blocked by provisional species parameters and unknown applicability.
+constants already expressed in the Provider basis, while source-incomplete
+application cases remained blocked by provisional parameters and unknown
+applicability.
 
 The same implementation also carried duplicated identity fields, preferred
 start contracts, and source-specific test scaffolding. During the approved
@@ -411,19 +412,19 @@ cross-check only; it is not a production dependency or oracle of record.
 After #69, source-reference transport returned only through the active
 Held-2008/IAPWS R11-07(2019) water self-ionization path. The transform feeds
 the existing homogeneous solve directly; the former standalone diagnostic
-surface did not return. MEA qualification remains application and Provider
+surface did not return. Application qualification remains application and Provider
 work and does not define the generic Equilibrium baseline.
 
 ## Issue boundary and readiness
 
 GitHub issue #35 owns private homogeneous chemical-equilibrium readiness. Issue
 #69 is the executable Belov trace-readiness leaf and is independent of Provider
-source-reference work. Historical MEA-specific leaves #46, #47, and #68 do not
+source-reference work. Historical application-specific leaves #46, #47, and #68 do not
 define the package baseline; #68 is retired as not planned.
 
 The source-reference leaf is complete because it names:
 
-- the exact non-editable non-MEA Provider artifact and native SDK contract;
+- the exact non-editable source-complete Provider artifact and native SDK contract;
 - one complete source record and its standard-state conversion;
 - the existing homogeneous solver entry point that consumes the transformed
   values;
@@ -449,7 +450,7 @@ This design does not authorize:
 - parameter regression;
 - a public reaction API or result family;
 - a backend/plugin registry;
-- a source-incomplete MEA solve;
+- a source-incomplete application solve;
 - predictive, finite-search-completeness, or globality claims;
 - promotion, release, receipt, or authority changes.
 
@@ -465,8 +466,8 @@ Persistent package evidence remains compact:
   Provider-block obligations;
 - one real source-complete sentinel when available.
 
-Full MEA or lithium sweeps, plots, parameter studies, and application
-comparisons belong in application or serialized installed-artifact validation
+Full application sweeps, plots, parameter studies, and comparisons belong in
+application or serialized installed-artifact validation
 work, not the package unit-test surface.
 
 ## Success criteria

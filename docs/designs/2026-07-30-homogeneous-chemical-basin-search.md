@@ -6,8 +6,8 @@
 
 **Issue:** [#96](https://github.com/ePC-SAFT/ePC-SAFT-equilibrium/issues/96)
 
-**Result freeze:** This record was committed before executing the new search
-against the Hilliard/Böttinger MEA sentinel. Sentinel behavior cannot change
+**Result freeze:** This record was committed before executing downstream
+installed-artifact validation. Application behavior cannot change
 the formulation, start order, budgets, tolerances, or acceptance rules below.
 
 ## Scope and authority
@@ -31,7 +31,7 @@ not establish phase stability, kinetic stability, global thermodynamic
 stability, predictive validity, infeasibility, or regression readiness.
 Finite-search exhaustion is evidence about the declared attempt sequence only.
 
-MEA supplies one immutable downstream stress subject. No production branch,
+Downstream validation may supply immutable stress subjects. No production branch,
 start, tolerance, or status depends on a chemistry name, source row, species
 name, or application.
 
@@ -145,19 +145,16 @@ balance retraction when binary64 reconstruction exceeds the balance tolerance.
 A failed retraction remains an attempt record and launches no Ipopt solve.
 
 For each accepted physical amount seed, the Provider route recomputes molar
-volume bounds and the pressure seed at that composition. It uses the existing
-inward-contracted bounds, geometric midpoint, and at most 100 geometric
-bisections when endpoint pressure residuals have opposite signs. The stopping
-test remains `abs(residual) <= 1e-10 * P`. A failed Provider bracket,
-inverse-packing reconstruction, trace check, or domain check remains a rejected
-start record.
+volume bounds and performs a fixed 128-interval scan in log volume. Every
+detected sign-changing pressure root is refined by at most 100 bisections with
+the stopping test `abs(residual) <= 1e-10 * P`. Distinct roots are ordered by
+distance from the log-volume midpoint and interleaved breadth-first across
+amount seeds. A failed Provider scan, inverse-packing reconstruction, trace
+check, or domain check remains a rejected start record; detected roots omitted
+by the fixed primary ceiling are counted as budget-truncated.
 
-The search does not use ideal-to-Provider continuation in this slice.
-Receipts report `continuation_status="not_used"`. Pope's ideal-gas continuation
-result therefore supplies no guarantee or hidden start for the nonideal
-problem. A future continuation route requires a new pre-result design that
-freezes its homotopy, predictor, corrector, step control, endpoint solve, fold
-handling, and failure accounting.
+The ordinary primary search does not hide a continuation start. If it finds no
+certified basin, the receipt remains exhausted.
 
 ## Negative-curvature recovery
 
@@ -242,7 +239,16 @@ basin ordinal. The receipt names the selected value
 
 The fixed primary budget is 25. The actual generated count can be lower when
 the reaction dimension is smaller or a direction cannot produce a distinct
-strict-interior seed. Each primary attempt can launch at most two recovery
+strict-interior seed. For an installed Provider, a fixed 128-interval
+log-volume scan brackets every detected sign-changing pressure root in the
+admitted volume interval. Distinct roots are ordered by distance from the
+log-volume midpoint. Starts are then interleaved breadth-first by root rank, so
+every constructible composition receives its first root before any composition
+receives a second, until the same fixed ceiling is reached; no detected root is
+silently chosen as the only density branch. Generated roots omitted only by the
+fixed ceiling are reported as budget-truncated; construction-, duplicate-,
+infeasible-, and Provider-domain-rejected starts are likewise accounted
+separately from evaluated starts. Each evaluated primary attempt can launch at most two recovery
 solves. No random seed, adaptive extra start, or result-dependent budget
 extension exists.
 
@@ -255,11 +261,14 @@ new solves.
 Every attempt record includes:
 
 - primary ordinal, kind, parent ordinal, and deterministic start identity;
-- start construction, retraction, continuation, and Provider-domain status;
+- start construction, retraction, and Provider-domain status;
 - solver and callback status;
 - finite terminal amounts, volume, and objective when available;
 - balance, charge, pressure, affinity, KKT, complementarity, trace, rank,
   conditioning, and curvature evidence;
+- returned-state central directional checks of the objective gradient,
+  constraint Jacobian, and Lagrangian Hessian, including step, scaled error,
+  and fixed tolerance;
 - terminal classification and duplicate basin reference; and
 - recovery seed and launched-solve accounting.
 
@@ -302,20 +311,19 @@ Package evidence must cover these claim groups:
    and no feasible start;
 4. the existing independent directional checks of objective gradients,
    constraint Jacobians, and Lagrangian Hessians; and
-5. unchanged ideal, water self-ionization, observation, and non-MEA public
+5. unchanged ideal, water self-ionization, observation, and public
    behavior.
 
-The frozen Hilliard/Böttinger sentinel runs only after this record is committed.
-It either returns a reproducible certified local minimum or remains a blocker
-with the complete finite-search receipt.
+Any frozen downstream sentinel runs only after this record is committed. It
+either returns a reproducible certified local minimum or remains a blocker with
+the complete finite-search receipt.
 [Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
-owns the preregistered MEA matrix over immutable installed artifacts.
+owns preregistered application matrices over immutable installed artifacts.
 
 ### Post-design ownership clarification
 
-The user subsequently confirmed that MEA testing is a downstream application
-of this generic capability. The package leaf therefore freezes the immutable
-artifact, public receipt, and exact sentinel identity, while
+Application testing is downstream of this generic capability. The package leaf
+therefore freezes the immutable artifact and public receipt, while
 [Validation issue #18](https://github.com/ePC-SAFT/ePC-SAFT-validation/issues/18)
 owns both the first installed-artifact sentinel execution and the broader
 matrix. This clarification supersedes only the execution owner implied by the

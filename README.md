@@ -241,21 +241,39 @@ source-complete Held/IAPWS water self-ionization value case. The public typed
 and optionally returns exact conditioned derivatives with respect to compiled
 balance totals, final EOS-basis `ln(K)`, and pressure. Value-only and
 value-plus-Jacobian responses are explicit. Requested unsupported columns fail
-closed. A source standard state's reference pressure remains immutable
-provenance, while the EOS reference is re-evaluated and the transformed
-EOS-basis record is bound at each actual trial pressure. Exact
-source-reference pressure derivatives are included in the returned pressure
-column when the installed derivative tail and its branch certificates are
-available. Typed active-parameter requests consume only coordinates advertised
+closed. A source standard state explicitly declares ordered components, a
+salt-free solvent composition, activity convention, standard molality, and
+reference pressure. The reference pressure remains immutable provenance, while
+the installed EOS evaluates the source limit and binds the transformed
+EOS-basis record at each actual trial pressure. The immutable EOS transfer
+receipt is returned with the result. Source-bound sensitivity requests fail
+before optimization until the installed transfer advertises the requested
+derivatives. Typed active-parameter requests consume only coordinates advertised
 by the installed EOS and require one atomic callback to supply the
-active-model Helmholtz, packing, pressure, chemical-potential, and
-neutral-reference derivative blocks. Unsupported or incomplete requests fail
+active-model Helmholtz, packing, pressure, and chemical-potential derivative
+blocks. Unsupported or incomplete requests fail
 closed; no derivative is approximated. Results bind species/parameter order, units, chart topology,
 EOS fingerprint, installed distribution RECORD fingerprints, and EOS
 SDK ABI identity. The reported `condition_number_inf` is the deterministic
 infinity-norm condition number of the four-pass row/column-equilibrated KKT
 system and is the one numerical conditioning metric used by the sensitivity
-gate; no second or unscaled condition metric is reported. The operation has no predictive admission, coupled
+gate; no second or unscaled condition metric is reported. Rejected solves retain
+the terminal amounts and volume and report a typed `failure_kind`, the first
+failed numerical and physical scalar criteria with their thresholds, active-set
+indices, KKT rank and conditioning, and reduced-Hessian matrix, spectrum,
+raw and certified inertia, spectrum convergence, scale, and tolerance. The
+derivative coordinate order and objective/constraint bases are explicit. The
+full chart Lagrangian Hessian, chart-consistent equality multipliers,
+null-space basis and covariant physical congruence are exposed for derivative
+and projection checks. Independent central finite differences check the chart
+and physical-space objective gradients, equality Jacobian, full Lagrangian
+Hessian, and null-space reduced Hessian. For strictly interior states,
+diagnostics also expose
+the balance/affinity/pressure KKT root-system Jacobian; active-bound states
+mark that matrix unavailable instead of mislabeling an incomplete active-set
+system. Second-order admission uses the
+full chart Lagrangian Hessian after multiplier reconstruction from that chart's
+objective gradient and constraint Jacobian. The operation has no predictive admission, coupled
 phase-equilibrium claim, or globality proof.
 Accepted receipt
 `promotion-0018-equilibrium-pure-saturation-v1` makes this repository the
