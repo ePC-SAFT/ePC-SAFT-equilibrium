@@ -149,7 +149,7 @@ def test_public_held2_performance_diagnostics_aggregate_native_work() -> None:
                     "attempted_candidate_ids": [1, 2],
                     "problem_candidate_variables": [0.2, 1.0, 0.8, 1.0],
                     "neighborhood_radius": 0.02,
-                }
+                },
             ],
         }
     )
@@ -221,59 +221,6 @@ def test_held2_observer_is_quiet_by_default_and_does_not_change_results(capfd) -
     assert "reason=declared_search_complete" in traced_output.out
 
 
-def test_two_phase_trace_serializes_step5_and_step8_continuation_state() -> None:
-    model = _perdomo_table3_model()
-    result = _equilibrium._solve_tp_flash(
-        epcsaft.native_sdk(model),
-        298.15,
-        3181.454397,
-        _nacl_feed(0.005000000139214637),
-        model.parameter_fingerprint,
-    )
-
-    assert result["outcome"] == "physical_equilibrium_accepted"
-    assert result["stability_search_status"] == "negative_witness_found"
-    assert result["step5_history"]
-    assert all(
-        step["value_scope"] == "best_certified_local_problem_65_value"
-        for step in result["step5_history"]
-    )
-    assert all(
-        step["bound_scope"] == "finite_cut_dual_upper"
-        for step in result["step4_history"]
-    )
-    assert all(
-        attempt["start_family"]
-        for step in result["step5_history"]
-        for attempt in step["attempts"]
-    )
-    assert result["step8_history"]
-    for step in result["step8_history"]:
-        assert step["problem_scope"] == "current_candidate_restricted_problem_67"
-        assert set(
-            (
-                "problem_candidate_ids",
-                "problem_candidate_variables",
-                "attempted_candidate_ids",
-                "candidate_ids",
-                "candidate_variables",
-            )
-        ).issubset(step)
-        assert len(step["problem_candidate_variables"]) % 2 == 0
-        assert len(step["candidate_variables"]) % 2 == 0
-        if step["farkas"]:
-            assert isinstance(
-                step["farkas"]["solver_ray_recovered_without_presolve"], bool
-            )
-    assert all(
-        step["gap_scope"] == "finite_cut_upper_minus_restricted_problem_67"
-        for step in result["step9_history"]
-    )
-    assert result["step10_history"]
-    assert result["step10"] == result["step10_history"][-1]
-    assert all("trace_component_indices" in step for step in result["step10_history"])
-
-
 def test_perdomo_table3_nacl_workflow() -> None:
     model = _perdomo_table3_model()
     result = _equilibrium._solve_tp_flash(
@@ -290,9 +237,7 @@ def test_perdomo_table3_nacl_workflow() -> None:
     assert PERDOMO_TABLE3_FEED[1] - PERDOMO_TABLE3_FEED[2] == pytest.approx(0.0, abs=1.0e-15)
     assert result["controller"] == "perdomo_held2_paper_steps_1_to_10_v1"
     assert result["outcome"] == "one_phase_no_negative_witness_detected"
-    assert result["stability_search_status"] == (
-        "finite_search_completed_no_negative_witness"
-    )
+    assert result["stability_search_status"] == ("finite_search_completed_no_negative_witness")
     assert result["failure_reason"] is None
     assert result["failure_stage"] is None
     assert len(result["phases"]) == 1

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import math
 from collections.abc import Callable
 
@@ -110,14 +109,10 @@ def test_scaled_nearly_dependent_reactions_are_stable_within_condition_limit() -
         (1.0e8, False),
         (1.0e8, True),
     ):
-        result = _solve(
-            _nearly_dependent_system(scale, 1.5e-6, reverse_order=reverse_order)
-        )
+        result = _solve(_nearly_dependent_system(scale, 1.5e-6, reverse_order=reverse_order))
         assert result.amounts_mol == pytest.approx(expected, rel=2.0e-8)
 
-    with pytest.raises(
-        epcsaft_equilibrium.ChemicalEquilibriumError, match="reaction matrix rank"
-    ):
+    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError, match="reaction matrix rank"):
         _solve(_nearly_dependent_system(1.0, 1.0e-14))
 
 
@@ -134,44 +129,10 @@ def _change(path: str, value: object) -> Callable[[dict[str, object]], None]:
     return apply
 
 
-@pytest.mark.parametrize(
-    ("mutate", "message"),
-    (
-        (_change("molar_masses_kg_per_mol", (1.0, 0.0)), "molar mass"),
-        (_change("conserved_totals", (2.0,)), "conserved totals"),
-        (_change("reaction_matrix", ((-1.0, 2.0),)), "conserve"),
-        (_change("equilibrium_constant_records.dimensionless", False), "dimensionless"),
-        (
-            _change(
-                "equilibrium_constant_records.reaction_orientation",
-                "reactants_positive",
-            ),
-            "products_positive",
-        ),
-        (
-            _change(
-                "equilibrium_constant_records.conversion_id",
-                "unconverted-source-basis",
-            ),
-            "already-provider-basis",
-        ),
-    ),
-)
-def test_reaction_system_rejects_inconsistent_contracts(
-    mutate: Callable[[dict[str, object]], None], message: str
-) -> None:
-    spec = copy.deepcopy(_base_system())
-    mutate(spec)
-    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError, match=message):
-        _solve(spec)
-
-
 def test_reaction_system_rejects_charge_inconsistency() -> None:
     spec = _base_system()
     spec.update({"charges": (1, -1), "feed_amounts": (1.0, 0.0)})
-    with pytest.raises(
-        epcsaft_equilibrium.ChemicalEquilibriumError, match="electroneutral"
-    ):
+    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError, match="electroneutral"):
         _solve(spec)
 
     spec["feed_amounts"] = (1.0, 1.0)

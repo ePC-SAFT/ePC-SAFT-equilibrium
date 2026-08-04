@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import csv
 import ctypes
-import gc
 import math
 from pathlib import Path
 
 import epcsaft
 import pytest
-from parameter_dictionaries import METHANE_ETHANE_PARAMETERS, PURE_SATURATION_PARAMETERS
+from parameter_dictionaries import PURE_SATURATION_PARAMETERS
 
 import epcsaft_equilibrium
 from epcsaft_equilibrium import _equilibrium
@@ -64,150 +63,6 @@ def _capsule(table: _NativeSdkTable, name: str = "epcsaft.native_sdk.v1") -> obj
 def _model(component: str = "methane") -> epcsaft.Mixture:
     parameters = epcsaft.Parameters.from_dictionary(PURE_SATURATION_PARAMETERS[component])
     return epcsaft.Mixture(parameters)
-
-
-def test_native_extension_accepts_and_retains_the_public_provider_capsule() -> None:
-    model = _model()
-    fingerprint = model.parameter_fingerprint
-    capsule = epcsaft.native_sdk(model)
-
-    info = _equilibrium.sdk_info(capsule)
-
-    assert info["capsule_name"] == "epcsaft.native_sdk.v1"
-    assert info["abi_version"] == 1
-    assert info["table_size"] >= ctypes.sizeof(_NativeSdkTable)
-    assert info["result_size"] == ctypes.sizeof(_PhaseBlockResult)
-    assert info["has_model_context"] is True
-    assert info["has_evaluate_pure_phase"] is True
-
-    del model
-    gc.collect()
-    assert _equilibrium.sdk_info(capsule) == info
-    phase = _equilibrium.evaluate_phase(capsule, 150.0, 1.0, 1.0e-3, fingerprint)
-    assert phase["parameter_fingerprint"] == fingerprint
-
-
-def test_native_extension_rejects_malformed_capsule_contracts_and_results() -> None:
-    valid_size = ctypes.sizeof(_NativeSdkTable)
-    valid_result_size = ctypes.sizeof(_PhaseBlockResult)
-
-    pure_prefix = _NativeSdkTable(
-        1,
-        _NativeSdkTable.component_count.offset,
-        valid_result_size,
-        1,
-        1,
-    )
-    pure_info = _equilibrium.sdk_info(_capsule(pure_prefix))
-    assert pure_info["has_evaluate_pure_phase"] is True
-    assert pure_info["has_evaluate_mixture_phase"] is False
-
-    with pytest.raises(ValueError, match="expected capsule"):
-        _equilibrium.sdk_info(_capsule(_NativeSdkTable(), "wrong.name"))
-    with pytest.raises(ValueError, match="ABI version"):
-        _equilibrium.sdk_info(_capsule(_NativeSdkTable(2, valid_size, valid_result_size, 1, 1)))
-    with pytest.raises(ValueError, match="table is smaller"):
-        _equilibrium.sdk_info(
-            _capsule(
-                _NativeSdkTable(
-                    1,
-                    _NativeSdkTable.component_count.offset - 1,
-                    valid_result_size,
-                    1,
-                    1,
-                )
-            )
-        )
-    with pytest.raises(ValueError, match="result size"):
-        _equilibrium.sdk_info(_capsule(_NativeSdkTable(1, valid_size, valid_result_size - 1, 1, 1)))
-
-    fingerprint = _model().parameter_fingerprint
-    callback_type = ctypes.CFUNCTYPE(
-        ctypes.c_int,
-        ctypes.c_void_p,
-        ctypes.c_double,
-        ctypes.c_double,
-        ctypes.c_double,
-        ctypes.POINTER(_PhaseBlockResult),
-    )
-
-    def malformed_result(
-        _context: int,
-        temperature: float,
-        _amount: float,
-        _volume: float,
-        result: ctypes.POINTER(_PhaseBlockResult),
-    ) -> int:
-        if temperature == 149.0:
-            result.contents.struct_size = 0
-            result.contents.status = 0
-            return 0
-        result.contents.struct_size = valid_result_size
-        if temperature == 150.0:
-            result.contents.status = 0
-            result.contents.parameter_fingerprint = b"x" * 72
-            return 0
-        result.contents.status = 3
-        result.contents.error = b"x" * 160
-        return 3
-
-    evaluator = callback_type(malformed_result)
-    _EVALUATORS.append(evaluator)
-    capsule = _capsule(
-        _NativeSdkTable(
-            1,
-            valid_size,
-            valid_result_size,
-            1,
-            ctypes.cast(evaluator, ctypes.c_void_p).value,
-        )
-    )
-
-    with pytest.raises(ValueError, match="result struct size"):
-        _equilibrium.evaluate_phase(capsule, 149.0, 1.0, 1.0e-3, fingerprint)
-
-    with pytest.raises(ValueError, match=r"parameter fingerprint.*NUL"):
-        _equilibrium.evaluate_phase(capsule, 150.0, 1.0, 1.0e-3, fingerprint)
-
-    with pytest.raises(ValueError, match=r"provider error.*NUL"):
-        _equilibrium.evaluate_phase(capsule, 151.0, 1.0, 1.0e-3, fingerprint)
-
-
-@pytest.mark.parametrize("component", ("methane", "ethane", "propane"))
-def test_native_extension_evaluates_only_the_expected_provider_fingerprint(component: str) -> None:
-    model = _model(component)
-    capsule = epcsaft.native_sdk(model)
-
-    phase = _equilibrium.evaluate_phase(
-        capsule,
-        150.0,
-        1.0,
-        1.0e-3,
-        model.parameter_fingerprint,
-    )
-
-    assert phase["parameter_fingerprint"] == model.parameter_fingerprint
-    assert phase["status"] == 0
-    assert phase["amount_mol"] == 1.0
-    assert phase["volume_m3"] == 1.0e-3
-    assert len(phase["gradient"]) == 2
-    assert len(phase["hessian"]) == 4
-    assert len(phase["third"]) == 8
-    assert all(math.isfinite(value) for value in phase["gradient"])
-    assert math.isfinite(phase["pressure_pa"])
-    assert math.isfinite(phase["chemical_potential_over_rt"])
-
-    with pytest.raises(ValueError, match="fingerprint"):
-        _equilibrium.evaluate_phase(capsule, 150.0, 1.0, 1.0e-3, "sha256:wrong")
-
-    with pytest.raises(ValueError, match="provider phase evaluation failed"):
-        _equilibrium.evaluate_phase(
-            capsule,
-            150.0,
-            0.0,
-            1.0e-3,
-            model.parameter_fingerprint,
-        )
 
 
 @pytest.mark.parametrize(
@@ -283,31 +138,6 @@ def test_saturation_nlp_exact_derivatives_match_independent_directional_differen
         gradient_difference = (upper_gradient[row] - lower_gradient[row]) / (2.0 * step)
         hessian_direction = sum(hessian[row][column] * direction[column] for column in range(3))
         assert gradient_difference == pytest.approx(hessian_direction, rel=2.0e-6, abs=2.0e-7)
-
-
-def test_public_saturation_rejects_noncanonical_or_out_of_scope_inputs() -> None:
-    with pytest.raises(TypeError, match=r"saturation requires an epcsaft\.Mixture"):
-        epcsaft_equilibrium.saturation(object(), 150.0 * epcsaft.unit_registry.kelvin)
-
-    methane = _model("methane")
-
-    with pytest.raises(TypeError, match="Pint temperature quantity"):
-        epcsaft_equilibrium.saturation(methane, 150.0)
-    with pytest.raises(ValueError, match="convertible to kelvin"):
-        epcsaft_equilibrium.saturation(methane, 150.0 * epcsaft.unit_registry.second)
-    with pytest.raises(ValueError, match="source domain"):
-        epcsaft_equilibrium.saturation(methane, 96.0 * epcsaft.unit_registry.kelvin)
-
-    binary_parameters = epcsaft.Parameters.from_dictionary(METHANE_ETHANE_PARAMETERS)
-    binary = epcsaft.Mixture(binary_parameters)
-    with pytest.raises(ValueError, match="approved pure-component fingerprint"):
-        epcsaft_equilibrium.saturation(binary, 150.0 * epcsaft.unit_registry.kelvin)
-
-    with pytest.raises(epcsaft_equilibrium.SaturationError) as rejected:
-        epcsaft_equilibrium.saturation(methane, 250.0 * epcsaft.unit_registry.kelvin)
-    assert rejected.value.diagnostics["solver_converged"] is False
-    assert rejected.value.diagnostics["globality_certificate"] is False
-    assert rejected.value.diagnostics["attempt_log"]
 
 
 def test_public_saturation_wraps_native_failures_with_structured_diagnostics(

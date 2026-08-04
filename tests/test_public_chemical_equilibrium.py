@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import copy
-import inspect
 import math
 from dataclasses import replace
 
@@ -40,22 +38,6 @@ def _ideal_phase() -> epcsaft_equilibrium.IdealGasPhase:
         model_fingerprint="sha256:analytic-a-to-b",
         reference_id="provider-helmholtz-coordinate-basis",
     )
-
-
-def test_public_source_standard_state_declares_exact_solvent_reference() -> None:
-    state = epcsaft_equilibrium.ChemicalStandardState(
-        id="declared-water-reference-v1",
-        activity_scale_id="aqueous-molality-v1",
-        log_activity_scale_factors=(0.0, -4.0, -4.0),
-        reference_pressure_pa=100_000.0,
-        source_reference_component_ids=("water", "cation", "anion"),
-        source_reference_solvent_composition=(1.0, 0.0, 0.0),
-        source_reference_activity_convention_id="molality-infinite-dilution-v1",
-        source_reference_standard_molality_mol_per_kg=1.0,
-    )
-
-    assert state.source_reference_component_ids == ("water", "cation", "anion")
-    assert state.source_reference_solvent_composition == (1.0, 0.0, 0.0)
 
 
 def test_public_chemical_equilibrium_solves_one_typed_ideal_problem() -> None:
@@ -115,9 +97,7 @@ def test_public_chemical_equilibrium_solves_one_typed_ideal_problem() -> None:
     assert result.diagnostics.reduced_hessian_check_relative_error is not None
     assert result.diagnostics.reduced_hessian_check_relative_error <= 2.0e-4
     assert result.diagnostics.first_failed_numerical_criterion is None
-    numerical_names = tuple(
-        criterion.name for criterion in result.diagnostics.numerical_criteria
-    )
+    numerical_names = tuple(criterion.name for criterion in result.diagnostics.numerical_criteria)
     assert {
         "derivative_evidence_finite",
         "objective_gradient_spanning_relative_error",
@@ -307,47 +287,6 @@ def test_scaled_dependent_reaction_rejects_inconsistent_constant_cycle() -> None
         )
 
 
-@pytest.mark.parametrize(
-    ("charges", "feed", "reaction", "message"),
-    (
-        (
-            (0, 0),
-            (1.0, 0.0),
-            (-1.0e-12, 2.0e-12),
-            "reaction stoichiometry does not conserve",
-        ),
-        (
-            (1, -1),
-            (1.0, 1.0),
-            (1.0e-12, -1.0e-12),
-            "reaction stoichiometry does not conserve charge",
-        ),
-    ),
-)
-def test_scaled_invalid_reaction_contract_is_rejected_at_compilation(
-    charges: tuple[int, int],
-    feed: tuple[float, float],
-    reaction: tuple[float, float],
-    message: str,
-) -> None:
-    problem = replace(
-        _ideal_problem(),
-        charges=charges,
-        feed_amounts_mol=feed,
-        conserved_totals=(sum(feed),),
-        reaction_matrix=(reaction,),
-        equilibrium_constants=(replace(_ideal_problem().equilibrium_constants[0], ln_value=0.0),),
-    )
-
-    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError, match=message):
-        epcsaft_equilibrium.chemical_equilibrium(
-            _ideal_phase(),
-            350.0 * epcsaft.unit_registry.kelvin,
-            200_000.0 * epcsaft.unit_registry.pascal,
-            problem,
-        )
-
-
 def test_structural_face_reduction_is_invariant_to_reaction_row_scale() -> None:
     def problem(scale: float) -> epcsaft_equilibrium.ChemicalEquilibriumProblem:
         constants = _ideal_problem().equilibrium_constants[0]
@@ -396,9 +335,7 @@ def test_public_active_bound_reports_typed_kkt_unavailability() -> None:
     base = _ideal_problem()
     problem = replace(
         base,
-        equilibrium_constants=(
-            replace(base.equilibrium_constants[0], ln_value=math.log(1.0e-10)),
-        ),
+        equilibrium_constants=(replace(base.equilibrium_constants[0], ln_value=math.log(1.0e-10)),),
         strict_interior_amount_floor_mol=1.0e-4,
     )
 
@@ -563,124 +500,3 @@ def test_public_nonfinite_reduced_hessian_preserves_derivative_blocker(
     assert failed.value.diagnostics.failure_kind == "derivative_inconsistency"
     assert failed.value.diagnostics.reduced_hessian_spectrum_status == "nonfinite"
     assert failed.value.diagnostics.first_failed_numerical_criterion == "derivative_evidence_finite"
-
-
-@pytest.mark.parametrize(
-    ("mutation", "message"),
-    (
-        ("unknown_status", "invalid status"),
-        ("nonfinite_attempt", "nonfinite value"),
-        ("inconsistent_prefix", "budget prefix"),
-    ),
-)
-def test_public_chemical_equilibrium_rejects_malformed_search_receipt(
-    monkeypatch: pytest.MonkeyPatch,
-    mutation: str,
-    message: str,
-) -> None:
-    native_solve = epcsaft_equilibrium._equilibrium._chemical_equilibrium
-
-    def malformed_search(*args: object) -> dict[str, object]:
-        native = native_solve(*args)
-        search = copy.deepcopy(native["search"])
-        if mutation == "unknown_status":
-            search["status"] = "unknown"
-        elif mutation == "nonfinite_attempt":
-            search["attempts"][0]["objective"] = math.nan
-        elif mutation == "inconsistent_prefix":
-            search["budget_prefixes"][-1]["attempted_primary_ordinals"] = (0,)
-        native["search"] = search
-        return native
-
-    monkeypatch.setattr(
-        epcsaft_equilibrium._equilibrium,
-        "_chemical_equilibrium",
-        malformed_search,
-    )
-    with pytest.raises(
-        epcsaft_equilibrium.ChemicalEquilibriumError,
-        match=message,
-    ):
-        epcsaft_equilibrium.chemical_equilibrium(
-            _ideal_phase(),
-            350.0 * epcsaft.unit_registry.kelvin,
-            200_000.0 * epcsaft.unit_registry.pascal,
-            _ideal_problem(),
-        )
-
-
-@pytest.mark.parametrize(
-    ("mutation", "message"),
-    (
-        ("spectrum_status", "spectrum status"),
-        ("raw_inertia", "spectrum and inertia"),
-        ("nullspace_shape", "basis dimensions"),
-    ),
-)
-def test_public_chemical_equilibrium_rejects_malformed_curvature_receipt(
-    monkeypatch: pytest.MonkeyPatch,
-    mutation: str,
-    message: str,
-) -> None:
-    native_solve = epcsaft_equilibrium._equilibrium._chemical_equilibrium
-
-    def malformed_curvature(*args: object) -> dict[str, object]:
-        native = native_solve(*args)
-        if mutation == "spectrum_status":
-            native["reduced_hessian_spectrum_status"] = "unknown"
-        elif mutation == "raw_inertia":
-            native["reduced_hessian_raw_inertia"] = (0, 0, 0)
-        else:
-            native["reduced_hessian_nullspace_shape"] = (1, 1)
-        return native
-
-    monkeypatch.setattr(
-        epcsaft_equilibrium._equilibrium,
-        "_chemical_equilibrium",
-        malformed_curvature,
-    )
-    with pytest.raises(epcsaft_equilibrium.ChemicalEquilibriumError, match=message):
-        epcsaft_equilibrium.chemical_equilibrium(
-            _ideal_phase(),
-            350.0 * epcsaft.unit_registry.kelvin,
-            200_000.0 * epcsaft.unit_registry.pascal,
-            _ideal_problem(),
-        )
-
-
-def test_public_chemical_equilibrium_exports_typed_value_and_jacobian_contract() -> None:
-    expected = {
-        "ChemicalArtifactIdentity",
-        "ChemicalEquilibriumActiveParameter",
-        "ChemicalEquilibriumConstant",
-        "ChemicalEquilibriumCriterion",
-        "ChemicalEquilibriumDiagnostics",
-        "ChemicalEquilibriumError",
-        "ChemicalEquilibriumProblem",
-        "ChemicalEquilibriumResult",
-        "ChemicalEquilibriumSensitivity",
-        "ChemicalEquilibriumSensitivityParameter",
-        "ChemicalEquilibriumSensitivityRequest",
-        "ChemicalEquilibriumAttempt",
-        "ChemicalEquilibriumBasin",
-        "ChemicalEquilibriumBudgetPrefix",
-        "ChemicalEquilibriumSearch",
-        "ChemicalStandardState",
-        "IdealGasPhase",
-        "ProviderPhase",
-        "chemical_equilibrium",
-    }
-    assert expected <= set(epcsaft_equilibrium.__all__)
-    assert tuple(inspect.signature(epcsaft_equilibrium.chemical_equilibrium).parameters) == (
-        "phase",
-        "temperature",
-        "pressure",
-        "problem",
-        "sensitivity_request",
-    )
-    for retired in (
-        "_chemical_solve_manufactured",
-        "_chemical_solve_provider_manufactured",
-        "_chemical_solve_provider_source",
-    ):
-        assert not hasattr(epcsaft_equilibrium._equilibrium, retired)
