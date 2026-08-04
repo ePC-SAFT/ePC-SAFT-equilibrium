@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-for required_command in uv cmake ninja pkg-config c++ serena; do
+for required_command in git python3 uv cmake ninja pkg-config c++ sha256sum; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "missing required command: $required_command" >&2
         exit 1
@@ -16,22 +16,17 @@ if ! pkg-config --exists ipopt; then
     exit 1
 fi
 
-skill_root="${HOME}/.agents/skills"
-for required_skill in chemical-engineer scientific-coding-and-testing; do
-    if [[ ! -f "${skill_root}/${required_skill}/SKILL.md" ]]; then
-        echo "missing required Codex skill: ${required_skill}" >&2
-        exit 1
-    fi
-done
-
 git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
 canonical_repo_root="$(dirname "$git_common_dir")"
 project_root="$(dirname "$canonical_repo_root")"
-default_eos_wheel="${project_root}/artifacts/objects/sha256/bc7e637de084330ebded4ddfd52e02bc1ce5451221128692972ebba8856d098e/epcsaft-0.2.0.dev0-cp313-cp313-linux_x86_64.whl"
-eos_wheel="${EPCSAFT_EOS_WHEEL:-$default_eos_wheel}"
+artifact_tool="${project_root}/ePC-SAFT-governance/tools/artifact_store.py"
+if [[ ! -f "$artifact_tool" ]]; then
+    echo "missing Governance artifact resolver: $artifact_tool" >&2
+    exit 1
+fi
+eos_wheel="$(python3 "$artifact_tool" resolve --distribution epcsaft)"
 if [[ ! -f "$eos_wheel" ]]; then
-    echo "missing required hash-addressed EOS wheel: $eos_wheel" >&2
-    echo "set EPCSAFT_EOS_WHEEL to an immutable artifact-root wheel" >&2
+    echo "missing active hash-addressed EOS wheel: $eos_wheel" >&2
     exit 1
 fi
 
@@ -52,6 +47,11 @@ fi
 if [[ ! -x .venv/bin/python ]]; then
     uv venv --python 3.13 .venv
 fi
+
+uv pip uninstall --python .venv/bin/python \
+    epcsaft \
+    epcsaft-equilibrium \
+    epcsaft-regression
 
 uv pip install --python .venv/bin/python \
     "$eos_wheel" \
